@@ -36,10 +36,10 @@ from logger import get_logger
 log = get_logger("trade_memory")
 
 from paths import TRADE_MEMORY as MEMORY_FILE
-MAX_TRADES_PER_COIN  = 30
-COOLDOWN_CYCLES      = 4
-MIN_HOLD_THRESHOLD   = 240     # minutes
-CONSECUTIVE_LOSS_LIMIT = 3
+MAX_TRADES_PER_COIN    = 50    # remember more history per coin
+COOLDOWN_CYCLES        = 6    # 6-cycle cooldown after consecutive losses (was 4)
+MIN_HOLD_THRESHOLD     = 180  # flag reversals faster: 3h not 4h (was 240)
+CONSECUTIVE_LOSS_LIMIT = 3    # still triggers at 3 losses in a row
 
 
 @dataclass
@@ -151,120 +151,163 @@ class TradeMemory:
         market_regime: str = "RANGING", dominant_regime: str = "MIXED",
     ) -> float:
         """
-        Returns a score delta (−18 … +10) to overlay on the raw signal score.
-        Negative = be more cautious. Positive = slight confidence boost.
+        Returns a score delta (−25 … +15) to overlay on the raw signal score.
+        Negative = be more cautious. Positive = confidence boost.
+
+        Deliberately aggressive — the agent should learn hard from its mistakes
+        and be rewarded clearly for its wins. Weak adjustments = no learning.
         """
         adj = 0.0
 
         if self._cooldown.get(coin, 0) > 0:
-            adj -= 15.0
+            adj -= 20.0   # was -15 — make cooldown really sting
             log.info(f"[{coin}] Cooldown active ({self._cooldown[coin]}c) adj={adj:+.0f}")
 
         recent = self._trades.get(coin, [])
         if not recent:
             return round(adj, 2)
 
-        same_dir = [t for t in recent[-10:] if t.direction == direction]
+        same_dir = [t for t in recent[-15:] if t.direction == direction]  # look at more history
         if not same_dir:
             return round(adj, 2)
 
-        # Consecutive loss penalty
+        # ── Consecutive loss penalty (checks last 2 as well for faster response) ──
+        last2 = same_dir[-2:]
         last3 = same_dir[-3:]
+        if len(last2) >= 2 and all(not t.is_win for t in last2):
+            adj -= 6.0    # two in a row: early warning
         if len(last3) >= 3 and all(not t.is_win for t in last3):
-            adj -= 10.0
+            adj -= 15.0   # was -10 — 3 in a row should really suppress this setup
 
-        # Win-rate in same score band
+        # ── Win-rate in same score band ──────────────────────────────────────
         score_lo, score_hi = signal_score - 8, signal_score + 8
         similar = [t for t in same_dir if score_lo <= t.signal_score <= score_hi]
-        if len(similar) >= 3:
+        if len(similar) >= 2:   # was 3 — react sooner
             wr = sum(1 for t in similar if t.is_win) / len(similar)
             if wr < 0.30:
-                adj -= 7.0
+                adj -= 10.0   # was -7
+            elif wr < 0.45:
+                adj -= 5.0    # new: moderate penalty for below-average band
             elif wr >= 0.65:
-                adj += 5.0
+                adj += 8.0    # was +5
+            elif wr >= 0.55:
+                adj += 4.0    # new: reward even modestly profitable bands
 
-        # Regime-specific learning
+        # ── Regime-specific learning ──────────────────────────────────────────
         regime_trades = [t for t in same_dir if t.market_regime == market_regime]
-        if len(regime_trades) >= 3:
+        if len(regime_trades) >= 2:   # was 3
             rwr = sum(1 for t in regime_trades if t.is_win) / len(regime_trades)
-            if rwr < 0.35:
+            if rwr < 0.30:
+                adj -= 10.0   # was -5 — bad regime should really hurt
+            elif rwr < 0.45:
                 adj -= 5.0
             elif rwr >= 0.70:
+                adj += 6.0    # was +3
+            elif rwr >= 0.55:
                 adj += 3.0
 
-        # Dominant regime (ABSORPTION kills us)
+        # ── Dominant regime ───────────────────────────────────────────────────
         dom_trades = [t for t in same_dir if t.dominant_regime == dominant_regime]
-        if len(dom_trades) >= 3:
+        if len(dom_trades) >= 2:
             dwr = sum(1 for t in dom_trades if t.is_win) / len(dom_trades)
-            if dwr < 0.35:
+            if dwr < 0.30:
+                adj -= 8.0    # was -4
+            elif dwr < 0.45:
                 adj -= 4.0
             elif dwr >= 0.70:
-                adj += 3.0
+                adj += 5.0    # was +3
+            elif dwr >= 0.55:
+                adj += 2.0
 
-        # Failure mode recurrence penalties
+        # ── Failure mode recurrence penalties ─────────────────────────────────
         recent_modes = [m for t in same_dir[-4:] for m in t.failure_modes]
         if recent_modes.count("REVERSED_TOO_FAST") >= 2:
-            adj -= 4.0
+            adj -= 6.0    # was -4
+        if recent_modes.count("REVERSED_TOO_FAST") >= 3:
+            adj -= 4.0    # extra layer for persistent reversals
         if recent_modes.count("COUNTER_TREND") >= 2:
-            adj -= 5.0
+            adj -= 8.0    # was -5 — fighting trend is expensive
         if recent_modes.count("RANGING_TRAP") >= 2:
-            adj -= 6.0
+            adj -= 9.0    # was -6
+        if recent_modes.count("ABSORPTION_TRAP") >= 2:
+            adj -= 7.0    # new: absorptions are brutal
+        if recent_modes.count("WEAK_SIGNAL") >= 3:
+            adj -= 5.0    # new: consistently entering on weak signals
 
-        # Recent run bonus/penalty
+        # ── Recent run bonus / penalty ────────────────────────────────────────
         wins_last5 = sum(1 for t in same_dir[-5:] if t.is_win)
         if wins_last5 >= 4:
-            adj += 6.0
+            adj += 10.0   # was +6 — hot streak deserves a real boost
+        elif wins_last5 >= 3:
+            adj += 5.0    # new: solid run
         elif wins_last5 == 0 and len(same_dir) >= 3:
-            adj -= 5.0
+            adj -= 8.0    # was -5 — 0-for-5 should really dampen this
+        elif wins_last5 <= 1 and len(same_dir) >= 4:
+            adj -= 4.0    # new: 1-for-5 also worrying
 
-        return round(max(-18.0, min(10.0, adj)), 2)
+        adj_final = round(max(-25.0, min(15.0, adj)), 2)   # wider range: was -18/+10
+        if adj_final != 0:
+            log.info(f"[{coin}] RL score adjustment: {direction} adj={adj_final:+.1f} "
+                     f"(regime={market_regime}/{dominant_regime})")
+        return adj_final
 
     def get_pattern_boost(
         self, coin: str, direction: str, signal_score: float,
         market_regime: str = "TRENDING", dominant_regime: str = "MOMENTUM",
     ) -> float:
         """
-        Sizing multiplier boost (0.0 … 0.30) for the risk manager.
-        Rewards historically winning pattern contexts.
-        0.10 = 10% larger position. This is "double down on what works".
+        Sizing multiplier boost (0.0 … 0.45) for the risk manager.
+        Rewards historically winning pattern contexts aggressively.
+        0.15 = 15% larger position. "Double down hard on what works."
         """
         boost = 0.0
         recent = self._trades.get(coin, [])
-        if len(recent) < 4:
+        if len(recent) < 3:   # was 4 — reward good patterns sooner
             return 0.0
 
-        same_dir = [t for t in recent[-12:] if t.direction == direction]
-        if len(same_dir) < 3:
+        same_dir = [t for t in recent[-15:] if t.direction == direction]
+        if len(same_dir) < 2:   # was 3 — unlock boost sooner
             return 0.0
 
-        # Does this exact context have a strong track record?
+        # ── Does this exact context have a strong track record? ──────────────
         matching = [
             t for t in same_dir
             if t.market_regime == market_regime
             and t.dominant_regime == dominant_regime
-            and abs(t.signal_score - signal_score) <= 10
+            and abs(t.signal_score - signal_score) <= 12  # wider window (was 10)
         ]
-        if len(matching) >= 2:
+        if len(matching) >= 1:   # even 1 matching win in exact context earns small boost
             pattern_wr = sum(1 for t in matching if t.is_win) / len(matching)
-            if pattern_wr >= 0.75:
-                boost += 0.20
+            if pattern_wr >= 0.80:
+                boost += 0.25   # was 0.20 — very strong pattern match
+                log.info(
+                    f"[{coin}] 🔥 Pattern boost: {direction} {market_regime}/{dominant_regime} "
+                    f"WR={pattern_wr*100:.0f}% ({len(matching)} trades) → +{boost*100:.0f}% size"
+                )
+            elif pattern_wr >= 0.65:
+                boost += 0.15   # was 0.10
                 log.info(
                     f"[{coin}] Pattern boost: {direction} {market_regime}/{dominant_regime} "
                     f"WR={pattern_wr*100:.0f}% → +{boost*100:.0f}% size"
                 )
-            elif pattern_wr >= 0.60:
-                boost += 0.10
+            elif pattern_wr >= 0.50:
+                boost += 0.07   # new: even a slight edge gets rewarded
 
-        # Streak bonus: 3 consecutive same-direction wins
+        # ── Streak bonus: 3 consecutive same-direction wins ──────────────────
         if len(same_dir) >= 3 and all(t.is_win for t in same_dir[-3:]):
-            boost += 0.10
+            boost += 0.15   # was 0.10 — hot streak is real signal
+            log.info(f"[{coin}] 🔥 Streak bonus: 3 consecutive {direction} wins → +15%")
+        elif len(same_dir) >= 2 and all(t.is_win for t in same_dir[-2:]):
+            boost += 0.07   # new: 2 in a row is worth noticing
 
-        # Overall win rate bonus
+        # ── Overall win rate bonus ────────────────────────────────────────────
         wr = sum(1 for t in same_dir if t.is_win) / len(same_dir)
-        if wr >= 0.75 and len(same_dir) >= 5:
-            boost += 0.10
+        if wr >= 0.75 and len(same_dir) >= 4:    # was 5 — unlock sooner
+            boost += 0.15   # was 0.10
+        elif wr >= 0.60 and len(same_dir) >= 4:
+            boost += 0.08   # new: 60% WR also earns a small reward
 
-        return round(min(boost, 0.30), 2)
+        return round(min(boost, 0.45), 2)   # was 0.30 — allow up to 45% boost
 
     def tick_cooldowns(self) -> None:
         expired = []

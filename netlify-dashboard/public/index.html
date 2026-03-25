@@ -648,12 +648,6 @@
     <div class="card-value" id="trade-count">--</div>
     <div class="card-sub" id="wins-losses">Wins / Losses: --</div>
   </div>
-  <div class="card">
-    <div class="kpi-icon yellow-bg">🧠</div>
-    <div class="card-label">Cycle / Sentiment</div>
-    <div class="card-value" id="cycle">--</div>
-    <div class="card-sub" id="sentiment">F&amp;G: --</div>
-  </div>
 </div>
 
 <!-- OPEN TRADES -->
@@ -709,8 +703,8 @@
   </div>
 </div>
 
-<!-- Performance + Mood + Circuit Breaker -->
-<div class="grid-3">
+<!-- Performance + Mood -->
+<div class="grid-2">
   <div class="card">
     <div class="card-label">🏆 Performance</div>
     <div id="stats-body">
@@ -718,22 +712,13 @@
       <div class="stat-row"><span class="stat-label">Worst trade</span><span class="stat-value" id="stat-worst">--</span></div>
       <div class="stat-row"><span class="stat-label">Avg win</span><span class="stat-value" id="stat-avgwin">--</span></div>
       <div class="stat-row"><span class="stat-label">Avg loss</span><span class="stat-value" id="stat-avgloss">--</span></div>
-      <div class="stat-row"><span class="stat-label">Today's P&amp;L</span><span class="stat-value" id="stat-daily-pnl">--</span></div>
+      <div class="stat-row"><span class="stat-label">Today</span><span class="stat-value" id="stat-daily-pnl">--</span></div>
     </div>
   </div>
   <div class="card">
     <div class="card-label">🌡️ Market Mood</div>
     <div id="mood-body">
       <div class="empty-state">Waiting...</div>
-    </div>
-  </div>
-  <div class="card" id="cb-card">
-    <div class="card-label">🛡️ Safety Circuit Breaker</div>
-    <div id="cb-body">
-      <div class="stat-row"><span class="stat-label">Status</span><span class="stat-value green" id="cb-status">Active</span></div>
-      <div class="stat-row"><span class="stat-label">Consecutive losses</span><span class="stat-value" id="cb-losses">0 / 5</span></div>
-      <div class="stat-row"><span class="stat-label">Daily P&amp;L limit</span><span class="stat-value" id="cb-daily-limit">--</span></div>
-      <div class="stat-row"><span class="stat-label">Drawdown limit</span><span class="stat-value" id="cb-drawdown">--</span></div>
     </div>
   </div>
 </div>
@@ -749,11 +734,10 @@
     <div id="trades-wrap" style="display:none;overflow-x:auto;">
       <table>
         <thead><tr>
-          <th>#</th><th>Coin</th><th>Dir</th><th>Opened</th><th>Closed</th>
-          <th>Entry</th><th>Exit</th><th>Margin</th><th>Notional</th><th>P&amp;L $</th><th>P&amp;L %</th><th>Reason</th>
+          <th>Coin</th><th>Dir</th><th>P&amp;L $</th><th>P&amp;L %</th><th>Reason</th>
         </tr></thead>
         <tbody id="trades-body">
-          <tr><td colspan="12" class="muted" style="text-align:center;padding:24px;">No closed trades yet</td></tr>
+          <tr><td colspan="5" class="muted" style="text-align:center;padding:24px;">No closed trades yet</td></tr>
         </tbody>
       </table>
     </div>
@@ -786,15 +770,31 @@ function formatTimer(seconds) {
   return m + ':' + String(s).padStart(2, '0');
 }
 
+// Anti-blink: cache last rendered state so we don't flash on unchanged data
+let _lastStateHash = '';
+function hashState(s, st, tr) {
+  try { return JSON.stringify({
+    pos: (s.positions||[]).map(p=>p.coin+p.unrealised_pnl+p.current_price),
+    cyc: s.cycle_number, pnl: st.total_pnl,
+    sig: Object.keys(s.signals||{}).join(','),
+    trl: (tr||[]).length
+  }); } catch(e) { return ''; }
+}
+
 async function refresh() {
   try {
-    const res  = await fetch('/api/state');
+    const res  = await fetch('/api/state?_=' + Date.now());
     const data = await res.json();
     const s    = data.state;
     const st   = data.stats;
     const tr   = data.trades;
 
-    // Header
+    // Skip full DOM update if nothing changed (prevents position card blink)
+    const h = hashState(s, st, tr);
+    const changed = h !== _lastStateHash;
+    _lastStateHash = h;
+
+    // Always update header timestamps
     document.getElementById('last-update').textContent = 'Updated: ' + data.server_time;
     const badge = document.getElementById('mode-badge');
     if (s.status === 'offline') {
@@ -816,25 +816,6 @@ async function refresh() {
     } else {
       haltBanner.style.display = 'none';
     }
-
-    // Circuit Breaker Card
-    const cbCard = document.getElementById('cb-card');
-    const cbStatus = document.getElementById('cb-status');
-    if (cb.halted) {
-      cbCard.className = 'card card-halt';
-      cbStatus.textContent = 'HALTED';
-      cbStatus.className = 'stat-value red';
-    } else {
-      cbCard.className = 'card';
-      cbStatus.textContent = 'Active';
-      cbStatus.className = 'stat-value green';
-    }
-    const maxLoss = cb.max_consecutive_losses || 5;
-    const consLoss = cb.consecutive_losses || 0;
-    document.getElementById('cb-losses').textContent = consLoss + ' / ' + maxLoss;
-    document.getElementById('cb-losses').className = 'stat-value ' + (consLoss >= maxLoss - 1 ? 'red' : consLoss >= 2 ? 'yellow' : 'green');
-    document.getElementById('cb-daily-limit').textContent = '$' + fmt(Math.abs(cb.daily_loss_limit_usd || 500), 0);
-    document.getElementById('cb-drawdown').textContent = (cb.drawdown_halt_pct ? (cb.drawdown_halt_pct * 100) : 15) + '%';
 
     // KPIs
     document.getElementById('portfolio').textContent = '$' + fmt(s.portfolio_usd);
@@ -895,12 +876,9 @@ async function refresh() {
     const closedN = st.total || 0;
     document.getElementById('trade-count').textContent = openN + ' / ' + closedN;
     document.getElementById('wins-losses').textContent = 'Wins: ' + (st.wins||0) + '  Losses: ' + (st.losses||0);
-
-    document.getElementById('cycle').textContent = '#' + (s.cycle_number || '--');
     const sent = s.sentiment || {};
-    document.getElementById('sentiment').textContent = 'F&G: ' + (sent.label||'--') + ' (' + (sent.raw_score||'--') + ')';
 
-    // Open Trades
+    // Open Trades — only re-render when state changes (anti-blink)
     const openBody = document.getElementById('open-trades-body');
     const countBadge = document.getElementById('open-count');
     const openCard = document.getElementById('open-trades-card');
@@ -908,7 +886,11 @@ async function refresh() {
       countBadge.style.display = 'inline-flex';
       countBadge.textContent = s.positions.length;
       openCard.className = 'card card-highlight';
-      openBody.innerHTML = s.positions.map(p => {
+      if (changed) {
+      // Sort by unrealised_pnl descending — most profitable first
+      const sortedPos = [...s.positions].sort((a,b) => (b.unrealised_pnl||0) - (a.unrealised_pnl||0));
+      openBody.style.opacity = '0.5';
+      openBody.innerHTML = sortedPos.map(p => {
         // Bug fix: normalise direction to uppercase so CSS class + label always match
         const dir    = (p.direction || 'LONG').toUpperCase();
         const pnlCls = cls(p.unrealised_pnl);
@@ -965,91 +947,63 @@ async function refresh() {
           '</div>' +
         '</div>';
       }).join('');
+      // Fade back in smoothly after render
+      requestAnimationFrame(() => { openBody.style.opacity = '1'; });
+      } // end if(changed)
     } else {
       countBadge.style.display = 'none';
       openCard.className = 'card';
-      openBody.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div>FLAT — no open positions</div>';
+      if (changed) openBody.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div>FLAT — no open positions</div>';
     }
 
     // Signals — show ALL configured coins, even ones not yet in last_signals
+    // ── Signal Intelligence — clean, actionable, no noise ────────────────
     const sigEl    = document.getElementById('signals-body');
     const sigs     = s.signals || {};
     const cfgCoins = (s.config && s.config.coins) ? s.config.coins : Object.keys(sigs);
-    // Merge: all configured coins, falling back to empty signal for missing ones
     const allSigEntries = cfgCoins.map(c => [c, sigs[c] || null]);
     if (allSigEntries.length) {
       sigEl.innerHTML = allSigEntries.map(([coin, sig]) => {
         if (!sig) {
-          // Coin is configured but hasn't been analysed yet this cycle
-          return '<div class="signal-item">' +
-            '<div class="signal-header">' +
-              '<div><span class="signal-coin">🪙 ' + coin + '</span>' +
-              '<span class="signal-action muted"> PENDING</span></div>' +
-              '<span class="signal-score muted">--</span>' +
-            '</div>' +
-            '<div class="bar-track"><div class="bar-fill bar-flat" style="width:50%"></div></div>' +
-            '<div style="font-size:11px;color:var(--muted);margin-top:4px;">Waiting for first analysis cycle...</div>' +
+          return '<div class="signal-item" style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;">' +
+            '<span class="signal-coin" style="font-size:15px;">🪙 ' + coin + '</span>' +
+            '<span style="color:var(--muted);font-size:12px;">PENDING...</span>' +
           '</div>';
         }
         const score   = sig.score || 50;
         const action  = sig.action || 'FLAT';
         const itype   = sig.instrument_type || 'crypto';
         const isIndex = itype === 'index';
-        const barCls  = action === 'LONG' ? 'bar-long' : action === 'SHORT' ? 'bar-short' : 'bar-flat';
-        const actCls  = action === 'LONG' ? 'green' : action === 'SHORT' ? 'red' : 'muted';
         const coinIcon = isIndex ? '📈' : '🪙';
-        // News pill
-        const newsScore = sig.news_score != null ? sig.news_score : 50;
-        const newsCls   = newsScore >= 60 ? 'pill-green' : newsScore <= 40 ? 'pill-red' : '';
-        const newsArts  = sig.news_articles || 0;
-        const newsLabel = isIndex ? '📰 Macro ' : '📰 News ';
-        // Candles pill
-        const cPatterns = (sig.candle_patterns || []);
-        const cScore    = sig.candle_score != null ? sig.candle_score : 50;
-        const cLabel    = cPatterns.length ? cPatterns.join(' + ') : 'No pattern';
-        const cTrend    = sig.candle_trend || 'FLAT';
-        const cCls      = cScore >= 60 ? 'pill-green' : cScore <= 40 ? 'pill-red' : '';
-        // Memory pill
-        const memAdj    = sig.memory_adj || 0;
-        const memCd     = sig.memory_cooldown || 0;
-        const memCls    = memCd > 0 ? 'pill-cool' : memAdj > 0 ? 'pill-green' : memAdj < -3 ? 'pill-warn' : '';
-        const memLabel  = memCd > 0 ? '🧊 Cooldown ' + memCd : (memAdj !== 0 ? (memAdj >= 0 ? '🟢 Adj +' : '🔴 Adj ') + memAdj.toFixed(1) : '🟡 Neutral');
-        // Funding / OI / CVD pill (crypto only)
-        const focScore  = sig.foc_score || 50;
-        const cvdDiv    = sig.cvd_divergence || 'NONE';
-        const fundLabel = sig.funding_label  || '';
-        const oiChg     = sig.oi_change_pct  != null ? sig.oi_change_pct : null;
-        const focCls    = focScore >= 60 ? 'pill-green' : focScore <= 40 ? 'pill-red' : '';
-        const cvdEmoji  = cvdDiv === 'BULLISH' ? '🟢' : cvdDiv === 'BEARISH' ? '🔴' : '⚪';
-        const focPill   = (!isIndex && (fundLabel || oiChg != null))
-          ? '<span class="signal-pill ' + focCls + '" title="Funding/OI/CVD composite">' +
-              cvdEmoji + ' CVD:' + cvdDiv.slice(0,4) +
-              (oiChg != null ? ' OI:' + (oiChg >= 0 ? '+' : '') + oiChg.toFixed(1) + '%' : '') +
-            '</span>'
-          : '';
-        // Strategic FLAT reasoning
+        // Action colours and sizing
+        const actColor = action === 'LONG' ? 'var(--green)' : action === 'SHORT' ? 'var(--red)' : 'var(--muted)';
+        const actBg    = action === 'LONG' ? 'var(--green-dim)' : action === 'SHORT' ? 'var(--red-dim)' : 'rgba(255,255,255,0.05)';
+        const barCls   = action === 'LONG' ? 'bar-long' : action === 'SHORT' ? 'bar-short' : 'bar-flat';
+        // Score is the main number — bold and prominent
+        const scoreFmt = fmt(score, 0);
+        // Only show flat reason if staying flat — keep it tiny
         const flatReason = sig.flat_reason || '';
-        const flatBlock  = (action === 'FLAT' && flatReason)
-          ? '<div style="font-size:11px;color:var(--yellow);margin-top:5px;padding:5px 8px;background:rgba(255,184,77,0.07);border-left:2px solid rgba(255,184,77,0.5);border-radius:0 4px 4px 0;">✋ Staying flat — ' + flatReason + '</div>'
+        const flatHint = (action === 'FLAT' && flatReason)
+          ? '<div style="font-size:10px;color:var(--yellow);margin-top:4px;opacity:0.8;">✋ ' + flatReason + '</div>'
           : '';
-        return '<div class="signal-item">' +
-          '<div class="signal-header">' +
-            '<div>' +
-              '<span class="signal-coin">' + coinIcon + ' ' + coin + '</span>' +
-              (isIndex ? ' <span class="signal-pill pill-blue" style="font-size:9px;padding:1px 5px;">INDEX</span>' : '') +
-              '<span class="signal-action ' + actCls + '">' + action + '</span>' +
-              '<span class="signal-extras"> ' + (sig.confidence||'') + (sig.mtf_bias && sig.mtf_bias !== 'FLAT' ? ' · HTF:'+sig.mtf_bias : '') + '</span>' +
+        // CVD hint for crypto (one-liner, no clutter)
+        const cvdDiv = sig.cvd_divergence || 'NONE';
+        const cvdHint = (!isIndex && cvdDiv !== 'NONE')
+          ? ' <span style="font-size:10px;opacity:0.6;">' + (cvdDiv === 'BULLISH' ? '🟢' : '🔴') + ' CVD</span>'
+          : '';
+        return '<div class="signal-item" style="padding:8px 0;">' +
+          '<div style="display:flex;align-items:center;justify-content:space-between;">' +
+            '<span class="signal-coin" style="font-size:15px;">' + coinIcon + ' ' + coin +
+              (isIndex ? ' <span style="font-size:9px;color:var(--blue);opacity:0.8;">INDEX</span>' : '') +
+              cvdHint +
+            '</span>' +
+            '<div style="display:flex;align-items:center;gap:10px;">' +
+              '<span style="font-size:22px;font-weight:800;color:' + actColor + ';font-family:var(--mono);">' + scoreFmt + '</span>' +
+              '<span style="padding:4px 12px;border-radius:6px;background:' + actBg + ';color:' + actColor + ';font-weight:700;font-size:13px;min-width:58px;text-align:center;">' + action + '</span>' +
             '</div>' +
-            '<span class="signal-score ' + actCls + '">' + fmt(score,1) + '</span>' +
           '</div>' +
-          '<div class="bar-track"><div class="bar-fill ' + barCls + '" style="width:' + score + '%"></div></div>' +
-          flatBlock +
-          '<div class="signal-meta-row">' +
-            '<span class="signal-pill ' + newsCls + '">' + newsLabel + Math.round(newsScore) + (newsArts ? ' · ' + newsArts : '') + '</span>' +
-            '<span class="signal-pill ' + cCls + '">🕯️ ' + cLabel + ' (' + cTrend + ')</span>' +
-            '<span class="signal-pill ' + memCls + '">' + memLabel + '</span>' +
-            focPill +
-          '</div>' +
+          '<div class="bar-track" style="margin-top:5px;"><div class="bar-fill ' + barCls + '" style="width:' + score + '%"></div></div>' +
+          flatHint +
         '</div>';
       }).join('');
     }
@@ -1183,25 +1137,30 @@ async function refresh() {
         '</div>';
     }
 
-    // Performance Stats
-    document.getElementById('stat-best').innerHTML   = '<span class="green">' + fmtD(st.best) + '</span>';
-    document.getElementById('stat-worst').innerHTML  = '<span class="red">' + fmtD(st.worst) + '</span>';
+    // Performance Stats — best/worst show token name + amount
+    const bestTrade  = tr && tr.length ? tr.reduce((a,b) => parseFloat(b.pnl_usd||0) > parseFloat(a.pnl_usd||0) ? b : a, tr[0]) : null;
+    const worstTrade = tr && tr.length ? tr.reduce((a,b) => parseFloat(b.pnl_usd||0) < parseFloat(a.pnl_usd||0) ? b : a, tr[0]) : null;
+    const bestLabel  = bestTrade  ? '<span class="green">' + bestTrade.coin  + ' ' + fmtD(parseFloat(bestTrade.pnl_usd))  + '</span>' : '<span class="muted">--</span>';
+    const worstLabel = worstTrade ? '<span class="red">'  + worstTrade.coin + ' ' + fmtD(Math.abs(parseFloat(worstTrade.pnl_usd))) + '</span>' : '<span class="muted">--</span>';
+    document.getElementById('stat-best').innerHTML   = bestLabel;
+    document.getElementById('stat-worst').innerHTML  = worstLabel;
     document.getElementById('stat-avgwin').innerHTML = '<span class="green">' + fmtD(st.avg_win) + '</span>';
-    document.getElementById('stat-avgloss').innerHTML= '<span class="red">' + fmtD(st.avg_loss) + '</span>';
+    document.getElementById('stat-avgloss').innerHTML= '<span class="red">' + fmtD(Math.abs(st.avg_loss||0)) + '</span>';
     const dailyPnl = s.daily_pnl_usd || 0;
     document.getElementById('stat-daily-pnl').innerHTML = '<span class="' + cls(dailyPnl) + '">' + fmtD(dailyPnl) + '</span>';
 
-    // Market Mood
-    const moodEl = document.getElementById('mood-body');
-    const fng = sent.raw_score || 0;
-    const fngLabel = sent.label || 'Unknown';
-    const fngColor = fng <= 25 ? 'red' : fng <= 45 ? 'yellow' : fng >= 75 ? 'green' : fng >= 55 ? 'green' : 'muted';
+    // Market Mood — just FEAR / GREED, nothing else
+    const moodEl   = document.getElementById('mood-body');
+    const fng      = sent.raw_score || 0;
+    const isFear   = fng < 50;
+    const moodWord = fng <= 20 ? 'EXTREME FEAR' : fng <= 40 ? 'FEAR' : fng <= 60 ? 'NEUTRAL' : fng <= 80 ? 'GREED' : 'EXTREME GREED';
     const moodEmoji = fng <= 20 ? '😨' : fng <= 40 ? '😟' : fng <= 60 ? '😐' : fng <= 80 ? '😊' : '🤑';
+    const moodColor = fng <= 40 ? 'var(--red)' : fng <= 60 ? 'var(--muted)' : 'var(--green)';
     moodEl.innerHTML =
-      '<div style="text-align:center;padding:8px 0 16px;"><span style="font-size:36px;">' + moodEmoji + '</span></div>' +
-      '<div class="stat-row"><span class="stat-label">Fear & Greed</span><span class="stat-value ' + fngColor + '">' + fng + '/100</span></div>' +
-      '<div class="stat-row"><span class="stat-label">Mood</span><span class="stat-value ' + fngColor + '">' + fngLabel + '</span></div>' +
-      '<div class="stat-row"><span class="stat-label">Signal Bias</span><span class="stat-value">' + (sent.signal_score ? fmt(sent.signal_score, 0) + '/100' : '--') + '</span></div>';
+      '<div style="text-align:center;padding:16px 0;">' +
+        '<div style="font-size:48px;margin-bottom:10px;">' + moodEmoji + '</div>' +
+        '<div style="font-size:22px;font-weight:800;color:' + moodColor + ';font-family:var(--mono);">' + moodWord + '</div>' +
+      '</div>';
 
     // Pending orders
     const pendEl = document.getElementById('pending-body');
@@ -1227,18 +1186,10 @@ async function refresh() {
         const pnl    = parseFloat(t.pnl_usd || 0);
         const pnlPct = parseFloat(t.pnl_pct || 0) * 100;
         const pnlCls = cls(pnl);
-        // Normalise direction to uppercase so class + label always agree
         const dir    = (t.direction || '').toUpperCase();
         return '<tr>' +
-          '<td class="muted">' + t.trade_id + '</td>' +
           '<td><strong>' + t.coin + '</strong></td>' +
           '<td><span class="pos-direction pos-' + dir.toLowerCase() + '">' + (dir === 'LONG' ? '↑' : '↓') + ' ' + dir + '</span></td>' +
-          '<td class="muted" style="font-size:11px;">' + (t.opened_at||'').slice(0,16) + '</td>' +
-          '<td class="muted" style="font-size:11px;">' + ((t.closed_at||'').slice(0,16)||'open') + '</td>' +
-          '<td>$' + fmt(t.entry_price) + '</td>' +
-          '<td>' + (t.exit_price ? '$'+fmt(t.exit_price) : '<span class="yellow">open</span>') + '</td>' +
-          '<td class="muted">$' + fmt(t.size_usd,0) + '</td>' +
-          '<td class="blue">$' + fmt(parseFloat(t.size_usd||0) * (s.leverage || 2), 0) + '</td>' +
           '<td class="' + pnlCls + '">' + fmtD(pnl) + '</td>' +
           '<td class="' + pnlCls + '">' + fmtP(pnlPct) + '</td>' +
           '<td class="muted" style="font-size:11px;">' + (t.exit_reason||'--') + '</td>' +

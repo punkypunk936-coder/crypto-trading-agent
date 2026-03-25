@@ -173,18 +173,81 @@ class RiskManager:
                 ),
             )
 
-        # ── Duplicate position check ──────────────────────
+        # ── Duplicate position / scale-in check ──────────────────────
         existing = self.position_direction(coin)
         if existing == direction:
-            return OrderRequest(
-                coin=coin, direction=direction,
-                size_usd=0, size_coin=0,
-                price=current_price,
-                stop_loss=stop_loss_price,
-                take_profit=take_profit_price,
-                approved=False,
-                rejection_reason=f"Already {existing} on {coin} — no duplicate"
-            )
+            pos = self.positions.get(coin)
+
+            # Scale into a PROFITABLE winner when conviction is HIGH or EXTREME
+            if conviction_tier in ("HIGH", "EXTREME") and pos is not None:
+                if pos.direction == "LONG":
+                    in_profit = current_price > pos.entry_price * 1.005  # 0.5% buffer
+                else:
+                    in_profit = current_price < pos.entry_price * 0.995
+
+                if in_profit:
+                    # Add up to 50% of normal size, never more than the existing leg
+                    scale_usd = min(size_usd * 0.50, pos.size_usd, avail)
+                    if scale_usd < self.cfg.min_trade_usd:
+                        return OrderRequest(
+                            coin=coin, direction=direction,
+                            size_usd=0, size_coin=0,
+                            price=current_price,
+                            stop_loss=stop_loss_price,
+                            take_profit=take_profit_price,
+                            approved=False,
+                            rejection_reason=(
+                                f"Scale-in size ${scale_usd:.2f} < "
+                                f"minimum ${self.cfg.min_trade_usd} — "
+                                f"skipping HYPE-style add"
+                            ),
+                        )
+                    scale_coin = scale_usd / current_price if current_price > 0 else 0.0
+                    log.info(
+                        f"[{coin}] 📈 SCALE-IN approved: {direction} +${scale_usd:.2f} "
+                        f"(50%% add to profitable {pos.direction} @ "
+                        f"entry=${pos.entry_price:.2f} cur=${current_price:.2f}) "
+                        f"| Conviction: {conviction_tier}"
+                    )
+                    # Update the tracked position size so risk accounting stays accurate
+                    pos.size_usd  += scale_usd
+                    pos.size_coin += scale_coin
+                    return OrderRequest(
+                        coin            = coin,
+                        direction       = direction,
+                        size_usd        = scale_usd,
+                        size_coin       = scale_coin,
+                        price           = current_price,
+                        stop_loss       = stop_loss_price,
+                        take_profit     = take_profit_price,
+                        leverage        = self.cfg.leverage,
+                        approved        = True,
+                        conviction_tier = conviction_tier + "_SCALEIN",
+                        conviction_pct  = confidence_factor * 100,
+                    )
+                else:
+                    return OrderRequest(
+                        coin=coin, direction=direction,
+                        size_usd=0, size_coin=0,
+                        price=current_price,
+                        stop_loss=stop_loss_price,
+                        take_profit=take_profit_price,
+                        approved=False,
+                        rejection_reason=(
+                            f"Already {existing} on {coin} — "
+                            f"position not yet profitable enough to scale into"
+                        ),
+                    )
+            else:
+                return OrderRequest(
+                    coin=coin, direction=direction,
+                    size_usd=0, size_coin=0,
+                    price=current_price,
+                    stop_loss=stop_loss_price,
+                    take_profit=take_profit_price,
+                    approved=False,
+                    rejection_reason=f"Already {existing} on {coin} — conviction too low to scale in"
+                )
 
         size_coin = size_usd / current_price if current_price > 0 else 0.0
 
