@@ -1,0 +1,30 @@
+# fly.toml — Fly.io configuration for the Crypto Trading Agent
+# Docs: https://fly.io/docs/reference/configuration/
+
+app = "punky-crypto-agent"      # change this if name is taken — must be globally unique
+primary_region = "sin"          # Singapore — close to Asia crypto markets
+                                # Other options: bom (Mumbai), nrt (Tokyo), lax (LA), lhr (London)
+
+[build]
+  # Uses our Dockerfile for a reliable, reproducible build
+
+[env]
+  # Non-secret environment config — secrets go in `fly secrets set`
+  DATA_DIR       = "/data"      # persistent volume mount point for all state files
+  PYTHONUNBUFFERED = "1"        # stream logs in real-time (no buffering)
+  PYTHONDONTWRITEBYTECODE = "1"
+
+[mounts]
+  # Persistent 1 GB volume — survives restarts and deploys
+  # Stores: state.json, trades_log.csv, trade_memory.json, checkpoints.db
+  source      = "trading_data"
+  destination = "/data"
+
+[[vm]]
+  # Free tier: shared-cpu-1x with 256 MB RAM is enough for the agent
+  cpu_kind = "shared"
+  cpus     = 1
+  memory   = "512mb"
+
+# No [http_service] or [[services]] — this is a pure background worker,
+# it does not expose any HTTP port.

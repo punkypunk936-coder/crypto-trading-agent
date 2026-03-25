@@ -1,0 +1,70 @@
+# .dockerignore — files to exclude from the Docker build context
+# Keeps the image lean and prevents secrets leaking into the container
+
+# Local secrets — NEVER include in image
+.env
+*.env
+.env.*
+
+# Git metadata
+.git/
+.gitignore
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Local state files — these live on the volume (/data) in production
+state.json
+trades_log.csv
+trade_memory.json
+checkpoints.db
+KILL
+
+# Logs
+logs/
+*.log
+*.pid
+
+# Dashboard (served by Netlify — not needed in agent container)
+netlify-dashboard/
+
+# Mac OS junk
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Local scripts not needed in cloud
+*.command
+*.sh
+*.plist
+launchd/
+dashboard/
+
+# Docs
+*.md
+*.txt
+CLOUD_SETUP.md
+FLY_SETUP.md
+SETUP_GUIDE.txt
+HOW_TO_START.txt
+HARDENING_SUMMARY.txt
+
+# Tests
+test_*.py
+backtest.py
+view_results.py
+check_sp500_ticker.py
