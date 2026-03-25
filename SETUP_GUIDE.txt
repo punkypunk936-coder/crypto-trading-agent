@@ -1,0 +1,195 @@
+╔══════════════════════════════════════════════════════════════════╗
+║           CRYPTO TRADING AGENT  —  SETUP GUIDE                   ║
+║           Hyperliquid + Lighter  |  BTC, ETH, SOL                ║
+╚══════════════════════════════════════════════════════════════════╝
+
+IMPORTANT DISCLAIMER
+──────────────────────────────────────────────────────────────────
+Crypto trading involves significant financial risk. This agent uses
+real technical analysis and sentiment data, but NO software can
+guarantee profits. Markets can move against any strategy.
+Start with the dry-run (paper trading) mode to test before using
+real money. Only trade with money you can afford to lose.
+──────────────────────────────────────────────────────────────────
+
+
+STEP 1: INSTALL PYTHON
+───────────────────────
+You need Python 3.9 or newer.
+Check if you already have it: open Terminal and type:
+    python3 --version
+
+If not installed, download from: https://www.python.org/downloads/
+
+
+STEP 2: INSTALL DEPENDENCIES
+──────────────────────────────
+Open Terminal, navigate to this folder, and run:
+    pip install -r requirements.txt
+
+If pip isn't found, try:
+    pip3 install -r requirements.txt
+
+
+STEP 3: SET UP YOUR CREDENTIALS
+─────────────────────────────────
+1. Make a copy of ".env.example" and rename it ".env"
+2. Open ".env" in any text editor
+3. Fill in your wallet details:
+
+   For HYPERLIQUID:
+   ─────────────────
+   • Go to app.hyperliquid.xyz and connect your wallet
+   • The agent uses your EVM private key for signing trades
+   • In MetaMask: click your account → "Account Details" → "Show Private Key"
+   • Paste it as HL_PRIVATE_KEY=0x...
+   • Copy your wallet address (0x...) as HL_ACCOUNT_ADDRESS
+
+   For LIGHTER:
+   ─────────────
+   • Go to lighter.xyz and connect the same (or different) wallet
+   • You can use the same private key if it's the same wallet
+   • Paste it as LIGHTER_PRIVATE_KEY=0x...
+   • Leave LIGHTER_WEB3_URL as-is (it's the public zkSync RPC)
+
+   OPTIONAL — Telegram alerts:
+   ────────────────────────────
+   • Open Telegram and search for @BotFather
+   • Type /newbot and follow the steps to create a bot
+   • Copy the token it gives you → TELEGRAM_BOT_TOKEN
+   • Search @userinfobot, send /start to get your chat ID → TELEGRAM_CHAT_ID
+
+⚠️  NEVER share your .env file or private keys with anyone!
+⚠️  Store it securely — treat it like a bank password.
+
+
+STEP 4: FUND YOUR ACCOUNTS
+────────────────────────────
+• Hyperliquid: deposit USDC at app.hyperliquid.xyz
+• Lighter: deposit USDC at lighter.xyz (uses zkSync chain)
+• The agent needs at least $50–100 to make meaningful trades
+
+
+STEP 5: TEST WITH PAPER TRADING FIRST (STRONGLY RECOMMENDED)
+──────────────────────────────────────────────────────────────
+Run the agent in simulation mode with fake money:
+    python main.py --dry-run
+
+This trades exactly like real mode but sends no real orders.
+Watch it for a few days and check the results before going live.
+
+To test with a specific starting balance:
+    python main.py --dry-run --balance 5000
+
+
+STEP 6: CHECK YOUR ACCOUNT STATUS
+────────────────────────────────────
+See your current balances and positions:
+    python main.py --status
+
+
+STEP 7: GO LIVE
+────────────────
+When you're confident:
+    python main.py
+
+The agent will run continuously. Press Ctrl+C to stop it.
+
+KEEPING IT RUNNING 24/7 (Advanced)
+────────────────────────────────────
+To run the agent even when your computer sleeps, use a VPS
+(Virtual Private Server) like DigitalOcean or Hetzner.
+Then run:
+    nohup python main.py > agent.log 2>&1 &
+
+Or use `screen` / `tmux` to keep it running in a terminal session.
+
+
+HOW THE STRATEGY WORKS
+────────────────────────────────────────────────────────────────
+The agent analyses BTC, ETH, and SOL every 5 minutes using:
+
+  1. RSI (Relative Strength Index)
+     When price falls hard → RSI drops → "oversold" → buy signal
+     When price climbs too far → RSI rises → "overbought" → sell signal
+
+  2. MACD (Moving Average Convergence/Divergence)
+     Measures momentum. When the fast line crosses above the slow
+     line, momentum is turning bullish → buy signal, and vice versa.
+
+  3. Bollinger Bands
+     Bands widen/narrow with volatility. Price near the lower band
+     → potential bounce (buy). Near upper band → potential pull-back.
+
+  4. EMA Crossover (Exponential Moving Averages)
+     Short-term (9-period) EMA crossing above long-term (21-period)
+     → trend turning up → buy signal.
+
+  5. Fear & Greed Index (from alternative.me, updated daily)
+     When the market is extremely fearful → contrarian buy signal.
+     When market is extremely greedy → contrarian sell signal.
+
+All five signals are combined into a single score (0–100).
+  Score ≥ 62 → BUY (open long)
+  Score ≤ 38 → SELL (open short)
+  In between → HOLD
+
+Risk management:
+  • Each trade: max 25% of your portfolio
+  • Stop loss:   4% below entry
+  • Take profit: 12% above entry
+  • Trailing stop: 6% (locks in gains as price rises)
+  • Leverage:    3× (aggressive — amplifies both gains AND losses)
+
+Logs are saved in the "logs/" folder so you can review every decision.
+────────────────────────────────────────────────────────────────
+
+
+ADJUSTING THE STRATEGY
+────────────────────────────────────────────────────────────────
+Open "config.py" to tune the agent. Key settings:
+
+  trading.leverage           = 3      # Reduce to 1 for no leverage
+  trading.stop_loss_pct      = 0.04   # 4% stop loss
+  trading.take_profit_pct    = 0.12   # 12% take profit
+  trading.max_position_pct   = 0.25   # 25% per trade
+  trading.check_interval_seconds = 300  # 5 minutes between cycles
+  trading.coins              = ["BTC", "ETH", "SOL"]
+
+  trading.signal_buy_threshold  = 62  # Lower → more trades (more risk)
+  trading.signal_sell_threshold = 38  # Higher → more trades (more risk)
+────────────────────────────────────────────────────────────────
+
+
+FILE STRUCTURE
+────────────────────────────────────────────────────────────────
+crypto_trading_agent/
+  main.py               ← START HERE — run this file
+  agent.py              ← Main trading loop
+  config.py             ← All settings
+  .env                  ← Your private credentials (create this!)
+  .env.example          ← Template for .env
+  requirements.txt      ← Python packages to install
+  SETUP_GUIDE.txt       ← This file
+  logs/                 ← Trade logs (created automatically)
+  data/
+    market_data.py      ← Fetches price candles from Hyperliquid
+  indicators/
+    technical.py        ← RSI, MACD, Bollinger Bands, EMA
+    sentiment.py        ← Fear & Greed Index
+  strategy/
+    aggressive_strategy.py  ← Signal scoring and decision logic
+  risk/
+    risk_manager.py     ← Position sizing, SL/TP, exposure limits
+  exchanges/
+    hyperliquid_client.py   ← Hyperliquid connector
+    lighter_client.py       ← Lighter connector
+    dry_run.py              ← Paper trading simulator
+────────────────────────────────────────────────────────────────
+
+
+NEED HELP?
+──────────
+Check the logs/ folder — every decision is logged in detail.
+The agent prints coloured output to the terminal as it runs.
+Green = info, Yellow = warning, Red = error.

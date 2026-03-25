@@ -1,0 +1,117 @@
+╔══════════════════════════════════════════════════════════════╗
+║          CRYPTO PERPS TRADING AGENT  —  HOW TO START         ║
+║                   Lighter DEX  |  Arbitrum                   ║
+╚══════════════════════════════════════════════════════════════╝
+
+─────────────────────────────────────────────────────
+STEP 1: OPEN TERMINAL
+─────────────────────────────────────────────────────
+On Mac: Press Cmd+Space → type "Terminal" → Enter
+
+─────────────────────────────────────────────────────
+STEP 2: NAVIGATE TO THE AGENT FOLDER
+─────────────────────────────────────────────────────
+cd ~/Desktop/crypto_trading_agent
+
+─────────────────────────────────────────────────────
+STEP 3: INSTALL DEPENDENCIES (one time only)
+─────────────────────────────────────────────────────
+pip3 install -r requirements.txt
+
+─────────────────────────────────────────────────────
+STEP 4: ADD YOUR WALLET CREDENTIALS
+─────────────────────────────────────────────────────
+cp .env.example .env
+
+Open .env and fill in:
+  LIGHTER_PRIVATE_KEY=0xYOUR_PRIVATE_KEY_HERE
+  LIGHTER_WEB3_URL=https://arb1.arbitrum.io/rpc
+
+  (Optional) ANTHROPIC_API_KEY=sk-ant-...   for chart vision
+  (Optional) TELEGRAM_BOT_TOKEN=...         for one-way trade alerts on phone
+
+⚠️  NEVER share your .env file or private key with anyone.
+⚠️  Use a dedicated hot wallet with only the funds you want to trade.
+
+─────────────────────────────────────────────────────
+STEP 5: TEST IN PAPER TRADING (STRONGLY RECOMMENDED)
+─────────────────────────────────────────────────────
+python3 main.py
+
+Simulates everything without sending real orders.
+Watch it run for a few hours. Only go live when you're happy.
+
+─────────────────────────────────────────────────────
+STEP 6: GO LIVE
+─────────────────────────────────────────────────────
+python3 main.py --live
+
+Stop at any time with Ctrl+C.
+
+─────────────────────────────────────────────────────
+USEFUL COMMANDS
+─────────────────────────────────────────────────────
+Check open positions:
+  python3 main.py --status
+
+Trade specific coins only:
+  python3 main.py --coins BTC ETH
+
+Faster cycle (60s):
+  python3 main.py --interval 60
+
+View trade results as Excel report:
+  python3 view_results.py
+
+Test chart reading manually:
+  python3 -m indicators.chart_analyst BTC screenshots/BTC_latest.png
+
+─────────────────────────────────────────────────────
+WHAT THE AGENT DOES EACH CYCLE (EVERY 120 SECONDS)
+─────────────────────────────────────────────────────
+1. Reads your Lighter balance
+2. Checks Fear & Greed sentiment
+3. Monitors SL / TP / trailing stop exits on open positions
+4. Manages re-entry watches (after TP close, waits at fib retracement)
+5. For each coin (BTC, ETH, SOL, HYPE):
+     - Downloads candles
+     - RSI, MACD, Bollinger Bands, EMA, Volume (classic)
+     - Fibonacci, MSB/BOS/CHoCH, Order Blocks, Fair Value Gaps (structure)
+     - Momentum, Trend, Mean Reversion, Vol Expansion,
+       Absorption, Catalyst Absorption (6 regime signals)
+     - Composite score 0-100
+     - If score is borderline: asks chart vision AI for visual confirmation
+     - Opens LONG or SHORT only if signal is clear and confirmed
+6. Logs every trade to trades_log.csv
+
+─────────────────────────────────────────────────────
+KEY SETTINGS IN config.py
+─────────────────────────────────────────────────────
+max_trade_usd          = 250.0   $250 per trade
+stop_loss_pct          = 0.10    10% stop loss
+take_profit_pct        = 0.50    50% take profit
+trailing_stop_pct      = 0.12    12% trailing stop
+leverage               = 2       2x leverage
+coins                  = [BTC, ETH, SOL, HYPE]
+check_interval_seconds = 120     every 2 minutes
+signal_long_threshold  = 60      go long if score >= 60
+signal_short_threshold = 40      go short if score <= 40
+
+─────────────────────────────────────────────────────
+CHART VISION (OPTIONAL UPGRADE)
+─────────────────────────────────────────────────────
+For borderline trades the agent can visually read a chart
+screenshot before deciding to trade.
+
+1. Get key at https://console.anthropic.com
+2. Add to .env:    ANTHROPIC_API_KEY=sk-ant-...
+3. In config.py:   use_chart_confirmation = True
+
+Drop a chart as  screenshots/BTC_latest.png  and the agent
+will use it automatically on the next cycle.
+
+─────────────────────────────────────────────────────
+RESULTS
+─────────────────────────────────────────────────────
+trades_log.csv       auto-created after first trade
+trades_report.xlsx   run: python3 view_results.py
