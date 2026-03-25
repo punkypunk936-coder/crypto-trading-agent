@@ -1335,13 +1335,13 @@ class TradingAgent:
                 except ImportError:
                     ctx.check_hostname = False
                     ctx.verify_mode = ssl.CERT_NONE
-                resp = urllib.request.urlopen(req, timeout=5, context=ctx)
+                resp = urllib.request.urlopen(req, timeout=15, context=ctx)
 
                 # Check for remote kill signal
                 try:
                     kill_url = remote_url.rstrip("/") + "/api/state"
                     kill_req = urllib.request.Request(kill_url, method="GET")
-                    kill_resp = urllib.request.urlopen(kill_req, timeout=5, context=ctx)
+                    kill_resp = urllib.request.urlopen(kill_req, timeout=10, context=ctx)
                     kill_data = json.loads(kill_resp.read().decode())
                     kill_sig = kill_data.get("state", {}).get("_kill_signal")
                     if kill_sig and kill_sig.get("active"):

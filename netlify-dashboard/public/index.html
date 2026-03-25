@@ -765,8 +765,11 @@
 <script>
 const fmt  = (n, dec=2) => n == null ? '--' : Number(n).toLocaleString('en-US', {minimumFractionDigits:dec, maximumFractionDigits:dec});
 const fmtP = (n) => n == null ? '--' : (n >= 0 ? '+' : '') + fmt(n) + '%';
-const fmtD = (n) => n == null ? '--' : (n >= 0 ? '+$' : '-$') + fmt(Math.abs(n));
+// Bug fix: losses show just '$X.XX' (red color communicates negative); no redundant minus sign
+const fmtD = (n) => n == null ? '--' : (n >= 0 ? '+$' : '$') + fmt(Math.abs(n));
 const cls  = (n) => n > 0 ? 'green' : n < 0 ? 'red' : 'muted';
+// pnl_pct from trade_memory is stored as decimal fraction (0.025 = 2.5%) — multiply for display
+const fmtPct = (n) => n == null ? '--' : (n >= 0 ? '+' : '') + fmt(n * 100, 2) + '%';
 
 function toggleTrades() {
   const wrap = document.getElementById('trades-wrap');
@@ -906,12 +909,14 @@ async function refresh() {
       countBadge.textContent = s.positions.length;
       openCard.className = 'card card-highlight';
       openBody.innerHTML = s.positions.map(p => {
+        // Bug fix: normalise direction to uppercase so CSS class + label always match
+        const dir    = (p.direction || 'LONG').toUpperCase();
         const pnlCls = cls(p.unrealised_pnl);
-        const dirCls = p.direction === 'LONG' ? 'pos-long' : 'pos-short';
+        const dirCls = dir === 'LONG' ? 'pos-long' : 'pos-short';
         const pnlPct = p.entry_price > 0
-          ? ((p.current_price - p.entry_price) / p.entry_price * 100 * (p.direction === 'LONG' ? 1 : -1))
+          ? ((p.current_price - p.entry_price) / p.entry_price * 100 * (dir === 'LONG' ? 1 : -1))
           : 0;
-        const arrow = p.direction === 'LONG' ? '↑' : '↓';
+        const arrow = dir === 'LONG' ? '↑' : '↓';
         // Anti-whipsaw hold bar
         const holdMins = p.hold_minutes || 0;
         const minHold  = p.min_hold_minutes || 240;
@@ -930,13 +935,15 @@ async function refresh() {
         // Index detection: positions with minHold ≥ 300m are index instruments (SP500 = 360m)
         const posIsIndex = minHold >= 300;
         const posNewsLabel = posIsIndex ? '📰 Macro ' : '📰 News ';
+        // Format opened_at timestamp for display
+        const openedTs = p.opened_at ? new Date(p.opened_at * 1000).toISOString().slice(0,16).replace('T',' ') : '--';
         return '<div class="pos-grid">' +
           '<div><div class="pos-meta">Coin</div><div class="pos-val" style="font-size:18px;">' +
             (posIsIndex ? '📈 ' : '🪙 ') + p.coin +
             (posIsIndex ? ' <span class="signal-pill pill-blue" style="font-size:9px;padding:1px 5px;vertical-align:middle;">INDEX</span>' : '') +
             memCd +
           '</div></div>' +
-          '<div><div class="pos-meta">Direction</div><div class="pos-val"><span class="pos-direction ' + dirCls + '">' + arrow + ' ' + p.direction + '</span></div></div>' +
+          '<div><div class="pos-meta">Direction</div><div class="pos-val"><span class="pos-direction ' + dirCls + '">' + arrow + ' ' + dir + '</span></div></div>' +
           '<div><div class="pos-meta">Entry</div><div class="pos-val">$' + fmt(p.entry_price) + '</div></div>' +
           '<div><div class="pos-meta">Current</div><div class="pos-val ' + pnlCls + '">$' + fmt(p.current_price) + '</div></div>' +
           '<div><div class="pos-meta">Stop Loss</div><div class="pos-val red">$' + fmt(p.stop_loss) + '</div></div>' +
@@ -954,6 +961,7 @@ async function refresh() {
           '<div style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">' +
             '<span class="signal-pill ' + newsCls + '">' + posNewsLabel + Math.round(newsScore) + '/100</span>' +
             '<span class="signal-pill">' + (candleList !== 'None' ? '🕯️ ' + candleList : '🕯️ No pattern') + '</span>' +
+            '<span class="signal-pill" style="margin-left:auto;opacity:0.6;">⏱ Opened ' + openedTs + '</span>' +
           '</div>' +
         '</div>';
       }).join('');
@@ -963,11 +971,26 @@ async function refresh() {
       openBody.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div>FLAT — no open positions</div>';
     }
 
-    // Signals
-    const sigEl = document.getElementById('signals-body');
-    const sigs  = s.signals || {};
-    if (Object.keys(sigs).length) {
-      sigEl.innerHTML = Object.entries(sigs).map(([coin, sig]) => {
+    // Signals — show ALL configured coins, even ones not yet in last_signals
+    const sigEl    = document.getElementById('signals-body');
+    const sigs     = s.signals || {};
+    const cfgCoins = (s.config && s.config.coins) ? s.config.coins : Object.keys(sigs);
+    // Merge: all configured coins, falling back to empty signal for missing ones
+    const allSigEntries = cfgCoins.map(c => [c, sigs[c] || null]);
+    if (allSigEntries.length) {
+      sigEl.innerHTML = allSigEntries.map(([coin, sig]) => {
+        if (!sig) {
+          // Coin is configured but hasn't been analysed yet this cycle
+          return '<div class="signal-item">' +
+            '<div class="signal-header">' +
+              '<div><span class="signal-coin">🪙 ' + coin + '</span>' +
+              '<span class="signal-action muted"> PENDING</span></div>' +
+              '<span class="signal-score muted">--</span>' +
+            '</div>' +
+            '<div class="bar-track"><div class="bar-fill bar-flat" style="width:50%"></div></div>' +
+            '<div style="font-size:11px;color:var(--muted);margin-top:4px;">Waiting for first analysis cycle...</div>' +
+          '</div>';
+        }
         const score   = sig.score || 50;
         const action  = sig.action || 'FLAT';
         const itype   = sig.instrument_type || 'crypto';
@@ -1068,10 +1091,12 @@ async function refresh() {
         const failModes = m.failure_modes || {};
 
         // Last 5 trades with P&L tooltips
+        // pnl values are decimal fractions (0.025 = 2.5%) — multiply by 100 for display
         const last5Res = m.last_5_results || [];
         const last5Pnl = m.last_5_pnl     || [];
         const dots = last5Res.map((r, i) => {
-          const p = last5Pnl[i] != null ? (last5Pnl[i] >= 0 ? '+' : '') + last5Pnl[i].toFixed(1) + '%' : '';
+          const raw = last5Pnl[i] != null ? last5Pnl[i] * 100 : null;
+          const p = raw != null ? (raw >= 0 ? '+' : '') + raw.toFixed(1) + '%' : '';
           return '<div class="brain-dot ' + (r === 'WIN' ? 'win' : 'loss') + '" title="' + r + (p ? ': ' + p : '') + '"></div>';
         }).join('');
 
@@ -1106,6 +1131,10 @@ async function refresh() {
             '</div>'
           : '';
 
+        // pnl_pct values are decimal fractions (0.025 = 2.5%) — multiply by 100 for display
+        const avgPct  = (m.avg_pnl_pct || 0) * 100;
+        const bestPct = (m.best_pnl    || 0) * 100;
+
         return '<div class="brain-coin' + (cd > 0 ? ' cooldown' : '') + '" style="padding:12px 14px;">' +
           // Header
           '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
@@ -1123,11 +1152,11 @@ async function refresh() {
           wrBar +
           // Stats row
           '<div style="display:flex;gap:12px;font-size:11px;margin-bottom:6px;">' +
-            '<span>Trades: <strong>' + m.total + '</strong></span>' +
-            '<span class="green">' + m.wins + 'W</span>' +
-            '<span class="red">' + (m.total - m.wins) + 'L</span>' +
-            '<span style="margin-left:auto;">Avg: <strong class="' + (m.avg_pnl_pct>=0?'green':'red') + '">' + (m.avg_pnl_pct>=0?'+':'') + m.avg_pnl_pct + '%</strong></span>' +
-            '<span>Best: <strong class="green">+' + bestPnl.toFixed(1) + '%</strong></span>' +
+            '<span>Trades: <strong>' + (m.total||0) + '</strong></span>' +
+            '<span class="green">' + (m.wins||0) + 'W</span>' +
+            '<span class="red">' + ((m.total||0) - (m.wins||0)) + 'L</span>' +
+            '<span style="margin-left:auto;">Avg: <strong class="' + (avgPct>=0?'green':'red') + '">' + (avgPct>=0?'+':'') + avgPct.toFixed(1) + '%</strong></span>' +
+            '<span>Best: <strong class="green">+' + bestPct.toFixed(1) + '%</strong></span>' +
           '</div>' +
           // Direction breakdown
           dirHtml +
@@ -1198,7 +1227,8 @@ async function refresh() {
         const pnl    = parseFloat(t.pnl_usd || 0);
         const pnlPct = parseFloat(t.pnl_pct || 0) * 100;
         const pnlCls = cls(pnl);
-        const dir    = t.direction || '';
+        // Normalise direction to uppercase so class + label always agree
+        const dir    = (t.direction || '').toUpperCase();
         return '<tr>' +
           '<td class="muted">' + t.trade_id + '</td>' +
           '<td><strong>' + t.coin + '</strong></td>' +
