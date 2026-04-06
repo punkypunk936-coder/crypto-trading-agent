@@ -170,3 +170,6 @@ class HyperliquidClient(BaseExchange):
         except Exception as e:
             log.error(f"[{coin}] close_position exception: {e}")
             return OrderResult(success=False, error=str(e))
+
+    def supported_coins(self):
+        return ["BTC", "ETH", "SOL", "HYPE", "SP500", "TAO"]

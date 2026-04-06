@@ -13,24 +13,37 @@ import json
 import os
 import csv
 import threading
-from pathlib import Path
 from datetime import datetime
 
 from flask import Flask, render_template, jsonify, request, abort
+from paths import (
+    CONTROL_JSON,
+    DASHBOARD_SNAPSHOT_JSON,
+    KILL_FILE,
+    STATE_JSON,
+    TRADES_CSV,
+)
+from dashboard.snapshot import (
+    build_dashboard_snapshot,
+    default_control,
+    default_state,
+    normalize_control,
+)
 
-BASE    = Path(__file__).parent.parent
-STATE   = BASE / "state.json"
-LOG     = BASE / "trades_log.csv"
+STATE    = STATE_JSON
+LOG      = TRADES_CSV
+CONTROL  = CONTROL_JSON
+SNAPSHOT = DASHBOARD_SNAPSHOT_JSON
+KILL     = KILL_FILE
 
 # Secret token for push endpoint (set DASHBOARD_TOKEN env var for security)
 PUSH_TOKEN = os.environ.get("DASHBOARD_TOKEN", "")
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 
-# In-memory store for remote-pushed state
-_remote_state = {"state": None, "trades": [], "stats": {}}
+# In-memory store for remote-pushed snapshot
+_remote_state = {"snapshot": None}
 _lock = threading.Lock()
-
 
 def _load_state_local() -> dict:
     if STATE.exists():
@@ -38,11 +51,7 @@ def _load_state_local() -> dict:
             return json.loads(STATE.read_text())
         except Exception:
             pass
-    return {
-        "status": "offline", "last_cycle": None, "cycle_number": 0,
-        "portfolio_usd": 0, "available_usd": 0, "positions": [],
-        "signals": {}, "pending_orders": [], "sentiment": {}, "mode": "unknown",
-    }
+    return default_state()
 
 
 def _load_trades_local() -> list:
@@ -55,28 +64,87 @@ def _load_trades_local() -> list:
         return []
 
 
-def _calc_stats(trades: list) -> dict:
-    if not trades:
-        return {"total": 0, "wins": 0, "losses": 0, "win_rate": 0,
-                "total_pnl": 0, "avg_win": 0, "avg_loss": 0, "best": 0, "worst": 0}
-    closed = [t for t in trades if t.get("exit_price") and float(t.get("exit_price", 0)) > 0]
-    if not closed:
-        return {"total": 0, "wins": 0, "losses": 0, "win_rate": 0,
-                "total_pnl": 0, "avg_win": 0, "avg_loss": 0, "best": 0, "worst": 0}
-    pnls   = [float(t.get("pnl_usd", 0)) for t in closed]
-    wins   = [p for p in pnls if p > 0]
-    losses = [p for p in pnls if p <= 0]
-    return {
-        "total":     len(closed),
-        "wins":      len(wins),
-        "losses":    len(losses),
-        "win_rate":  round(len(wins) / len(closed) * 100, 1),
-        "total_pnl": round(sum(pnls), 2),
-        "avg_win":   round(sum(wins)   / len(wins)   if wins   else 0, 2),
-        "avg_loss":  round(sum(losses) / len(losses) if losses else 0, 2),
-        "best":      round(max(pnls), 2),
-        "worst":     round(min(pnls), 2),
+def _load_control_local() -> dict:
+    if CONTROL.exists():
+        try:
+            return normalize_control(json.loads(CONTROL.read_text()))
+        except Exception:
+            pass
+    return default_control()
+
+
+def _save_control_local(control: dict) -> None:
+    CONTROL.write_text(json.dumps(normalize_control(control), indent=2))
+
+
+def _load_snapshot_local() -> dict | None:
+    if not SNAPSHOT.exists():
+        return None
+    try:
+        payload = json.loads(SNAPSHOT.read_text())
+    except Exception:
+        return None
+    if not isinstance(payload, dict) or "state" not in payload:
+        return None
+    return payload
+
+
+def _save_snapshot_local(snapshot: dict) -> None:
+    SNAPSHOT.write_text(json.dumps(snapshot, indent=2))
+
+
+def _snapshot_needs_refresh() -> bool:
+    if not SNAPSHOT.exists():
+        return True
+    try:
+        snapshot_mtime = SNAPSHOT.stat().st_mtime
+    except Exception:
+        return True
+    for path in (STATE, LOG, CONTROL):
+        try:
+            if path.exists() and path.stat().st_mtime > snapshot_mtime:
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _build_local_snapshot(server_timestamp: str | None = None) -> dict:
+    return build_dashboard_snapshot(
+        _load_state_local(),
+        _load_trades_local(),
+        _load_control_local(),
+        server_timestamp=server_timestamp,
+    )
+
+
+def _hydrate_snapshot_payload(data: dict, *, server_timestamp: str | None = None) -> dict:
+    snapshot = data.get("snapshot")
+    if isinstance(snapshot, dict) and "state" in snapshot:
+        payload = dict(snapshot)
+        if server_timestamp:
+            payload["server_time"] = server_timestamp
+        return payload
+    return build_dashboard_snapshot(
+        data.get("state"),
+        data.get("trades", []),
+        data.get("control"),
+        server_timestamp=server_timestamp,
+    )
+
+
+def _set_kill_state(snapshot: dict, *, active: bool, reason: str, requested_at: str) -> dict:
+    updated = dict(snapshot or {})
+    control = normalize_control(updated.get("control"))
+    control["kill"] = {
+        "active": active,
+        "reason": reason if active else "",
+        "requested_at": requested_at if active else None,
+        "acknowledged_at": requested_at if not active else control["kill"].get("acknowledged_at"),
     }
+    updated["control"] = control
+    updated["server_time"] = requested_at
+    return updated
 
 
 @app.route("/")
@@ -86,26 +154,16 @@ def index():
 
 @app.route("/api/state")
 def api_state():
-    # If remote state has been pushed, use that
+    # If a remote snapshot has been pushed, serve that exact payload.
     with _lock:
-        if _remote_state["state"] is not None:
-            return jsonify({
-                "state":       _remote_state["state"],
-                "trades":      _remote_state["trades"],
-                "stats":       _remote_state["stats"],
-                "server_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            })
+        if _remote_state["snapshot"] is not None:
+            return jsonify(_remote_state["snapshot"])
 
-    # Otherwise read local files
-    state  = _load_state_local()
-    trades = _load_trades_local()
-    stats  = _calc_stats(trades)
-    return jsonify({
-        "state":       state,
-        "trades":      trades[-50:][::-1],
-        "stats":       stats,
-        "server_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    })
+    snapshot = _load_snapshot_local()
+    if snapshot is None or _snapshot_needs_refresh():
+        snapshot = _build_local_snapshot()
+        _save_snapshot_local(snapshot)
+    return jsonify(snapshot)
 
 
 @app.route("/api/push", methods=["POST"])
@@ -118,18 +176,52 @@ def api_push():
             abort(403, "Invalid token")
 
     data = request.get_json(silent=True)
-    if not data or "state" not in data:
-        abort(400, "Missing state in payload")
+    if not data or ("snapshot" not in data and "state" not in data):
+        abort(400, "Missing snapshot/state in payload")
 
-    trades = data.get("trades", [])
-    stats  = _calc_stats(trades)
+    snapshot = _hydrate_snapshot_payload(data)
 
     with _lock:
-        _remote_state["state"]  = data["state"]
-        _remote_state["trades"] = trades[-50:][::-1]
-        _remote_state["stats"]  = stats
+        _remote_state["snapshot"] = snapshot
 
-    return jsonify({"ok": True, "cycle": data["state"].get("cycle_number", 0)})
+    state = snapshot.get("state") or {}
+    return jsonify({"ok": True, "cycle": state.get("cycle_number", 0)})
+
+
+@app.route("/api/kill", methods=["POST"])
+def api_kill():
+    data = request.get_json(silent=True) or {}
+    active = bool(data.get("active", True))
+    reason = str(data.get("reason", "Dashboard kill switch activated")).strip() or "Dashboard kill switch activated"
+    requested_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    with _lock:
+        if _remote_state["snapshot"] is not None:
+            snapshot = _set_kill_state(
+                _remote_state["snapshot"],
+                active=active,
+                reason=reason,
+                requested_at=requested_at,
+            )
+            _remote_state["snapshot"] = snapshot
+            return jsonify({"ok": True, "control": snapshot["control"]})
+
+    control = _load_control_local()
+    control["kill"] = {
+        "active": active,
+        "reason": reason if active else "",
+        "requested_at": requested_at if active else None,
+        "acknowledged_at": requested_at if not active else control["kill"].get("acknowledged_at"),
+    }
+    _save_control_local(control)
+    snapshot = _load_snapshot_local() or _build_local_snapshot(server_timestamp=requested_at)
+    snapshot = _set_kill_state(snapshot, active=active, reason=reason, requested_at=requested_at)
+    _save_snapshot_local(snapshot)
+    if active:
+        KILL.write_text(reason)
+    else:
+        KILL.unlink(missing_ok=True)
+    return jsonify({"ok": True, "control": control})
 
 
 @app.route("/health")

@@ -10,7 +10,7 @@ Now supports simulated limit orders:
 """
 
 import time
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 from logger import get_logger
 from exchanges.base import BaseExchange, AccountState, OrderResult, LimitOrderStatus
 from data.market_data import get_current_price
@@ -21,10 +21,12 @@ log = get_logger("dry_run")
 class DryRunExchange(BaseExchange):
     name = "DryRun (Paper Trading)"
 
-    def __init__(self, starting_balance_usd: float = 10_000.0):
+    def __init__(self, starting_balance_usd: float = 10_000.0,
+                 supported_symbols: Optional[List[str]] = None):
         self.balance     = starting_balance_usd
         self.positions: Dict[str, dict] = {}    # coin → {size, direction, entry_price…}
         self.order_count = 0
+        self._supported_symbols = list(supported_symbols or ["BTC", "ETH", "SOL"])
         # Pending limit orders: order_id → {coin, direction, limit_price, size_coin, size_usd}
         self._pending_limits: Dict[str, dict] = {}
 
@@ -37,6 +39,9 @@ class DryRunExchange(BaseExchange):
 
     def supports_limit_orders(self) -> bool:
         return True
+
+    def supported_coins(self) -> List[str]:
+        return list(self._supported_symbols)
 
     # ── Account state ─────────────────────────────────────
 
@@ -91,6 +96,8 @@ class DryRunExchange(BaseExchange):
 
     def _register_limit(self, coin: str, direction: str, size_coin: float,
                         limit_price: float) -> OrderResult:
+        if coin not in self._supported_symbols:
+            return OrderResult(success=False, error=f"{coin} is not supported in this dry-run venue")
         self.order_count += 1
         oid = f"DRY-LMT-{self.order_count:04d}"
         size_usd = size_coin * limit_price
@@ -175,6 +182,8 @@ class DryRunExchange(BaseExchange):
     # ── Internal helpers ──────────────────────────────────
 
     def _simulate_open(self, coin: str, direction: str, size_coin: float) -> OrderResult:
+        if coin not in self._supported_symbols:
+            return OrderResult(success=False, error=f"{coin} is not supported in this dry-run venue")
         price = get_current_price(coin)
         if not price:
             return OrderResult(success=False, error=f"Could not get price for {coin}")

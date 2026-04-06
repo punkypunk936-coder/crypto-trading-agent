@@ -195,6 +195,7 @@ class CheckpointManager:
                     'lowest_price': getattr(pos, 'lowest_price', None),
                     'opened_at': getattr(pos, 'opened_at', datetime.now().isoformat()),
                     'exchange': getattr(pos, 'exchange', ''),
+                    'metadata': getattr(pos, 'metadata', {}) or {},
                 }
             else:
                 result[coin] = pos
@@ -220,6 +221,7 @@ class CheckpointManager:
                     'max_cycles': getattr(order, 'max_cycles', 15),
                     'reason': getattr(order, 'reason', ''),
                     'placed_at': getattr(order, 'placed_at', time.time()),
+                    'metadata': getattr(order, 'metadata', {}) or {},
                 }
             else:
                 result[coin] = order

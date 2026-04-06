@@ -49,9 +49,8 @@ CRYPTOPANIC_URL = "https://cryptopanic.com/api/v1/posts/"
 # ^GSPC = S&P 500 | ^IXIC = NASDAQ | ^DJI = Dow Jones
 YAHOO_RSS_URL = "https://feeds.finance.yahoo.com/rss/2.0/headline"
 
-# Instruments routed to macro/equity news instead of CryptoPanic
-# SP500 = Hyperliquid's S&P 500 perpetual (Trade[XYZ], ticker: xyz:SP500)
-INDEX_INSTRUMENTS = {"SP500", "NDX", "DJI", "VIX"}
+# Instruments routed to macro / commodity news instead of CryptoPanic.
+INDEX_INSTRUMENTS = {"SP500", "BRENT", "WTI", "CL", "NDX", "DJI", "VIX"}
 
 # ── Macro / equity keyword weights ────────────────────────────────────────────
 # Used for SP500 and other index instruments
@@ -89,6 +88,20 @@ MACRO_BEARISH_KEYWORDS: Dict[str, float] = {
     # Geopolitical
     "war escalation": 20, "sanctions": 15, "trade war": 18,
     "tariff": 12,
+}
+
+OIL_BULLISH_KEYWORDS: Dict[str, float] = {
+    "opec cut": 28, "opec+ cut": 30, "production cut": 22, "supply cut": 22,
+    "inventory draw": 18, "crude draw": 18, "drawdown": 14, "supply disruption": 22,
+    "pipeline outage": 18, "middle east tension": 16, "sanctions": 14,
+    "demand rebound": 16, "refinery outage": 14,
+}
+
+OIL_BEARISH_KEYWORDS: Dict[str, float] = {
+    "output increase": 24, "production increase": 24, "inventory build": 18,
+    "crude build": 18, "oversupply": 22, "demand slowdown": 18,
+    "recession fears": 16, "opec output hike": 28, "price cap": 14,
+    "strategic reserve release": 16, "export surge": 14,
 }
 
 # Bullish/bearish keyword weights
@@ -149,7 +162,7 @@ class NewsSignal:
 _cache: Dict[str, dict] = {}   # coin → {ts, signal}
 
 
-def get_news_signal(coin: str) -> NewsSignal:
+def get_news_signal(coin: str, auth_token: str = "") -> NewsSignal:
     """
     Main entry point. Routes index instruments to macro news,
     crypto instruments to CryptoPanic. Returns cached result if fresh.
@@ -161,7 +174,7 @@ def get_news_signal(coin: str) -> NewsSignal:
     if coin.upper() in INDEX_INSTRUMENTS:
         signal = _fetch_macro_news(coin)
     else:
-        signal = _fetch_and_score(coin)
+        signal = _fetch_and_score(coin, auth_token=auth_token)
 
     _cache[coin] = {"ts": time.time(), "signal": signal}
     return signal
@@ -169,12 +182,14 @@ def get_news_signal(coin: str) -> NewsSignal:
 
 def _fetch_macro_news(coin: str) -> NewsSignal:
     """
-    Fetch macro / equity news for index instruments (SP500 etc.) via
+    Fetch macro / commodity news for non-crypto instruments (SP500, BRENT, WTI etc.) via
     Yahoo Finance RSS. No API key required.
-    The S&P 500 RSS ticker is ^GSPC; we map our 'SP500' → '^GSPC'.
     """
     TICKER_MAP = {
         "SP500": "^GSPC",   # Hyperliquid S&P 500 perpetual → Yahoo Finance ^GSPC RSS
+        "BRENT": "BZ=F",
+        "WTI":   "CL=F",
+        "CL":    "CL=F",
         "NDX":   "^IXIC",
         "DJI":   "^DJI",
         "VIX":   "^VIX",
@@ -206,7 +221,7 @@ def _fetch_macro_news(coin: str) -> NewsSignal:
 
     scores = []
     for title in headlines:
-        score = _score_macro_headline(title)
+        score = _score_macro_headline(title, coin=coin)
         scores.append(score)
 
     raw = sum(scores) / len(scores) if scores else 0.0
@@ -238,8 +253,8 @@ def _fetch_macro_news(coin: str) -> NewsSignal:
     )
 
 
-def _score_macro_headline(title: str) -> float:
-    """Score an equity/macro headline from -100 to +100."""
+def _score_macro_headline(title: str, coin: str = "") -> float:
+    """Score a macro / commodity headline from -100 to +100."""
     lower = title.lower()
     score = 0.0
     for kw, weight in MACRO_BULLISH_KEYWORDS.items():
@@ -248,19 +263,40 @@ def _score_macro_headline(title: str) -> float:
     for kw, weight in MACRO_BEARISH_KEYWORDS.items():
         if kw in lower:
             score -= weight
+    if coin.upper() in {"BRENT", "WTI", "CL"}:
+        for kw, weight in OIL_BULLISH_KEYWORDS.items():
+            if kw in lower:
+                score += weight
+        for kw, weight in OIL_BEARISH_KEYWORDS.items():
+            if kw in lower:
+                score -= weight
     # S&P specific boost
-    if any(t in lower for t in ["s&p", "s&p 500", "spx", "sp500", "dow", "nasdaq"]):
+    if coin.upper() == "SP500" and any(t in lower for t in ["s&p", "s&p 500", "spx", "sp500", "dow", "nasdaq"]):
         score *= 1.2
+    if coin.upper() in {"BRENT", "WTI", "CL"} and any(t in lower for t in ["brent", "wti", "crude", "opec", "oil"]):
+        score *= 1.15
     return max(-100, min(100, score))
 
 
-def _fetch_and_score(coin: str) -> NewsSignal:
+def _fetch_and_score(coin: str, auth_token: str = "") -> NewsSignal:
     """Fetch news from CryptoPanic and score it."""
+    if not auth_token:
+        return NewsSignal(
+            coin=coin,
+            score=50.0,
+            raw_sentiment=0.0,
+            article_count=0,
+            velocity="LOW",
+            top_headlines=[],
+            is_extreme=False,
+            valid=False,
+            error="CRYPTOPANIC_AUTH_TOKEN is not configured",
+        )
     try:
         # CryptoPanic maps our tickers directly
         # HYPE is listed as HYPE on CryptoPanic
         params = {
-            "auth_token": "",          # empty = public feed
+            "auth_token": auth_token,
             "currencies": coin,
             "kind":       "news",
             "filter":     "important",

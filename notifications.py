@@ -32,8 +32,9 @@ class TelegramNotifier:
                      size_usd: float, sl: float, tp: float,
                      score: float, exchange: str):
         emoji = "🟢" if direction == "LONG" else "🔴"
-        sl_pct = abs(price - sl) / price * 100
-        tp_pct = abs(tp - price) / price * 100
+        sl_pct = abs(price - sl) / price * 100 if price else 0.0
+        tp_pct = abs(tp - price) / price * 100 if price else 0.0
+        rr = tp_pct / sl_pct if sl_pct > 0 else 0.0
         msg = (
             f"{emoji} *{direction} opened — {coin}*\n"
             f"Exchange: {exchange}\n"
@@ -41,6 +42,7 @@ class TelegramNotifier:
             f"Size:   ${size_usd:,.2f}\n"
             f"Stop:   ${sl:,.2f}  (-{sl_pct:.0f}%)\n"
             f"Target: ${tp:,.2f}  (+{tp_pct:.0f}%)\n"
+            f"R:R:    {rr:.2f}\n"
             f"Signal: {score:.1f}/100"
         )
         self.send(msg)
@@ -52,12 +54,17 @@ class TelegramNotifier:
             pnl_pct = (exit_price - entry) / entry * 100
         else:
             pnl_pct = (entry - exit_price) / entry * 100
-        reason_label = {
-            "take_profit":     "🎯 Take Profit hit",
-            "stop_loss":       "🛑 Stop Loss hit",
-            "trailing_stop":   "📉 Trailing Stop hit",
-            "signal_reversal": "🔄 Signal reversed",
-        }.get(reason, reason)
+        if reason.startswith("emergency_close_all"):
+            reason_label = "🚨 Emergency close-all"
+        else:
+            reason_label = {
+                "take_profit":     "🎯 Take Profit hit",
+                "stop_loss":       "🛑 Stop Loss hit",
+                "trailing_stop":   "📉 Trailing Stop hit",
+                "signal_reversal": "🔄 Signal reversed",
+                "conviction_lost": "🧠 Conviction faded",
+                "manual_test":     "🧪 Manual close",
+            }.get(reason, reason)
         msg = (
             f"{emoji} *{coin} {direction} closed*\n"
             f"{reason_label}\n"

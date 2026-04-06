@@ -105,3 +105,7 @@ class BaseExchange(ABC):
 
     def is_dry_run(self) -> bool:
         return False
+
+    def supported_coins(self) -> List[str]:
+        """Return the symbols this exchange can safely trade."""
+        return []

@@ -1,117 +1,92 @@
 ╔══════════════════════════════════════════════════════════════╗
 ║          CRYPTO PERPS TRADING AGENT  —  HOW TO START         ║
-║                   Lighter DEX  |  Arbitrum                   ║
+║                  Lighter Paper Trading First                 ║
 ╚══════════════════════════════════════════════════════════════╝
 
-─────────────────────────────────────────────────────
-STEP 1: OPEN TERMINAL
-─────────────────────────────────────────────────────
-On Mac: Press Cmd+Space → type "Terminal" → Enter
+PRIMARY MODE
+────────────
+This repo is now hardened for **local Mac first**, using:
+- launchd for 24x7 runtime
+- Lighter-only market scope
+- BTC / ETH / SOL as the active trade universe
+- HYPE / SP500 / TAO as analysis-only watchlist assets
+- dry-run first
 
-─────────────────────────────────────────────────────
-STEP 2: NAVIGATE TO THE AGENT FOLDER
-─────────────────────────────────────────────────────
-cd ~/Desktop/crypto_trading_agent
+STEP 1 — INSTALL DEPENDENCIES
+─────────────────────────────
+cd ~/Desktop/trading_agent/crypto_trading_agent
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
 
-─────────────────────────────────────────────────────
-STEP 3: INSTALL DEPENDENCIES (one time only)
-─────────────────────────────────────────────────────
-pip3 install -r requirements.txt
-
-─────────────────────────────────────────────────────
-STEP 4: ADD YOUR WALLET CREDENTIALS
-─────────────────────────────────────────────────────
+STEP 2 — CREATE .env
+────────────────────
 cp .env.example .env
 
-Open .env and fill in:
-  LIGHTER_PRIVATE_KEY=0xYOUR_PRIVATE_KEY_HERE
-  LIGHTER_WEB3_URL=https://arb1.arbitrum.io/rpc
+For dry-run, you can leave the live trading keys empty.
 
-  (Optional) ANTHROPIC_API_KEY=sk-ant-...   for chart vision
-  (Optional) TELEGRAM_BOT_TOKEN=...         for one-way trade alerts on phone
+STEP 3 — RUN PREFLIGHT
+──────────────────────
+.venv/bin/python3 main.py --preflight
 
-⚠️  NEVER share your .env file or private key with anyone.
-⚠️  Use a dedicated hot wallet with only the funds you want to trade.
+This checks:
+- Python version
+- writable state directory
+- market-data connectivity
+- supported coin scope
+- analysis/watchlist scope
+- dashboard configuration
+- Lighter live readiness
+- local power safety for live mode
 
-─────────────────────────────────────────────────────
-STEP 5: TEST IN PAPER TRADING (STRONGLY RECOMMENDED)
-─────────────────────────────────────────────────────
-python3 main.py
+STEP 4 — RESET PAPER STATE (OPTIONAL)
+──────────────────────────────────────
+Use this only when you explicitly want a clean paper-trading run:
 
-Simulates everything without sending real orders.
-Watch it run for a few hours. Only go live when you're happy.
+.venv/bin/python3 main.py --paper-reset
 
-─────────────────────────────────────────────────────
-STEP 6: GO LIVE
-─────────────────────────────────────────────────────
-python3 main.py --live
+STEP 5 — RUN PAPER TRADING MANUALLY
+────────────────────────────────────
+.venv/bin/python3 main.py --dry-run
 
-Stop at any time with Ctrl+C.
+Useful commands:
+- account/status: `.venv/bin/python3 main.py --dry-run --status`
+- override coins: `.venv/bin/python3 main.py --dry-run --coins BTC ETH`
+- faster cycle: `.venv/bin/python3 main.py --dry-run --interval 60`
 
-─────────────────────────────────────────────────────
-USEFUL COMMANDS
-─────────────────────────────────────────────────────
-Check open positions:
-  python3 main.py --status
+STEP 6 — INSTALL THE BACKGROUND SERVICES
+─────────────────────────────────────────
+./install_launchagent.sh
 
-Trade specific coins only:
-  python3 main.py --coins BTC ETH
+This installs two launchd services:
+- `com.manvinder.crypto-trading-agent`
+- `com.manvinder.crypto-trading-dashboard`
 
-Faster cycle (60s):
-  python3 main.py --interval 60
+STEP 7 — CHECK STATUS
+─────────────────────
+./status_launchagent.sh
 
-View trade results as Excel report:
-  python3 view_results.py
+Local dashboard:
+- http://127.0.0.1:8080
 
-Test chart reading manually:
-  python3 -m indicators.chart_analyst BTC screenshots/BTC_latest.png
+STOP SERVICES
+─────────────
+./stop_launchagent.sh
 
-─────────────────────────────────────────────────────
-WHAT THE AGENT DOES EACH CYCLE (EVERY 120 SECONDS)
-─────────────────────────────────────────────────────
-1. Reads your Lighter balance
-2. Checks Fear & Greed sentiment
-3. Monitors SL / TP / trailing stop exits on open positions
-4. Manages re-entry watches (after TP close, waits at fib retracement)
-5. For each coin (BTC, ETH, SOL, HYPE):
-     - Downloads candles
-     - RSI, MACD, Bollinger Bands, EMA, Volume (classic)
-     - Fibonacci, MSB/BOS/CHoCH, Order Blocks, Fair Value Gaps (structure)
-     - Momentum, Trend, Mean Reversion, Vol Expansion,
-       Absorption, Catalyst Absorption (6 regime signals)
-     - Composite score 0-100
-     - If score is borderline: asks chart vision AI for visual confirmation
-     - Opens LONG or SHORT only if signal is clear and confirmed
-6. Logs every trade to trades_log.csv
+LIVE TRADING
+────────────
+Do not switch to live until:
+- dry-run has been stable for 48–72 hours
+- `--preflight` passes for live mode
+- your Lighter account is created/funded
+- `python3 main.py --lighter-bootstrap` has produced the required API credentials
+- the Mac is on AC power with healthy battery headroom
 
-─────────────────────────────────────────────────────
-KEY SETTINGS IN config.py
-─────────────────────────────────────────────────────
-max_trade_usd          = 250.0   $250 per trade
-stop_loss_pct          = 0.10    10% stop loss
-take_profit_pct        = 0.50    50% take profit
-trailing_stop_pct      = 0.12    12% trailing stop
-leverage               = 2       2x leverage
-coins                  = [BTC, ETH, SOL, HYPE]
-check_interval_seconds = 120     every 2 minutes
-signal_long_threshold  = 60      go long if score >= 60
-signal_short_threshold = 40      go short if score <= 40
+Then use:
+- `.venv/bin/python3 main.py --live`
 
-─────────────────────────────────────────────────────
-CHART VISION (OPTIONAL UPGRADE)
-─────────────────────────────────────────────────────
-For borderline trades the agent can visually read a chart
-screenshot before deciding to trade.
-
-1. Get key at https://console.anthropic.com
-2. Add to .env:    ANTHROPIC_API_KEY=sk-ant-...
-3. In config.py:   use_chart_confirmation = True
-
-Drop a chart as  screenshots/BTC_latest.png  and the agent
-will use it automatically on the next cycle.
-
-─────────────────────────────────────────────────────
-RESULTS
-─────────────────────────────────────────────────────
-trades_log.csv       auto-created after first trade
-trades_report.xlsx   run: python3 view_results.py
+NOTES
+─────
+- Chart confirmation is off by default
+- News integration is off by default
+- Local live trading now enforces AC-power / battery safety checks
+- Legacy `com.punky.trading-agent` is no longer the primary runtime path

@@ -6,6 +6,44 @@
 # ──────────────────────────────────────────────────────────
 
 cd "$(dirname "$0")"
+PYTHON_BIN=".venv/bin/python3"
+PIP_BIN=".venv/bin/pip"
+
+select_python_bootstrap() {
+  local explicit="${PYTHON_BOOTSTRAP_BIN:-}"
+  local candidates=()
+  if [ -n "$explicit" ]; then
+    candidates+=("$explicit")
+  fi
+  candidates+=(python3.14 python3.13 python3.12 python3.11 python3.10 python3)
+
+  local candidate=""
+  local resolved=""
+  for candidate in "${candidates[@]}"; do
+    if [ -x "$candidate" ]; then
+      resolved="$candidate"
+    elif command -v "$candidate" >/dev/null 2>&1; then
+      resolved="$(command -v "$candidate")"
+    else
+      continue
+    fi
+    if "$resolved" - <<'PY' >/dev/null 2>&1
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 10) else 1)
+PY
+    then
+      printf '%s\n' "$resolved"
+      return 0
+    fi
+  done
+  return 1
+}
+
+PYTHON_BOOTSTRAP_BIN="$(select_python_bootstrap)" || {
+  echo "❌ Python 3.10+ is required."
+  read -n 1
+  exit 1
+}
 
 echo ""
 echo "╔══════════════════════════════════════════════════╗"
@@ -27,7 +65,17 @@ if [ ! -f ".env" ]; then
 fi
 
 echo "→ Checking dependencies..."
-pip3 install -r requirements.txt -q
+if [ -x "$PYTHON_BIN" ] && ! "$PYTHON_BIN" - <<'PY' >/dev/null 2>&1
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 10) else 1)
+PY
+then
+  rm -rf .venv
+fi
+if [ ! -x "$PYTHON_BIN" ]; then
+  "$PYTHON_BOOTSTRAP_BIN" -m venv .venv
+fi
+"$PIP_BIN" install -r requirements.txt -q
 echo "✅ Dependencies ready."
 echo ""
 
@@ -38,7 +86,7 @@ read -p "   Type YES to confirm and start: " confirm
 echo ""
 
 if [ "$confirm" = "YES" ]; then
-  python3 main.py --live
+  "$PYTHON_BIN" main.py --live
 else
   echo "Cancelled. Run again when ready."
 fi

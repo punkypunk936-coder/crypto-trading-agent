@@ -112,6 +112,23 @@ def restore_open(coin: str, direction: str, entry_price: float,
     log.info(f"[{coin}] Restored open trade #{restored_id} for logging continuity")
 
 
+def update_open(coin: str, entry_price: float, size_usd: float,
+                stop_loss: float, take_profit: float):
+    """Adjust the currently open trade after a confirmed scale-in."""
+    trade = _open_trades.get(coin)
+    if not trade:
+        log.warning(f"[{coin}] update_open called but no open trade found")
+        return
+    trade["entry_price"] = entry_price
+    trade["size_usd"] = size_usd
+    trade["stop_loss"] = stop_loss
+    trade["take_profit"] = take_profit
+    log.info(
+        f"[{coin}] Updated open trade #{trade['trade_id']} after scale-in: "
+        f"entry=${entry_price:.2f} size=${size_usd:.2f}"
+    )
+
+
 def _find_last_open_id(coin: str) -> Optional[int]:
     """
     Scan the CSV for the last entry for this coin that has no corresponding

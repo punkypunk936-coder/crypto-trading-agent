@@ -25,9 +25,74 @@ MAX_RESTARTS=50                     # max restarts before giving up
 BASE_BACKOFF=5                      # starting backoff in seconds
 MAX_BACKOFF=300                     # cap at 5 minutes
 LOG_DIR="$AGENT_DIR/logs"
+PYTHON_BIN="$AGENT_DIR/.venv/bin/python3"
+PIP_BIN="$AGENT_DIR/.venv/bin/pip"
+
+select_python_bootstrap() {
+    local explicit="${PYTHON_BOOTSTRAP_BIN:-}"
+    local candidates=()
+    if [ -n "$explicit" ]; then
+        candidates+=("$explicit")
+    fi
+    candidates+=(python3.14 python3.13 python3.12 python3.11 python3.10 python3)
+
+    local candidate=""
+    local resolved=""
+    for candidate in "${candidates[@]}"; do
+        if [ -x "$candidate" ]; then
+            resolved="$candidate"
+        elif command -v "$candidate" >/dev/null 2>&1; then
+            resolved="$(command -v "$candidate")"
+        else
+            continue
+        fi
+        if "$resolved" - <<'PY' >/dev/null 2>&1
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 10) else 1)
+PY
+        then
+            printf '%s\n' "$resolved"
+            return 0
+        fi
+    done
+    return 1
+}
+
+PYTHON_BOOTSTRAP_BIN="$(select_python_bootstrap)" || {
+    echo "Python 3.10+ is required to run the trading agent." >&2
+    exit 1
+}
+
+# ── Load .env so secrets are available to Python ───────
+if [ -f "$AGENT_DIR/.env" ]; then
+    set -a                          # auto-export every variable we source
+    # shellcheck disable=SC1090
+    source "$AGENT_DIR/.env"
+    set +a
+fi
+
+DATA_ROOT="${DATA_DIR:-$AGENT_DIR}"
+CONTROL_FILE="$DATA_ROOT/control.json"
+KILL_FILE="$DATA_ROOT/KILL"
 
 # ── Setup ──────────────────────────────────────────────
 mkdir -p "$LOG_DIR"
+
+if [ -x "$PYTHON_BIN" ] && ! "$PYTHON_BIN" - <<'PY' >/dev/null 2>&1
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 10) else 1)
+PY
+then
+    rm -rf "$AGENT_DIR/.venv"
+fi
+
+if [ ! -x "$PYTHON_BIN" ]; then
+    "$PYTHON_BOOTSTRAP_BIN" -m venv "$AGENT_DIR/.venv"
+fi
+
+if ! "$PYTHON_BIN" -c "import lighter" >/dev/null 2>&1; then
+    "$PIP_BIN" install -q -r "$AGENT_DIR/requirements.txt"
+fi
 
 RESTART_COUNT=0
 BACKOFF=$BASE_BACKOFF
@@ -49,6 +114,27 @@ log "  PID: $$"
 log "═══════════════════════════════════════════════════"
 
 while true; do
+    CONTROL_ACTIVE="0"
+    if [ -f "$CONTROL_FILE" ]; then
+        CONTROL_ACTIVE="$("$PYTHON_BIN" - <<PY
+import json
+from pathlib import Path
+path = Path(r'''$CONTROL_FILE''')
+try:
+    data = json.loads(path.read_text())
+    print("1" if ((data.get("kill") or {}).get("active")) else "0")
+except Exception:
+    print("0")
+PY
+)"
+    fi
+
+    if [ "$CONTROL_ACTIVE" = "1" ] || [ -f "$KILL_FILE" ]; then
+        log "Kill control is active; waiting before restarting the agent..."
+        sleep "$BASE_BACKOFF"
+        continue
+    fi
+
     TODAY=$(date '+%Y-%m-%d')
     LOG_FILE="$LOG_DIR/agent_${TODAY}.log"
 
@@ -57,7 +143,7 @@ while true; do
     # Run the agent, tee output to both console and dated log file
     START_TIME=$(date +%s)
 
-    python3 main.py $MODE 2>&1 | tee -a "$LOG_FILE" || true
+    "$PYTHON_BIN" main.py $MODE 2>&1 | tee -a "$LOG_FILE" || true
 
     EXIT_CODE=${PIPESTATUS[0]:-$?}
     END_TIME=$(date +%s)

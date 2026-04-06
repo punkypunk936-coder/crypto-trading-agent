@@ -1,3 +1,7 @@
+# Legacy note
+
+Fly.io is no longer the primary deployment path for this repo. Prefer the local Mac runtime first, then Railway worker + Railway dashboard as the supported cloud path.
+
 # Fly.io Cloud Setup Guide
 
 Run the trading agent 24/7 for free on Fly.io — no Mac required, no subscription needed.

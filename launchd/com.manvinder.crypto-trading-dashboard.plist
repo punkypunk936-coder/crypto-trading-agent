@@ -3,11 +3,11 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.manvinder.crypto-trading-agent</string>
+  <string>com.manvinder.crypto-trading-dashboard</string>
 
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime/run_background_agent.sh</string>
+    <string>/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime/run_dashboard.sh</string>
   </array>
 
   <key>WorkingDirectory</key>
@@ -17,12 +17,8 @@
   <dict>
     <key>PYTHONUNBUFFERED</key>
     <string>1</string>
-    <key>TRADING_AGENT_MODE</key>
-    <string>paper</string>
-    <key>TRADING_AGENT_KEEP_AWAKE</key>
-    <string>1</string>
-    <key>TRADING_AGENT_CAFFEINATE_FLAGS</key>
-    <string>-dimsu</string>
+    <key>TRADING_DASHBOARD_PORT</key>
+    <string>8080</string>
   </dict>
 
   <key>RunAtLoad</key>
@@ -32,9 +28,9 @@
   <true/>
 
   <key>StandardOutPath</key>
-  <string>/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime/logs/launchd.stdout.log</string>
+  <string>/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime/logs/dashboard.stdout.log</string>
 
   <key>StandardErrorPath</key>
-  <string>/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime/logs/launchd.stderr.log</string>
+  <string>/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime/logs/dashboard.stderr.log</string>
 </dict>
 </plist>

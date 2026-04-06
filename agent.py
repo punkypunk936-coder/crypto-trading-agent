@@ -27,7 +27,7 @@ import time
 import sys
 from pathlib import Path
 from typing import List, Optional, Dict
-from paths import STATE_JSON, TRADES_CSV, KILL_FILE
+from paths import CONTROL_JSON, DASHBOARD_SNAPSHOT_JSON, STATE_JSON, TRADES_CSV, KILL_FILE
 from datetime import datetime
 
 import os
@@ -43,6 +43,7 @@ from indicators.chart_analyst import read_chart, ChartVerdict
 from indicators.mtf  import compute_mtf, MTFAnalysis
 from indicators.news import get_news_signal
 from indicators.candlestick_patterns import compute_candlestick_patterns
+from indicators.orderbook_levels import get_orderbook_levels
 from indicators.trade_memory import trade_memory
 from indicators.funding_oi_cvd import get_funding_oi_cvd
 from strategy.aggressive_strategy import AggressiveStrategy
@@ -51,6 +52,8 @@ from risk.risk_manager import RiskManager, OrderRequest, OpenPosition
 from exchanges.base import BaseExchange
 from notifications import build_notifier
 from checkpoint import checkpoint_manager, load_checkpoint
+from runtime_power import get_power_status
+from dashboard.snapshot import build_dashboard_snapshot, default_control
 from circuit_breaker import (
     circuit_breaker_registry,
     get_exchange_circuit,
@@ -76,13 +79,26 @@ class TradingAgent:
         self._last_portfolio_usd = 0.0
         self._last_available_usd = 0.0
         self._last_signals: Dict[str, dict] = {}
+        self._last_power_status: Dict[str, object] = {}
+        self._tradable_coins = [coin.upper() for coin in cfg.trading.coins]
+        self._tradable_coin_set = set(self._tradable_coins)
+        seen_analysis: List[str] = []
+        for coin in getattr(cfg.trading, "analysis_coins", []) or self._tradable_coins:
+            coin_upper = coin.upper()
+            if coin_upper not in seen_analysis:
+                seen_analysis.append(coin_upper)
+        for coin in self._tradable_coins:
+            if coin not in seen_analysis:
+                seen_analysis.insert(0, coin)
+        self._analysis_coins = seen_analysis
         self._price_circuits = {
             coin: get_price_feed_circuit(f"primary_{coin.lower()}")
-            for coin in cfg.trading.coins
+            for coin in self._analysis_coins
         }
         self._sentiment_circuit = get_indicator_circuit("sentiment")
         self._mtf_circuit = get_indicator_circuit("mtf")
         self._news_circuit = get_indicator_circuit("news")
+        self._orderbook_circuit = get_indicator_circuit("orderbook_levels")
         self._exchange_circuits = {
             ex.name: get_exchange_circuit(ex.name) for ex in exchanges
         }
@@ -115,11 +131,15 @@ class TradingAgent:
         log.info("=" * 64)
         log.info(f"  Crypto Perps Agent  |  Mode: "
                  f"{'DRY RUN 🟡' if self.cfg.is_dry_run else 'LIVE 🔴'}")
-        log.info(f"  Coins     : {self.cfg.trading.coins}")
+        log.info(f"  Trade coins: {self._tradable_coins}")
+        log.info(f"  Watchlist : {self._analysis_coins}")
         log.info(f"  Exchanges : {[e.name for e in self.exchanges]}")
         log.info(f"  Leverage  : {self.cfg.trading.leverage}×")
-        log.info(f"  SL / TP   : {self.cfg.trading.stop_loss_pct*100:.0f}% / "
-                 f"{self.cfg.trading.take_profit_pct*100:.0f}%")
+        if getattr(self.cfg.trading, "dynamic_trade_planning", True):
+            log.info("  Trade plan: dynamic ATR + structure-based SL/TP")
+        else:
+            log.info(f"  SL / TP   : {self.cfg.trading.stop_loss_pct*100:.0f}% / "
+                     f"{self.cfg.trading.take_profit_pct*100:.0f}%")
         log.info(f"  Trailing  : {self.cfg.trading.trailing_stop_pct*100:.0f}%")
         log.info(f"  Limit orders: "
                  f"{'YES' if any(e.supports_limit_orders() for e in self.exchanges) else 'NO (market fallback)'}")
@@ -165,8 +185,12 @@ class TradingAgent:
         self.risk.daily_pnl_usd = checkpoint.get("daily_pnl_usd", 0.0)
         self.risk.daily_trades = checkpoint.get("daily_trades", 0)
         self.risk.last_trade_date = checkpoint.get("last_trade_date", "")
+        active_universe = {coin.upper() for coin in self.cfg.trading.coins}
 
         for coin, pos in checkpoint.get("positions", {}).items():
+            if coin.upper() not in active_universe:
+                log.warning(f"[{coin}] Skipping restored position outside active trade universe")
+                continue
             entry_price = float(pos.get("entry_price", 0.0) or 0.0)
             direction = pos.get("direction", "")
             trail = pos.get("trailing_stop_price")
@@ -189,6 +213,7 @@ class TradingAgent:
                     trailing_stop_price=float(trail or 0.0),
                     opened_at=opened_at,
                     exchange=pos.get("exchange", ""),
+                    metadata=pos.get("metadata", {}) or {},
                 )
             )
             trade_logger.restore_open(
@@ -203,6 +228,9 @@ class TradingAgent:
             )
 
         for coin, order in checkpoint.get("pending_orders", {}).items():
+            if coin.upper() not in active_universe:
+                log.warning(f"[{coin}] Skipping restored pending order outside active trade universe")
+                continue
             self.order_mgr.restore_pending_order(
                 PendingOrder(
                     coin=coin,
@@ -218,10 +246,14 @@ class TradingAgent:
                     cycles_waiting=int(order.get("cycles_waiting", 0) or 0),
                     reason=order.get("reason", "re_entry"),
                     placed_at=float(order.get("placed_at", time.time()) or time.time()),
+                    metadata=order.get("metadata", {}) or {},
                 )
             )
 
         for coin, watch in checkpoint.get("reentry_watches", {}).items():
+            if coin.upper() not in active_universe:
+                log.warning(f"[{coin}] Skipping restored re-entry watch outside active trade universe")
+                continue
             self.order_mgr.restore_watch(
                 ReEntryWatch(
                     coin=coin,
@@ -317,6 +349,43 @@ class TradingAgent:
                     pass
         return time.time()
 
+    def _refresh_power_status(self) -> dict:
+        status = get_power_status().as_dict()
+        self._last_power_status = status
+        return status
+
+    def _enforce_power_safety(self) -> bool:
+        status = self._refresh_power_status()
+        if self.cfg.is_dry_run or not status.get("available"):
+            return True
+
+        reason = None
+        on_ac = status.get("on_ac_power")
+        battery_pct = status.get("battery_pct")
+        if self.cfg.trading.require_ac_power_for_live and on_ac is False:
+            reason = (
+                "Live trading requires AC power on the local Mac"
+                + (f" (battery {battery_pct}%)" if battery_pct is not None else "")
+            )
+        elif (
+            battery_pct is not None
+            and battery_pct < self.cfg.trading.minimum_battery_pct_for_live
+        ):
+            reason = (
+                "Battery dropped below the live-trading minimum "
+                f"({battery_pct}% < {self.cfg.trading.minimum_battery_pct_for_live}%)"
+            )
+
+        if not reason:
+            return True
+
+        log.critical(reason)
+        self.notifier.error_alert(reason)
+        if self.cfg.trading.stop_live_on_power_loss:
+            self.emergency_close_all(reason)
+            self._running = False
+        return False
+
     # ── Core cycle ────────────────────────────────────────────
 
     def _run_cycle(self):
@@ -330,6 +399,9 @@ class TradingAgent:
             self._running = False
             return
 
+        if not self._enforce_power_safety():
+            return
+
         # 1. Portfolio equity
         portfolio_usd = self._get_portfolio_usd()
         if portfolio_usd is None:
@@ -339,6 +411,11 @@ class TradingAgent:
         self._last_available_usd = self.risk.available_capital(portfolio_usd)
         self.risk.update_peak_portfolio(portfolio_usd)
         log.info(f"Portfolio equity: ${portfolio_usd:,.2f}")
+
+        if (not self.cfg.is_dry_run and
+                self.cfg.trading.reconcile_every_n_cycles > 0 and
+                self._cycle % self.cfg.trading.reconcile_every_n_cycles == 0):
+            self._reconcile_with_exchange()
 
         # 2. Sentiment
         sentiment = self._get_sentiment_safe()
@@ -365,7 +442,7 @@ class TradingAgent:
 
         # 7. Analyse each coin for new positions
         self._last_signals = {}
-        for coin in self.cfg.trading.coins:
+        for coin in self._analysis_coins:
             # Skip if we already have a pending limit order for this coin
             if self.order_mgr.has_pending(coin):
                 log.info(f"[{coin}] Skipping analysis — limit order pending")
@@ -431,7 +508,11 @@ class TradingAgent:
         news_signal = None
         if self.cfg.trading.use_news:
             try:
-                news_signal = self._news_circuit.call(get_news_signal, coin)
+                news_signal = self._news_circuit.call(
+                    get_news_signal,
+                    coin,
+                    self.cfg.trading.cryptopanic_auth_token,
+                )
             except Exception as e:
                 log.warning(f"[{coin}] News fetch failed: {e}")
 
@@ -459,6 +540,23 @@ class TradingAgent:
             except Exception as e:
                 log.debug(f"[{coin}] FundingOI skipped: {e}")
 
+        # Live orderbook + higher-timeframe key levels
+        orderbook_signal = None
+        if instrument_type == "crypto" and getattr(self.cfg.trading, "use_orderbook_levels", True):
+            try:
+                orderbook_signal = self._orderbook_circuit.call(
+                    get_orderbook_levels,
+                    coin,
+                    current_price=tech.price,
+                    depth_limit=getattr(self.cfg.trading, "orderbook_depth_limit", 120),
+                    daily_lookback=getattr(self.cfg.trading, "orderbook_daily_lookback", 120),
+                    cache_ttl_seconds=getattr(self.cfg.trading, "orderbook_cache_ttl_seconds", 25),
+                    guard_distance_pct=getattr(self.cfg.trading, "orderbook_guard_distance_pct", 1.25),
+                    reaction_distance_pct=getattr(self.cfg.trading, "orderbook_reaction_distance_pct", 0.45),
+                )
+            except Exception as e:
+                log.debug(f"[{coin}] Orderbook levels skipped: {e}")
+
         # Generate signal  (LONG / SHORT / FLAT)
         signal = self.strategy.generate_signal(
             tech, advanced, sentiment, current_pos, regimes,
@@ -467,6 +565,7 @@ class TradingAgent:
             memory_adjustment=memory_adj,
             instrument_type=instrument_type,
             funding_oi_signal=funding_oi_signal,
+            orderbook_signal=orderbook_signal,
         )
 
         log.info(
@@ -474,14 +573,31 @@ class TradingAgent:
             f"confidence={signal.confidence}"
         )
 
+        rl_stats = self._memory.get_stats().get(coin, {})
+        rl_total_trades = int(rl_stats.get("total", 0) or 0)
+        rl_pattern_boost = self._memory.get_pattern_boost(coin, signal.action, signal.score)
+        rl_win_rate_for_sizing = (
+            rl_stats.get("win_rate", 50.0)
+            if rl_total_trades >= 3 else 50.0
+        )
+        long_guard = self._memory.get_directional_guard(coin, "LONG")
+        short_guard = self._memory.get_directional_guard(coin, "SHORT")
+        top_root_causes = sorted(
+            (rl_stats.get("root_causes") or {}).items(),
+            key=lambda item: (-item[1], item[0]),
+        )[:3]
+
         # Store signal for dashboard + memory (enriched with new intelligence)
+        trade_plan = dict(getattr(signal, "trade_plan", {}) or {})
         self._last_signals[coin] = {
             "action":          signal.action,
+            "decision":        signal.action,
             "score":           signal.score,
             "confidence":      signal.confidence,
             "price":           signal.price,
             "reason":          signal.reason,
             "flat_reason":     signal.flat_reason,
+            "decision_reason": signal.reason or signal.flat_reason or "",
             "instrument_type": instrument_type,
             "mtf_bias":        "FLAT",   # updated below if MTF runs
             # Candlestick patterns
@@ -496,15 +612,61 @@ class TradingAgent:
             # Memory / learning
             "memory_adj":      memory_adj,
             "memory_cooldown": self._memory._cooldown.get(coin, 0),
+            "rl_total_trades": rl_total_trades,
+            "rl_win_rate":     rl_stats.get("win_rate"),
+            "rl_long_wr":      rl_stats.get("long_wr"),
+            "rl_short_wr":     rl_stats.get("short_wr"),
+            "rl_last_5_results": rl_stats.get("last_5_results", []),
+            "rl_pattern_boost": rl_pattern_boost,
+            "rl_latest_failure_summary": rl_stats.get("latest_failure_summary", ""),
+            "rl_top_root_causes": [cause for cause, _ in top_root_causes],
+            "rl_long_guard": long_guard,
+            "rl_short_guard": short_guard,
             # Regime context — stored for RL record_trade on close
             "market_regime":   _msb_struct,
             "dominant_regime": _dom_regime,
+            "volatility_label": advanced.atr.volatility_label if advanced and advanced.valid else "NORMAL",
+            "msb_type":        advanced.msb.msb_type if advanced and advanced.valid else "NONE",
+            "structure_trend": advanced.msb.structure_trend if advanced and advanced.valid else "RANGING",
+            "swing_high":      advanced.msb.last_swing_high if advanced and advanced.valid else 0.0,
+            "swing_low":       advanced.msb.last_swing_low if advanced and advanced.valid else 0.0,
+            "atr_pct":         advanced.atr.atr_pct if advanced and advanced.valid else 0.0,
             # Funding / OI / CVD
             "funding_rate":    funding_oi_signal.funding_rate      if funding_oi_signal and funding_oi_signal.valid else 0.0,
             "funding_label":   funding_oi_signal.funding_label     if funding_oi_signal and funding_oi_signal.valid else "N/A",
             "oi_change_pct":   funding_oi_signal.oi_change_pct     if funding_oi_signal and funding_oi_signal.valid else 0.0,
             "cvd_divergence":  funding_oi_signal.cvd_divergence    if funding_oi_signal and funding_oi_signal.valid else "NONE",
             "foc_score":       funding_oi_signal.composite_score   if funding_oi_signal and funding_oi_signal.valid else 50.0,
+            # Orderbook + key levels
+            "orderbook_score": orderbook_signal.score if orderbook_signal and orderbook_signal.valid else 50.0,
+            "orderbook_imbalance": orderbook_signal.imbalance_ratio if orderbook_signal and orderbook_signal.valid else 0.0,
+            "orderbook_interaction": orderbook_signal.level_interaction if orderbook_signal and orderbook_signal.valid else "BETWEEN_LEVELS",
+            "orderbook_breakout_state": orderbook_signal.breakout_state if orderbook_signal and orderbook_signal.valid else "NONE",
+            "orderbook_support": orderbook_signal.nearest_support if orderbook_signal and orderbook_signal.valid else 0.0,
+            "orderbook_support_distance_pct": orderbook_signal.nearest_support_distance_pct if orderbook_signal and orderbook_signal.valid else 0.0,
+            "orderbook_resistance": orderbook_signal.nearest_resistance if orderbook_signal and orderbook_signal.valid else 0.0,
+            "orderbook_resistance_distance_pct": orderbook_signal.nearest_resistance_distance_pct if orderbook_signal and orderbook_signal.valid else 0.0,
+            "orderbook_support_strength": orderbook_signal.nearest_support_strength if orderbook_signal and orderbook_signal.valid else 0.0,
+            "orderbook_resistance_strength": orderbook_signal.nearest_resistance_strength if orderbook_signal and orderbook_signal.valid else 0.0,
+            "orderbook_favor_longs": orderbook_signal.favor_longs if orderbook_signal and orderbook_signal.valid else False,
+            "orderbook_favor_shorts": orderbook_signal.favor_shorts if orderbook_signal and orderbook_signal.valid else False,
+            "orderbook_block_longs": orderbook_signal.block_longs if orderbook_signal and orderbook_signal.valid else False,
+            "orderbook_block_shorts": orderbook_signal.block_shorts if orderbook_signal and orderbook_signal.valid else False,
+            "daily_breakout_level": orderbook_signal.daily_breakout_level if orderbook_signal and orderbook_signal.valid else 0.0,
+            "daily_breakdown_level": orderbook_signal.daily_breakdown_level if orderbook_signal and orderbook_signal.valid else 0.0,
+            "planned_stop_loss": signal.stop_loss_price,
+            "planned_take_profit": signal.take_profit_price,
+            "planned_risk_pct": trade_plan.get("risk_pct", 0.0),
+            "planned_reward_pct": trade_plan.get("reward_pct", 0.0),
+            "planned_risk_reward_ratio": trade_plan.get("risk_reward_ratio", 0.0),
+            "planned_stop_atr_multiple": trade_plan.get("stop_atr_multiple", 0.0),
+            "planned_target_atr_multiple": trade_plan.get("target_atr_multiple", 0.0),
+            "planned_target_r_multiple": trade_plan.get("target_r_multiple", 0.0),
+            "stop_basis":      trade_plan.get("stop_basis", ""),
+            "target_basis":    trade_plan.get("target_basis", ""),
+            "price_action_summary": trade_plan.get("price_action_summary", ""),
+            "trade_plan":      trade_plan,
+            "execution_mode":  "tradable" if coin in self._tradable_coin_set else "observation_only",
         }
 
         if signal.action == "FLAT":
@@ -568,6 +730,64 @@ class TradingAgent:
                         f"[{coin}] 👁️  Chart analyst CONFIRMS {signal.action} "
                         f"({chart_verdict.confidence}) — proceeding."
                     )
+
+        # ── RL directional guardrails ─────────────────────────
+        if signal.action in ("LONG", "SHORT"):
+            guard = long_guard if signal.action == "LONG" else short_guard
+            self._last_signals[coin]["rl_active_guard"] = guard
+            self._last_signals[coin]["rl_threshold_boost"] = guard.get("threshold_boost", 0.0)
+            self._last_signals[coin]["rl_pause_cycles"] = guard.get("pause_cycles", 0)
+            self._last_signals[coin]["rl_guard_reasons"] = guard.get("reasons", [])
+
+            if guard.get("pause_cycles", 0) > 0:
+                pause_reason = (
+                    f"RL pause on {signal.action}: {guard['pause_cycles']} cycles left"
+                    + (f" ({', '.join(guard['reasons'])})" if guard.get("reasons") else "")
+                )
+                log.info(f"[{coin}] ⏸️ {pause_reason}")
+                signal.action = "FLAT"
+                signal.flat_reason = pause_reason
+                signal.reason = pause_reason
+            else:
+                threshold_boost = float(guard.get("threshold_boost", 0.0) or 0.0)
+                if threshold_boost > 0:
+                    if signal.action == "LONG":
+                        required_score = self.cfg.trading.signal_long_threshold + threshold_boost
+                        self._last_signals[coin]["rl_required_score"] = required_score
+                        if signal.score < required_score:
+                            tighten_reason = (
+                                f"RL tightened LONG threshold to ≥{required_score:.0f}"
+                                + (f" ({', '.join(guard['reasons'])})" if guard.get("reasons") else "")
+                            )
+                            log.info(f"[{coin}] 🧠 {tighten_reason}")
+                            signal.action = "FLAT"
+                            signal.flat_reason = tighten_reason
+                            signal.reason = tighten_reason
+                    else:
+                        required_score = self.cfg.trading.signal_short_threshold - threshold_boost
+                        self._last_signals[coin]["rl_required_score"] = required_score
+                        if signal.score > required_score:
+                            tighten_reason = (
+                                f"RL tightened SHORT threshold to ≤{required_score:.0f}"
+                                + (f" ({', '.join(guard['reasons'])})" if guard.get("reasons") else "")
+                            )
+                            log.info(f"[{coin}] 🧠 {tighten_reason}")
+                            signal.action = "FLAT"
+                            signal.flat_reason = tighten_reason
+                            signal.reason = tighten_reason
+
+            self._last_signals[coin]["action"] = signal.action
+            self._last_signals[coin]["decision"] = signal.action
+            self._last_signals[coin]["decision_reason"] = signal.reason or signal.flat_reason or ""
+            self._last_signals[coin]["flat_reason"] = signal.flat_reason
+
+        if signal.action == "FLAT":
+            log.info(f"[{coin}] RL guard keeps this setup flat for now")
+            return
+
+        if coin not in self._tradable_coin_set:
+            log.info(f"[{coin}] Observation-only asset — signal tracked, no execution on the Lighter runtime")
+            return
 
         # ── Loss-based circuit breaker check ────────────────
         if self.risk.is_trading_halted():
@@ -667,10 +887,6 @@ class TradingAgent:
                 self._signal_streak.pop(coin, None)  # reset after entry
 
         # ── Pull RL stats to inform position sizing ────────────────────────
-        rl_stats        = self._memory.get_stats().get(coin, {})
-        rl_win_rate     = rl_stats.get("win_rate", 50.0) if rl_stats.get("total", 0) >= 3 else 50.0
-        rl_pat_boost    = self._memory.get_pattern_boost(coin, signal.action, signal.score)
-
         # Risk-check & size the order (conviction + RL win-rate aware)
         order = self.risk.compute_order(
             coin              = coin,
@@ -680,8 +896,8 @@ class TradingAgent:
             stop_loss_price   = signal.stop_loss_price,
             take_profit_price = signal.take_profit_price,
             portfolio_usd     = portfolio_usd,
-            rl_win_rate       = rl_win_rate,
-            rl_pattern_boost  = rl_pat_boost,
+            rl_win_rate       = rl_win_rate_for_sizing,
+            rl_pattern_boost  = rl_pattern_boost,
         )
 
         if not order.approved:
@@ -692,8 +908,160 @@ class TradingAgent:
 
     # ── Execution ─────────────────────────────────────────────
 
+    def _build_entry_context(self, coin: str, signal, order=None, entry_type: str = "signal_entry") -> dict:
+        sig = dict(getattr(self, "_last_signals", {}).get(coin, {}) or {})
+        trade_plan = dict(sig.get("trade_plan", {}) or getattr(signal, "trade_plan", {}) or {})
+        planned_stop = float(
+            getattr(order, "stop_loss", trade_plan.get("stop_loss", sig.get("planned_stop_loss", 0.0))) or 0.0
+        )
+        planned_take_profit = float(
+            getattr(order, "take_profit", trade_plan.get("take_profit", sig.get("planned_take_profit", 0.0))) or 0.0
+        )
+        trade_plan.update({
+            "entry_price": round(float(getattr(order, "price", trade_plan.get("entry_price", sig.get("price", 0.0))) or 0.0), 6),
+            "stop_loss": round(planned_stop, 6) if planned_stop else 0.0,
+            "take_profit": round(planned_take_profit, 6) if planned_take_profit else 0.0,
+            "risk_pct": sig.get("planned_risk_pct", trade_plan.get("risk_pct", 0.0)),
+            "reward_pct": sig.get("planned_reward_pct", trade_plan.get("reward_pct", 0.0)),
+            "risk_reward_ratio": sig.get("planned_risk_reward_ratio", trade_plan.get("risk_reward_ratio", 0.0)),
+            "stop_atr_multiple": sig.get("planned_stop_atr_multiple", trade_plan.get("stop_atr_multiple", 0.0)),
+            "target_atr_multiple": sig.get("planned_target_atr_multiple", trade_plan.get("target_atr_multiple", 0.0)),
+            "target_r_multiple": sig.get("planned_target_r_multiple", trade_plan.get("target_r_multiple", 0.0)),
+            "stop_basis": sig.get("stop_basis", trade_plan.get("stop_basis", "")),
+            "target_basis": sig.get("target_basis", trade_plan.get("target_basis", "")),
+            "price_action_summary": sig.get("price_action_summary", trade_plan.get("price_action_summary", "")),
+        })
+        return {
+            "entry_type": entry_type,
+            "action": getattr(signal, "action", sig.get("action", "")),
+            "score": getattr(signal, "score", sig.get("score", 50.0)),
+            "confidence": getattr(signal, "confidence", sig.get("confidence", "LOW")),
+            "reason": getattr(signal, "reason", sig.get("reason", "")),
+            "flat_reason": getattr(signal, "flat_reason", sig.get("flat_reason", "")),
+            "mtf_bias": sig.get("mtf_bias", "FLAT"),
+            "market_regime": sig.get("market_regime", "RANGING"),
+            "dominant_regime": sig.get("dominant_regime", "MIXED"),
+            "instrument_type": sig.get("instrument_type", "crypto"),
+            "news_score": sig.get("news_score", 50.0),
+            "news_velocity": sig.get("news_velocity", "LOW"),
+            "candle_score": sig.get("candle_score", 50.0),
+            "candle_trend": sig.get("candle_trend", "FLAT"),
+            "foc_score": sig.get("foc_score", 50.0),
+            "funding_label": sig.get("funding_label", "N/A"),
+            "memory_adj": sig.get("memory_adj", 0.0),
+            "rl_total_trades": sig.get("rl_total_trades", 0),
+            "rl_win_rate": sig.get("rl_win_rate"),
+            "rl_pattern_boost": sig.get("rl_pattern_boost", 0.0),
+            "execution_mode": sig.get("execution_mode", "observation_only"),
+            "planned_stop_loss": planned_stop,
+            "planned_take_profit": planned_take_profit,
+            "planned_risk_pct": sig.get("planned_risk_pct", trade_plan.get("risk_pct", 0.0)),
+            "planned_reward_pct": sig.get("planned_reward_pct", trade_plan.get("reward_pct", 0.0)),
+            "planned_risk_reward_ratio": sig.get("planned_risk_reward_ratio", trade_plan.get("risk_reward_ratio", 0.0)),
+            "planned_stop_atr_multiple": sig.get("planned_stop_atr_multiple", trade_plan.get("stop_atr_multiple", 0.0)),
+            "planned_target_atr_multiple": sig.get("planned_target_atr_multiple", trade_plan.get("target_atr_multiple", 0.0)),
+            "planned_target_r_multiple": sig.get("planned_target_r_multiple", trade_plan.get("target_r_multiple", 0.0)),
+            "stop_basis": sig.get("stop_basis", trade_plan.get("stop_basis", "")),
+            "target_basis": sig.get("target_basis", trade_plan.get("target_basis", "")),
+            "price_action_summary": sig.get("price_action_summary", trade_plan.get("price_action_summary", "")),
+            "orderbook_score": sig.get("orderbook_score", 50.0),
+            "orderbook_imbalance": sig.get("orderbook_imbalance", 0.0),
+            "orderbook_interaction": sig.get("orderbook_interaction", "BETWEEN_LEVELS"),
+            "orderbook_breakout_state": sig.get("orderbook_breakout_state", "NONE"),
+            "orderbook_support": sig.get("orderbook_support", 0.0),
+            "orderbook_support_distance_pct": sig.get("orderbook_support_distance_pct", 0.0),
+            "orderbook_resistance": sig.get("orderbook_resistance", 0.0),
+            "orderbook_resistance_distance_pct": sig.get("orderbook_resistance_distance_pct", 0.0),
+            "daily_breakout_level": sig.get("daily_breakout_level", 0.0),
+            "daily_breakdown_level": sig.get("daily_breakdown_level", 0.0),
+            "trade_plan": trade_plan,
+            "conviction_tier": getattr(order, "conviction_tier", ""),
+            "conviction_pct": getattr(order, "conviction_pct", 0.0),
+        }
+
+    @staticmethod
+    def _signed_move(direction: str, start: float, end: float) -> float:
+        if start <= 0 or end <= 0:
+            return 0.0
+        return (end - start) if direction == "LONG" else (start - end)
+
+    def _reanchor_trade_plan_to_fill(self, coin: str, signal, order, fill_price: float) -> None:
+        trade_plan = dict(getattr(signal, "trade_plan", {}) or {})
+        risk_per_unit = float(trade_plan.get("risk_per_unit", 0.0) or 0.0)
+        reward_per_unit = float(trade_plan.get("reward_per_unit", 0.0) or 0.0)
+        if fill_price <= 0 or risk_per_unit <= 0 or reward_per_unit <= 0:
+            return
+
+        if signal.action == "LONG":
+            order.stop_loss = max(0.0, fill_price - risk_per_unit)
+            order.take_profit = max(0.0, fill_price + reward_per_unit)
+        else:
+            order.stop_loss = fill_price + risk_per_unit
+            order.take_profit = max(0.0, fill_price - reward_per_unit)
+
+        trade_plan.update({
+            "entry_price": round(fill_price, 6),
+            "stop_loss": round(order.stop_loss, 6),
+            "take_profit": round(order.take_profit, 6),
+            "risk_pct": round(abs(fill_price - order.stop_loss) / max(fill_price, 1e-9) * 100, 3),
+            "reward_pct": round(abs(order.take_profit - fill_price) / max(fill_price, 1e-9) * 100, 3),
+            "risk_reward_ratio": round(
+                abs(order.take_profit - fill_price) / max(abs(fill_price - order.stop_loss), 1e-9), 3
+            ),
+        })
+        signal.trade_plan = trade_plan
+        if coin in self._last_signals:
+            self._last_signals[coin]["planned_stop_loss"] = order.stop_loss
+            self._last_signals[coin]["planned_take_profit"] = order.take_profit
+            self._last_signals[coin]["planned_risk_pct"] = trade_plan.get("risk_pct", 0.0)
+            self._last_signals[coin]["planned_reward_pct"] = trade_plan.get("reward_pct", 0.0)
+            self._last_signals[coin]["planned_risk_reward_ratio"] = trade_plan.get("risk_reward_ratio", 0.0)
+            self._last_signals[coin]["trade_plan"] = dict(trade_plan)
+
+    def _annotate_exit_against_plan(self, direction: str, entry_ctx: dict, entry: float, exit_price: float) -> dict:
+        ctx = dict(entry_ctx or {})
+        if entry <= 0 or exit_price <= 0:
+            return ctx
+
+        try:
+            stop_price = float(ctx.get("planned_stop_loss") or 0.0)
+        except Exception:
+            stop_price = 0.0
+        try:
+            take_profit = float(ctx.get("planned_take_profit") or 0.0)
+        except Exception:
+            take_profit = 0.0
+
+        favorable_move = self._signed_move(direction, entry, exit_price)
+        tp_distance = self._signed_move(direction, entry, take_profit) if take_profit > 0 else 0.0
+        if direction == "LONG":
+            sl_distance = max(0.0, entry - stop_price) if stop_price > 0 else 0.0
+            remaining_to_sl = max(0.0, exit_price - stop_price) if stop_price > 0 else 0.0
+            remaining_to_tp = max(0.0, take_profit - exit_price) if take_profit > 0 else 0.0
+        else:
+            sl_distance = max(0.0, stop_price - entry) if stop_price > 0 else 0.0
+            remaining_to_sl = max(0.0, stop_price - exit_price) if stop_price > 0 else 0.0
+            remaining_to_tp = max(0.0, exit_price - take_profit) if take_profit > 0 else 0.0
+
+        ctx["realized_move_pct"] = round(favorable_move / entry * 100, 3)
+        if sl_distance > 0:
+            ctx["captured_r_multiple"] = round(favorable_move / sl_distance, 3)
+            ctx["stop_pressure_ratio"] = round(max(0.0, -favorable_move) / sl_distance, 3)
+        if tp_distance > 0:
+            ctx["tp_progress_ratio"] = round(favorable_move / tp_distance, 3)
+        if take_profit > 0:
+            ctx["remaining_to_tp_pct"] = round(remaining_to_tp / entry * 100, 3)
+        if stop_price > 0:
+            ctx["remaining_to_sl_pct"] = round(remaining_to_sl / entry * 100, 3)
+        return ctx
+
     def _execute_order(self, coin, signal, order):
-        for ex in self.exchanges:
+        exchanges = self._eligible_exchanges(coin)
+        if not exchanges:
+            log.error(f"[{coin}] No exchange supports this symbol")
+            return
+
+        for ex in exchanges:
             ex.set_leverage(coin, self.cfg.trading.leverage)
 
             result = None
@@ -719,17 +1087,72 @@ class TradingAgent:
             if result and result.success:
                 fill_price = result.filled_price or signal.price
                 order.price = fill_price
-                self.risk.record_open(order, exchange=ex.name)
-                trade_logger.log_open(
-                    coin         = coin,
-                    direction    = signal.action,
-                    entry_price  = fill_price,
-                    size_usd     = order.size_usd,
-                    stop_loss    = order.stop_loss,
-                    take_profit  = order.take_profit,
-                    signal_score = signal.score,
-                    leverage     = self.cfg.trading.leverage,
-                )
+                self._reanchor_trade_plan_to_fill(coin, signal, order, fill_price)
+                time.sleep(1)
+                verified = self._verify_position_on_exchange(ex, coin, should_exist=True)
+                if verified is not True:
+                    recovered = self._reconcile_and_check_coin(coin, should_exist=True)
+                    if not recovered:
+                        log.critical(
+                            f"[{coin}] CRITICAL: order succeeded on {ex.name} but the position "
+                            f"could not be verified or recovered from reconciliation"
+                        )
+                        self.notifier.error_alert(
+                            f"CRITICAL: {coin} {signal.action} order succeeded on {ex.name} but verification failed"
+                        )
+                        return
+                    pos = self.risk.positions.get(coin)
+                    if pos:
+                        if order.is_scale_in:
+                            trade_logger.update_open(
+                                coin=coin,
+                                entry_price=pos.entry_price,
+                                size_usd=pos.size_usd,
+                                stop_loss=pos.stop_loss,
+                                take_profit=pos.take_profit,
+                            )
+                        else:
+                            trade_logger.restore_open(
+                                coin=coin,
+                                direction=signal.action,
+                                entry_price=pos.entry_price,
+                                size_usd=pos.size_usd,
+                                stop_loss=pos.stop_loss,
+                                take_profit=pos.take_profit,
+                                leverage=self.cfg.trading.leverage,
+                                signal_score=signal.score,
+                            )
+                    log.warning(f"[{coin}] Verification recovered from reconciliation on {ex.name}")
+                else:
+                    if order.is_scale_in:
+                        self.risk.record_scale_in_fill(order, exchange=ex.name)
+                        pos = self.risk.positions.get(coin)
+                        if pos:
+                            trade_logger.update_open(
+                                coin=coin,
+                                entry_price=pos.entry_price,
+                                size_usd=pos.size_usd,
+                                stop_loss=pos.stop_loss,
+                                take_profit=pos.take_profit,
+                            )
+                    else:
+                        self.risk.record_open(
+                            order,
+                            exchange=ex.name,
+                            metadata={"entry_context": self._build_entry_context(coin, signal, order, entry_type="market_entry")},
+                        )
+                        trade_logger.log_open(
+                            coin         = coin,
+                            direction    = signal.action,
+                            entry_price  = fill_price,
+                            size_usd     = order.size_usd,
+                            stop_loss    = order.stop_loss,
+                            take_profit  = order.take_profit,
+                            signal_score = signal.score,
+                            leverage     = self.cfg.trading.leverage,
+                        )
+                    log.info(f"[{coin}] Position verified on {ex.name}")
+
                 self.notifier.trade_opened(
                     coin     = coin,
                     direction= signal.action,
@@ -745,25 +1168,6 @@ class TradingAgent:
                     f"{order.size_coin:.6f} @ ${fill_price:.2f} "
                     f"| SL ${order.stop_loss:.2f} TP ${order.take_profit:.2f}"
                 )
-
-                # Verify position exists on exchange
-                time.sleep(1)
-                try:
-                    account_state = ex.get_account_state()
-                    position_found = any(pos.get('coin') == coin for pos in account_state.positions)
-                    if not position_found:
-                        log.critical(f"[{coin}] CRITICAL: Order reported success but position "
-                                    f"not found on exchange after verification!")
-                        self.notifier.error_alert(
-                            f"CRITICAL: {coin} {signal.action} order verified but position missing on {ex.name}"
-                        )
-                    else:
-                        log.info(f"[{coin}] Position verified on {ex.name}")
-                except Exception as e:
-                    log.critical(f"[{coin}] CRITICAL: Could not verify position on {ex.name}: {e}")
-                    self.notifier.error_alert(
-                        f"CRITICAL: Could not verify {coin} position on {ex.name}: {e}"
-                    )
                 return
             elif not result:
                 log.error(f"[{coin}] ❌ No result returned from {ex.name}")
@@ -775,7 +1179,11 @@ class TradingAgent:
                            size_usd: float, sl: float, tp: float,
                            score: float, reason: str = "re_entry"):
         """Place a limit order on the first available exchange and register it."""
-        for ex in self.exchanges:
+        exchanges = self._eligible_exchanges(coin)
+        if not exchanges:
+            log.error(f"[{coin}] No exchange supports limit orders for this symbol")
+            return
+        for ex in exchanges:
             ex.set_leverage(coin, self.cfg.trading.leverage)
             size_coin = size_usd / limit_price if limit_price > 0 else 0
 
@@ -797,6 +1205,31 @@ class TradingAgent:
                     exchange          = ex.name,
                     exchange_order_id = result.order_id,
                     reason            = reason,
+                    metadata          = {
+                        "entry_context": self._build_entry_context(
+                            coin,
+                            type("PendingSignal", (), {
+                                "action": direction,
+                                "score": score,
+                                "confidence": "MEDIUM",
+                                "reason": reason,
+                                "flat_reason": "",
+                                "trade_plan": {
+                                    "entry_price": limit_price,
+                                    "stop_loss": sl,
+                                    "take_profit": tp,
+                                    "risk_pct": round(abs(limit_price - sl) / max(limit_price, 1e-9) * 100, 3),
+                                    "reward_pct": round(abs(tp - limit_price) / max(limit_price, 1e-9) * 100, 3),
+                                    "risk_reward_ratio": round(
+                                        abs(tp - limit_price) / max(abs(limit_price - sl), 1e-9), 3
+                                    ),
+                                    "stop_basis": "limit_plan",
+                                    "target_basis": "limit_plan",
+                                },
+                            })(),
+                            entry_type=reason,
+                        )
+                    },
                 )
                 self.order_mgr.register_limit_order(pending)
                 log.info(
@@ -862,6 +1295,21 @@ class TradingAgent:
                 continue
             if status.filled:
                 fill_price = status.filled_price or pending.limit_price
+                verified = self._verify_position_on_exchange(ex, coin, should_exist=True)
+                recovered = False
+                if verified is not True:
+                    recovered = self._reconcile_and_check_coin(coin, should_exist=True)
+                if verified is not True and not recovered:
+                    log.critical(
+                        f"[{coin}] Limit order filled on {ex.name} but the resulting position "
+                        f"could not be verified or reconciled"
+                    )
+                    self.notifier.error_alert(
+                        f"CRITICAL: {coin} limit fill on {ex.name} could not be verified"
+                    )
+                    self.order_mgr.mark_filled(coin, fill_price)
+                    continue
+
                 log.info(f"[{coin}] Limit order FILLED @ ${fill_price:.2f}")
                 order = OrderRequest(
                     coin        = coin,
@@ -874,17 +1322,59 @@ class TradingAgent:
                     leverage    = self.cfg.trading.leverage,
                     approved    = True,
                 )
-                self.risk.record_open(order, exchange=ex.name)
-                trade_logger.log_open(
-                    coin         = coin,
-                    direction    = pending.direction,
-                    entry_price  = fill_price,
-                    size_usd     = pending.size_usd,
-                    stop_loss    = pending.stop_loss,
-                    take_profit  = pending.take_profit,
-                    signal_score = pending.signal_score,
-                    leverage     = self.cfg.trading.leverage,
-                )
+                if recovered:
+                    pos = self.risk.positions.get(coin)
+                    if pos:
+                        trade_logger.restore_open(
+                            coin=coin,
+                            direction=pending.direction,
+                            entry_price=pos.entry_price,
+                            size_usd=pos.size_usd,
+                            stop_loss=pos.stop_loss,
+                            take_profit=pos.take_profit,
+                            leverage=self.cfg.trading.leverage,
+                            signal_score=pending.signal_score,
+                        )
+                else:
+                    pending_signal = type("PendingSignal", (), {
+                        "action": pending.direction,
+                        "score": pending.signal_score,
+                        "confidence": "MEDIUM",
+                        "reason": pending.reason or "Limit/re-entry order filled",
+                        "flat_reason": "",
+                        "trade_plan": (
+                            (pending.metadata or {}).get("entry_context", {}) or {}
+                        ).get("trade_plan", {}),
+                    })()
+                    entry_context = (
+                        (pending.metadata or {}).get("entry_context")
+                        or self._build_entry_context(coin, pending_signal, order, entry_type=pending.reason or "limit_entry")
+                    )
+                    entry_context = dict(entry_context or {})
+                    entry_context["planned_stop_loss"] = pending.stop_loss
+                    entry_context["planned_take_profit"] = pending.take_profit
+                    trade_plan = dict(entry_context.get("trade_plan", {}) or {})
+                    trade_plan.update({
+                        "entry_price": round(fill_price, 6),
+                        "stop_loss": round(pending.stop_loss, 6),
+                        "take_profit": round(pending.take_profit, 6),
+                    })
+                    entry_context["trade_plan"] = trade_plan
+                    self.risk.record_open(
+                        order,
+                        exchange=ex.name,
+                        metadata={"entry_context": entry_context},
+                    )
+                    trade_logger.log_open(
+                        coin         = coin,
+                        direction    = pending.direction,
+                        entry_price  = fill_price,
+                        size_usd     = pending.size_usd,
+                        stop_loss    = pending.stop_loss,
+                        take_profit  = pending.take_profit,
+                        signal_score = pending.signal_score,
+                        leverage     = self.cfg.trading.leverage,
+                    )
                 self.notifier.trade_opened(
                     coin     = coin,
                     direction= pending.direction,
@@ -929,14 +1419,15 @@ class TradingAgent:
         entry = pos.entry_price if pos else price
 
         exit_price = price
-        exchanges = self.exchanges
+        exchanges = self._eligible_exchanges(coin)
         if pos and pos.exchange:
             preferred = self._get_exchange_by_name(pos.exchange)
-            exchanges = ([preferred] if preferred else []) + [
-                ex for ex in self.exchanges if not preferred or ex.name != preferred.name
+            exchanges = ([preferred] if preferred and coin in preferred.supported_coins() else []) + [
+                ex for ex in exchanges if not preferred or ex.name != preferred.name
             ]
 
         close_successful = False
+        verified_close = False
         for ex in exchanges:
             result = None
             for attempt in range(1, 4):
@@ -956,25 +1447,27 @@ class TradingAgent:
                 exit_price = result.filled_price or price
                 log.info(f"[{coin}] Closed on {ex.name} ({reason})")
 
-                # Verify position is actually gone
                 time.sleep(1)
-                try:
-                    account_state = ex.get_account_state()
-                    position_still_open = any(pos.get('coin') == coin for pos in account_state.positions)
-                    if position_still_open:
-                        log.critical(f"[{coin}] CRITICAL: Close order succeeded but position "
-                                    f"still exists on exchange after verification!")
-                        self.notifier.error_alert(
-                            f"CRITICAL: {coin} close order verified but position still open on {ex.name}"
-                        )
-                    else:
-                        log.info(f"[{coin}] Close verified on {ex.name}")
-                except Exception as e:
-                    log.critical(f"[{coin}] CRITICAL: Could not verify close on {ex.name}: {e}")
+                verification = self._verify_position_on_exchange(ex, coin, should_exist=False)
+                verified_close = verification is True or self._reconcile_and_check_coin(coin, should_exist=False)
+                if verified_close:
+                    log.info(f"[{coin}] Close verified on {ex.name}")
+                else:
+                    log.critical(
+                        f"[{coin}] CRITICAL: close succeeded on {ex.name} but the position "
+                        f"still appears open or could not be reconciled"
+                    )
                     self.notifier.error_alert(
-                        f"CRITICAL: Could not verify {coin} close on {ex.name}: {e}"
+                        f"CRITICAL: {coin} close succeeded on {ex.name} but verification failed"
                     )
                 break
+
+        if not close_successful:
+            self.notifier.error_alert(f"CRITICAL: failed to close {coin} after all retries")
+            return
+
+        if not verified_close:
+            return
 
         if pos:
             direction = pos.direction
@@ -993,14 +1486,16 @@ class TradingAgent:
         if pos:
             hold_minutes = (time.time() - pos.opened_at) / 60.0 if pos.opened_at else 0.0
             last_sig     = self._last_signals.get(coin, {})
-            trend_ctx    = last_sig.get("mtf_bias", "FLAT")
+            entry_ctx    = dict((getattr(pos, "metadata", {}) or {}).get("entry_context", {}) or {})
+            entry_ctx    = self._annotate_exit_against_plan(pos.direction, entry_ctx, entry, exit_price)
+            trend_ctx    = entry_ctx.get("mtf_bias") or last_sig.get("mtf_bias", "FLAT")
             # Pull regime context so RL can learn which regimes are profitable
-            market_regime   = last_sig.get("market_regime",   "RANGING")
-            dominant_regime = last_sig.get("dominant_regime", "MIXED")
+            market_regime   = entry_ctx.get("market_regime") or last_sig.get("market_regime",   "RANGING")
+            dominant_regime = entry_ctx.get("dominant_regime") or last_sig.get("dominant_regime", "MIXED")
             self._memory.record_trade(
                 coin             = coin,
                 direction        = pos.direction,
-                signal_score     = last_sig.get("score", 50.0),
+                signal_score     = entry_ctx.get("score") or last_sig.get("score", 50.0),
                 entry_price      = entry,
                 exit_price       = exit_price,
                 exit_reason      = reason,
@@ -1008,6 +1503,8 @@ class TradingAgent:
                 trend_context    = trend_ctx,
                 market_regime    = market_regime,
                 dominant_regime  = dominant_regime,
+                volatility_label = entry_ctx.get("volatility_label", "NORMAL"),
+                entry_context    = entry_ctx,
             )
 
     def emergency_close_all(self, reason: str):
@@ -1090,7 +1587,7 @@ class TradingAgent:
 
     def _fetch_all_prices(self) -> dict:
         prices = {}
-        for coin in self.cfg.trading.coins:
+        for coin in self._tradable_coins:
             try:
                 p = self._price_circuits[coin].call(get_current_price, coin)
                 if p:
@@ -1146,7 +1643,11 @@ class TradingAgent:
     def _check_news_safe(self, coin: str, signal) -> bool:
         """Legacy wrapper — kept for compatibility. Use _check_news_extreme instead."""
         try:
-            news = self._news_circuit.call(get_news_signal, coin)
+            news = self._news_circuit.call(
+                get_news_signal,
+                coin,
+                self.cfg.trading.cryptopanic_auth_token,
+            )
             return self._check_news_extreme(coin, signal, news)
         except CircuitBreakerError:
             log.warning(f"[{coin}] News circuit open - allowing signal")
@@ -1210,6 +1711,24 @@ class TradingAgent:
             if ex.name == name:
                 return ex
         return None
+
+    def _eligible_exchanges(self, coin: str) -> List[BaseExchange]:
+        return [ex for ex in self.exchanges if coin in ex.supported_coins()]
+
+    def _verify_position_on_exchange(self, ex: BaseExchange, coin: str, should_exist: bool) -> Optional[bool]:
+        state = self._get_account_state_safe(ex)
+        if not state:
+            return None
+        exists = any(pos.get("coin") == coin for pos in state.positions)
+        return exists == should_exist
+
+    def _reconcile_and_check_coin(self, coin: str, should_exist: bool) -> bool:
+        try:
+            self._reconcile_with_exchange()
+        except Exception as exc:
+            log.critical(f"[{coin}] Reconciliation after verification failure crashed: {exc}")
+            return False
+        return self.risk.has_position(coin) if should_exist else not self.risk.has_position(coin)
 
     # ── Dashboard state writer ────────────────────────────────
 
@@ -1289,13 +1808,16 @@ class TradingAgent:
             "circuit_health": circuit_breaker_registry.health_check(),
             "loss_circuit_breaker": self.risk.circuit_breaker_status(),
             "trade_memory":  self._memory.get_stats(),
+            "power":         self._last_power_status,
             "config": {
                 "long_threshold":        self.cfg.trading.signal_long_threshold,
                 "short_threshold":       self.cfg.trading.signal_short_threshold,
                 "min_hold_minutes":      self.cfg.trading.min_hold_minutes,
                 "index_min_hold_minutes": self.cfg.trading.index_min_hold_minutes,
                 "reversal_boost":        self.cfg.trading.reversal_threshold_boost,
-                "coins":                 self.cfg.trading.coins,
+                "check_interval_seconds": self.cfg.trading.check_interval_seconds,
+                "coins":                 self._tradable_coins,
+                "analysis_coins":        self._analysis_coins,
                 "instrument_types":      self.cfg.trading.instrument_types,
             },
         }
@@ -1306,18 +1828,41 @@ class TradingAgent:
         except Exception as e:
             log.debug(f"state.json write failed: {e}")
 
-        # Push to remote dashboard (Netlify) if configured
+        trades_data = []
+        log_path = TRADES_CSV
+        if log_path.exists():
+            try:
+                import csv as csv_mod
+                with open(log_path, newline="") as f:
+                    trades_data = list(csv_mod.DictReader(f))
+            except Exception as e:
+                log.debug(f"trades_log.csv read failed: {e}")
+
+        control_data = default_control()
+        control_path = CONTROL_JSON
+        if control_path.exists():
+            try:
+                control_data = json.loads(control_path.read_text())
+            except Exception as e:
+                log.debug(f"control.json read failed: {e}")
+
+        snapshot = build_dashboard_snapshot(state, trades_data, control_data)
+        try:
+            DASHBOARD_SNAPSHOT_JSON.write_text(json.dumps(snapshot, indent=2))
+        except Exception as e:
+            log.debug(f"dashboard_snapshot.json write failed: {e}")
+
+        # Push the exact local dashboard snapshot to the hosted dashboard.
         remote_url = os.environ.get("DASHBOARD_URL", "")
         if remote_url:
             try:
                 import urllib.request
-                trades_data = []
-                log_path = TRADES_CSV
-                if log_path.exists():
-                    import csv as csv_mod
-                    with open(log_path, newline="") as f:
-                        trades_data = list(csv_mod.DictReader(f))
-                payload = json.dumps({"state": state, "trades": trades_data}).encode()
+                payload = json.dumps({
+                    "snapshot": snapshot,
+                    "state": state,
+                    "trades": trades_data,
+                    "control": control_data,
+                }).encode()
                 req = urllib.request.Request(
                     remote_url.rstrip("/") + "/api/push",
                     data=payload,
@@ -1343,12 +1888,29 @@ class TradingAgent:
                     kill_req = urllib.request.Request(kill_url, method="GET")
                     kill_resp = urllib.request.urlopen(kill_req, timeout=10, context=ctx)
                     kill_data = json.loads(kill_resp.read().decode())
-                    kill_sig = kill_data.get("state", {}).get("_kill_signal")
+                    kill_sig = ((kill_data.get("control") or {}).get("kill") or {})
                     if kill_sig and kill_sig.get("active"):
                         kill_reason = kill_sig.get("reason", "remote dashboard kill")
                         log.critical(f"🚨 REMOTE KILL SIGNAL: {kill_reason}")
                         kill_file = KILL_FILE
                         kill_file.write_text(kill_reason)
+                        try:
+                            ack_payload = json.dumps({
+                                "active": False,
+                                "reason": f"Agent acknowledged kill: {kill_reason}",
+                            }).encode()
+                            ack_req = urllib.request.Request(
+                                remote_url.rstrip("/") + "/api/kill",
+                                data=ack_payload,
+                                headers={
+                                    "Content-Type": "application/json",
+                                    "X-Token": os.environ.get("DASHBOARD_TOKEN", ""),
+                                },
+                                method="POST",
+                            )
+                            urllib.request.urlopen(ack_req, timeout=10, context=ctx)
+                        except Exception:
+                            pass
                 except Exception:
                     pass  # kill signal check is best-effort
             except Exception as e:

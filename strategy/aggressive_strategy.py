@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import List, Tuple
 from indicators.technical import TechnicalSignals
 from indicators.advanced  import AdvancedSignals
 from indicators.regimes   import RegimeSignals
@@ -20,6 +20,7 @@ class TradeSignal:
     stop_loss_price: float = 0.0
     take_profit_price: float = 0.0
     instrument_type: str = "crypto"  # "crypto" | "index"
+    trade_plan: dict = field(default_factory=dict)
 
 
 class AggressiveStrategy:
@@ -27,6 +28,299 @@ class AggressiveStrategy:
     def __init__(self, trading_cfg, indicator_cfg):
         self.tcfg = trading_cfg
         self.icfg = indicator_cfg
+
+    @staticmethod
+    def _bullish_candle_context(patterns) -> bool:
+        names = set(getattr(patterns, "patterns", []) or [])
+        return bool(names & {
+            "Hammer", "Bullish Engulfing", "Morning Star",
+            "Three Soldiers", "Bullish Marubozu", "Bullish Pin Bar",
+        })
+
+    @staticmethod
+    def _bearish_candle_context(patterns) -> bool:
+        names = set(getattr(patterns, "patterns", []) or [])
+        return bool(names & {
+            "Shooting Star", "Bearish Engulfing", "Evening Star",
+            "Three Crows", "Bearish Marubozu", "Bearish Pin Bar",
+        })
+
+    @staticmethod
+    def _indecision_candle_context(patterns) -> bool:
+        names = set(getattr(patterns, "patterns", []) or [])
+        return bool(names & {"Doji", "Spinning Top"})
+
+    @staticmethod
+    def _directional_distance(action: str, entry: float, level: float) -> float:
+        if entry <= 0 or level <= 0:
+            return 0.0
+        if action == "LONG":
+            return max(0.0, level - entry)
+        return max(0.0, entry - level)
+
+    @staticmethod
+    def _remaining_distance(action: str, current: float, level: float) -> float:
+        if current <= 0 or level <= 0:
+            return 0.0
+        if action == "LONG":
+            return max(0.0, level - current)
+        return max(0.0, current - level)
+
+    @staticmethod
+    def _is_confirmed_bullish_breakout(orderbook_signal) -> bool:
+        return str(getattr(orderbook_signal, "breakout_state", "")).upper() == "CONFIRMED_BULLISH_BREAKOUT"
+
+    @staticmethod
+    def _is_confirmed_bearish_breakdown(orderbook_signal) -> bool:
+        return str(getattr(orderbook_signal, "breakout_state", "")).upper() == "CONFIRMED_BEARISH_BREAKDOWN"
+
+    def _build_trade_plan(self, tech, advanced, action, confidence, regimes=None, candle_patterns=None, orderbook_signal=None):
+        if action == "FLAT" or tech.price <= 0:
+            return {}
+
+        entry = float(tech.price)
+        advanced_valid = bool(advanced and getattr(advanced, "valid", False))
+        atr = float(getattr(getattr(advanced, "atr", None), "atr", 0.0) or 0.0) if advanced_valid else 0.0
+        atr_pct = float(getattr(getattr(advanced, "atr", None), "atr_pct", 0.0) or 0.0) if advanced_valid else 0.0
+        volatility_label = str(getattr(getattr(advanced, "atr", None), "volatility_label", "normal") or "normal")
+        if atr <= 0:
+            atr = entry * max(self.tcfg.stop_loss_pct * 0.30, 0.0035)
+            atr_pct = atr / entry * 100 if entry > 0 else 0.0
+
+        dominant_regime = str(getattr(regimes, "dominant_regime", "MIXED") or "MIXED")
+        structure_trend = str(getattr(getattr(advanced, "msb", None), "structure_trend", "RANGING") or "RANGING")
+        msb_type = str(getattr(getattr(advanced, "msb", None), "msb_type", "NONE") or "NONE")
+        strong_candle = (
+            self._bullish_candle_context(candle_patterns)
+            if action == "LONG"
+            else self._bearish_candle_context(candle_patterns)
+        )
+        indecision = self._indecision_candle_context(candle_patterns)
+
+        stop_atr_multiple = float(self.tcfg.base_stop_atr_multiple)
+        if confidence == "LOW":
+            stop_atr_multiple += 0.35
+        elif confidence == "HIGH":
+            stop_atr_multiple -= 0.10
+
+        if volatility_label == "high":
+            stop_atr_multiple += 0.25
+        elif volatility_label == "extreme":
+            stop_atr_multiple += 0.55
+
+        if dominant_regime in {"ABSORPTION", "MIXED", "MEAN_REV"}:
+            stop_atr_multiple += 0.15
+        elif dominant_regime in {"TREND", "MOMENTUM", "BREAKOUT"}:
+            stop_atr_multiple += 0.05
+
+        if indecision:
+            stop_atr_multiple += 0.12
+        elif strong_candle:
+            stop_atr_multiple -= 0.10
+
+        stop_atr_multiple = max(
+            float(self.tcfg.min_stop_atr_multiple),
+            min(float(self.tcfg.max_stop_atr_multiple), stop_atr_multiple),
+        )
+
+        target_r_multiple = float(self.tcfg.base_target_r_multiple)
+        if confidence == "HIGH":
+            target_r_multiple += 0.25
+        elif confidence == "LOW":
+            target_r_multiple -= 0.20
+
+        if dominant_regime in {"TREND", "MOMENTUM", "BREAKOUT"}:
+            target_r_multiple += 0.35
+        elif dominant_regime in {"ABSORPTION", "MIXED", "MEAN_REV"}:
+            target_r_multiple -= 0.25
+
+        if indecision:
+            target_r_multiple -= 0.15
+        elif strong_candle:
+            target_r_multiple += 0.10
+
+        target_r_multiple = max(
+            float(self.tcfg.min_target_r_multiple),
+            min(float(self.tcfg.max_target_r_multiple), target_r_multiple),
+        )
+
+        stop_distance = atr * stop_atr_multiple
+        min_stop_distance = atr * max(float(self.tcfg.min_stop_atr_multiple) * 0.80, 0.70)
+        max_stop_distance = atr * max(float(self.tcfg.max_stop_atr_multiple), 1.50)
+        min_target_distance = stop_distance * max(float(self.tcfg.min_target_r_multiple), 1.10)
+        max_target_distance = stop_distance * (float(self.tcfg.max_target_r_multiple) + 0.50)
+
+        stop_candidates: List[Tuple[float, str]] = []
+        target_candidates: List[Tuple[float, str]] = []
+
+        if advanced_valid:
+            fib_levels = getattr(getattr(advanced, "fib", None), "levels", {}) or {}
+            msb = advanced.msb
+            ob = advanced.ob
+            fvg = advanced.fvg
+
+            if action == "LONG":
+                if float(getattr(msb, "last_swing_low", 0.0) or 0.0) > 0:
+                    stop_candidates.append((float(msb.last_swing_low) - atr * 0.15, "swing_low"))
+                if float(getattr(msb, "last_swing_high", 0.0) or 0.0) > entry:
+                    target_candidates.append((float(msb.last_swing_high), "swing_high"))
+                for ob_high, ob_low in list(getattr(ob, "bullish_obs", []) or [])[-2:]:
+                    stop_candidates.append((float(ob_low) - atr * 0.12, "bullish_ob"))
+                for ob_high, ob_low in list(getattr(ob, "bearish_obs", []) or [])[-2:]:
+                    target_candidates.append((float(ob_low), "bearish_ob"))
+                for fvg_bottom, fvg_top in list(getattr(fvg, "bullish_fvgs", []) or [])[-2:]:
+                    stop_candidates.append((float(fvg_bottom) - atr * 0.10, "bullish_fvg"))
+                for fvg_bottom, fvg_top in list(getattr(fvg, "bearish_fvgs", []) or [])[-2:]:
+                    target_candidates.append((float(fvg_bottom), "bearish_fvg"))
+                for name, level in fib_levels.items():
+                    level = float(level)
+                    if level < entry:
+                        stop_candidates.append((level - atr * 0.08, f"fib_support_{name}"))
+                    elif level > entry:
+                        target_candidates.append((level, f"fib_resistance_{name}"))
+            else:
+                if float(getattr(msb, "last_swing_high", 0.0) or 0.0) > 0:
+                    stop_candidates.append((float(msb.last_swing_high) + atr * 0.15, "swing_high"))
+                if 0 < float(getattr(msb, "last_swing_low", 0.0) or 0.0) < entry:
+                    target_candidates.append((float(msb.last_swing_low), "swing_low"))
+                for ob_high, ob_low in list(getattr(ob, "bearish_obs", []) or [])[-2:]:
+                    stop_candidates.append((float(ob_high) + atr * 0.12, "bearish_ob"))
+                for ob_high, ob_low in list(getattr(ob, "bullish_obs", []) or [])[-2:]:
+                    target_candidates.append((float(ob_high), "bullish_ob"))
+                for fvg_bottom, fvg_top in list(getattr(fvg, "bearish_fvgs", []) or [])[-2:]:
+                    stop_candidates.append((float(fvg_top) + atr * 0.10, "bearish_fvg"))
+                for fvg_bottom, fvg_top in list(getattr(fvg, "bullish_fvgs", []) or [])[-2:]:
+                    target_candidates.append((float(fvg_top), "bullish_fvg"))
+                for name, level in fib_levels.items():
+                    level = float(level)
+                    if level > entry:
+                        stop_candidates.append((level + atr * 0.08, f"fib_resistance_{name}"))
+                    elif 0 < level < entry:
+                        target_candidates.append((level, f"fib_support_{name}"))
+
+        if orderbook_signal and getattr(orderbook_signal, "valid", False):
+            support_levels = list(getattr(orderbook_signal, "support_levels", []) or [])
+            resistance_levels = list(getattr(orderbook_signal, "resistance_levels", []) or [])
+
+            if action == "LONG":
+                for level in support_levels[:3]:
+                    price = float(level.get("price", 0.0) or 0.0)
+                    if 0 < price < entry:
+                        stop_candidates.append((price - atr * 0.08, f"key_support_{level.get('label', 'wall')}"))
+                for level in resistance_levels[:4]:
+                    price = float(level.get("price", 0.0) or 0.0)
+                    if price > entry:
+                        target_candidates.append((price, f"key_resistance_{level.get('label', 'wall')}"))
+            else:
+                for level in resistance_levels[:3]:
+                    price = float(level.get("price", 0.0) or 0.0)
+                    if price > entry:
+                        stop_candidates.append((price + atr * 0.08, f"key_resistance_{level.get('label', 'wall')}"))
+                for level in support_levels[:4]:
+                    price = float(level.get("price", 0.0) or 0.0)
+                    if 0 < price < entry:
+                        target_candidates.append((price, f"key_support_{level.get('label', 'wall')}"))
+
+        base_stop = entry - stop_distance if action == "LONG" else entry + stop_distance
+        base_target = (
+            entry + stop_distance * target_r_multiple
+            if action == "LONG"
+            else entry - stop_distance * target_r_multiple
+        )
+
+        if action == "LONG":
+            valid_stops = [
+                (price, basis) for price, basis in stop_candidates
+                if 0 < entry - price >= min_stop_distance and entry - price <= max_stop_distance
+            ]
+            valid_targets = [
+                (price, basis) for price, basis in target_candidates
+                if price > entry
+                and price - entry >= min_target_distance
+                and price - entry <= max_target_distance
+            ]
+            stop_price, stop_basis = (
+                max(valid_stops, key=lambda item: item[0])
+                if valid_stops else
+                (base_stop, "atr_guard")
+            )
+            take_profit, target_basis = (
+                min(valid_targets, key=lambda item: item[0])
+                if valid_targets else
+                (base_target, "atr_r_multiple")
+            )
+        else:
+            valid_stops = [
+                (price, basis) for price, basis in stop_candidates
+                if price > entry
+                and price - entry >= min_stop_distance
+                and price - entry <= max_stop_distance
+            ]
+            valid_targets = [
+                (price, basis) for price, basis in target_candidates
+                if 0 < price < entry
+                and entry - price >= min_target_distance
+                and entry - price <= max_target_distance
+            ]
+            stop_price, stop_basis = (
+                min(valid_stops, key=lambda item: item[0])
+                if valid_stops else
+                (base_stop, "atr_guard")
+            )
+            take_profit, target_basis = (
+                max(valid_targets, key=lambda item: item[0])
+                if valid_targets else
+                (base_target, "atr_r_multiple")
+            )
+
+        if action == "LONG":
+            risk_distance = max(0.0, entry - stop_price)
+        else:
+            risk_distance = max(0.0, stop_price - entry)
+        reward_distance = self._directional_distance(action, entry, take_profit)
+        if risk_distance <= 0:
+            risk_distance = max(stop_distance, entry * 0.0035)
+            stop_price = entry - risk_distance if action == "LONG" else entry + risk_distance
+            stop_basis = "atr_guard"
+        if reward_distance <= 0:
+            reward_distance = stop_distance * target_r_multiple
+            take_profit = entry + reward_distance if action == "LONG" else entry - reward_distance
+            target_basis = "atr_r_multiple"
+
+        price_action_tags: List[str] = []
+        if msb_type != "NONE":
+            price_action_tags.append(msb_type)
+        if structure_trend != "RANGING":
+            price_action_tags.append(structure_trend)
+        if action == "LONG" and strong_candle:
+            price_action_tags.append("bullish_candles")
+        elif action == "SHORT" and strong_candle:
+            price_action_tags.append("bearish_candles")
+        if indecision:
+            price_action_tags.append("indecision")
+
+        rr = reward_distance / risk_distance if risk_distance > 0 else 0.0
+        return {
+            "entry_price": round(entry, 6),
+            "stop_loss": round(stop_price, 6),
+            "take_profit": round(take_profit, 6),
+            "risk_per_unit": round(risk_distance, 6),
+            "reward_per_unit": round(reward_distance, 6),
+            "risk_pct": round(risk_distance / entry * 100, 3) if entry > 0 else 0.0,
+            "reward_pct": round(reward_distance / entry * 100, 3) if entry > 0 else 0.0,
+            "risk_reward_ratio": round(rr, 3),
+            "atr": round(atr, 6),
+            "atr_pct": round(atr_pct, 3),
+            "stop_atr_multiple": round(risk_distance / atr, 3) if atr > 0 else 0.0,
+            "target_atr_multiple": round(reward_distance / atr, 3) if atr > 0 else 0.0,
+            "target_r_multiple": round(target_r_multiple, 3),
+            "stop_basis": stop_basis,
+            "target_basis": target_basis,
+            "price_action_summary": ", ".join(price_action_tags),
+            "dominant_regime": dominant_regime,
+            "structure_trend": structure_trend,
+            "volatility_label": volatility_label,
+        }
 
     def generate_signal(
         self,
@@ -40,6 +334,7 @@ class AggressiveStrategy:
         memory_adjustment: float = 0.0,  # adjustment from TradeMemory
         instrument_type: str = "crypto",  # "crypto" | "index"
         funding_oi_signal=None,    # FundingOISignal from indicators/funding_oi_cvd.py
+        orderbook_signal=None,
     ):
         if not tech.valid:
             return TradeSignal(coin=tech.coin, action="FLAT", score=50.0,
@@ -220,6 +515,21 @@ class AggressiveStrategy:
         if advanced.atr.volatility_label == "extreme":
             raw_score = 50.0 + (raw_score - 50.0) * 0.65
 
+        # ── 13b. Orderbook + key-level overlay ─────────────────────────────
+        orderbook_score = 50.0
+        if orderbook_signal and getattr(orderbook_signal, "valid", False):
+            orderbook_score = float(getattr(orderbook_signal, "score", 50.0) or 50.0)
+            imbalance = float(getattr(orderbook_signal, "imbalance_ratio", 0.0) or 0.0)
+            influence = float(getattr(self.tcfg, "orderbook_score_influence", 0.35) or 0.35)
+            overlay = (orderbook_score - 50.0) * influence
+            raw_score += overlay
+            log.info(
+                f"[{tech.coin}] OrderbookLevels: score={orderbook_score:.1f} "
+                f"interaction={getattr(orderbook_signal, 'level_interaction', 'BETWEEN_LEVELS')} "
+                f"breakout={getattr(orderbook_signal, 'breakout_state', 'NONE')} "
+                f"imbalance={imbalance:+.2f}"
+            )
+
         raw_score = max(0.0, min(100.0, raw_score))
 
         # ── 14. Memory-based score adjustment ────────────────────────────────
@@ -248,6 +558,61 @@ class AggressiveStrategy:
             action = "SHORT"
         else:
             action = "FLAT"
+
+        # ── 15b. Key-level / orderbook guardrails ──────────────────────────
+        orderbook_guard_reason = ""
+        if orderbook_signal and getattr(orderbook_signal, "valid", False):
+            override_score = float(getattr(self.tcfg, "orderbook_override_score", 82.0) or 82.0)
+            short_override_score = max(0.0, 100.0 - override_score)
+            breakout_state = str(getattr(orderbook_signal, "breakout_state", "")).upper()
+            confirmed_bullish_breakout = breakout_state == "CONFIRMED_BULLISH_BREAKOUT"
+            confirmed_bearish_breakdown = breakout_state == "CONFIRMED_BEARISH_BREAKDOWN"
+            bullish_breakout_pressure = breakout_state in {
+                "PROBING_BULLISH_BREAKOUT",
+                "CONFIRMED_BULLISH_BREAKOUT",
+            }
+            bearish_breakdown_pressure = breakout_state in {
+                "PROBING_BEARISH_BREAKDOWN",
+                "CONFIRMED_BEARISH_BREAKDOWN",
+            }
+
+            if action == "LONG":
+                if getattr(orderbook_signal, "block_longs", False) and raw_score < override_score and not confirmed_bullish_breakout:
+                    orderbook_guard_reason = (
+                        f"LONG blocked by nearby resistance "
+                        f"{getattr(orderbook_signal, 'nearest_resistance', 0.0):,.2f} "
+                        f"({getattr(orderbook_signal, 'nearest_resistance_distance_pct', 0.0):.2f}% away)"
+                    )
+                    action = "FLAT"
+                elif bearish_breakdown_pressure and raw_score < override_score:
+                    orderbook_guard_reason = (
+                        f"LONG blocked — market is breaking down through key support "
+                        f"({getattr(orderbook_signal, 'breakout_state', 'NONE')})"
+                    )
+                    action = "FLAT"
+            elif action == "SHORT":
+                if getattr(orderbook_signal, "block_shorts", False) and raw_score > short_override_score and not confirmed_bearish_breakdown:
+                    orderbook_guard_reason = (
+                        f"SHORT blocked by nearby demand/support "
+                        f"{getattr(orderbook_signal, 'nearest_support', 0.0):,.2f} "
+                        f"({getattr(orderbook_signal, 'nearest_support_distance_pct', 0.0):.2f}% away)"
+                    )
+                    action = "FLAT"
+                elif bullish_breakout_pressure and raw_score > short_override_score:
+                    orderbook_guard_reason = (
+                        f"SHORT blocked — market is breaking above key resistance "
+                        f"({getattr(orderbook_signal, 'breakout_state', 'NONE')})"
+                    )
+                    action = "FLAT"
+            elif action == "FLAT":
+                if getattr(orderbook_signal, "favor_longs", False) and not getattr(orderbook_signal, "block_longs", False):
+                    if raw_score >= (long_thresh - 2.0) and orderbook_score >= 60.0:
+                        raw_score = max(raw_score, long_thresh + 0.5)
+                        action = "LONG"
+                elif getattr(orderbook_signal, "favor_shorts", False) and not getattr(orderbook_signal, "block_shorts", False):
+                    if raw_score <= (short_thresh + 2.0) and orderbook_score <= 40.0:
+                        raw_score = min(raw_score, short_thresh - 0.5)
+                        action = "SHORT"
 
         # ── 16. Confidence ───────────────────────────────────────────────────
         distance = abs(raw_score - 50.0)
@@ -294,22 +659,61 @@ class AggressiveStrategy:
             if instrument_type == "index":
                 flat_parts.append("Index: waiting for macro confirmation")
 
+            if orderbook_guard_reason:
+                flat_parts.insert(0, orderbook_guard_reason)
+            elif orderbook_signal and getattr(orderbook_signal, "valid", False):
+                if getattr(orderbook_signal, "level_interaction", "BETWEEN_LEVELS") != "BETWEEN_LEVELS":
+                    flat_parts.append(
+                        f"Key levels: {orderbook_signal.level_interaction.lower().replace('_', ' ')}"
+                    )
+                if getattr(orderbook_signal, "breakout_state", "NONE") != "NONE":
+                    flat_parts.append(
+                        f"Breakout state: {orderbook_signal.breakout_state.lower().replace('_', ' ')}"
+                    )
+
             flat_reason = " · ".join(flat_parts) if flat_parts else "Insufficient conviction"
             log.info(f"[{tech.coin}] ✋ FLAT — {flat_reason}")
 
         # ── 18. Stop-loss / take-profit ──────────────────────────────────────
         sl_price = tp_price = 0.0
+        trade_plan = {}
         if tech.price > 0 and action != "FLAT":
-            if action == "LONG":
-                sl_price = tech.price * (1 - self.tcfg.stop_loss_pct)
-                tp_price = tech.price * (1 + self.tcfg.take_profit_pct)
-            else:
-                sl_price = tech.price * (1 + self.tcfg.stop_loss_pct)
-                tp_price = tech.price * (1 - self.tcfg.take_profit_pct)
+            if getattr(self.tcfg, "dynamic_trade_planning", True):
+                trade_plan = self._build_trade_plan(
+                    tech=tech,
+                    advanced=advanced,
+                    action=action,
+                    confidence=confidence,
+                    regimes=regimes,
+                    candle_patterns=candle_patterns,
+                    orderbook_signal=orderbook_signal,
+                )
+                sl_price = float(trade_plan.get("stop_loss", 0.0) or 0.0)
+                tp_price = float(trade_plan.get("take_profit", 0.0) or 0.0)
+            if sl_price <= 0 or tp_price <= 0:
+                if action == "LONG":
+                    sl_price = tech.price * (1 - self.tcfg.stop_loss_pct)
+                    tp_price = tech.price * (1 + self.tcfg.take_profit_pct)
+                else:
+                    sl_price = tech.price * (1 + self.tcfg.stop_loss_pct)
+                    tp_price = tech.price * (1 - self.tcfg.take_profit_pct)
+                trade_plan = {
+                    "entry_price": round(float(tech.price), 6),
+                    "stop_loss": round(float(sl_price), 6),
+                    "take_profit": round(float(tp_price), 6),
+                    "risk_pct": round(abs(tech.price - sl_price) / tech.price * 100, 3),
+                    "reward_pct": round(abs(tp_price - tech.price) / tech.price * 100, 3),
+                    "risk_reward_ratio": round(
+                        abs(tp_price - tech.price) / max(abs(tech.price - sl_price), 1e-9), 3
+                    ),
+                    "stop_basis": "static_pct",
+                    "target_basis": "static_pct",
+                    "price_action_summary": "",
+                }
 
         reason = self._build_reason(
             tech, advanced, sentiment, raw_score, action,
-            vol_ratio, regimes, news_signal, candle_patterns
+            vol_ratio, regimes, news_signal, candle_patterns, orderbook_signal
         )
 
         log.info(
@@ -328,11 +732,12 @@ class AggressiveStrategy:
             stop_loss_price   = sl_price,
             take_profit_price = tp_price,
             instrument_type   = instrument_type,
+            trade_plan        = trade_plan,
         )
 
     def _build_reason(
         self, tech, advanced, sentiment, score, action,
-        vol_ratio, regimes=None, news_signal=None, candle_patterns=None
+        vol_ratio, regimes=None, news_signal=None, candle_patterns=None, orderbook_signal=None
     ):
         parts = []
         msb = advanced.msb
@@ -377,5 +782,15 @@ class AggressiveStrategy:
         # Candles
         if candle_patterns and candle_patterns.valid and candle_patterns.patterns:
             parts.append(f"Candles: {'+'.join(candle_patterns.patterns[:2])}")
+
+        if orderbook_signal and getattr(orderbook_signal, "valid", False):
+            interaction = str(getattr(orderbook_signal, "level_interaction", "BETWEEN_LEVELS") or "BETWEEN_LEVELS")
+            breakout = str(getattr(orderbook_signal, "breakout_state", "NONE") or "NONE")
+            if interaction != "BETWEEN_LEVELS":
+                parts.append(f"Levels: {interaction.replace('_', ' ').title()}")
+            if breakout != "NONE":
+                parts.append(f"Breakout: {breakout.replace('_', ' ').title()}")
+            imbalance = float(getattr(orderbook_signal, "imbalance_ratio", 0.0) or 0.0)
+            parts.append(f"Book imbalance {imbalance:+.2f}")
 
         return " | ".join(parts)

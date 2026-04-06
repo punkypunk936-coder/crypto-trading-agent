@@ -7,6 +7,7 @@ SL: 10%  |  TP: 50%  |  Trailing stop: 12%
 """
 
 import time
+import math
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, Optional, List
@@ -27,6 +28,7 @@ class OpenPosition:
     trailing_stop_price: float = 0.0
     opened_at: float = field(default_factory=time.time)
     exchange: str = ""
+    metadata: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -43,6 +45,7 @@ class OrderRequest:
     rejection_reason: str   = ""
     conviction_tier: str    = ""
     conviction_pct: float   = 0.0
+    is_scale_in: bool       = False
 
 
 class RiskManager:
@@ -108,31 +111,37 @@ class RiskManager:
           • Higher score  → larger position (more signals agree)
           • Better RL win rate on this coin/direction → further size boost
           • Known winning pattern → additional multiplier
+          • Extreme conviction without learned edge gets dampened to avoid euphoria
         Returns approved=False if any rule is violated.
         """
         # ── Maximum size for this trade ───────────────────
         max_trade_usd = portfolio_usd * self.cfg.max_position_pct
 
-        # ── Continuous conviction sizing (replaces hard tiers) ──────────
-        # conviction: 0 = score right at threshold (e.g. 65), 35 = score 100/0
-        # We map conviction linearly across the 10pt–35pt range.
+        # ── Continuous conviction sizing ────────────────────────────────
+        # conviction: score distance from neutral (50).
+        # We normalise from the minimum actionable threshold outward so
+        # capital scales smoothly instead of jumping across a few hard tiers.
         conviction = abs(signal_score - 50.0)  # 0-50 scale
+        entry_conviction_floor = min(
+            abs(self.cfg.signal_long_threshold - 50.0),
+            abs(self.cfg.signal_short_threshold - 50.0),
+        )
+        conviction_span = max(1.0, 50.0 - entry_conviction_floor)
+        conviction_norm = max(0.0, min(1.0, (conviction - entry_conviction_floor) / conviction_span))
+        base_floor = max(0.10, min(0.60, float(getattr(self.cfg, "conviction_size_floor", 0.30))))
+        curve = max(0.25, float(getattr(self.cfg, "conviction_size_curve", 0.85)))
+        confidence_factor = base_floor + (1.0 - base_floor) * math.pow(conviction_norm, curve)
 
         if conviction >= 40:          # score ≥90 or ≤10 — extreme conviction
             conviction_tier    = "EXTREME"
-            confidence_factor  = 1.00
         elif conviction >= 30:        # score ≥80 or ≤20 — high
             conviction_tier    = "HIGH"
-            confidence_factor  = 0.80
         elif conviction >= 20:        # score ≥70 or ≤30 — medium
             conviction_tier    = "MEDIUM"
-            confidence_factor  = 0.60
         elif conviction >= 15:        # score ≥65 or ≤35 — base+
             conviction_tier    = "BASE+"
-            confidence_factor  = 0.45
         else:                         # score 60-64 / 35-40 — minimum
             conviction_tier    = "BASE"
-            confidence_factor  = 0.30
 
         # ── RL win-rate boost: double down on proven setups ──────────────
         # If RL shows this coin+direction has a strong track record, size up.
@@ -149,8 +158,28 @@ class RiskManager:
         elif rl_win_rate <= 40:   # below average → -10% size
             rl_boost = -0.10
 
+        # ── Anti-euphoria dampener ───────────────────────────────────────
+        # Very strong raw conviction is not enough on its own; if the RL layer
+        # has not yet validated that setup family, shave size rather than
+        # letting a single flashy score consume max capital.
+        euphoria_penalty = 0.0
+        euphoria_threshold = float(getattr(self.cfg, "euphoria_conviction_threshold", 38.0))
+        rl_guard_floor = float(getattr(self.cfg, "euphoria_rl_guard_win_rate", 58.0))
+        max_euphoria_penalty = float(getattr(self.cfg, "max_euphoria_penalty", 0.20))
+        if conviction >= euphoria_threshold:
+            excess_norm = max(0.0, min(1.0, (conviction - euphoria_threshold) / max(1.0, 50.0 - euphoria_threshold)))
+            if rl_win_rate < rl_guard_floor:
+                history_gap = (rl_guard_floor - rl_win_rate) / max(rl_guard_floor, 1.0)
+                euphoria_penalty = max_euphoria_penalty * excess_norm * max(0.35, history_gap)
+            if rl_pattern_boost < 0:
+                euphoria_penalty += min(abs(rl_pattern_boost) * 0.50, max_euphoria_penalty * 0.50)
+            elif rl_pattern_boost > 0 and rl_win_rate >= rl_guard_floor:
+                euphoria_penalty *= 0.50
+            euphoria_penalty = min(max_euphoria_penalty, euphoria_penalty)
+
         # RL pattern boost: further reward recognized winning patterns
-        total_factor = min(confidence_factor * (1.0 + rl_boost + rl_pattern_boost), 1.10)
+        total_factor = confidence_factor * (1.0 + rl_boost + rl_pattern_boost - euphoria_penalty)
+        total_factor = max(base_floor * 0.80, min(total_factor, 1.10))
 
         size_usd = min(max_trade_usd * total_factor, self.cfg.max_trade_usd)
 
@@ -209,9 +238,6 @@ class RiskManager:
                         f"entry=${pos.entry_price:.2f} cur=${current_price:.2f}) "
                         f"| Conviction: {conviction_tier}"
                     )
-                    # Update the tracked position size so risk accounting stays accurate
-                    pos.size_usd  += scale_usd
-                    pos.size_coin += scale_coin
                     return OrderRequest(
                         coin            = coin,
                         direction       = direction,
@@ -224,6 +250,7 @@ class RiskManager:
                         approved        = True,
                         conviction_tier = conviction_tier + "_SCALEIN",
                         conviction_pct  = confidence_factor * 100,
+                        is_scale_in     = True,
                     )
                 else:
                     return OrderRequest(
@@ -251,14 +278,22 @@ class RiskManager:
 
         size_coin = size_usd / current_price if current_price > 0 else 0.0
 
-        rl_boost_str = f" RL+{rl_boost*100:+.0f}% pat+{rl_pattern_boost*100:.0f}%" if (rl_boost or rl_pattern_boost) else ""
+        sizing_parts = [f"conv={confidence_factor*100:.0f}%"]
+        if rl_boost:
+            sizing_parts.append(f"rl={rl_boost*100:+.0f}%")
+        if rl_pattern_boost:
+            sizing_parts.append(f"pattern={rl_pattern_boost*100:+.0f}%")
+        if euphoria_penalty:
+            sizing_parts.append(f"euphoria={euphoria_penalty*100:.0f}%")
+        sizing_summary = " ".join(sizing_parts)
         log.info(
             f"[{coin}] ✅ Order approved: {direction} "
             f"${size_usd:.2f} ({size_coin:.6f} coins) "
             f"SL=${stop_loss_price:.2f} TP=${take_profit_price:.2f} "
-            f"({self.cfg.stop_loss_pct*100:.0f}% SL / {self.cfg.take_profit_pct*100:.0f}% TP) "
+            f"({abs(current_price - stop_loss_price) / max(current_price, 1e-9) * 100:.1f}% SL / "
+            f"{abs(take_profit_price - current_price) / max(current_price, 1e-9) * 100:.1f}% TP) "
             f"| Conviction: {conviction_tier} ({conviction:.0f}/50) "
-            f"→ {total_factor*100:.0f}% size{rl_boost_str}"
+            f"→ {total_factor*100:.0f}% size [{sizing_summary}]"
         )
 
         return OrderRequest(
@@ -277,7 +312,7 @@ class RiskManager:
 
     # ── Position lifecycle ─────────────────────────────────────
 
-    def record_open(self, order: OrderRequest, exchange: str = ""):
+    def record_open(self, order: OrderRequest, exchange: str = "", metadata: Optional[dict] = None):
         # Calculate initial trailing stop price
         if order.direction == "LONG":
             trail_price = order.price * (1 - self.cfg.trailing_stop_pct)
@@ -294,13 +329,14 @@ class RiskManager:
             take_profit        = order.take_profit,
             trailing_stop_price= trail_price,
             exchange           = exchange,
+            metadata           = dict(metadata or {}),
         )
         self.positions[order.coin] = pos
         log.info(
             f"[{order.coin}] 📈 Position OPENED: {order.direction} "
             f"entry=${order.price:.2f} "
-            f"SL=${order.stop_loss:.2f} ({self.cfg.stop_loss_pct*100:.0f}%) "
-            f"TP=${order.take_profit:.2f} ({self.cfg.take_profit_pct*100:.0f}%)"
+            f"SL=${order.stop_loss:.2f} ({abs(order.price - order.stop_loss) / max(order.price, 1e-9) * 100:.1f}%) "
+            f"TP=${order.take_profit:.2f} ({abs(order.take_profit - order.price) / max(order.price, 1e-9) * 100:.1f}%)"
         )
 
     def restore_position(self, position: OpenPosition):
@@ -319,6 +355,41 @@ class RiskManager:
             log.info(f"Reconciled {len(positions)} live position(s) from exchange state")
         else:
             log.info("Reconciled exchange state: no live positions")
+
+    def record_scale_in_fill(self, order: OrderRequest, exchange: str = ""):
+        """Merge a confirmed scale-in fill into an existing position."""
+        pos = self.positions.get(order.coin)
+        if not pos:
+            self.record_open(order, exchange=exchange)
+            return
+
+        if pos.direction != order.direction:
+            raise ValueError(f"Cannot scale into {order.coin}: position direction mismatch")
+
+        new_size_usd = pos.size_usd + order.size_usd
+        new_size_coin = pos.size_coin + order.size_coin
+        if new_size_coin <= 0 or new_size_usd <= 0:
+            raise ValueError(f"Cannot scale into {order.coin}: invalid aggregate size")
+
+        weighted_entry = (
+            (pos.entry_price * pos.size_coin) + (order.price * order.size_coin)
+        ) / new_size_coin
+
+        pos.entry_price = weighted_entry
+        pos.size_usd = new_size_usd
+        pos.size_coin = new_size_coin
+        pos.stop_loss = order.stop_loss
+        pos.take_profit = order.take_profit
+        pos.exchange = exchange or pos.exchange
+        pos.trailing_stop_price = (
+            weighted_entry * (1 - self.cfg.trailing_stop_pct)
+            if pos.direction == "LONG"
+            else weighted_entry * (1 + self.cfg.trailing_stop_pct)
+        )
+        log.info(
+            f"[{order.coin}] 📈 Scale-in filled: new entry=${weighted_entry:.2f} "
+            f"size=${new_size_usd:.2f} exchange={pos.exchange or 'unknown'}"
+        )
 
     def record_close(self, coin: str, exit_price: float, reason: str = "signal",
                      was_take_profit: bool = False):

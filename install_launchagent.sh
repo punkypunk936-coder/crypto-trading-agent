@@ -2,11 +2,50 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-LABEL="com.manvinder.crypto-trading-agent"
+AGENT_LABEL="com.manvinder.crypto-trading-agent"
+DASHBOARD_LABEL="com.manvinder.crypto-trading-dashboard"
+LEGACY_LABEL="com.punky.trading-agent"
 RUNTIME_DIR="$HOME/Library/Application Support/crypto_trading_agent_runtime"
-PLIST_SRC="$SCRIPT_DIR/launchd/$LABEL.plist"
-PLIST_DEST="$HOME/Library/LaunchAgents/$LABEL.plist"
+AGENT_PLIST_SRC="$SCRIPT_DIR/launchd/$AGENT_LABEL.plist"
+AGENT_PLIST_DEST="$HOME/Library/LaunchAgents/$AGENT_LABEL.plist"
+DB_PLIST_SRC="$SCRIPT_DIR/launchd/$DASHBOARD_LABEL.plist"
+DB_PLIST_DEST="$HOME/Library/LaunchAgents/$DASHBOARD_LABEL.plist"
 LOG_DIR="$RUNTIME_DIR/logs"
+
+select_python_bootstrap() {
+  local explicit="${PYTHON_BOOTSTRAP_BIN:-}"
+  local candidates=()
+  if [[ -n "$explicit" ]]; then
+    candidates+=("$explicit")
+  fi
+  candidates+=(python3.14 python3.13 python3.12 python3.11 python3.10 python3)
+
+  local candidate=""
+  local resolved=""
+  for candidate in "${candidates[@]}"; do
+    if [[ -x "$candidate" ]]; then
+      resolved="$candidate"
+    elif command -v "$candidate" >/dev/null 2>&1; then
+      resolved="$(command -v "$candidate")"
+    else
+      continue
+    fi
+    if "$resolved" - <<'PY' >/dev/null 2>&1
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 10) else 1)
+PY
+    then
+      printf '%s\n' "$resolved"
+      return 0
+    fi
+  done
+  return 1
+}
+
+PYTHON_BOOTSTRAP_BIN="$(select_python_bootstrap)" || {
+  echo "Python 3.10+ is required to install the trading agent runtime." >&2
+  exit 1
+}
 
 mkdir -p "$HOME/Library/LaunchAgents"
 mkdir -p "$LOG_DIR"
@@ -21,19 +60,43 @@ rsync -a \
   --exclude "netlify-dashboard/node_modules" \
   "$SCRIPT_DIR/" "$RUNTIME_DIR/"
 
+if [[ -x "$RUNTIME_DIR/.venv/bin/python" ]] && ! "$RUNTIME_DIR/.venv/bin/python" - <<'PY' >/dev/null 2>&1
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 10) else 1)
+PY
+then
+  rm -rf "$RUNTIME_DIR/.venv"
+fi
+
 if [[ ! -x "$RUNTIME_DIR/.venv/bin/python" ]]; then
-  /usr/bin/python3 -m venv "$RUNTIME_DIR/.venv"
+  "$PYTHON_BOOTSTRAP_BIN" -m venv "$RUNTIME_DIR/.venv"
 fi
 "$RUNTIME_DIR/.venv/bin/pip" install -q -r "$RUNTIME_DIR/requirements.txt"
 
-cp "$PLIST_SRC" "$PLIST_DEST"
+: > "$LOG_DIR/launchd.stdout.log"
+: > "$LOG_DIR/launchd.stderr.log"
+: > "$LOG_DIR/dashboard.stdout.log"
+: > "$LOG_DIR/dashboard.stderr.log"
 
-launchctl bootout "gui/$(id -u)" "$PLIST_DEST" 2>/dev/null || true
-launchctl bootstrap "gui/$(id -u)" "$PLIST_DEST"
-launchctl enable "gui/$(id -u)/$LABEL"
-launchctl kickstart -k "gui/$(id -u)/$LABEL"
+cp "$AGENT_PLIST_SRC" "$AGENT_PLIST_DEST"
+cp "$DB_PLIST_SRC" "$DB_PLIST_DEST"
 
-echo "Installed and started $LABEL"
-echo "Status: launchctl print gui/$(id -u)/$LABEL"
-echo "Logs: $LOG_DIR/launchd.stdout.log and $LOG_DIR/launchd.stderr.log"
+launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/$LEGACY_LABEL.plist" 2>/dev/null || true
+launchctl disable "gui/$(id -u)/$LEGACY_LABEL" 2>/dev/null || true
+
+for LABEL in "$AGENT_LABEL" "$DASHBOARD_LABEL"; do
+  launchctl enable "gui/$(id -u)/$LABEL"
+done
+launchctl bootout "gui/$(id -u)" "$AGENT_PLIST_DEST" 2>/dev/null || true
+launchctl bootout "gui/$(id -u)" "$DB_PLIST_DEST" 2>/dev/null || true
+launchctl bootstrap "gui/$(id -u)" "$AGENT_PLIST_DEST"
+launchctl bootstrap "gui/$(id -u)" "$DB_PLIST_DEST"
+launchctl kickstart -k "gui/$(id -u)/$AGENT_LABEL"
+launchctl kickstart -k "gui/$(id -u)/$DASHBOARD_LABEL"
+
+echo "Installed and started $AGENT_LABEL"
+echo "Installed and started $DASHBOARD_LABEL"
+echo "Status: launchctl print gui/$(id -u)/$AGENT_LABEL"
+echo "Status: launchctl print gui/$(id -u)/$DASHBOARD_LABEL"
+echo "Logs: $LOG_DIR/launchd.stdout.log, $LOG_DIR/launchd.stderr.log, $LOG_DIR/dashboard.stdout.log, $LOG_DIR/dashboard.stderr.log"
 echo "Runtime copy: $RUNTIME_DIR"

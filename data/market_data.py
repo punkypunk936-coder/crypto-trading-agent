@@ -8,22 +8,26 @@ HYPE is Hyperliquid's native token and trades on Hyperliquid itself.
 The API ticker is "HYPE" — same format as BTC/ETH/SOL.
 Hyperliquid's candleSnapshot API supports it directly.
 
-Index instruments (SP500 etc.)
+Index / macro instruments (SP500, BRENT, WTI etc.)
 ───────────────────────────────
-SP500 is a Trade[XYZ] product on Hyperliquid (xyz:SP500). Their standard
-candleSnapshot API does not serve Trade[XYZ] tickers. For price data we fall
-back to Yahoo Finance (free, no API key). Price feed: ^GSPC.
+These instruments are not part of the current Lighter execution venue. Their
+price data comes from Yahoo Finance (free, no API key) so the agent can still
+analyse macro / commodity context in the same loop.
 """
 
+import asyncio
+import json
 import time
 import requests
 import pandas as pd
 from typing import Optional
 from logger import get_logger
+from exchanges.lighter_client import COIN_TO_MARKET_ID
 
 log = get_logger("market_data")
 
 HL_INFO_URL = "https://api.hyperliquid.xyz/info"
+LIGHTER_API_BASE_URL = "https://mainnet.zklighter.elliot.ai"
 
 # Simple in-memory cache: coin → (timestamp_fetched, DataFrame)
 _cache: dict = {}
@@ -37,10 +41,15 @@ TICKER_MAP = {
     "SOL":  "SOL",
 }
 
-# Index instruments not served by Hyperliquid's candleSnapshot API.
+LIGHTER_INTERVALS = {"1m", "5m", "15m", "1h", "4h", "12h", "1d"}
+
+# Index / macro instruments not served by Lighter.
 # Map our internal coin name → Yahoo Finance ticker for fallback OHLCV.
 INDEX_YAHOO_MAP = {
     "SP500": "^GSPC",   # S&P 500 — Trade[XYZ] on Hyperliquid
+    "BRENT": "BZ=F",    # Brent crude futures
+    "WTI":   "CL=F",    # WTI crude futures
+    "CL":    "CL=F",    # Alias for WTI
     "NDX":   "^IXIC",
     "DJI":   "^DJI",
     "VIX":   "^VIX",
@@ -59,6 +68,107 @@ _YF_INTERVAL_MAP = {
 }
 
 
+def _run_async(coro):
+    return asyncio.run(coro)
+
+
+async def _lighter_api_get(method_name: str, **kwargs):
+    import certifi
+    import lighter
+
+    api_client = lighter.ApiClient(
+        lighter.Configuration(host=LIGHTER_API_BASE_URL, ssl_ca_cert=certifi.where())
+    )
+    try:
+        api_name = "CandlestickApi" if method_name == "candles_without_preload_content" else "OrderApi"
+        api = getattr(lighter, api_name)(api_client)
+        response = await getattr(api, method_name)(**kwargs)
+        return json.loads(await response.text())
+    finally:
+        await api_client.close()
+
+
+def _fetch_candles_lighter(coin: str, interval: str, lookback: int) -> Optional[pd.DataFrame]:
+    market_id = COIN_TO_MARKET_ID.get(coin.upper())
+    if market_id is None:
+        return None
+
+    if interval not in LIGHTER_INTERVALS:
+        log.warning(f"[{coin}] Lighter does not support interval {interval} — using Hyperliquid legacy feed")
+        return None
+
+    cache_key = f"{coin.upper()}_{interval}_lighter"
+    now = time.time()
+    if cache_key in _cache:
+        ts, df = _cache[cache_key]
+        if now - ts < CACHE_TTL_SECONDS:
+            log.debug(f"[{coin}] Lighter candle cache hit ({interval})")
+            return df
+
+    try:
+        payload = _run_async(
+            _lighter_api_get(
+                "candles_without_preload_content",
+                market_id=market_id,
+                resolution=interval,
+                start_timestamp=int(now - _interval_to_seconds(interval) * max(lookback, 1)),
+                end_timestamp=int(now),
+                count_back=max(lookback, 1),
+                set_timestamp_to_end=True,
+            )
+        )
+    except Exception as e:
+        log.error(f"[{coin}] Lighter candle fetch failed: {e}")
+        return None
+
+    candles = payload.get("c", []) or []
+    rows = []
+    for candle in candles:
+        try:
+            rows.append({
+                "timestamp": pd.to_datetime(int(candle["t"]), unit="ms", utc=True),
+                "open": float(candle["o"]),
+                "high": float(candle["h"]),
+                "low": float(candle["l"]),
+                "close": float(candle["c"]),
+                "volume": float(candle.get("v", 0) or 0),
+                "trades": int(candle.get("i", 0) or 0),
+            })
+        except (KeyError, TypeError, ValueError):
+            continue
+
+    if not rows:
+        log.warning(f"[{coin}] Lighter returned no valid candles")
+        return None
+
+    df = pd.DataFrame(rows).sort_values("timestamp").tail(lookback).reset_index(drop=True)
+    _cache[cache_key] = (now, df)
+    log.debug(f"[{coin}] Lighter candles: {len(df)} rows ({interval})")
+    return df
+
+
+def _get_current_price_lighter(coin: str) -> Optional[float]:
+    market_id = COIN_TO_MARKET_ID.get(coin.upper())
+    if market_id is None:
+        return None
+    try:
+        payload = _run_async(
+            _lighter_api_get(
+                "recent_trades_without_preload_content",
+                market_id=market_id,
+                limit=1,
+            )
+        )
+        trades = payload.get("trades", []) or []
+        if not trades:
+            log.warning(f"[{coin}] Lighter returned no recent trades")
+            return None
+        return float(trades[0]["price"])
+    except Exception as e:
+        log.error(f"[{coin}] Lighter price fetch failed: {e}")
+        return None
+
+
 def fetch_candles(
     coin: str,
     interval: str = "1h",
@@ -75,6 +185,12 @@ def fetch_candles(
     Or None if the request fails.
     """
     coin_upper = coin.upper()
+
+    # ── Lighter-supported crypto markets use Lighter public data ───────────
+    if coin_upper in COIN_TO_MARKET_ID:
+        lighter_df = _fetch_candles_lighter(coin_upper, interval, lookback)
+        if lighter_df is not None:
+            return lighter_df
 
     # ── Index instruments: route to Yahoo Finance ──────────────────────────
     if coin_upper in INDEX_YAHOO_MAP:
@@ -228,6 +344,12 @@ def get_current_price(coin: str) -> Optional[float]:
     """
     coin_upper = coin.upper()
 
+    # ── Lighter-supported crypto markets use Lighter public data ───────────
+    if coin_upper in COIN_TO_MARKET_ID:
+        lighter_price = _get_current_price_lighter(coin_upper)
+        if lighter_price is not None:
+            return lighter_price
+
     # ── Index: Yahoo Finance latest close ─────────────────────────────────
     if coin_upper in INDEX_YAHOO_MAP:
         return _get_index_price_yahoo(coin_upper)
@@ -283,3 +405,7 @@ def _interval_to_ms(interval: str) -> int:
         return num * unit_map[unit] * 1000
     except Exception:
         return 3600 * 1000   # default to 1h
+
+
+def _interval_to_seconds(interval: str) -> int:
+    return max(1, _interval_to_ms(interval) // 1000)

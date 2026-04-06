@@ -72,6 +72,7 @@ class PendingOrder:
     cycles_waiting: int = 0
     placed_at: float = field(default_factory=time.time)
     reason: str = "re_entry"   # "re_entry" | "initial_limit" | etc.
+    metadata: dict = field(default_factory=dict)
 
     def age_cycles(self) -> int:
         return self.cycles_waiting

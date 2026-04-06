@@ -317,6 +317,72 @@
     min-width: 22px;
     box-shadow: 0 2px 10px rgba(0, 230, 138, 0.3);
   }
+  .open-count-flat {
+    background: rgba(255,255,255,0.08);
+    color: var(--text-secondary);
+    box-shadow: none;
+  }
+
+  /* ── Status Hero Cards ─────────────────── */
+  .status-hero {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .status-main {
+    min-width: 0;
+  }
+  .status-value {
+    font-size: 28px;
+    font-weight: 800;
+    font-family: var(--mono);
+    letter-spacing: -0.5px;
+  }
+  .status-detail {
+    margin-top: 8px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .status-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+  .status-chip {
+    padding: 7px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    font-family: var(--mono);
+    letter-spacing: 0.4px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.04);
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+  .status-chip-green {
+    background: var(--green-dim);
+    color: var(--green);
+    border-color: rgba(0,230,138,0.24);
+  }
+  .status-chip-red {
+    background: var(--red-dim);
+    color: var(--red);
+    border-color: rgba(255,77,106,0.24);
+  }
+  .status-chip-blue {
+    background: var(--blue-dim);
+    color: var(--blue);
+    border-color: rgba(91,140,255,0.24);
+  }
+  .status-chip-yellow {
+    background: var(--yellow-dim);
+    color: var(--yellow);
+    border-color: rgba(255,184,77,0.24);
+  }
 
   /* ── Position Cards ─────────────────────── */
   .pos-grid {
@@ -389,8 +455,12 @@
   .signal-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
     margin-bottom: 8px;
+    gap: 12px;
+  }
+  .signal-header-left {
+    min-width: 0;
   }
   .signal-coin {
     font-weight: 700;
@@ -407,10 +477,179 @@
     font-weight: 600;
     font-size: 13px;
   }
+  .signal-mode {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 8px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    font-family: var(--mono);
+    letter-spacing: 0.4px;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .signal-mode-tradable {
+    color: var(--green);
+    background: var(--green-dim);
+    border-color: rgba(0,230,138,0.22);
+  }
+  .signal-mode-watch {
+    color: var(--blue);
+    background: var(--blue-dim);
+    border-color: rgba(91,140,255,0.22);
+  }
   .signal-extras {
     font-size: 10px;
     color: var(--muted);
     font-family: var(--mono);
+  }
+  .signal-reason {
+    margin: 10px 0 12px;
+    color: var(--text-secondary);
+    line-height: 1.45;
+    font-size: 12px;
+  }
+  .signal-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .signal-stat {
+    border: 1px solid rgba(255,255,255,0.05);
+    background: rgba(255,255,255,0.02);
+    border-radius: 10px;
+    padding: 10px;
+  }
+  .signal-stat-label {
+    display: block;
+    color: var(--muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    margin-bottom: 4px;
+  }
+  .signal-stat-value {
+    font-family: var(--mono);
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--text);
+  }
+  .decision-board {
+    display: grid;
+    gap: 16px;
+  }
+  .decision-group-title {
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.1px;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+  .decision-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+  }
+  .decision-card {
+    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.025);
+    border-radius: 14px;
+    padding: 14px;
+  }
+  .decision-card-tradable {
+    background: rgba(255,255,255,0.035);
+  }
+  .decision-card-long {
+    border-color: rgba(0,230,138,0.26);
+    box-shadow: 0 0 20px rgba(0,230,138,0.08);
+  }
+  .decision-card-short {
+    border-color: rgba(255,77,106,0.26);
+    box-shadow: 0 0 20px rgba(255,77,106,0.08);
+  }
+  .decision-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .decision-coin {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+  }
+  .decision-mode {
+    font-size: 10px;
+    font-weight: 700;
+    font-family: var(--mono);
+    color: var(--text-secondary);
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+  }
+  .decision-action {
+    font-size: 26px;
+    font-weight: 900;
+    font-family: var(--mono);
+    line-height: 1;
+    letter-spacing: 0.8px;
+    margin-bottom: 8px;
+  }
+  .decision-meta {
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-family: var(--mono);
+    margin-bottom: 10px;
+  }
+  .decision-note {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .decision-guard {
+    margin-top: 10px;
+    font-size: 11px;
+    line-height: 1.4;
+    font-family: var(--mono);
+    color: var(--yellow);
+  }
+  .decision-guard.red {
+    color: var(--red);
+  }
+  .decision-rl-note {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .watchlist-strip {
+    display: grid;
+    gap: 8px;
+  }
+  .watchlist-row {
+    display: grid;
+    grid-template-columns: 90px 90px 1fr;
+    gap: 12px;
+    align-items: center;
+    border: 1px solid rgba(255,255,255,0.05);
+    background: rgba(255,255,255,0.02);
+    border-radius: 12px;
+    padding: 10px 12px;
+  }
+  .watchlist-coin {
+    font-weight: 700;
+  }
+  .watchlist-note {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.35;
   }
   .bar-track {
     width: 100%;
@@ -567,6 +806,11 @@
     .card-value { font-size: 22px; }
     .pos-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
     .halt-banner { flex-direction: column; text-align: center; }
+    .status-hero { flex-direction: column; }
+    .status-chips { justify-content: flex-start; }
+    .signal-grid { grid-template-columns: 1fr; }
+    .decision-grid { grid-template-columns: 1fr; }
+    .watchlist-row { grid-template-columns: 1fr; gap: 6px; }
   }
   @media (max-width: 380px) {
     .grid-4 { grid-template-columns: 1fr; }
@@ -616,7 +860,7 @@
   </div>
   <div class="card">
     <div class="kpi-icon purple-bg">🔄</div>
-    <div class="card-label">Open / Closed</div>
+    <div class="card-label">Position Status</div>
     <div class="card-value" id="trade-count">--</div>
     <div class="card-sub" id="wins-losses">Wins / Losses: --</div>
   </div>
@@ -625,6 +869,37 @@
     <div class="card-label">Cycle / Sentiment</div>
     <div class="card-value" id="cycle">--</div>
     <div class="card-sub" id="sentiment">F&amp;G: --</div>
+  </div>
+</div>
+
+<!-- Position + Decision Snapshot -->
+<div class="grid-2">
+  <div class="card" id="position-status-card">
+    <div class="card-label">📍 Position Status</div>
+    <div class="status-hero">
+      <div class="status-main">
+        <div class="status-value" id="position-status">FLAT</div>
+        <div class="status-detail" id="position-status-detail">Waiting for state...</div>
+      </div>
+      <div class="status-chips">
+        <span class="status-chip" id="position-open-chip">0 open</span>
+        <span class="status-chip" id="position-closed-chip">0 closed</span>
+      </div>
+    </div>
+  </div>
+  <div class="card" id="brain-status-card">
+    <div class="card-label">🧠 Brain Snapshot</div>
+    <div class="status-hero">
+      <div class="status-main">
+        <div class="status-value" id="brain-status">FLAT / WAIT</div>
+        <div class="status-detail" id="brain-status-detail">Waiting for first decision...</div>
+      </div>
+      <div class="status-chips">
+        <span class="status-chip" id="brain-long-chip">0 long</span>
+        <span class="status-chip" id="brain-short-chip">0 short</span>
+        <span class="status-chip" id="brain-flat-chip">0 flat</span>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -648,7 +923,7 @@
 <!-- Signals + Pending -->
 <div class="grid-2">
   <div class="card">
-    <div class="card-label">📡 Signal Scores</div>
+    <div class="card-label">🧠 Brain Decision Board</div>
     <div id="signals-body">
       <div class="empty-state">Waiting for first cycle...</div>
     </div>
@@ -718,7 +993,19 @@
 const fmt  = (n, dec=2) => n == null ? '--' : Number(n).toLocaleString('en-US', {minimumFractionDigits:dec, maximumFractionDigits:dec});
 const fmtP = (n) => n == null ? '--' : (n >= 0 ? '+' : '') + fmt(n) + '%';
 const fmtD = (n) => n == null ? '--' : (n >= 0 ? '+$' : '-$') + fmt(Math.abs(n));
+const fmtSigned = (n, dec=1) => n == null ? '--' : (n >= 0 ? '+' : '') + fmt(n, dec);
 const cls  = (n) => n > 0 ? 'green' : n < 0 ? 'red' : 'muted';
+const esc  = (v) => String(v == null ? '' : v)
+  .replaceAll('&', '&amp;')
+  .replaceAll('<', '&lt;')
+  .replaceAll('>', '&gt;')
+  .replaceAll('"', '&quot;')
+  .replaceAll("'", '&#39;');
+const shortText = (v, max=120) => {
+  const text = String(v == null ? '' : v).trim();
+  return text.length > max ? text.slice(0, max - 1) + '…' : text;
+};
+let latestControl = null;
 
 function toggleTrades() {
   const wrap = document.getElementById('trades-wrap');
@@ -742,9 +1029,24 @@ async function refresh() {
     const s    = data.state;
     const st   = data.stats;
     const tr   = data.trades;
+    const runtime = data.runtime || {};
+    latestControl = data.control || null;
 
     // Header
-    document.getElementById('last-update').textContent = 'Updated: ' + data.server_time;
+    let updateText = 'Updated: ' + data.server_time;
+    if (runtime.state_age_seconds != null) {
+      updateText += ' • age ' + runtime.state_age_seconds + 's';
+    }
+    if (runtime.stale) {
+      updateText += ' • STALE';
+    }
+    const power = (s && s.power) || {};
+    if (power.available) {
+      const source = power.source || (power.on_ac_power ? 'AC' : 'Battery');
+      const battery = power.battery_pct != null ? ` ${power.battery_pct}%` : '';
+      updateText += ` • ${source}${battery}`;
+    }
+    document.getElementById('last-update').textContent = updateText;
     const badge = document.getElementById('mode-badge');
     if (s.status === 'offline') {
       badge.className = 'badge badge-offline'; badge.textContent = 'OFFLINE';
@@ -752,6 +1054,17 @@ async function refresh() {
       badge.className = 'badge badge-dry'; badge.textContent = 'DRY RUN';
     } else {
       badge.className = 'badge badge-live'; badge.textContent = 'LIVE';
+    }
+
+    const killBtn = document.getElementById('kill-btn');
+    if (latestControl && latestControl.kill && latestControl.kill.active) {
+      killBtn.textContent = '🛑 KILL ACTIVE — CLICK TO CLEAR';
+      killBtn.className = 'kill-btn confirming';
+      killConfirm = false;
+    } else if (!killConfirm) {
+      killBtn.textContent = '⚠️ KILL SWITCH';
+      killBtn.className = 'kill-btn';
+      killBtn.disabled = false;
     }
 
     // Circuit Breaker Banner
@@ -797,20 +1110,77 @@ async function refresh() {
 
     const openN = (s.positions || []).length;
     const closedN = st.total || 0;
-    document.getElementById('trade-count').textContent = openN + ' / ' + closedN;
-    document.getElementById('wins-losses').textContent = 'Wins: ' + (st.wins||0) + '  Losses: ' + (st.losses||0);
+    document.getElementById('trade-count').textContent = openN + ' OPEN';
+    document.getElementById('wins-losses').textContent = 'Closed: ' + closedN + ' • Wins: ' + (st.wins||0) + ' • Losses: ' + (st.losses||0);
 
     document.getElementById('cycle').textContent = '#' + (s.cycle_number || '--');
     const sent = s.sentiment || {};
     document.getElementById('sentiment').textContent = 'F&G: ' + (sent.label||'--') + ' (' + (sent.raw_score||'--') + ')';
 
+    // Position status snapshot
+    const positionCard = document.getElementById('position-status-card');
+    const positionMain = document.getElementById('position-status');
+    const positionDetail = document.getElementById('position-status-detail');
+    const openChip = document.getElementById('position-open-chip');
+    const closedChip = document.getElementById('position-closed-chip');
+    openChip.textContent = openN + ' open';
+    closedChip.textContent = closedN + ' closed';
+    openChip.className = 'status-chip ' + (openN ? 'status-chip-green' : 'status-chip-yellow');
+    closedChip.className = 'status-chip status-chip-blue';
+    if (openN) {
+      const openSummary = (s.positions || []).map(p => p.coin + ' ' + p.direction).join(' • ');
+      positionCard.className = 'card card-highlight';
+      positionMain.textContent = openN === 1 ? '1 OPEN POSITION' : openN + ' OPEN POSITIONS';
+      positionMain.className = 'status-value green';
+      positionDetail.textContent = openSummary || 'Exposure is active.';
+    } else {
+      positionCard.className = 'card';
+      positionMain.textContent = 'FLAT';
+      positionMain.className = 'status-value muted';
+      positionDetail.textContent = '0 open positions right now. The agent is flat and waiting for a valid entry.';
+    }
+
+    // Brain snapshot
+    const decisionSummary = s.decision_summary || {};
+    const lead = decisionSummary.lead || null;
+    const brainCard = document.getElementById('brain-status-card');
+    const brainMain = document.getElementById('brain-status');
+    const brainDetail = document.getElementById('brain-status-detail');
+    const brainLong = document.getElementById('brain-long-chip');
+    const brainShort = document.getElementById('brain-short-chip');
+    const brainFlat = document.getElementById('brain-flat-chip');
+    const longCount = decisionSummary.long_count || 0;
+    const shortCount = decisionSummary.short_count || 0;
+    const flatCount = decisionSummary.flat_count || 0;
+    brainLong.textContent = longCount + ' long';
+    brainShort.textContent = shortCount + ' short';
+    brainFlat.textContent = flatCount + ' flat';
+    brainLong.className = 'status-chip ' + (longCount ? 'status-chip-green' : '');
+    brainShort.className = 'status-chip ' + (shortCount ? 'status-chip-red' : '');
+    brainFlat.className = 'status-chip ' + (flatCount ? 'status-chip-yellow' : '');
+    if (lead) {
+      const leadAction = lead.action || 'FLAT';
+      const leadCls = leadAction === 'LONG' ? 'green' : leadAction === 'SHORT' ? 'red' : 'muted';
+      const leadReason = shortText(lead.reason || 'No high-conviction setup yet.', 140);
+      brainCard.className = 'card' + (leadAction === 'FLAT' ? '' : ' card-highlight');
+      brainMain.textContent = lead.coin + ' ' + leadAction;
+      brainMain.className = 'status-value ' + leadCls;
+      brainDetail.textContent = leadReason + ' • Score ' + fmt(lead.score, 1) + ' • ' + (lead.confidence || 'LOW');
+    } else {
+      brainCard.className = 'card';
+      brainMain.textContent = 'FLAT / WAIT';
+      brainMain.className = 'status-value muted';
+      brainDetail.textContent = 'No signal decisions published yet.';
+    }
+
     // Open Trades
     const openBody = document.getElementById('open-trades-body');
     const countBadge = document.getElementById('open-count');
     const openCard = document.getElementById('open-trades-card');
+    countBadge.style.display = 'inline-flex';
     if (s.positions && s.positions.length) {
-      countBadge.style.display = 'inline-flex';
       countBadge.textContent = s.positions.length;
+      countBadge.className = 'open-count';
       openCard.className = 'card card-highlight';
       openBody.innerHTML = s.positions.map(p => {
         const pnlCls = cls(p.unrealised_pnl);
@@ -832,31 +1202,133 @@ async function refresh() {
         '</div>';
       }).join('');
     } else {
-      countBadge.style.display = 'none';
+      countBadge.textContent = '0';
+      countBadge.className = 'open-count open-count-flat';
       openCard.className = 'card';
-      openBody.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div>FLAT — no open positions</div>';
+      openBody.innerHTML =
+        '<div class="empty-state">' +
+          '<div class="empty-icon">📭</div>' +
+          '<div><strong>FLAT — no open positions</strong></div>' +
+          '<div style="margin-top:8px;">The agent is flat right now. Watch the Brain Decision Board for the next LONG / SHORT call.</div>' +
+        '</div>';
     }
 
-    // Signals
+    // Brain decision board
     const sigEl = document.getElementById('signals-body');
     const sigs  = s.signals || {};
     if (Object.keys(sigs).length) {
-      sigEl.innerHTML = Object.entries(sigs).map(([coin, sig]) => {
+      const entries = Object.entries(sigs)
+        .sort((a, b) => {
+          const aSig = a[1] || {};
+          const bSig = b[1] || {};
+          const aRank = [
+            (aSig.execution_mode || '') === 'tradable' ? 1 : 0,
+            (aSig.action || 'FLAT') === 'FLAT' ? 0 : 1,
+            Math.abs((aSig.score || 50) - 50),
+          ];
+          const bRank = [
+            (bSig.execution_mode || '') === 'tradable' ? 1 : 0,
+            (bSig.action || 'FLAT') === 'FLAT' ? 0 : 1,
+            Math.abs((bSig.score || 50) - 50),
+          ];
+          for (let i = 0; i < aRank.length; i += 1) {
+            if (aRank[i] !== bRank[i]) return bRank[i] - aRank[i];
+          }
+          return a[0].localeCompare(b[0]);
+        });
+      const tradableSet = new Set(((s.config || {}).coins || []).map((coin) => String(coin).toUpperCase()));
+      const tradableEntries = entries.filter(([coin, sig]) => tradableSet.has(String(coin).toUpperCase()) || (sig.execution_mode || '') === 'tradable');
+      const watchEntries = entries.filter(([coin, sig]) => !(tradableSet.has(String(coin).toUpperCase()) || (sig.execution_mode || '') === 'tradable'));
+      const renderTradable = ([coin, sig]) => {
         const score = sig.score || 50;
         const action = sig.action || 'FLAT';
-        const barCls = action === 'LONG' ? 'bar-long' : action === 'SHORT' ? 'bar-short' : 'bar-flat';
         const actCls = action === 'LONG' ? 'green' : action === 'SHORT' ? 'red' : 'muted';
-        return '<div class="signal-item">' +
-          '<div class="signal-header">' +
-            '<div><span class="signal-coin">' + coin + '</span>' +
-              '<span class="signal-action ' + actCls + '">' + action + '</span>' +
-              '<span class="signal-extras"> ' + (sig.confidence||'') + (sig.mtf_bias ? ' HTF:'+sig.mtf_bias : '') + '</span>' +
-            '</div>' +
-            '<span class="signal-score ' + actCls + '">' + fmt(score,1) + '</span>' +
+        const cardCls = action === 'LONG' ? 'decision-card decision-card-tradable decision-card-long'
+          : action === 'SHORT' ? 'decision-card decision-card-tradable decision-card-short'
+          : 'decision-card decision-card-tradable';
+        const note = shortText(sig.flat_reason || sig.decision_reason || sig.reason || 'No decisive setup yet.', 120);
+        const latestFailure = shortText(sig.rl_latest_failure_summary || '', 110);
+        const topCauses = (sig.rl_top_root_causes || []).slice(0, 2);
+        const guardReasons = (sig.rl_guard_reasons || []).slice(0, 2);
+        let pauseCycles = sig.rl_pause_cycles || 0;
+        let thresholdBoost = sig.rl_threshold_boost || 0;
+        let guardLabel = action;
+        let fallbackGuard = null;
+        if (!pauseCycles && !thresholdBoost) {
+          const longGuard = sig.rl_long_guard || {};
+          const shortGuard = sig.rl_short_guard || {};
+          if ((longGuard.pause_cycles || 0) > 0 || (longGuard.threshold_boost || 0) >= (shortGuard.threshold_boost || 0)) {
+            fallbackGuard = {label: 'LONG', guard: longGuard};
+          } else if ((shortGuard.pause_cycles || 0) > 0 || (shortGuard.threshold_boost || 0) > 0) {
+            fallbackGuard = {label: 'SHORT', guard: shortGuard};
+          }
+          if (fallbackGuard) {
+            guardLabel = fallbackGuard.label;
+            pauseCycles = fallbackGuard.guard.pause_cycles || 0;
+            thresholdBoost = fallbackGuard.guard.threshold_boost || 0;
+          }
+        }
+        const effectiveReasons = guardReasons.length
+          ? guardReasons
+          : ((fallbackGuard && fallbackGuard.guard && fallbackGuard.guard.reasons) || []).slice(0, 2);
+        let guardHtml = '';
+        if (pauseCycles > 0) {
+          guardHtml = '<div class="decision-guard red">' + esc(guardLabel) + ' paused ' + pauseCycles + 'c'
+            + (effectiveReasons.length ? ' • ' + esc(effectiveReasons.join(', ')) : '')
+            + '</div>';
+        } else if (thresholdBoost > 0) {
+          guardHtml = '<div class="decision-guard">RL stricter ' + esc(guardLabel) + ' +' + fmt(thresholdBoost, 0)
+            + ' pts'
+            + (effectiveReasons.length ? ' • ' + esc(effectiveReasons.join(', ')) : '')
+            + '</div>';
+        }
+        let rlHtml = '';
+        if (latestFailure || topCauses.length) {
+          rlHtml = '<div class="decision-rl-note">'
+            + (latestFailure ? '<div><strong>Last miss:</strong> ' + esc(latestFailure) + '</div>' : '')
+            + (topCauses.length ? '<div><strong>Recurring:</strong> ' + esc(topCauses.join(', ')) + '</div>' : '')
+            + '</div>';
+        }
+        return '<div class="' + cardCls + '">' +
+          '<div class="decision-top">' +
+            '<div class="decision-coin">' + esc(coin) + '</div>' +
+            '<div class="decision-mode">TRADEABLE</div>' +
           '</div>' +
-          '<div class="bar-track"><div class="bar-fill ' + barCls + '" style="width:' + score + '%"></div></div>' +
+          '<div class="decision-action ' + actCls + '">' + esc(action) + '</div>' +
+          '<div class="decision-meta">Score ' + fmt(score, 1) + ' • ' + esc(sig.confidence || 'LOW') + (sig.mtf_bias ? ' • HTF ' + esc(sig.mtf_bias) : '') + '</div>' +
+          '<div class="decision-note">' + esc(note) + '</div>' +
+          guardHtml +
+          rlHtml +
         '</div>';
-      }).join('');
+      };
+      const renderWatch = ([coin, sig]) => {
+        const score = sig.score || 50;
+        const action = sig.action || 'FLAT';
+        const actCls = action === 'LONG' ? 'green' : action === 'SHORT' ? 'red' : 'muted';
+        const note = shortText(sig.flat_reason || sig.decision_reason || sig.reason || 'No decisive setup yet.', 90);
+        return '<div class="watchlist-row">' +
+          '<div class="watchlist-coin">' + esc(coin) + '</div>' +
+          '<div class="signal-action ' + actCls + '">' + esc(action) + ' • ' + fmt(score, 1) + '</div>' +
+          '<div class="watchlist-note">' + esc(note) + '</div>' +
+        '</div>';
+      };
+      let html = '<div class="decision-board">';
+      if (tradableEntries.length) {
+        html += '<div>' +
+          '<div class="decision-group-title">Tradable assets</div>' +
+          '<div class="decision-grid">' + tradableEntries.map(renderTradable).join('') + '</div>' +
+        '</div>';
+      }
+      if (watchEntries.length) {
+        html += '<div>' +
+          '<div class="decision-group-title">Watchlist assets</div>' +
+          '<div class="watchlist-strip">' + watchEntries.map(renderWatch).join('') + '</div>' +
+        '</div>';
+      }
+      html += '</div>';
+      sigEl.innerHTML = html;
+    } else {
+      sigEl.innerHTML = '<div class="empty-state">Waiting for first decision cycle...</div>';
     }
 
     // Performance Stats
@@ -931,6 +1403,27 @@ async function refresh() {
 let killConfirm = false;
 function handleKill() {
   const btn = document.getElementById('kill-btn');
+  if (latestControl && latestControl.kill && latestControl.kill.active) {
+    btn.textContent = 'Clearing...';
+    btn.disabled = true;
+    fetch('/api/kill', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active: false, reason: 'Operator cleared kill switch' })
+    }).then(r => r.json()).then(() => {
+      btn.textContent = '✅ Kill cleared';
+      btn.className = 'kill-btn';
+      setTimeout(() => {
+        btn.textContent = '⚠️ KILL SWITCH';
+        btn.disabled = false;
+      }, 3000);
+    }).catch(() => {
+      btn.textContent = '❌ Clear failed';
+      btn.disabled = false;
+      setTimeout(() => { btn.textContent = '🛑 KILL ACTIVE — CLICK TO CLEAR'; btn.className = 'kill-btn confirming'; }, 3000);
+    });
+    return;
+  }
   if (!killConfirm) {
     killConfirm = true;
     btn.textContent = '🚨 CONFIRM: CLOSE ALL & STOP';

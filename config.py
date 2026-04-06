@@ -21,14 +21,24 @@ class ExchangeConfig:
     hl_account_address: str    = field(default_factory=lambda: os.getenv("HL_ACCOUNT_ADDRESS", ""))
     hl_use_mainnet: bool       = True          # set False for testnet
 
-    # Lighter  ─ also uses an EVM private key + a Web3 RPC URL
-    lighter_private_key: str   = field(default_factory=lambda: os.getenv("LIGHTER_PRIVATE_KEY", ""))
-    lighter_web3_url: str      = field(default_factory=lambda: os.getenv("LIGHTER_WEB3_URL",
-                                        "https://arb1.arbitrum.io/rpc"))
+    # Lighter
+    # LIGHTER_PRIVATE_KEY remains supported as a legacy alias for the L1 wallet key.
+    lighter_l1_private_key: str = field(
+        default_factory=lambda: os.getenv("LIGHTER_L1_PRIVATE_KEY", "") or os.getenv("LIGHTER_PRIVATE_KEY", "")
+    )
+    lighter_api_private_key: str = field(default_factory=lambda: os.getenv("LIGHTER_API_PRIVATE_KEY", ""))
+    lighter_account_index: str   = field(default_factory=lambda: os.getenv("LIGHTER_ACCOUNT_INDEX", ""))
+    lighter_api_key_index: int   = field(default_factory=lambda: int(os.getenv("LIGHTER_API_KEY_INDEX", "1")))
+    lighter_api_base_url: str    = field(
+        default_factory=lambda: os.getenv("LIGHTER_API_BASE_URL", "https://mainnet.zklighter.elliot.ai")
+    )
+    lighter_web3_url: str        = field(
+        default_factory=lambda: os.getenv("LIGHTER_WEB3_URL", "https://arb1.arbitrum.io/rpc")
+    )
 
     # Enable / disable each exchange independently
-    use_hyperliquid: bool      = False   # Lighter-only for now
-    use_lighter: bool          = True
+    use_hyperliquid: bool      = False
+    use_lighter: bool          = True    # Primary exchange — key in .env
 
 
 # ─────────────────────────────────────────────────────────
@@ -37,20 +47,31 @@ class ExchangeConfig:
 @dataclass
 class TradingConfig:
     # Coins / instruments the agent will trade
-    # SP500 = S&P 500 perpetual on Hyperliquid (Trade[XYZ] product, ticker: xyz:SP500)
-    coins: List[str]            = field(default_factory=lambda: ["BTC", "ETH", "SOL", "HYPE", "SP500", "TAO"])
+    # Primary tradable universe on the current Lighter runtime.
+    coins: List[str]            = field(default_factory=lambda: ["BTC", "ETH", "SOL"])
+
+    # Broader watchlist / learning universe.
+    # These assets are analysed and shown in the dashboard even when they are
+    # not tradable on the primary execution venue.
+    analysis_coins: List[str]   = field(default_factory=lambda: [
+        "BTC", "ETH", "SOL", "HYPE", "SP500", "TAO", "BRENT", "WTI"
+    ])
 
     # ── Instrument type classification ───────────────────────────────────────
     # "crypto"  → standard crypto perp logic
-    # "index"   → equity index (SP500, NDX, etc.) — macro-driven, different news source,
-    #             smoother momentum, higher minimum hold time
+    # "index"   → macro / non-crypto instrument (SP500, BRENT, WTI, etc.) —
+    #             Yahoo-backed market data, macro/news-driven, smoother momentum,
+    #             higher minimum hold time
     instrument_types: dict      = field(default_factory=lambda: {
         "BTC":   "crypto",
         "ETH":   "crypto",
         "SOL":   "crypto",
         "HYPE":  "crypto",
-        "SP500": "index",    # S&P 500 perpetual on Hyperliquid (xyz:SP500)
-        "TAO":   "crypto",   # Bittensor — AI/ML network token, standard Hyperliquid perp
+        "TAO":   "crypto",
+        "SP500": "index",
+        "BRENT": "index",
+        "WTI":   "index",
+        "CL":    "index",
     })
 
     # Indexes need a longer minimum hold — they move slower than crypto
@@ -91,18 +112,45 @@ class TradingConfig:
     max_position_pct: float       = 0.05   # Max 5% of portfolio per trade (was 2%)
     max_total_exposure_pct: float = 0.40   # Max 40% total deployed at once (was 20%)
     leverage: int                 = 2      # Safer default for small live capital
+    conviction_size_floor: float  = 0.30   # Minimum size factor at threshold conviction
+    conviction_size_curve: float  = 0.85   # <1 ramps size faster, >1 slower
+    euphoria_conviction_threshold: float = 38.0
+    euphoria_rl_guard_win_rate: float = 58.0
+    max_euphoria_penalty: float   = 0.20   # Max size haircut when conviction outruns learned edge
 
     # ── Risk management ─────────────────────────────────
     # Wide TP/SL to let winning trades run on perps
     stop_loss_pct: float          = 0.10   # 10% stop-loss (wider = survives volatility)
     take_profit_pct: float        = 0.50   # 50% take-profit (let big moves run)
+    dynamic_trade_planning: bool  = True   # ATR + structure-based SL/TP planning
+    base_stop_atr_multiple: float = 1.35
+    min_stop_atr_multiple: float  = 0.90
+    max_stop_atr_multiple: float  = 3.25
+    base_target_r_multiple: float = 2.00
+    min_target_r_multiple: float  = 1.35
+    max_target_r_multiple: float  = 3.50
     trailing_stop_enabled: bool   = True
     trailing_stop_pct: float      = 0.12   # 12% trailing stop (locks profits as price runs)
+    use_orderbook_levels: bool    = True   # Live L2 + daily key-level intelligence for BTC/ETH/SOL
+    orderbook_depth_limit: int    = 120
+    orderbook_daily_lookback: int = 120
+    orderbook_cache_ttl_seconds: int = 25
+    orderbook_guard_distance_pct: float = 1.25
+    orderbook_reaction_distance_pct: float = 0.45
+    orderbook_level_min_strength: float = 0.55
+    orderbook_score_influence: float = 0.35
+    orderbook_override_score: float = 82.0
 
     # ── Timing ──────────────────────────────────────────
     check_interval_seconds: int  = 120    # Run cycle every 2 minutes
     candle_interval: str         = "1h"   # Candle size for indicator maths
     lookback_periods: int        = 100    # Candles to load each cycle
+    reconcile_every_n_cycles: int = 10    # Reconcile exchange truth every N cycles in live mode
+
+    # ── Live runtime guardrails ─────────────────────────
+    require_ac_power_for_live: bool = True
+    minimum_battery_pct_for_live: int = 35
+    stop_live_on_power_loss: bool = True
 
     # ── Trade size limits ───────────────────────────────
     min_trade_usd: float         = 100.0   # Small-capital friendly minimum
@@ -110,6 +158,11 @@ class TradingConfig:
 
     # ── Dry-run (paper trading — no real orders sent) ───
     dry_run: bool                = True   # Explicit --live required for real orders
+
+    # ── Universe management ──────────────────────────────
+    # When enabled, any watchlist asset that the active venue can actually
+    # execute is promoted into the live tradeable universe automatically.
+    auto_promote_analysis_coins: bool = True
 
     # ── Multi-timeframe analysis ─────────────────────────
     # Fetches 4H and 12H candles to determine the higher-timeframe trend.
@@ -120,13 +173,14 @@ class TradingConfig:
     # Fetches live news from CryptoPanic. Blocks trades when headlines
     # are strongly against the signal direction.
     # Especially important for HYPE (Hyperliquid protocol news).
-    use_news: bool               = True
+    use_news: bool               = False
+    cryptopanic_auth_token: str  = field(default_factory=lambda: os.getenv("CRYPTOPANIC_AUTH_TOKEN", ""))
 
     # ── Visual chart confirmation ────────────────────────
     # When enabled, borderline signals (score 38–62) are confirmed by
     # sending a chart screenshot to Claude's vision API before trading.
     # Strong signals (score <38 or >62) skip this to avoid extra API calls.
-    use_chart_confirmation: bool = True    # Enable/disable the whole feature
+    use_chart_confirmation: bool = False   # Enable only when optional deps + API key are configured
     use_chart_screener: bool     = False   # True = auto-capture with playwright
     save_chart_screenshots: bool = False   # Save PNGs to screenshots/ folder
     chart_confirm_score_low: float  = 38.0 # Only check below this score (short zone)
@@ -231,8 +285,12 @@ class Config:
             errors.append("HL_PRIVATE_KEY is missing — add it to your .env file")
         if self.exchange.use_hyperliquid and not self.exchange.hl_account_address:
             errors.append("HL_ACCOUNT_ADDRESS is missing — add it to your .env file")
-        if self.exchange.use_lighter and not self.exchange.lighter_private_key:
-            errors.append("LIGHTER_PRIVATE_KEY is missing — add it to your .env file")
+        if self.exchange.use_lighter and not self.exchange.lighter_l1_private_key:
+            errors.append("LIGHTER_L1_PRIVATE_KEY (or legacy LIGHTER_PRIVATE_KEY) is missing — add it to your .env file")
+        if self.exchange.use_lighter and not self.exchange.lighter_api_private_key:
+            errors.append("LIGHTER_API_PRIVATE_KEY is missing — run the Lighter bootstrap first")
+        if self.exchange.use_lighter and not self.exchange.lighter_account_index:
+            errors.append("LIGHTER_ACCOUNT_INDEX is missing — run the Lighter bootstrap first")
         if self.exchange.use_lighter and not self.exchange.lighter_web3_url:
             errors.append("LIGHTER_WEB3_URL is missing — add it to your .env file")
         ind = self.indicators

@@ -28,7 +28,7 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 
 from logger import get_logger
@@ -38,6 +38,7 @@ log = get_logger("trade_memory")
 from paths import TRADE_MEMORY as MEMORY_FILE
 MAX_TRADES_PER_COIN    = 50    # remember more history per coin
 COOLDOWN_CYCLES        = 6    # 6-cycle cooldown after consecutive losses (was 4)
+DIRECTION_PAUSE_CYCLES = 4    # short pause for one coin+direction after repeated bad setups
 MIN_HOLD_THRESHOLD     = 180  # flag reversals faster: 3h not 4h (was 240)
 CONSECUTIVE_LOSS_LIMIT = 3    # still triggers at 3 losses in a row
 
@@ -59,6 +60,9 @@ class TradeRecord:
     hour_utc: int            = 0
     volatility_label: str    = "NORMAL"
     failure_modes: List[str] = field(default_factory=list)
+    root_causes: List[str]   = field(default_factory=list)
+    failure_summary: str     = ""
+    entry_context: Dict[str, Any] = field(default_factory=dict)
 
     @property
     def is_win(self) -> bool:
@@ -79,6 +83,7 @@ class TradeMemory:
     def __init__(self):
         self._trades: Dict[str, List[TradeRecord]] = defaultdict(list)
         self._cooldown: Dict[str, int] = {}
+        self._directional_pause: Dict[str, int] = {}
         self._load()
 
     # ── Public API ────────────────────────────────────────────────────────────
@@ -96,6 +101,7 @@ class TradeMemory:
         market_regime: str         = "RANGING",
         dominant_regime: str       = "MIXED",
         volatility_label: str      = "NORMAL",
+        entry_context: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Record a closed trade with full context, then run post-mortem."""
         if entry_price <= 0:
@@ -107,9 +113,11 @@ class TradeMemory:
             else (entry_price - exit_price) / entry_price * 100
         )
 
-        failure_modes = self._analyse_failure(
+        failure_analysis = self._analyse_failure(
             direction, signal_score, pnl_pct, exit_reason,
             hold_minutes, trend_context, market_regime, dominant_regime,
+            volatility_label=volatility_label,
+            entry_context=entry_context or {},
         )
 
         record = TradeRecord(
@@ -127,7 +135,10 @@ class TradeMemory:
             dominant_regime = dominant_regime,
             hour_utc        = datetime.now(timezone.utc).hour,
             volatility_label= volatility_label,
-            failure_modes   = failure_modes,
+            failure_modes   = failure_analysis["failure_modes"],
+            root_causes     = failure_analysis["root_causes"],
+            failure_summary = failure_analysis["summary"],
+            entry_context   = dict(entry_context or {}),
         )
 
         self._trades[coin].append(record)
@@ -135,8 +146,9 @@ class TradeMemory:
             self._trades[coin] = self._trades[coin][-MAX_TRADES_PER_COIN:]
 
         self._maybe_trigger_cooldown(coin)
+        self._maybe_trigger_direction_pause(coin, direction)
 
-        result_str = "WIN  ✅" if record.is_win else f"LOSS ❌ {failure_modes}"
+        result_str = "WIN  ✅" if record.is_win else f"LOSS ❌ {record.failure_summary or record.failure_modes}"
         log.info(
             f"[{coin}] Brain: {direction} {pnl_pct:+.2f}% — {result_str} "
             f"(hold={hold_minutes:.0f}m score={signal_score:.1f} "
@@ -233,6 +245,18 @@ class TradeMemory:
             adj -= 7.0    # new: absorptions are brutal
         if recent_modes.count("WEAK_SIGNAL") >= 3:
             adj -= 5.0    # new: consistently entering on weak signals
+        if recent_modes.count("LOW_CONFIDENCE_ENTRY") >= 2:
+            adj -= 4.0
+        if recent_modes.count("HTF_CONFLICT") >= 2:
+            adj -= 6.0
+        if recent_modes.count("NEWS_CONFLICT") >= 2:
+            adj -= 4.0
+        if recent_modes.count("ORDER_FLOW_CONFLICT") >= 2:
+            adj -= 5.0
+        if recent_modes.count("ENTRY_TIMING_POOR") >= 2:
+            adj -= 4.0
+        if recent_modes.count("VOLATILITY_SHAKEOUT") >= 2:
+            adj -= 3.0
 
         # ── Recent run bonus / penalty ────────────────────────────────────────
         wins_last5 = sum(1 for t in same_dir[-5:] if t.is_win)
@@ -309,6 +333,53 @@ class TradeMemory:
 
         return round(min(boost, 0.45), 2)   # was 0.30 — allow up to 45% boost
 
+    def get_directional_guard(self, coin: str, direction: str) -> Dict[str, Any]:
+        """
+        Return per-coin, per-direction guardrails based on recurring failure patterns.
+
+        threshold_boost:
+          extra points required before a setup is allowed.
+          LONG uses score >= long_threshold + threshold_boost
+          SHORT uses score <= short_threshold - threshold_boost
+
+        pause_cycles:
+          temporarily block this exact coin+direction pair after repeated losses
+          with overlapping causes.
+        """
+        recent = self._trades.get(coin, [])
+        same_dir = [t for t in recent[-15:] if t.direction == direction]
+        if not same_dir:
+            return {"threshold_boost": 0.0, "pause_cycles": 0, "reasons": []}
+
+        key = self._pause_key(coin, direction)
+        threshold_boost = 0.0
+        reasons: List[str] = []
+        recent_modes = [m for t in same_dir[-4:] for m in t.failure_modes]
+
+        def tighten(boost: float, label: str, mode: str, minimum: int = 2) -> None:
+            nonlocal threshold_boost
+            if recent_modes.count(mode) >= minimum:
+                threshold_boost += boost
+                reasons.append(label)
+
+        tighten(6.0, "HTF conflict", "HTF_CONFLICT")
+        tighten(5.0, "counter-trend entries", "COUNTER_TREND")
+        tighten(4.0, "low-confidence entries", "LOW_CONFIDENCE_ENTRY")
+        tighten(4.0, "order-flow conflict", "ORDER_FLOW_CONFLICT")
+        tighten(4.0, "ranging trap", "RANGING_TRAP")
+        tighten(4.0, "absorption trap", "ABSORPTION_TRAP")
+        tighten(3.0, "news conflict", "NEWS_CONFLICT")
+        tighten(3.0, "poor timing", "ENTRY_TIMING_POOR")
+        tighten(3.0, "candle conflict", "CANDLE_CONFLICT")
+        tighten(3.0, "marginal edge", "MARGINAL_EDGE")
+
+        pause_cycles = self._directional_pause.get(key, 0)
+        return {
+            "threshold_boost": round(min(threshold_boost, 12.0), 2),
+            "pause_cycles": pause_cycles,
+            "reasons": reasons[:3],
+        }
+
     def tick_cooldowns(self) -> None:
         expired = []
         for coin, remaining in self._cooldown.items():
@@ -319,6 +390,15 @@ class TradeMemory:
                 self._cooldown[coin] = remaining - 1
         for coin in expired:
             del self._cooldown[coin]
+        pause_expired = []
+        for key, remaining in self._directional_pause.items():
+            if remaining <= 1:
+                pause_expired.append(key)
+                log.info(f"[{key}] Directional pause expired — setup eligible again")
+            else:
+                self._directional_pause[key] = remaining - 1
+        for key in pause_expired:
+            del self._directional_pause[key]
 
     def summary(self) -> str:
         parts = []
@@ -327,7 +407,13 @@ class TradeMemory:
             total = len(trades)
             avg   = sum(t.pnl_pct for t in trades) / total if total else 0
             cd    = f" COOLDOWN({self._cooldown[coin]})" if coin in self._cooldown else ""
-            parts.append(f"{coin}: {wins}/{total} wins avg={avg:+.2f}%{cd}")
+            directional = [
+                f"{key.split(':', 1)[1]}-PAUSE({remaining})"
+                for key, remaining in self._directional_pause.items()
+                if key.startswith(f"{coin}:")
+            ]
+            dp = f" {' '.join(directional)}" if directional else ""
+            parts.append(f"{coin}: {wins}/{total} wins avg={avg:+.2f}%{cd}{dp}")
         return "Memory: " + " | ".join(parts) if parts else "Memory: no history yet"
 
     def get_stats(self) -> dict:
@@ -355,6 +441,11 @@ class TradeMemory:
             mode_counts: Dict[str, int] = {}
             for m in all_modes:
                 mode_counts[m] = mode_counts.get(m, 0) + 1
+            all_root_causes = [m for t in trades for m in getattr(t, "root_causes", [])]
+            root_cause_counts: Dict[str, int] = {}
+            for m in all_root_causes:
+                root_cause_counts[m] = root_cause_counts.get(m, 0) + 1
+            latest_loss = next((t for t in reversed(trades) if not t.is_win), None)
 
             band_wins: Dict[str, int]  = {}
             band_total: Dict[str, int] = {}
@@ -381,6 +472,16 @@ class TradeMemory:
                     for k, v in regime_stats.items()
                 },
                 "failure_modes": mode_counts,
+                "root_causes": root_cause_counts,
+                "latest_failure_summary": getattr(latest_loss, "failure_summary", ""),
+                "directional_pause": {
+                    direction: self._directional_pause.get(self._pause_key(coin, direction), 0)
+                    for direction in ("LONG", "SHORT")
+                },
+                "directional_guards": {
+                    direction: self.get_directional_guard(coin, direction)
+                    for direction in ("LONG", "SHORT")
+                },
                 "score_band_wr": {
                     b: round(band_wins.get(b, 0) / band_total[b] * 100, 0)
                     for b in band_total
@@ -399,29 +500,141 @@ class TradeMemory:
     def _analyse_failure(
         self, direction, signal_score, pnl_pct, exit_reason,
         hold_minutes, trend_context, market_regime, dominant_regime,
-    ) -> List[str]:
+        volatility_label: str = "NORMAL",
+        entry_context: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         if pnl_pct >= 0:
-            return []
-        modes = []
+            return {"failure_modes": [], "root_causes": [], "summary": ""}
+
+        ctx = dict(entry_context or {})
+        modes: List[str] = []
+        root_causes: List[str] = []
+
+        def add(code: str, explanation: str) -> None:
+            if code not in modes:
+                modes.append(code)
+            if explanation and explanation not in root_causes:
+                root_causes.append(explanation)
+
         if exit_reason == "signal_reversal" and hold_minutes < MIN_HOLD_THRESHOLD:
-            modes.append("REVERSED_TOO_FAST")
+            add("REVERSED_TOO_FAST", "Market reversed too quickly after entry.")
         if direction == "LONG" and trend_context == "DOWN":
-            modes.append("COUNTER_TREND")
+            add("COUNTER_TREND", "Higher timeframe trend was against the long.")
         elif direction == "SHORT" and trend_context == "UP":
-            modes.append("COUNTER_TREND")
+            add("COUNTER_TREND", "Higher timeframe trend was against the short.")
         if direction == "LONG" and signal_score < 70:
-            modes.append("WEAK_SIGNAL")
+            add("WEAK_SIGNAL", "Entry was taken without strong enough long conviction.")
         elif direction == "SHORT" and signal_score > 30:
-            modes.append("WEAK_SIGNAL")
+            add("WEAK_SIGNAL", "Entry was taken without strong enough short conviction.")
         if exit_reason == "stop_loss":
-            modes.append("STOP_HIT")
+            add("STOP_HIT", "The stop loss was hit before the move developed.")
         if market_regime == "RANGING":
-            modes.append("RANGING_TRAP")
+            add("RANGING_TRAP", "The market was ranging, so follow-through was weak.")
         if dominant_regime == "ABSORPTION":
-            modes.append("ABSORPTION_TRAP")
+            add("ABSORPTION_TRAP", "Absorption regime likely trapped directional follow-through.")
         if exit_reason == "conviction_lost":
-            modes.append("THESIS_DISSOLVED")
-        return modes
+            add("THESIS_DISSOLVED", "The thesis weakened after entry and conviction faded.")
+
+        if hold_minutes <= 45 and exit_reason in {"stop_loss", "signal_reversal"}:
+            add("ENTRY_TIMING_POOR", "Entry timing was poor and invalidated quickly.")
+
+        conviction = str(ctx.get("confidence", "")).upper()
+        if conviction == "LOW":
+            add("LOW_CONFIDENCE_ENTRY", "The trade was opened on a low-confidence signal.")
+
+        mtf_bias = str(ctx.get("mtf_bias", "")).upper()
+        if direction == "LONG" and mtf_bias == "DOWN":
+            add("HTF_CONFLICT", "Higher timeframe bias disagreed with the long setup.")
+        elif direction == "SHORT" and mtf_bias == "UP":
+            add("HTF_CONFLICT", "Higher timeframe bias disagreed with the short setup.")
+
+        try:
+            news_score = float(ctx.get("news_score", 50.0))
+        except Exception:
+            news_score = 50.0
+        if direction == "LONG" and news_score < 45:
+            add("NEWS_CONFLICT", "Newsflow leaned against the long.")
+        elif direction == "SHORT" and news_score > 55:
+            add("NEWS_CONFLICT", "Newsflow leaned against the short.")
+
+        candle_trend = str(ctx.get("candle_trend", "")).upper()
+        if direction == "LONG" and candle_trend == "DOWN":
+            add("CANDLE_CONFLICT", "Short-term candle trend was still down into the entry.")
+        elif direction == "SHORT" and candle_trend == "UP":
+            add("CANDLE_CONFLICT", "Short-term candle trend was still up into the entry.")
+
+        try:
+            foc_score = float(ctx.get("foc_score", 50.0))
+        except Exception:
+            foc_score = 50.0
+        if direction == "LONG" and foc_score < 45:
+            add("ORDER_FLOW_CONFLICT", "Funding/OI/CVD context did not confirm the long.")
+        elif direction == "SHORT" and foc_score > 55:
+            add("ORDER_FLOW_CONFLICT", "Funding/OI/CVD context did not confirm the short.")
+
+        try:
+            orderbook_score = float(ctx.get("orderbook_score", 50.0))
+        except Exception:
+            orderbook_score = 50.0
+        orderbook_interaction = str(ctx.get("orderbook_interaction", "")).upper()
+        orderbook_breakout = str(ctx.get("orderbook_breakout_state", "")).upper()
+        if direction == "LONG" and orderbook_score < 45:
+            add("KEY_LEVEL_CONFLICT", "Orderbook/key-level context leaned against the long.")
+        elif direction == "SHORT" and orderbook_score > 55:
+            add("KEY_LEVEL_CONFLICT", "Orderbook/key-level context leaned against the short.")
+
+        if exit_reason == "stop_loss" and direction == "LONG" and orderbook_interaction in {"AT_RESISTANCE", "BELOW_RESISTANCE"}:
+            add("LONGED_INTO_SUPPLY", "The long was opened too close to overhead supply/resistance.")
+        elif exit_reason == "stop_loss" and direction == "SHORT" and orderbook_interaction in {"AT_SUPPORT", "ABOVE_SUPPORT"}:
+            add("SHORTED_INTO_DEMAND", "The short was opened too close to a defended demand/support zone.")
+
+        if direction == "SHORT" and orderbook_breakout == "CONFIRMED_BULLISH_BREAKOUT":
+            add("FADED_CONFIRMED_BREAKOUT", "The short faded a confirmed bullish breakout through key resistance.")
+        elif direction == "LONG" and orderbook_breakout == "CONFIRMED_BEARISH_BREAKDOWN":
+            add("FADED_CONFIRMED_BREAKDOWN", "The long faded a confirmed bearish breakdown through key support.")
+
+        try:
+            planned_stop_atr = float(ctx.get("planned_stop_atr_multiple", 0.0))
+        except Exception:
+            planned_stop_atr = 0.0
+        try:
+            planned_rr = float(ctx.get("planned_risk_reward_ratio", 0.0))
+        except Exception:
+            planned_rr = 0.0
+        try:
+            tp_progress = float(ctx.get("tp_progress_ratio", 0.0))
+        except Exception:
+            tp_progress = 0.0
+        try:
+            remaining_to_tp_pct = float(ctx.get("remaining_to_tp_pct", 0.0))
+        except Exception:
+            remaining_to_tp_pct = 0.0
+        try:
+            remaining_to_sl_pct = float(ctx.get("remaining_to_sl_pct", 0.0))
+        except Exception:
+            remaining_to_sl_pct = 0.0
+
+        if exit_reason == "stop_loss" and 0 < planned_stop_atr < 1.10:
+            add("STOP_TOO_TIGHT", "The planned stop sat inside normal ATR noise for this setup.")
+        if exit_reason == "conviction_lost" and tp_progress >= 0.65:
+            add("TARGET_TOO_FAR", "Price travelled far enough to validate the thesis, but the target was too ambitious.")
+        if exit_reason in {"signal_reversal", "conviction_lost"} and remaining_to_tp_pct > 0 and remaining_to_sl_pct > 0:
+            if remaining_to_tp_pct <= max(remaining_to_sl_pct * 0.70, 0.35):
+                add("EXITED_NEAR_TARGET", "The trade closed after price had already pushed close to its target.")
+        if exit_reason == "stop_loss" and planned_rr >= 2.80:
+            add("TARGET_PROFILE_STRETCHED", "The setup aimed for a very stretched reward multiple relative to risk.")
+
+        if str(volatility_label).lower() == "extreme" and exit_reason == "stop_loss":
+            add("VOLATILITY_SHAKEOUT", "Extreme volatility likely shook out the trade.")
+
+        if abs(signal_score - 50.0) < 18:
+            add("MARGINAL_EDGE", "The setup was too close to neutral to have a durable edge.")
+
+        if not root_causes:
+            root_causes.append("The setup lost edge after entry for reasons not yet classified.")
+
+        summary = "; ".join(root_causes[:3])
+        return {"failure_modes": modes, "root_causes": root_causes, "summary": summary}
 
     def _maybe_trigger_cooldown(self, coin: str) -> None:
         recent = self._trades.get(coin, [])
@@ -431,6 +644,24 @@ class TradeMemory:
         if all(not t.is_win for t in last_n):
             self._cooldown[coin] = COOLDOWN_CYCLES
             log.warning(f"[{coin}] {CONSECUTIVE_LOSS_LIMIT} consecutive losses → COOLDOWN {COOLDOWN_CYCLES} cycles")
+
+    def _maybe_trigger_direction_pause(self, coin: str, direction: str) -> None:
+        same_dir = [t for t in self._trades.get(coin, []) if t.direction == direction]
+        if len(same_dir) < 2:
+            return
+        last_two = same_dir[-2:]
+        if not all(not t.is_win for t in last_two):
+            return
+        overlapping_modes = set(last_two[0].failure_modes) & set(last_two[1].failure_modes)
+        if not overlapping_modes:
+            return
+        key = self._pause_key(coin, direction)
+        current = self._directional_pause.get(key, 0)
+        self._directional_pause[key] = max(current, DIRECTION_PAUSE_CYCLES)
+        log.warning(
+            f"[{coin}] {direction} paused for {DIRECTION_PAUSE_CYCLES} cycles "
+            f"after repeated failure pattern(s): {', '.join(sorted(overlapping_modes))}"
+        )
 
     def _log_pattern_insights(self, coin: str) -> None:
         trades = self._trades.get(coin, [])
@@ -457,6 +688,7 @@ class TradeMemory:
                     for coin, trades in self._trades.items()
                 },
                 "cooldown": self._cooldown,
+                "directional_pause": self._directional_pause,
                 "saved_at": datetime.utcnow().isoformat(),
             }
             MEMORY_FILE.write_text(json.dumps(data, indent=2))
@@ -476,13 +708,40 @@ class TradeMemory:
                     r.setdefault("dominant_regime",  "MIXED")
                     r.setdefault("hour_utc",         0)
                     r.setdefault("volatility_label", "NORMAL")
+                    r.setdefault("root_causes",      [])
+                    r.setdefault("failure_summary",  "")
+                    r.setdefault("entry_context",    {})
+                    if (not r.get("root_causes") or not r.get("failure_summary")) and float(r.get("pnl_pct", 0) or 0) < 0:
+                        analysis = self._analyse_failure(
+                            direction=r.get("direction", ""),
+                            signal_score=float(r.get("signal_score", 50.0) or 50.0),
+                            pnl_pct=float(r.get("pnl_pct", 0.0) or 0.0),
+                            exit_reason=r.get("exit_reason", ""),
+                            hold_minutes=float(r.get("hold_minutes", 0.0) or 0.0),
+                            trend_context=r.get("trend_context", "FLAT"),
+                            market_regime=r.get("market_regime", "RANGING"),
+                            dominant_regime=r.get("dominant_regime", "MIXED"),
+                            volatility_label=r.get("volatility_label", "NORMAL"),
+                            entry_context=r.get("entry_context", {}) or {},
+                        )
+                        if not r.get("failure_modes"):
+                            r["failure_modes"] = analysis["failure_modes"]
+                        if not r.get("root_causes"):
+                            r["root_causes"] = analysis["root_causes"]
+                        if not r.get("failure_summary"):
+                            r["failure_summary"] = analysis["summary"]
                     loaded.append(TradeRecord(**r))
                 self._trades[coin] = loaded
             self._cooldown = data.get("cooldown", {})
+            self._directional_pause = data.get("directional_pause", {})
             n = sum(len(v) for v in self._trades.values())
             log.info(f"Trade memory: loaded {n} trades across {len(self._trades)} coins")
         except Exception as e:
             log.warning(f"Trade memory load failed: {e} — starting fresh")
+
+    @staticmethod
+    def _pause_key(coin: str, direction: str) -> str:
+        return f"{coin.upper()}:{direction.upper()}"
 
 
 trade_memory = TradeMemory()
