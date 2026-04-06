@@ -15,8 +15,9 @@ import csv
 import threading
 from datetime import datetime
 
-from flask import Flask, render_template, jsonify, request, abort
+from flask import Flask, render_template, jsonify, request, abort, send_file
 from paths import (
+    CODE_ROOT,
     CONTROL_JSON,
     DASHBOARD_SNAPSHOT_JSON,
     KILL_FILE,
@@ -35,6 +36,7 @@ LOG      = TRADES_CSV
 CONTROL  = CONTROL_JSON
 SNAPSHOT = DASHBOARD_SNAPSHOT_JSON
 KILL     = KILL_FILE
+HOSTED_INDEX = CODE_ROOT / "netlify-dashboard" / "public" / "index.html"
 
 # Secret token for push endpoint (set DASHBOARD_TOKEN env var for security)
 PUSH_TOKEN = os.environ.get("DASHBOARD_TOKEN", "")
@@ -149,6 +151,8 @@ def _set_kill_state(snapshot: dict, *, active: bool, reason: str, requested_at: 
 
 @app.route("/")
 def index():
+    if HOSTED_INDEX.exists():
+        return send_file(HOSTED_INDEX)
     return render_template("dashboard.html")
 
 

@@ -904,6 +904,19 @@ def test_dashboard_refreshes_snapshot_when_state_changes() -> None:
             dashboard_module._remote_state = original_remote
 
 
+def test_hosted_dashboard_bundle_matches_local_template() -> None:
+    local_template = Path("dashboard/templates/dashboard.html").read_text()
+    hosted_bundle = Path("netlify-dashboard/public/index.html").read_text()
+    assert hosted_bundle == local_template, "hosted dashboard should mirror the local dashboard UI exactly"
+
+
+def test_local_dashboard_serves_hosted_bundle() -> None:
+    client = dashboard_module.app.test_client()
+    served = client.get("/").data
+    hosted_bundle = Path("netlify-dashboard/public/index.html").read_bytes()
+    assert served == hosted_bundle, "local dashboard root should serve the exact hosted UI bundle"
+
+
 def test_trade_memory_records_richer_loss_reasoning() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         original_memory_file = trade_memory_module.MEMORY_FILE
@@ -1009,6 +1022,10 @@ def run_all() -> None:
     print("PASS dashboard canonical snapshot")
     test_dashboard_refreshes_snapshot_when_state_changes()
     print("PASS dashboard snapshot refresh")
+    test_hosted_dashboard_bundle_matches_local_template()
+    print("PASS hosted dashboard bundle sync")
+    test_local_dashboard_serves_hosted_bundle()
+    print("PASS local dashboard hosted bundle")
     test_trade_memory_records_richer_loss_reasoning()
     print("PASS richer RL loss reasoning")
     test_trade_memory_directional_pause_and_guard()

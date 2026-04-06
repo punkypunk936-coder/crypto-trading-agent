@@ -317,6 +317,72 @@
     min-width: 22px;
     box-shadow: 0 2px 10px rgba(0, 230, 138, 0.3);
   }
+  .open-count-flat {
+    background: rgba(255,255,255,0.08);
+    color: var(--text-secondary);
+    box-shadow: none;
+  }
+
+  /* ── Status Hero Cards ─────────────────── */
+  .status-hero {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .status-main {
+    min-width: 0;
+  }
+  .status-value {
+    font-size: 28px;
+    font-weight: 800;
+    font-family: var(--mono);
+    letter-spacing: -0.5px;
+  }
+  .status-detail {
+    margin-top: 8px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .status-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+  .status-chip {
+    padding: 7px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    font-family: var(--mono);
+    letter-spacing: 0.4px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.04);
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+  .status-chip-green {
+    background: var(--green-dim);
+    color: var(--green);
+    border-color: rgba(0,230,138,0.24);
+  }
+  .status-chip-red {
+    background: var(--red-dim);
+    color: var(--red);
+    border-color: rgba(255,77,106,0.24);
+  }
+  .status-chip-blue {
+    background: var(--blue-dim);
+    color: var(--blue);
+    border-color: rgba(91,140,255,0.24);
+  }
+  .status-chip-yellow {
+    background: var(--yellow-dim);
+    color: var(--yellow);
+    border-color: rgba(255,184,77,0.24);
+  }
 
   /* ── Position Cards ─────────────────────── */
   .pos-grid {
@@ -385,34 +451,16 @@
   }
   .signal-item:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-  .signal-meta-row { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
-  .signal-pill { font-size:10px; font-family:var(--mono); padding:2px 7px; border-radius:20px; background:rgba(255,255,255,0.07); color:var(--text-secondary); white-space:nowrap; }
-  .signal-pill.pill-green { background:var(--green-dim); color:var(--green); }
-  .signal-pill.pill-red   { background:var(--red-dim);   color:var(--red);   }
-  .signal-pill.pill-blue  { background:var(--blue-dim);  color:var(--blue);  }
-  .signal-pill.pill-warn  { background:var(--yellow-dim); color:var(--yellow); }
-  .signal-pill.pill-cool  { background:rgba(167,139,250,0.15); color:var(--purple); }
-  .hold-bar { height:3px; background:rgba(255,255,255,0.08); border-radius:2px; margin-top:6px; overflow:hidden; }
-  .hold-fill { height:100%; border-radius:2px; transition: width 0.8s; }
-  .hold-fill.unlocked { background: var(--green); }
-  .hold-fill.locked   { background: var(--yellow); }
-  .brain-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap:10px; }
-  .brain-coin { background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:10px; padding:12px; }
-  .brain-coin.cooldown { border-color: rgba(167,139,250,0.4); background:rgba(167,139,250,0.06); }
-  .brain-coin-name { font-size:14px; font-weight:700; margin-bottom:6px; }
-  .brain-stat { font-size:11px; color:var(--text-secondary); margin-top:3px; }
-  .brain-stat strong { color:var(--text); }
-  .brain-results { display:flex; gap:3px; margin-top:8px; }
-  .brain-dot { width:10px; height:10px; border-radius:50%; }
-  .brain-dot.win  { background:var(--green); }
-  .brain-dot.loss { background:var(--red);   }
-  .cooldown-badge { font-size:9px; font-weight:700; letter-spacing:0.5px; background:rgba(167,139,250,0.2); color:var(--purple); border-radius:4px; padding:1px 5px; margin-left:4px; }
 
   .signal-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
     margin-bottom: 8px;
+    gap: 12px;
+  }
+  .signal-header-left {
+    min-width: 0;
   }
   .signal-coin {
     font-weight: 700;
@@ -429,10 +477,179 @@
     font-weight: 600;
     font-size: 13px;
   }
+  .signal-mode {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 8px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    font-family: var(--mono);
+    letter-spacing: 0.4px;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .signal-mode-tradable {
+    color: var(--green);
+    background: var(--green-dim);
+    border-color: rgba(0,230,138,0.22);
+  }
+  .signal-mode-watch {
+    color: var(--blue);
+    background: var(--blue-dim);
+    border-color: rgba(91,140,255,0.22);
+  }
   .signal-extras {
     font-size: 10px;
     color: var(--muted);
     font-family: var(--mono);
+  }
+  .signal-reason {
+    margin: 10px 0 12px;
+    color: var(--text-secondary);
+    line-height: 1.45;
+    font-size: 12px;
+  }
+  .signal-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .signal-stat {
+    border: 1px solid rgba(255,255,255,0.05);
+    background: rgba(255,255,255,0.02);
+    border-radius: 10px;
+    padding: 10px;
+  }
+  .signal-stat-label {
+    display: block;
+    color: var(--muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    margin-bottom: 4px;
+  }
+  .signal-stat-value {
+    font-family: var(--mono);
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--text);
+  }
+  .decision-board {
+    display: grid;
+    gap: 16px;
+  }
+  .decision-group-title {
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.1px;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+  .decision-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+  }
+  .decision-card {
+    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.025);
+    border-radius: 14px;
+    padding: 14px;
+  }
+  .decision-card-tradable {
+    background: rgba(255,255,255,0.035);
+  }
+  .decision-card-long {
+    border-color: rgba(0,230,138,0.26);
+    box-shadow: 0 0 20px rgba(0,230,138,0.08);
+  }
+  .decision-card-short {
+    border-color: rgba(255,77,106,0.26);
+    box-shadow: 0 0 20px rgba(255,77,106,0.08);
+  }
+  .decision-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .decision-coin {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+  }
+  .decision-mode {
+    font-size: 10px;
+    font-weight: 700;
+    font-family: var(--mono);
+    color: var(--text-secondary);
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+  }
+  .decision-action {
+    font-size: 26px;
+    font-weight: 900;
+    font-family: var(--mono);
+    line-height: 1;
+    letter-spacing: 0.8px;
+    margin-bottom: 8px;
+  }
+  .decision-meta {
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-family: var(--mono);
+    margin-bottom: 10px;
+  }
+  .decision-note {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .decision-guard {
+    margin-top: 10px;
+    font-size: 11px;
+    line-height: 1.4;
+    font-family: var(--mono);
+    color: var(--yellow);
+  }
+  .decision-guard.red {
+    color: var(--red);
+  }
+  .decision-rl-note {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .watchlist-strip {
+    display: grid;
+    gap: 8px;
+  }
+  .watchlist-row {
+    display: grid;
+    grid-template-columns: 90px 90px 1fr;
+    gap: 12px;
+    align-items: center;
+    border: 1px solid rgba(255,255,255,0.05);
+    background: rgba(255,255,255,0.02);
+    border-radius: 12px;
+    padding: 10px 12px;
+  }
+  .watchlist-coin {
+    font-weight: 700;
+  }
+  .watchlist-note {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.35;
   }
   .bar-track {
     width: 100%;
@@ -589,6 +806,11 @@
     .card-value { font-size: 22px; }
     .pos-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
     .halt-banner { flex-direction: column; text-align: center; }
+    .status-hero { flex-direction: column; }
+    .status-chips { justify-content: flex-start; }
+    .signal-grid { grid-template-columns: 1fr; }
+    .decision-grid { grid-template-columns: 1fr; }
+    .watchlist-row { grid-template-columns: 1fr; gap: 6px; }
   }
   @media (max-width: 380px) {
     .grid-4 { grid-template-columns: 1fr; }
@@ -637,16 +859,47 @@
     <div class="card-sub" id="win-rate">Win rate: --</div>
   </div>
   <div class="card">
-    <div class="kpi-icon" style="background:rgba(251,146,60,0.15);font-size:18px;">📅</div>
-    <div class="card-label">Today's P&amp;L <span style="font-size:10px;opacity:0.5;font-weight:400;">(IST)</span></div>
-    <div class="card-value" id="daily-pnl-card">$--</div>
-    <div class="card-sub" id="daily-trades-card">0 trades today</div>
-  </div>
-  <div class="card">
     <div class="kpi-icon purple-bg">🔄</div>
-    <div class="card-label">Open / Closed</div>
+    <div class="card-label">Position Status</div>
     <div class="card-value" id="trade-count">--</div>
     <div class="card-sub" id="wins-losses">Wins / Losses: --</div>
+  </div>
+  <div class="card">
+    <div class="kpi-icon yellow-bg">🧠</div>
+    <div class="card-label">Cycle / Sentiment</div>
+    <div class="card-value" id="cycle">--</div>
+    <div class="card-sub" id="sentiment">F&amp;G: --</div>
+  </div>
+</div>
+
+<!-- Position + Decision Snapshot -->
+<div class="grid-2">
+  <div class="card" id="position-status-card">
+    <div class="card-label">📍 Position Status</div>
+    <div class="status-hero">
+      <div class="status-main">
+        <div class="status-value" id="position-status">FLAT</div>
+        <div class="status-detail" id="position-status-detail">Waiting for state...</div>
+      </div>
+      <div class="status-chips">
+        <span class="status-chip" id="position-open-chip">0 open</span>
+        <span class="status-chip" id="position-closed-chip">0 closed</span>
+      </div>
+    </div>
+  </div>
+  <div class="card" id="brain-status-card">
+    <div class="card-label">🧠 Brain Snapshot</div>
+    <div class="status-hero">
+      <div class="status-main">
+        <div class="status-value" id="brain-status">FLAT / WAIT</div>
+        <div class="status-detail" id="brain-status-detail">Waiting for first decision...</div>
+      </div>
+      <div class="status-chips">
+        <span class="status-chip" id="brain-long-chip">0 long</span>
+        <span class="status-chip" id="brain-short-chip">0 short</span>
+        <span class="status-chip" id="brain-flat-chip">0 flat</span>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -670,7 +923,7 @@
 <!-- Signals + Pending -->
 <div class="grid-2">
   <div class="card">
-    <div class="card-label">📡 Signal Intelligence</div>
+    <div class="card-label">🧠 Brain Decision Board</div>
     <div id="signals-body">
       <div class="empty-state">Waiting for first cycle...</div>
     </div>
@@ -683,28 +936,8 @@
   </div>
 </div>
 
-<!-- Agent Brain / Reinforcement Learning -->
-<div class="full-width">
-  <div class="card">
-    <div class="card-label">🧠 Agent Brain — Reinforcement Learning</div>
-    <div id="brain-body">
-      <div class="empty-state">No trade history yet — brain initialising...</div>
-    </div>
-  </div>
-</div>
-
-<!-- Daily P&L History -->
-<div class="full-width">
-  <div class="card">
-    <div class="card-label">📅 Daily P&amp;L History <span style="font-size:10px;opacity:0.5;font-weight:400;">resets midnight IST · last 14 days</span></div>
-    <div id="daily-history-body" style="padding:4px 0;">
-      <div class="empty-state">No daily history yet — updates after first trade closes</div>
-    </div>
-  </div>
-</div>
-
-<!-- Performance + Mood -->
-<div class="grid-2">
+<!-- Performance + Mood + Circuit Breaker -->
+<div class="grid-3">
   <div class="card">
     <div class="card-label">🏆 Performance</div>
     <div id="stats-body">
@@ -712,13 +945,22 @@
       <div class="stat-row"><span class="stat-label">Worst trade</span><span class="stat-value" id="stat-worst">--</span></div>
       <div class="stat-row"><span class="stat-label">Avg win</span><span class="stat-value" id="stat-avgwin">--</span></div>
       <div class="stat-row"><span class="stat-label">Avg loss</span><span class="stat-value" id="stat-avgloss">--</span></div>
-      <div class="stat-row"><span class="stat-label">Today</span><span class="stat-value" id="stat-daily-pnl">--</span></div>
+      <div class="stat-row"><span class="stat-label">Daily P&amp;L</span><span class="stat-value" id="stat-daily-pnl">--</span></div>
     </div>
   </div>
   <div class="card">
     <div class="card-label">🌡️ Market Mood</div>
     <div id="mood-body">
       <div class="empty-state">Waiting...</div>
+    </div>
+  </div>
+  <div class="card" id="cb-card">
+    <div class="card-label">🛡️ Safety Circuit Breaker</div>
+    <div id="cb-body">
+      <div class="stat-row"><span class="stat-label">Status</span><span class="stat-value green" id="cb-status">Active</span></div>
+      <div class="stat-row"><span class="stat-label">Consecutive losses</span><span class="stat-value" id="cb-losses">0 / 5</span></div>
+      <div class="stat-row"><span class="stat-label">Daily P&amp;L limit</span><span class="stat-value" id="cb-daily-limit">--</span></div>
+      <div class="stat-row"><span class="stat-label">Drawdown limit</span><span class="stat-value" id="cb-drawdown">--</span></div>
     </div>
   </div>
 </div>
@@ -734,10 +976,11 @@
     <div id="trades-wrap" style="display:none;overflow-x:auto;">
       <table>
         <thead><tr>
-          <th>Coin</th><th>Dir</th><th>P&amp;L $</th><th>P&amp;L %</th><th>Reason</th>
+          <th>#</th><th>Coin</th><th>Dir</th><th>Opened</th><th>Closed</th>
+          <th>Entry</th><th>Exit</th><th>Margin</th><th>Notional</th><th>P&amp;L $</th><th>P&amp;L %</th><th>Reason</th>
         </tr></thead>
         <tbody id="trades-body">
-          <tr><td colspan="5" class="muted" style="text-align:center;padding:24px;">No closed trades yet</td></tr>
+          <tr><td colspan="12" class="muted" style="text-align:center;padding:24px;">No closed trades yet</td></tr>
         </tbody>
       </table>
     </div>
@@ -749,11 +992,20 @@
 <script>
 const fmt  = (n, dec=2) => n == null ? '--' : Number(n).toLocaleString('en-US', {minimumFractionDigits:dec, maximumFractionDigits:dec});
 const fmtP = (n) => n == null ? '--' : (n >= 0 ? '+' : '') + fmt(n) + '%';
-// Bug fix: losses show just '$X.XX' (red color communicates negative); no redundant minus sign
-const fmtD = (n) => n == null ? '--' : (n >= 0 ? '+$' : '$') + fmt(Math.abs(n));
+const fmtD = (n) => n == null ? '--' : (n >= 0 ? '+$' : '-$') + fmt(Math.abs(n));
+const fmtSigned = (n, dec=1) => n == null ? '--' : (n >= 0 ? '+' : '') + fmt(n, dec);
 const cls  = (n) => n > 0 ? 'green' : n < 0 ? 'red' : 'muted';
-// pnl_pct from trade_memory is stored as decimal fraction (0.025 = 2.5%) — multiply for display
-const fmtPct = (n) => n == null ? '--' : (n >= 0 ? '+' : '') + fmt(n * 100, 2) + '%';
+const esc  = (v) => String(v == null ? '' : v)
+  .replaceAll('&', '&amp;')
+  .replaceAll('<', '&lt;')
+  .replaceAll('>', '&gt;')
+  .replaceAll('"', '&quot;')
+  .replaceAll("'", '&#39;');
+const shortText = (v, max=120) => {
+  const text = String(v == null ? '' : v).trim();
+  return text.length > max ? text.slice(0, max - 1) + '…' : text;
+};
+let latestControl = null;
 
 function toggleTrades() {
   const wrap = document.getElementById('trades-wrap');
@@ -770,32 +1022,31 @@ function formatTimer(seconds) {
   return m + ':' + String(s).padStart(2, '0');
 }
 
-// Anti-blink: cache last rendered state so we don't flash on unchanged data
-let _lastStateHash = '';
-function hashState(s, st, tr) {
-  try { return JSON.stringify({
-    pos: (s.positions||[]).map(p=>p.coin+p.unrealised_pnl+p.current_price),
-    cyc: s.cycle_number, pnl: st.total_pnl,
-    sig: Object.keys(s.signals||{}).join(','),
-    trl: (tr||[]).length
-  }); } catch(e) { return ''; }
-}
-
 async function refresh() {
   try {
-    const res  = await fetch('/api/state?_=' + Date.now());
+    const res  = await fetch('/api/state');
     const data = await res.json();
     const s    = data.state;
     const st   = data.stats;
     const tr   = data.trades;
+    const runtime = data.runtime || {};
+    latestControl = data.control || null;
 
-    // Skip full DOM update if nothing changed (prevents position card blink)
-    const h = hashState(s, st, tr);
-    const changed = h !== _lastStateHash;
-    _lastStateHash = h;
-
-    // Always update header timestamps
-    document.getElementById('last-update').textContent = 'Updated: ' + data.server_time;
+    // Header
+    let updateText = 'Updated: ' + data.server_time;
+    if (runtime.state_age_seconds != null) {
+      updateText += ' • age ' + runtime.state_age_seconds + 's';
+    }
+    if (runtime.stale) {
+      updateText += ' • STALE';
+    }
+    const power = (s && s.power) || {};
+    if (power.available) {
+      const source = power.source || (power.on_ac_power ? 'AC' : 'Battery');
+      const battery = power.battery_pct != null ? ` ${power.battery_pct}%` : '';
+      updateText += ` • ${source}${battery}`;
+    }
+    document.getElementById('last-update').textContent = updateText;
     const badge = document.getElementById('mode-badge');
     if (s.status === 'offline') {
       badge.className = 'badge badge-offline'; badge.textContent = 'OFFLINE';
@@ -803,6 +1054,17 @@ async function refresh() {
       badge.className = 'badge badge-dry'; badge.textContent = 'DRY RUN';
     } else {
       badge.className = 'badge badge-live'; badge.textContent = 'LIVE';
+    }
+
+    const killBtn = document.getElementById('kill-btn');
+    if (latestControl && latestControl.kill && latestControl.kill.active) {
+      killBtn.textContent = '🛑 KILL ACTIVE — CLICK TO CLEAR';
+      killBtn.className = 'kill-btn confirming';
+      killConfirm = false;
+    } else if (!killConfirm) {
+      killBtn.textContent = '⚠️ KILL SWITCH';
+      killBtn.className = 'kill-btn';
+      killBtn.disabled = false;
     }
 
     // Circuit Breaker Banner
@@ -817,6 +1079,25 @@ async function refresh() {
       haltBanner.style.display = 'none';
     }
 
+    // Circuit Breaker Card
+    const cbCard = document.getElementById('cb-card');
+    const cbStatus = document.getElementById('cb-status');
+    if (cb.halted) {
+      cbCard.className = 'card card-halt';
+      cbStatus.textContent = 'HALTED';
+      cbStatus.className = 'stat-value red';
+    } else {
+      cbCard.className = 'card';
+      cbStatus.textContent = 'Active';
+      cbStatus.className = 'stat-value green';
+    }
+    const maxLoss = cb.max_consecutive_losses || 5;
+    const consLoss = cb.consecutive_losses || 0;
+    document.getElementById('cb-losses').textContent = consLoss + ' / ' + maxLoss;
+    document.getElementById('cb-losses').className = 'stat-value ' + (consLoss >= maxLoss - 1 ? 'red' : consLoss >= 2 ? 'yellow' : 'green');
+    document.getElementById('cb-daily-limit').textContent = '$' + fmt(Math.abs(cb.daily_loss_limit_usd || 500), 0);
+    document.getElementById('cb-drawdown').textContent = (cb.drawdown_halt_pct ? (cb.drawdown_halt_pct * 100) : 15) + '%';
+
     // KPIs
     document.getElementById('portfolio').textContent = '$' + fmt(s.portfolio_usd);
     document.getElementById('available').textContent = 'Available: $' + fmt(s.available_usd);
@@ -827,105 +1108,90 @@ async function refresh() {
 
     document.getElementById('win-rate').textContent = 'Win rate: ' + (st.win_rate || 0) + '%';
 
-    // ── Today's P&L card (IST) ───────────────────────────────────────────
-    const dailyPnlCard = document.getElementById('daily-pnl-card');
-    const dailyV = s.daily_pnl_usd || 0;
-    dailyPnlCard.textContent = fmtD(dailyV);
-    dailyPnlCard.className = 'card-value ' + cls(dailyV);
-    document.getElementById('daily-trades-card').textContent =
-      (s.daily_trades || 0) + ' trade' + ((s.daily_trades || 0) === 1 ? '' : 's') + ' today';
-
-    // ── Daily P&L history bar chart ──────────────────────────────────────
-    const histEl = document.getElementById('daily-history-body');
-    const hist   = s.daily_pnl_history || {};
-    const histKeys = Object.keys(hist).sort().slice(-14);  // last 14 days
-    if (histKeys.length > 0) {
-      const vals = histKeys.map(k => hist[k]);
-      const maxAbs = Math.max(...vals.map(Math.abs), 1);
-      const today_ist = new Date(Date.now() + 5.5*3600000).toISOString().split('T')[0];
-
-      histEl.innerHTML =
-        '<div style="display:flex;align-items:flex-end;gap:6px;height:80px;padding:8px 0 4px;">' +
-        histKeys.map((date, i) => {
-          const v    = vals[i];
-          const pct  = (Math.abs(v) / maxAbs) * 70;
-          const color = v > 0 ? '#22c55e' : v < 0 ? '#ef4444' : '#6b7280';
-          const isToday = date === today_ist;
-          return (
-            '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;" title="' + date + ': ' + (v>=0?'+$':'-$') + Math.abs(v).toFixed(2) + '">' +
-              '<div style="font-size:9px;color:' + color + ';font-weight:600;">' + (v >= 0 ? '+' : '') + v.toFixed(0) + '</div>' +
-              '<div style="width:100%;background:' + color + ';height:' + Math.max(pct, 3) + 'px;border-radius:3px 3px 0 0;' +
-                (isToday ? 'outline:1.5px solid #fff;' : '') + '"></div>' +
-              '<div style="font-size:8px;color:var(--text-muted);' + (isToday ? 'color:#fff;font-weight:700;' : '') + '">' +
-                date.slice(5).replace('-', '/') + '</div>' +
-            '</div>'
-          );
-        }).join('') +
-        '</div>' +
-        '<div style="display:flex;gap:16px;margin-top:4px;font-size:10px;color:var(--text-secondary);">' +
-          '<span>Total period: <strong class="' + cls(vals.reduce((a,b)=>a+b,0)) + '">' + fmtD(vals.reduce((a,b)=>a+b,0)) + '</strong></span>' +
-          '<span>Green days: <strong class="green">' + vals.filter(v=>v>0).length + '</strong></span>' +
-          '<span>Red days: <strong class="red">' + vals.filter(v=>v<0).length + '</strong></span>' +
-          '<span style="margin-left:auto;opacity:0.5;">midnight IST reset</span>' +
-        '</div>';
-    } else {
-      histEl.innerHTML = '<div class="empty-state">No daily history yet — updates after first trade closes</div>';
-    }
-
     const openN = (s.positions || []).length;
     const closedN = st.total || 0;
-    document.getElementById('trade-count').textContent = openN + ' / ' + closedN;
-    document.getElementById('wins-losses').textContent = 'Wins: ' + (st.wins||0) + '  Losses: ' + (st.losses||0);
-    const sent = s.sentiment || {};
+    document.getElementById('trade-count').textContent = openN + ' OPEN';
+    document.getElementById('wins-losses').textContent = 'Closed: ' + closedN + ' • Wins: ' + (st.wins||0) + ' • Losses: ' + (st.losses||0);
 
-    // Open Trades — only re-render when state changes (anti-blink)
+    document.getElementById('cycle').textContent = '#' + (s.cycle_number || '--');
+    const sent = s.sentiment || {};
+    document.getElementById('sentiment').textContent = 'F&G: ' + (sent.label||'--') + ' (' + (sent.raw_score||'--') + ')';
+
+    // Position status snapshot
+    const positionCard = document.getElementById('position-status-card');
+    const positionMain = document.getElementById('position-status');
+    const positionDetail = document.getElementById('position-status-detail');
+    const openChip = document.getElementById('position-open-chip');
+    const closedChip = document.getElementById('position-closed-chip');
+    openChip.textContent = openN + ' open';
+    closedChip.textContent = closedN + ' closed';
+    openChip.className = 'status-chip ' + (openN ? 'status-chip-green' : 'status-chip-yellow');
+    closedChip.className = 'status-chip status-chip-blue';
+    if (openN) {
+      const openSummary = (s.positions || []).map(p => p.coin + ' ' + p.direction).join(' • ');
+      positionCard.className = 'card card-highlight';
+      positionMain.textContent = openN === 1 ? '1 OPEN POSITION' : openN + ' OPEN POSITIONS';
+      positionMain.className = 'status-value green';
+      positionDetail.textContent = openSummary || 'Exposure is active.';
+    } else {
+      positionCard.className = 'card';
+      positionMain.textContent = 'FLAT';
+      positionMain.className = 'status-value muted';
+      positionDetail.textContent = '0 open positions right now. The agent is flat and waiting for a valid entry.';
+    }
+
+    // Brain snapshot
+    const decisionSummary = s.decision_summary || {};
+    const lead = decisionSummary.lead || null;
+    const brainCard = document.getElementById('brain-status-card');
+    const brainMain = document.getElementById('brain-status');
+    const brainDetail = document.getElementById('brain-status-detail');
+    const brainLong = document.getElementById('brain-long-chip');
+    const brainShort = document.getElementById('brain-short-chip');
+    const brainFlat = document.getElementById('brain-flat-chip');
+    const longCount = decisionSummary.long_count || 0;
+    const shortCount = decisionSummary.short_count || 0;
+    const flatCount = decisionSummary.flat_count || 0;
+    brainLong.textContent = longCount + ' long';
+    brainShort.textContent = shortCount + ' short';
+    brainFlat.textContent = flatCount + ' flat';
+    brainLong.className = 'status-chip ' + (longCount ? 'status-chip-green' : '');
+    brainShort.className = 'status-chip ' + (shortCount ? 'status-chip-red' : '');
+    brainFlat.className = 'status-chip ' + (flatCount ? 'status-chip-yellow' : '');
+    if (lead) {
+      const leadAction = lead.action || 'FLAT';
+      const leadCls = leadAction === 'LONG' ? 'green' : leadAction === 'SHORT' ? 'red' : 'muted';
+      const leadReason = shortText(lead.reason || 'No high-conviction setup yet.', 140);
+      brainCard.className = 'card' + (leadAction === 'FLAT' ? '' : ' card-highlight');
+      brainMain.textContent = lead.coin + ' ' + leadAction;
+      brainMain.className = 'status-value ' + leadCls;
+      brainDetail.textContent = leadReason + ' • Score ' + fmt(lead.score, 1) + ' • ' + (lead.confidence || 'LOW');
+    } else {
+      brainCard.className = 'card';
+      brainMain.textContent = 'FLAT / WAIT';
+      brainMain.className = 'status-value muted';
+      brainDetail.textContent = 'No signal decisions published yet.';
+    }
+
+    // Open Trades
     const openBody = document.getElementById('open-trades-body');
     const countBadge = document.getElementById('open-count');
     const openCard = document.getElementById('open-trades-card');
+    countBadge.style.display = 'inline-flex';
     if (s.positions && s.positions.length) {
-      countBadge.style.display = 'inline-flex';
       countBadge.textContent = s.positions.length;
+      countBadge.className = 'open-count';
       openCard.className = 'card card-highlight';
-      if (changed) {
-      // Sort by unrealised_pnl descending — most profitable first
-      const sortedPos = [...s.positions].sort((a,b) => (b.unrealised_pnl||0) - (a.unrealised_pnl||0));
-      openBody.style.opacity = '0.5';
-      openBody.innerHTML = sortedPos.map(p => {
-        // Bug fix: normalise direction to uppercase so CSS class + label always match
-        const dir    = (p.direction || 'LONG').toUpperCase();
+      openBody.innerHTML = s.positions.map(p => {
         const pnlCls = cls(p.unrealised_pnl);
-        const dirCls = dir === 'LONG' ? 'pos-long' : 'pos-short';
+        const dirCls = p.direction === 'LONG' ? 'pos-long' : 'pos-short';
         const pnlPct = p.entry_price > 0
-          ? ((p.current_price - p.entry_price) / p.entry_price * 100 * (dir === 'LONG' ? 1 : -1))
+          ? ((p.current_price - p.entry_price) / p.entry_price * 100 * (p.direction === 'LONG' ? 1 : -1))
           : 0;
-        const arrow = dir === 'LONG' ? '↑' : '↓';
-        // Anti-whipsaw hold bar
-        const holdMins = p.hold_minutes || 0;
-        const minHold  = p.min_hold_minutes || 240;
-        const locked   = p.reversal_locked;
-        const holdPct  = Math.min(100, (holdMins / minHold) * 100);
-        const holdFillCls = locked ? 'locked' : 'unlocked';
-        const lockLabel = locked
-          ? '🔒 Reversal locked — ' + Math.round(p.reversal_unlock_in || 0) + 'm remaining'
-          : '🔓 Reversal allowed';
-        const lockColor = locked ? 'yellow' : 'green';
-        // News + candles row
-        const newsScore  = p.news_score != null ? p.news_score : 50;
-        const newsCls    = newsScore >= 60 ? 'pill-green' : newsScore <= 40 ? 'pill-red' : '';
-        const candleList = (p.candle_patterns || []).join(', ') || 'None';
-        const memCd      = p.memory_cooldown > 0 ? '<span class="cooldown-badge">🧊COOLDOWN</span>' : '';
-        // Index detection: positions with minHold ≥ 300m are index instruments (SP500 = 360m)
-        const posIsIndex = minHold >= 300;
-        const posNewsLabel = posIsIndex ? '📰 Macro ' : '📰 News ';
-        // Format opened_at timestamp for display
-        const openedTs = p.opened_at ? new Date(p.opened_at * 1000).toISOString().slice(0,16).replace('T',' ') : '--';
+        const arrow = p.direction === 'LONG' ? '↑' : '↓';
         return '<div class="pos-grid">' +
-          '<div><div class="pos-meta">Coin</div><div class="pos-val" style="font-size:18px;">' +
-            (posIsIndex ? '📈 ' : '🪙 ') + p.coin +
-            (posIsIndex ? ' <span class="signal-pill pill-blue" style="font-size:9px;padding:1px 5px;vertical-align:middle;">INDEX</span>' : '') +
-            memCd +
-          '</div></div>' +
-          '<div><div class="pos-meta">Direction</div><div class="pos-val"><span class="pos-direction ' + dirCls + '">' + arrow + ' ' + dir + '</span></div></div>' +
+          '<div><div class="pos-meta">Coin</div><div class="pos-val" style="font-size:18px;">' + p.coin + '</div></div>' +
+          '<div><div class="pos-meta">Direction</div><div class="pos-val"><span class="pos-direction ' + dirCls + '">' + arrow + ' ' + p.direction + '</span></div></div>' +
           '<div><div class="pos-meta">Entry</div><div class="pos-val">$' + fmt(p.entry_price) + '</div></div>' +
           '<div><div class="pos-meta">Current</div><div class="pos-val ' + pnlCls + '">$' + fmt(p.current_price) + '</div></div>' +
           '<div><div class="pos-meta">Stop Loss</div><div class="pos-val red">$' + fmt(p.stop_loss) + '</div></div>' +
@@ -933,234 +1199,157 @@ async function refresh() {
           '<div><div class="pos-meta">Margin</div><div class="pos-val">$' + fmt(p.size_usd, 0) + '</div></div>' +
           '<div><div class="pos-meta">Notional</div><div class="pos-val blue">$' + fmt(p.size_usd * (s.leverage || 2), 0) + '</div></div>' +
           '<div><div class="pos-meta">Unrealised P&L</div><div class="pos-val ' + pnlCls + '" style="font-size:16px;">' + fmtD(p.unrealised_pnl) + '<span style="font-size:12px;opacity:0.7;margin-left:4px;">(' + (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%)</span></div></div>' +
-          '<div style="grid-column:1/-1;margin-top:4px;">' +
-            '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-secondary);margin-bottom:3px;">' +
-              '<span class="' + lockColor + '">' + lockLabel + '</span>' +
-              '<span>' + Math.round(holdMins) + 'm / ' + minHold + 'm</span>' +
-            '</div>' +
-            '<div class="hold-bar"><div class="hold-fill ' + holdFillCls + '" style="width:' + holdPct + '%"></div></div>' +
-          '</div>' +
-          '<div style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">' +
-            '<span class="signal-pill ' + newsCls + '">' + posNewsLabel + Math.round(newsScore) + '/100</span>' +
-            '<span class="signal-pill">' + (candleList !== 'None' ? '🕯️ ' + candleList : '🕯️ No pattern') + '</span>' +
-            '<span class="signal-pill" style="margin-left:auto;opacity:0.6;">⏱ Opened ' + openedTs + '</span>' +
-          '</div>' +
         '</div>';
       }).join('');
-      // Fade back in smoothly after render
-      requestAnimationFrame(() => { openBody.style.opacity = '1'; });
-      } // end if(changed)
     } else {
-      countBadge.style.display = 'none';
+      countBadge.textContent = '0';
+      countBadge.className = 'open-count open-count-flat';
       openCard.className = 'card';
-      if (changed) openBody.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div>FLAT — no open positions</div>';
+      openBody.innerHTML =
+        '<div class="empty-state">' +
+          '<div class="empty-icon">📭</div>' +
+          '<div><strong>FLAT — no open positions</strong></div>' +
+          '<div style="margin-top:8px;">The agent is flat right now. Watch the Brain Decision Board for the next LONG / SHORT call.</div>' +
+        '</div>';
     }
 
-    // Signals — show ALL configured coins, even ones not yet in last_signals
-    // ── Signal Intelligence — clean, actionable, no noise ────────────────
-    const sigEl    = document.getElementById('signals-body');
-    const sigs     = s.signals || {};
-    const cfgCoins = (s.config && s.config.coins) ? s.config.coins : Object.keys(sigs);
-    const allSigEntries = cfgCoins.map(c => [c, sigs[c] || null]);
-    if (allSigEntries.length) {
-      sigEl.innerHTML = allSigEntries.map(([coin, sig]) => {
-        if (!sig) {
-          return '<div class="signal-item" style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;">' +
-            '<span class="signal-coin" style="font-size:15px;">🪙 ' + coin + '</span>' +
-            '<span style="color:var(--muted);font-size:12px;">PENDING...</span>' +
-          '</div>';
+    // Brain decision board
+    const sigEl = document.getElementById('signals-body');
+    const sigs  = s.signals || {};
+    if (Object.keys(sigs).length) {
+      const entries = Object.entries(sigs)
+        .sort((a, b) => {
+          const aSig = a[1] || {};
+          const bSig = b[1] || {};
+          const aRank = [
+            (aSig.execution_mode || '') === 'tradable' ? 1 : 0,
+            (aSig.action || 'FLAT') === 'FLAT' ? 0 : 1,
+            Math.abs((aSig.score || 50) - 50),
+          ];
+          const bRank = [
+            (bSig.execution_mode || '') === 'tradable' ? 1 : 0,
+            (bSig.action || 'FLAT') === 'FLAT' ? 0 : 1,
+            Math.abs((bSig.score || 50) - 50),
+          ];
+          for (let i = 0; i < aRank.length; i += 1) {
+            if (aRank[i] !== bRank[i]) return bRank[i] - aRank[i];
+          }
+          return a[0].localeCompare(b[0]);
+        });
+      const tradableSet = new Set(((s.config || {}).coins || []).map((coin) => String(coin).toUpperCase()));
+      const tradableEntries = entries.filter(([coin, sig]) => tradableSet.has(String(coin).toUpperCase()) || (sig.execution_mode || '') === 'tradable');
+      const watchEntries = entries.filter(([coin, sig]) => !(tradableSet.has(String(coin).toUpperCase()) || (sig.execution_mode || '') === 'tradable'));
+      const renderTradable = ([coin, sig]) => {
+        const score = sig.score || 50;
+        const action = sig.action || 'FLAT';
+        const actCls = action === 'LONG' ? 'green' : action === 'SHORT' ? 'red' : 'muted';
+        const cardCls = action === 'LONG' ? 'decision-card decision-card-tradable decision-card-long'
+          : action === 'SHORT' ? 'decision-card decision-card-tradable decision-card-short'
+          : 'decision-card decision-card-tradable';
+        const note = shortText(sig.flat_reason || sig.decision_reason || sig.reason || 'No decisive setup yet.', 120);
+        const latestFailure = shortText(sig.rl_latest_failure_summary || '', 110);
+        const topCauses = (sig.rl_top_root_causes || []).slice(0, 2);
+        const guardReasons = (sig.rl_guard_reasons || []).slice(0, 2);
+        let pauseCycles = sig.rl_pause_cycles || 0;
+        let thresholdBoost = sig.rl_threshold_boost || 0;
+        let guardLabel = action;
+        let fallbackGuard = null;
+        if (!pauseCycles && !thresholdBoost) {
+          const longGuard = sig.rl_long_guard || {};
+          const shortGuard = sig.rl_short_guard || {};
+          if ((longGuard.pause_cycles || 0) > 0 || (longGuard.threshold_boost || 0) >= (shortGuard.threshold_boost || 0)) {
+            fallbackGuard = {label: 'LONG', guard: longGuard};
+          } else if ((shortGuard.pause_cycles || 0) > 0 || (shortGuard.threshold_boost || 0) > 0) {
+            fallbackGuard = {label: 'SHORT', guard: shortGuard};
+          }
+          if (fallbackGuard) {
+            guardLabel = fallbackGuard.label;
+            pauseCycles = fallbackGuard.guard.pause_cycles || 0;
+            thresholdBoost = fallbackGuard.guard.threshold_boost || 0;
+          }
         }
-        const score   = sig.score || 50;
-        const action  = sig.action || 'FLAT';
-        const itype   = sig.instrument_type || 'crypto';
-        const isIndex = itype === 'index';
-        const coinIcon = isIndex ? '📈' : '🪙';
-        // Action colours and sizing
-        const actColor = action === 'LONG' ? 'var(--green)' : action === 'SHORT' ? 'var(--red)' : 'var(--muted)';
-        const actBg    = action === 'LONG' ? 'var(--green-dim)' : action === 'SHORT' ? 'var(--red-dim)' : 'rgba(255,255,255,0.05)';
-        const barCls   = action === 'LONG' ? 'bar-long' : action === 'SHORT' ? 'bar-short' : 'bar-flat';
-        // Score is the main number — bold and prominent
-        const scoreFmt = fmt(score, 0);
-        // Only show flat reason if staying flat — keep it tiny
-        const flatReason = sig.flat_reason || '';
-        const flatHint = (action === 'FLAT' && flatReason)
-          ? '<div style="font-size:10px;color:var(--yellow);margin-top:4px;opacity:0.8;">✋ ' + flatReason + '</div>'
-          : '';
-        // CVD hint for crypto (one-liner, no clutter)
-        const cvdDiv = sig.cvd_divergence || 'NONE';
-        const cvdHint = (!isIndex && cvdDiv !== 'NONE')
-          ? ' <span style="font-size:10px;opacity:0.6;">' + (cvdDiv === 'BULLISH' ? '🟢' : '🔴') + ' CVD</span>'
-          : '';
-        return '<div class="signal-item" style="padding:8px 0;">' +
-          '<div style="display:flex;align-items:center;justify-content:space-between;">' +
-            '<span class="signal-coin" style="font-size:15px;">' + coinIcon + ' ' + coin +
-              (isIndex ? ' <span style="font-size:9px;color:var(--blue);opacity:0.8;">INDEX</span>' : '') +
-              cvdHint +
-            '</span>' +
-            '<div style="display:flex;align-items:center;gap:10px;">' +
-              '<span style="font-size:22px;font-weight:800;color:' + actColor + ';font-family:var(--mono);">' + scoreFmt + '</span>' +
-              '<span style="padding:4px 12px;border-radius:6px;background:' + actBg + ';color:' + actColor + ';font-weight:700;font-size:13px;min-width:58px;text-align:center;">' + action + '</span>' +
-            '</div>' +
+        const effectiveReasons = guardReasons.length
+          ? guardReasons
+          : ((fallbackGuard && fallbackGuard.guard && fallbackGuard.guard.reasons) || []).slice(0, 2);
+        let guardHtml = '';
+        if (pauseCycles > 0) {
+          guardHtml = '<div class="decision-guard red">' + esc(guardLabel) + ' paused ' + pauseCycles + 'c'
+            + (effectiveReasons.length ? ' • ' + esc(effectiveReasons.join(', ')) : '')
+            + '</div>';
+        } else if (thresholdBoost > 0) {
+          guardHtml = '<div class="decision-guard">RL stricter ' + esc(guardLabel) + ' +' + fmt(thresholdBoost, 0)
+            + ' pts'
+            + (effectiveReasons.length ? ' • ' + esc(effectiveReasons.join(', ')) : '')
+            + '</div>';
+        }
+        let rlHtml = '';
+        if (latestFailure || topCauses.length) {
+          rlHtml = '<div class="decision-rl-note">'
+            + (latestFailure ? '<div><strong>Last miss:</strong> ' + esc(latestFailure) + '</div>' : '')
+            + (topCauses.length ? '<div><strong>Recurring:</strong> ' + esc(topCauses.join(', ')) + '</div>' : '')
+            + '</div>';
+        }
+        return '<div class="' + cardCls + '">' +
+          '<div class="decision-top">' +
+            '<div class="decision-coin">' + esc(coin) + '</div>' +
+            '<div class="decision-mode">TRADEABLE</div>' +
           '</div>' +
-          '<div class="bar-track" style="margin-top:5px;"><div class="bar-fill ' + barCls + '" style="width:' + score + '%"></div></div>' +
-          flatHint +
+          '<div class="decision-action ' + actCls + '">' + esc(action) + '</div>' +
+          '<div class="decision-meta">Score ' + fmt(score, 1) + ' • ' + esc(sig.confidence || 'LOW') + (sig.mtf_bias ? ' • HTF ' + esc(sig.mtf_bias) : '') + '</div>' +
+          '<div class="decision-note">' + esc(note) + '</div>' +
+          guardHtml +
+          rlHtml +
         '</div>';
-      }).join('');
-    }
-
-    // ── Agent Brain / Reinforcement Learning (polished) ──────────────────
-    const brainEl   = document.getElementById('brain-body');
-    const memStats  = s.trade_memory || {};
-    if (Object.keys(memStats).length) {
-      const cfg    = s.config || {};
-      const lthr   = cfg.long_threshold || 65;
-      const sthr   = cfg.short_threshold || 35;
-      const minH   = cfg.min_hold_minutes || 240;
-      const idxH   = cfg.index_min_hold_minutes || 360;
-      const rb     = cfg.reversal_boost || 8;
-      const itypes = cfg.instrument_types || {};
-
-      // Config bar
-      const configBar =
-        '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;padding:8px 12px;background:rgba(255,255,255,0.04);border-radius:8px;font-size:11px;color:var(--text-secondary);">' +
-          '<span>🎯 <strong class="green">LONG ≥' + lthr + '</strong> · <strong class="red">SHORT ≤' + sthr + '</strong></span>' +
-          '<span style="opacity:0.4;">|</span>' +
-          '<span>⏳ Crypto <strong>' + minH + 'm</strong> · 📈 Index <strong>' + idxH + 'm</strong></span>' +
-          '<span style="opacity:0.4;">|</span>' +
-          '<span>⚡ Rev. boost <strong>±' + rb + 'pts</strong></span>' +
+      };
+      const renderWatch = ([coin, sig]) => {
+        const score = sig.score || 50;
+        const action = sig.action || 'FLAT';
+        const actCls = action === 'LONG' ? 'green' : action === 'SHORT' ? 'red' : 'muted';
+        const note = shortText(sig.flat_reason || sig.decision_reason || sig.reason || 'No decisive setup yet.', 90);
+        return '<div class="watchlist-row">' +
+          '<div class="watchlist-coin">' + esc(coin) + '</div>' +
+          '<div class="signal-action ' + actCls + '">' + esc(action) + ' • ' + fmt(score, 1) + '</div>' +
+          '<div class="watchlist-note">' + esc(note) + '</div>' +
         '</div>';
-
-      // Coin cards (richer)
-      const coinCards = Object.entries(memStats).map(([coin, m]) => {
-        const wr       = m.win_rate || 0;
-        const wrCls    = wr >= 60 ? 'green' : wr <= 35 ? 'red' : 'yellow';
-        const cd       = m.cooldown || 0;
-        const isIdx    = (itypes[coin] === 'index');
-        const longWr   = m.long_wr || 0;
-        const shortWr  = m.short_wr || 0;
-        const bestR    = m.best_regime   || 'N/A';
-        const worstR   = m.worst_regime  || 'N/A';
-        const bestPnl  = m.best_pnl  != null ? m.best_pnl  : 0;
-        const worstPnl = m.worst_pnl != null ? m.worst_pnl : 0;
-        const failModes = m.failure_modes || {};
-
-        // Last 5 trades with P&L tooltips
-        // pnl values are decimal fractions (0.025 = 2.5%) — multiply by 100 for display
-        const last5Res = m.last_5_results || [];
-        const last5Pnl = m.last_5_pnl     || [];
-        const dots = last5Res.map((r, i) => {
-          const raw = last5Pnl[i] != null ? last5Pnl[i] * 100 : null;
-          const p = raw != null ? (raw >= 0 ? '+' : '') + raw.toFixed(1) + '%' : '';
-          return '<div class="brain-dot ' + (r === 'WIN' ? 'win' : 'loss') + '" title="' + r + (p ? ': ' + p : '') + '"></div>';
-        }).join('');
-
-        // Win rate bar
-        const wrBarW = Math.round(wr);
-        const wrBar = '<div style="position:relative;height:6px;background:rgba(255,255,255,0.07);border-radius:3px;margin:5px 0 8px;">' +
-          '<div style="width:' + wrBarW + '%;height:100%;background:' + (wr>=60?'#22c55e':wr>=45?'#eab308':'#ef4444') + ';border-radius:3px;transition:width 0.4s;"></div>' +
-          '</div>';
-
-        // Regime insight
-        const regimeHtml = (bestR !== 'N/A' && bestR !== worstR)
-          ? '<div style="font-size:10px;margin-top:6px;padding:5px 7px;background:rgba(255,255,255,0.04);border-radius:5px;">' +
-              '<span style="color:#22c55e;">✅ Works in: ' + bestR + '</span><br>' +
-              '<span style="color:#ef4444;">⛔ Avoid: ' + worstR + '</span>' +
-            '</div>'
-          : '';
-
-        // Top failure modes (if any)
-        const topModes = Object.entries(failModes)
-          .sort((a,b) => b[1]-a[1]).slice(0,2)
-          .map(([k,v]) => '<span style="font-size:9px;padding:2px 5px;background:rgba(239,68,68,0.12);color:#f87171;border-radius:3px;">' + k.replace(/_/g,' ') + ' ×' + v + '</span>')
-          .join(' ');
-        const modesHtml = topModes
-          ? '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:5px;">' + topModes + '</div>'
-          : '';
-
-        // Direction breakdown
-        const dirHtml = (m.long_trades || 0) + (m.short_trades || 0) > 0
-          ? '<div style="display:flex;gap:8px;font-size:10px;margin-top:4px;">' +
-              '<span>📈 LONG: <strong class="' + (longWr>=55?'green':longWr<=35?'red':'yellow') + '">' + longWr + '%</strong> (' + (m.long_trades||0) + ')</span>' +
-              '<span>📉 SHORT: <strong class="' + (shortWr>=55?'green':shortWr<=35?'red':'yellow') + '">' + shortWr + '%</strong> (' + (m.short_trades||0) + ')</span>' +
-            '</div>'
-          : '';
-
-        // pnl_pct values are decimal fractions (0.025 = 2.5%) — multiply by 100 for display
-        const avgPct  = (m.avg_pnl_pct || 0) * 100;
-        const bestPct = (m.best_pnl    || 0) * 100;
-
-        return '<div class="brain-coin' + (cd > 0 ? ' cooldown' : '') + '" style="padding:12px 14px;">' +
-          // Header
-          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
-            '<div class="brain-coin-name" style="font-size:14px;">' +
-              (isIdx ? '📈 ' : '🪙 ') + coin +
-              (isIdx ? ' <span class="signal-pill pill-blue" style="font-size:9px;padding:1px 5px;vertical-align:middle;">INDEX</span>' : '') +
-              (cd > 0 ? ' <span class="cooldown-badge" style="font-size:9px;">🧊 COOLDOWN ' + cd + 'c</span>' : '') +
-            '</div>' +
-            '<div style="text-align:right;">' +
-              '<div style="font-size:18px;font-weight:700;" class="' + wrCls + '">' + wr + '%</div>' +
-              '<div style="font-size:9px;color:var(--text-muted);">win rate</div>' +
-            '</div>' +
-          '</div>' +
-          // Win rate bar
-          wrBar +
-          // Stats row
-          '<div style="display:flex;gap:12px;font-size:11px;margin-bottom:6px;">' +
-            '<span>Trades: <strong>' + (m.total||0) + '</strong></span>' +
-            '<span class="green">' + (m.wins||0) + 'W</span>' +
-            '<span class="red">' + ((m.total||0) - (m.wins||0)) + 'L</span>' +
-            '<span style="margin-left:auto;">Avg: <strong class="' + (avgPct>=0?'green':'red') + '">' + (avgPct>=0?'+':'') + avgPct.toFixed(1) + '%</strong></span>' +
-            '<span>Best: <strong class="green">+' + bestPct.toFixed(1) + '%</strong></span>' +
-          '</div>' +
-          // Direction breakdown
-          dirHtml +
-          // Recent dots
-          '<div style="display:flex;align-items:center;gap:6px;margin-top:8px;">' +
-            '<span style="font-size:10px;color:var(--text-muted);">Last 5:</span>' +
-            '<div class="brain-results" style="margin:0;">' + dots + '</div>' +
-          '</div>' +
-          // Regime insight
-          regimeHtml +
-          // Failure modes
-          modesHtml +
+      };
+      let html = '<div class="decision-board">';
+      if (tradableEntries.length) {
+        html += '<div>' +
+          '<div class="decision-group-title">Tradable assets</div>' +
+          '<div class="decision-grid">' + tradableEntries.map(renderTradable).join('') + '</div>' +
         '</div>';
-      }).join('');
-
-      brainEl.innerHTML = configBar + '<div class="brain-grid">' + coinCards + '</div>';
-
+      }
+      if (watchEntries.length) {
+        html += '<div>' +
+          '<div class="decision-group-title">Watchlist assets</div>' +
+          '<div class="watchlist-strip">' + watchEntries.map(renderWatch).join('') + '</div>' +
+        '</div>';
+      }
+      html += '</div>';
+      sigEl.innerHTML = html;
     } else {
-      brainEl.innerHTML =
-        '<div class="empty-state" style="padding:32px;">' +
-          '<div style="font-size:28px;margin-bottom:8px;">🧠</div>' +
-          '<div>No trade history yet</div>' +
-          '<div style="font-size:11px;opacity:0.5;margin-top:4px;">Brain starts learning after the first closed trade</div>' +
-        '</div>';
+      sigEl.innerHTML = '<div class="empty-state">Waiting for first decision cycle...</div>';
     }
 
-    // Performance Stats — best/worst show token name + amount
-    const bestTrade  = tr && tr.length ? tr.reduce((a,b) => parseFloat(b.pnl_usd||0) > parseFloat(a.pnl_usd||0) ? b : a, tr[0]) : null;
-    const worstTrade = tr && tr.length ? tr.reduce((a,b) => parseFloat(b.pnl_usd||0) < parseFloat(a.pnl_usd||0) ? b : a, tr[0]) : null;
-    const bestLabel  = bestTrade  ? '<span class="green">' + bestTrade.coin  + ' ' + fmtD(parseFloat(bestTrade.pnl_usd))  + '</span>' : '<span class="muted">--</span>';
-    const worstLabel = worstTrade ? '<span class="red">'  + worstTrade.coin + ' ' + fmtD(Math.abs(parseFloat(worstTrade.pnl_usd))) + '</span>' : '<span class="muted">--</span>';
-    document.getElementById('stat-best').innerHTML   = bestLabel;
-    document.getElementById('stat-worst').innerHTML  = worstLabel;
+    // Performance Stats
+    document.getElementById('stat-best').innerHTML   = '<span class="green">' + fmtD(st.best) + '</span>';
+    document.getElementById('stat-worst').innerHTML  = '<span class="red">' + fmtD(st.worst) + '</span>';
     document.getElementById('stat-avgwin').innerHTML = '<span class="green">' + fmtD(st.avg_win) + '</span>';
-    document.getElementById('stat-avgloss').innerHTML= '<span class="red">' + fmtD(Math.abs(st.avg_loss||0)) + '</span>';
+    document.getElementById('stat-avgloss').innerHTML= '<span class="red">' + fmtD(st.avg_loss) + '</span>';
     const dailyPnl = s.daily_pnl_usd || 0;
     document.getElementById('stat-daily-pnl').innerHTML = '<span class="' + cls(dailyPnl) + '">' + fmtD(dailyPnl) + '</span>';
 
-    // Market Mood — just FEAR / GREED, nothing else
-    const moodEl   = document.getElementById('mood-body');
-    const fng      = sent.raw_score || 0;
-    const isFear   = fng < 50;
-    const moodWord = fng <= 20 ? 'EXTREME FEAR' : fng <= 40 ? 'FEAR' : fng <= 60 ? 'NEUTRAL' : fng <= 80 ? 'GREED' : 'EXTREME GREED';
+    // Market Mood
+    const moodEl = document.getElementById('mood-body');
+    const fng = sent.raw_score || 0;
+    const fngLabel = sent.label || 'Unknown';
+    const fngColor = fng <= 25 ? 'red' : fng <= 45 ? 'yellow' : fng >= 75 ? 'green' : fng >= 55 ? 'green' : 'muted';
     const moodEmoji = fng <= 20 ? '😨' : fng <= 40 ? '😟' : fng <= 60 ? '😐' : fng <= 80 ? '😊' : '🤑';
-    const moodColor = fng <= 40 ? 'var(--red)' : fng <= 60 ? 'var(--muted)' : 'var(--green)';
     moodEl.innerHTML =
-      '<div style="text-align:center;padding:16px 0;">' +
-        '<div style="font-size:48px;margin-bottom:10px;">' + moodEmoji + '</div>' +
-        '<div style="font-size:22px;font-weight:800;color:' + moodColor + ';font-family:var(--mono);">' + moodWord + '</div>' +
-      '</div>';
+      '<div style="text-align:center;padding:8px 0 16px;"><span style="font-size:36px;">' + moodEmoji + '</span></div>' +
+      '<div class="stat-row"><span class="stat-label">Fear & Greed</span><span class="stat-value ' + fngColor + '">' + fng + '/100</span></div>' +
+      '<div class="stat-row"><span class="stat-label">Mood</span><span class="stat-value ' + fngColor + '">' + fngLabel + '</span></div>' +
+      '<div class="stat-row"><span class="stat-label">Signal Bias</span><span class="stat-value">' + (sent.signal_score ? fmt(sent.signal_score, 0) + '/100' : '--') + '</span></div>';
 
     // Pending orders
     const pendEl = document.getElementById('pending-body');
@@ -1186,10 +1375,17 @@ async function refresh() {
         const pnl    = parseFloat(t.pnl_usd || 0);
         const pnlPct = parseFloat(t.pnl_pct || 0) * 100;
         const pnlCls = cls(pnl);
-        const dir    = (t.direction || '').toUpperCase();
+        const dir    = t.direction || '';
         return '<tr>' +
+          '<td class="muted">' + t.trade_id + '</td>' +
           '<td><strong>' + t.coin + '</strong></td>' +
           '<td><span class="pos-direction pos-' + dir.toLowerCase() + '">' + (dir === 'LONG' ? '↑' : '↓') + ' ' + dir + '</span></td>' +
+          '<td class="muted" style="font-size:11px;">' + (t.opened_at||'').slice(0,16) + '</td>' +
+          '<td class="muted" style="font-size:11px;">' + ((t.closed_at||'').slice(0,16)||'open') + '</td>' +
+          '<td>$' + fmt(t.entry_price) + '</td>' +
+          '<td>' + (t.exit_price ? '$'+fmt(t.exit_price) : '<span class="yellow">open</span>') + '</td>' +
+          '<td class="muted">$' + fmt(t.size_usd,0) + '</td>' +
+          '<td class="blue">$' + fmt(parseFloat(t.size_usd||0) * (s.leverage || 2), 0) + '</td>' +
           '<td class="' + pnlCls + '">' + fmtD(pnl) + '</td>' +
           '<td class="' + pnlCls + '">' + fmtP(pnlPct) + '</td>' +
           '<td class="muted" style="font-size:11px;">' + (t.exit_reason||'--') + '</td>' +
@@ -1207,6 +1403,27 @@ async function refresh() {
 let killConfirm = false;
 function handleKill() {
   const btn = document.getElementById('kill-btn');
+  if (latestControl && latestControl.kill && latestControl.kill.active) {
+    btn.textContent = 'Clearing...';
+    btn.disabled = true;
+    fetch('/api/kill', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active: false, reason: 'Operator cleared kill switch' })
+    }).then(r => r.json()).then(() => {
+      btn.textContent = '✅ Kill cleared';
+      btn.className = 'kill-btn';
+      setTimeout(() => {
+        btn.textContent = '⚠️ KILL SWITCH';
+        btn.disabled = false;
+      }, 3000);
+    }).catch(() => {
+      btn.textContent = '❌ Clear failed';
+      btn.disabled = false;
+      setTimeout(() => { btn.textContent = '🛑 KILL ACTIVE — CLICK TO CLEAR'; btn.className = 'kill-btn confirming'; }, 3000);
+    });
+    return;
+  }
   if (!killConfirm) {
     killConfirm = true;
     btn.textContent = '🚨 CONFIRM: CLOSE ALL & STOP';

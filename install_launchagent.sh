@@ -52,11 +52,20 @@ mkdir -p "$LOG_DIR"
 mkdir -p "$RUNTIME_DIR"
 
 rsync -a \
+  --exclude ".git" \
+  --exclude ".env" \
+  --exclude ".agent.pid" \
+  --exclude ".venv" \
+  --exclude ".venv.py39.backup.1774870801" \
   --exclude "__pycache__" \
   --exclude "logs" \
   --exclude "checkpoints.db" \
   --exclude "state.json" \
   --exclude "trades_log.csv" \
+  --exclude "trade_memory.json" \
+  --exclude "control.json" \
+  --exclude "dashboard_snapshot.json" \
+  --exclude "KILL" \
   --exclude "netlify-dashboard/node_modules" \
   "$SCRIPT_DIR/" "$RUNTIME_DIR/"
 
