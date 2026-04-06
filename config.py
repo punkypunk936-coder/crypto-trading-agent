@@ -140,6 +140,12 @@ class TradingConfig:
     orderbook_level_min_strength: float = 0.55
     orderbook_score_influence: float = 0.35
     orderbook_override_score: float = 82.0
+    require_orderbook_for_crypto_entries: bool = True
+    require_execution_quality: bool = True
+    max_execution_spread_bps: float = 12.0
+    min_execution_depth_multiple: float = 10.0
+    max_execution_slippage_bps: float = 18.0
+    min_orderbook_persistence_cycles: int = 2
 
     # ── Timing ──────────────────────────────────────────
     check_interval_seconds: int  = 120    # Run cycle every 2 minutes
@@ -156,6 +162,14 @@ class TradingConfig:
     thesis_min_score_buffer: float = 3.0
     thesis_min_risk_reward_ratio: float = 1.75
     thesis_block_on_range_conditions: bool = True
+    strict_confirmation_fail_closed: bool = True
+
+    # ── Thesis invalidation ladder ───────────────────────
+    early_invalidation_minutes: float = 90.0
+    early_invalidation_adverse_r: float = 0.55
+    htf_invalidation_min_minutes: float = 60.0
+    time_stop_minutes: float = 360.0
+    time_stop_min_tp_progress: float = 0.25
 
     # ── Live runtime guardrails ─────────────────────────
     require_ac_power_for_live: bool = True
@@ -198,6 +212,7 @@ class TradingConfig:
     # Optional custom TradingView or Lighter chart URLs per coin
     # chart_urls: dict = {"BTC": "https://www.tradingview.com/chart/?symbol=BINANCE:BTCUSDT"}
     chart_urls: dict             = field(default_factory=dict)
+    backtest_market_slippage_bps: float = 4.0
 
 
 # ─────────────────────────────────────────────────────────

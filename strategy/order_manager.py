@@ -92,6 +92,8 @@ class ReEntryWatch:
     stop_price: float       # abort watch if price crosses this (trend reversal)
     size_usd: float
     signal_score: float
+    trade_plan: dict = field(default_factory=dict)
+    entry_context: dict = field(default_factory=dict)
     cycles: int = 0
     max_cycles: int = MAX_REENTRY_WAIT_CYCLES
 
@@ -120,6 +122,8 @@ class OrderManager:
         tp_price: float,
         size_usd: float,
         signal_score: float,
+        trade_plan: Optional[dict] = None,
+        entry_context: Optional[dict] = None,
     ) -> ReEntryWatch:
         """
         Called immediately after a TP close.
@@ -146,6 +150,8 @@ class OrderManager:
             stop_price    = stop_price,
             size_usd      = size_usd,
             signal_score  = signal_score,
+            trade_plan    = dict(trade_plan or {}),
+            entry_context = dict(entry_context or {}),
         )
         self.reentry_watches[coin] = watch
         log.info(
@@ -259,12 +265,15 @@ class OrderManager:
                     f"reached limit level ${watch.reentry_price:.2f}"
                 )
                 # Calculate SL/TP relative to the limit price
+                plan = dict(watch.trade_plan or {})
+                risk_pct = float(plan.get("risk_pct", 0.0) or 0.0) / 100.0
+                rr_ratio = float(plan.get("risk_reward_ratio", 0.0) or 0.0)
                 if watch.direction == "LONG":
-                    sl = watch.reentry_price * 0.90   # 10% below
-                    tp = watch.reentry_price * 1.50   # 50% above
+                    sl = watch.reentry_price * (1 - risk_pct) if risk_pct > 0 else watch.reentry_price * 0.90
+                    tp = watch.reentry_price + (watch.reentry_price - sl) * rr_ratio if rr_ratio > 0 else watch.reentry_price * 1.50
                 else:
-                    sl = watch.reentry_price * 1.10
-                    tp = watch.reentry_price * 0.50
+                    sl = watch.reentry_price * (1 + risk_pct) if risk_pct > 0 else watch.reentry_price * 1.10
+                    tp = watch.reentry_price - (sl - watch.reentry_price) * rr_ratio if rr_ratio > 0 else watch.reentry_price * 0.50
 
                 actions.append({
                     "type":      "place_limit",
@@ -276,6 +285,8 @@ class OrderManager:
                     "tp":        tp,
                     "score":     watch.signal_score,
                     "reason":    "re_entry",
+                    "entry_context": dict(watch.entry_context or {}),
+                    "trade_plan": dict(watch.trade_plan or {}),
                 })
                 # Remove watch after triggering (one re-entry per TP)
                 del self.reentry_watches[coin]

@@ -34,6 +34,7 @@ import os
 from config import Config
 from logger import get_logger
 from data.market_data import completed_candle_frame, fetch_candles, get_current_price
+import trade_dataset
 import trade_logger
 from indicators.technical import compute_signals
 from indicators.advanced  import compute_advanced_signals
@@ -80,6 +81,7 @@ class TradingAgent:
         self._last_available_usd = 0.0
         self._last_signals: Dict[str, dict] = {}
         self._last_power_status: Dict[str, object] = {}
+        self._orderbook_history: Dict[str, List[dict]] = {}
         self._tradable_coins = [coin.upper() for coin in cfg.trading.coins]
         self._tradable_coin_set = set(self._tradable_coins)
         seen_analysis: List[str] = []
@@ -574,6 +576,7 @@ class TradingAgent:
                 )
             except Exception as e:
                 log.debug(f"[{coin}] Orderbook levels skipped: {e}")
+        self._track_orderbook_snapshot(coin, orderbook_signal)
 
         # Generate signal  (LONG / SHORT / FLAT)
         signal = self.strategy.generate_signal(
@@ -676,6 +679,7 @@ class TradingAgent:
             "orderbook_block_shorts": orderbook_signal.block_shorts if orderbook_signal and orderbook_signal.valid else False,
             "daily_breakout_level": orderbook_signal.daily_breakout_level if orderbook_signal and orderbook_signal.valid else 0.0,
             "daily_breakdown_level": orderbook_signal.daily_breakdown_level if orderbook_signal and orderbook_signal.valid else 0.0,
+            "orderbook_valid": bool(orderbook_signal and orderbook_signal.valid),
             "planned_stop_loss": signal.stop_loss_price,
             "planned_take_profit": signal.take_profit_price,
             "planned_risk_pct": trade_plan.get("risk_pct", 0.0),
@@ -699,8 +703,28 @@ class TradingAgent:
             "thesis_blockers": thesis.get("blockers", []),
             "thesis":          thesis,
             "trade_plan":      trade_plan,
+            "execution_quality": {},
+            "execution_quality_score": 0.0,
+            "execution_quality_summary": "",
+            "estimated_slippage_bps": 0.0,
+            "execution_persistence_cycles": 0,
             "execution_mode":  "tradable" if coin in self._tradable_coin_set else "observation_only",
         }
+
+        mtf_allows_signal = True
+        if self.cfg.trading.use_mtf and (current_pos or signal.action != "FLAT"):
+            mtf_allows_signal = self._check_mtf_safe(coin, signal)
+
+        if current_pos:
+            invalidation_reason = self._detect_position_invalidation(coin, current_pos, signal)
+            if invalidation_reason:
+                log.info(
+                    f"[{coin}] 🧭 Thesis invalidated — closing {current_pos} via {invalidation_reason}"
+                )
+                self._close_position(coin, invalidation_reason, signal.price)
+                self._flat_streak.pop(coin, None)
+                self._signal_streak.pop(coin, None)
+                return
 
         if signal.action == "FLAT":
             # ── FLAT-while-positioned: close position if conviction is gone ──
@@ -729,11 +753,25 @@ class TradingAgent:
             return
 
         # ── Multi-timeframe confirmation ────────────────────────
-        mtf = None
-        if self.cfg.trading.use_mtf:
-            mtf = self._check_mtf_safe(coin, signal)
-            if mtf is False:
-                return
+        if mtf_allows_signal is False:
+            return
+
+        if (
+            instrument_type == "crypto"
+            and getattr(self.cfg.trading, "use_orderbook_levels", True)
+            and getattr(self.cfg.trading, "require_orderbook_for_crypto_entries", True)
+            and (not orderbook_signal or not orderbook_signal.valid)
+        ):
+            log.info(f"[{coin}] 🧱 Missing valid orderbook context — fail-closed, skipping entry")
+            return
+
+        if (
+            self.cfg.trading.use_news
+            and getattr(self.cfg.trading, "strict_confirmation_fail_closed", True)
+            and (not news_signal or not news_signal.valid)
+        ):
+            log.info(f"[{coin}] 📰 Missing valid news confirmation — fail-closed, skipping entry")
+            return
 
         # ── News extreme-event gate (secondary safety net) ───────
         # Note: news is already factored into the signal score above.
@@ -745,24 +783,27 @@ class TradingAgent:
         # ── Chart confirmation on borderline signals ────────────
         if self.cfg.trading.use_chart_confirmation:
             chart_verdict = self._get_chart_confirmation(coin, signal.score)
-            if chart_verdict and chart_verdict.valid:
-                if chart_verdict.action == "WAIT":
-                    log.info(f"[{coin}] 👁️  Chart analyst says WAIT "
-                             f"({chart_verdict.confidence}) — skipping this cycle. "
-                             f"Reason: {chart_verdict.reasoning[:80]}")
+            if not chart_verdict or not chart_verdict.valid:
+                if getattr(self.cfg.trading, "strict_confirmation_fail_closed", True):
+                    log.info(f"[{coin}] 👁️  Chart confirmation unavailable — fail-closed, skipping entry")
                     return
-                elif chart_verdict.action != signal.action:
-                    log.info(
-                        f"[{coin}] 👁️  Chart analyst disagrees: "
-                        f"indicators={signal.action} chart={chart_verdict.action} "
-                        f"— skipping. Reason: {chart_verdict.reasoning[:80]}"
-                    )
-                    return
-                else:
-                    log.info(
-                        f"[{coin}] 👁️  Chart analyst CONFIRMS {signal.action} "
-                        f"({chart_verdict.confidence}) — proceeding."
-                    )
+            elif chart_verdict.action == "WAIT":
+                log.info(f"[{coin}] 👁️  Chart analyst says WAIT "
+                         f"({chart_verdict.confidence}) — skipping this cycle. "
+                         f"Reason: {chart_verdict.reasoning[:80]}")
+                return
+            elif chart_verdict.action != signal.action:
+                log.info(
+                    f"[{coin}] 👁️  Chart analyst disagrees: "
+                    f"indicators={signal.action} chart={chart_verdict.action} "
+                    f"— skipping. Reason: {chart_verdict.reasoning[:80]}"
+                )
+                return
+            else:
+                log.info(
+                    f"[{coin}] 👁️  Chart analyst CONFIRMS {signal.action} "
+                    f"({chart_verdict.confidence}) — proceeding."
+                )
 
         # ── RL directional guardrails ─────────────────────────
         if signal.action in ("LONG", "SHORT"):
@@ -771,8 +812,16 @@ class TradingAgent:
             self._last_signals[coin]["rl_threshold_boost"] = guard.get("threshold_boost", 0.0)
             self._last_signals[coin]["rl_pause_cycles"] = guard.get("pause_cycles", 0)
             self._last_signals[coin]["rl_guard_reasons"] = guard.get("reasons", [])
+            self._last_signals[coin]["rl_hard_block"] = guard.get("hard_block", False)
+            self._last_signals[coin]["rl_hard_block_reason"] = guard.get("hard_block_reason", "")
 
-            if guard.get("pause_cycles", 0) > 0:
+            if guard.get("hard_block", False):
+                block_reason = str(guard.get("hard_block_reason", "") or f"RL embargo on {signal.action}")
+                log.info(f"[{coin}] 🚫 {block_reason}")
+                signal.action = "FLAT"
+                signal.flat_reason = block_reason
+                signal.reason = block_reason
+            elif guard.get("pause_cycles", 0) > 0:
                 pause_reason = (
                     f"RL pause on {signal.action}: {guard['pause_cycles']} cycles left"
                     + (f" ({', '.join(guard['reasons'])})" if guard.get("reasons") else "")
@@ -937,9 +986,270 @@ class TradingAgent:
             log.info(f"[{coin}] Rejected: {order.rejection_reason}")
             return
 
+        execution_quality = self._assess_execution_quality(coin, signal.action, order, orderbook_signal)
+        self._last_signals[coin]["execution_quality"] = execution_quality
+        self._last_signals[coin]["execution_quality_score"] = execution_quality.get("score", 0.0)
+        self._last_signals[coin]["execution_quality_summary"] = execution_quality.get("summary", "")
+        self._last_signals[coin]["estimated_slippage_bps"] = execution_quality.get("estimated_slippage_bps", 0.0)
+        self._last_signals[coin]["execution_persistence_cycles"] = execution_quality.get("persistence_cycles", 0)
+        if not execution_quality.get("permitted", True):
+            log.info(f"[{coin}] ⚙️ Execution-quality gate blocked entry: {execution_quality.get('summary', '')}")
+            return
+
         self._execute_order(coin, signal, order)
 
     # ── Execution ─────────────────────────────────────────────
+
+    def _track_orderbook_snapshot(self, coin: str, orderbook_signal) -> None:
+        if not orderbook_signal or not getattr(orderbook_signal, "valid", False):
+            return
+        history = self._orderbook_history.setdefault(coin, [])
+        history.append({
+            "ts": time.time(),
+            "breakout_state": getattr(orderbook_signal, "breakout_state", "NONE"),
+            "level_interaction": getattr(orderbook_signal, "level_interaction", "BETWEEN_LEVELS"),
+            "support": round(float(getattr(orderbook_signal, "nearest_support", 0.0) or 0.0), 4),
+            "resistance": round(float(getattr(orderbook_signal, "nearest_resistance", 0.0) or 0.0), 4),
+            "spread_bps": float(getattr(orderbook_signal, "spread_bps", 0.0) or 0.0),
+            "bid_notional": float(getattr(orderbook_signal, "bid_notional", 0.0) or 0.0),
+            "ask_notional": float(getattr(orderbook_signal, "ask_notional", 0.0) or 0.0),
+        })
+        max_points = max(4, int(getattr(self.cfg.trading, "min_orderbook_persistence_cycles", 2)) + 3)
+        if len(history) > max_points:
+            del history[:-max_points]
+
+    def _orderbook_persistence_cycles(self, coin: str, direction: str, orderbook_signal) -> int:
+        history = list(self._orderbook_history.get(coin, []))
+        if not history or not orderbook_signal or not getattr(orderbook_signal, "valid", False):
+            return 0
+
+        direction = direction.upper()
+        current_support = round(float(getattr(orderbook_signal, "nearest_support", 0.0) or 0.0), 4)
+        current_resistance = round(float(getattr(orderbook_signal, "nearest_resistance", 0.0) or 0.0), 4)
+        current_breakout = str(getattr(orderbook_signal, "breakout_state", "NONE") or "NONE")
+        current_interaction = str(getattr(orderbook_signal, "level_interaction", "BETWEEN_LEVELS") or "BETWEEN_LEVELS")
+
+        count = 0
+        for snap in reversed(history):
+            if str(snap.get("breakout_state", "NONE")) != current_breakout:
+                break
+            if str(snap.get("level_interaction", "BETWEEN_LEVELS")) != current_interaction:
+                break
+            if direction == "LONG":
+                if current_support <= 0 or abs(float(snap.get("support", 0.0)) - current_support) > max(current_support * 0.0025, 1e-6):
+                    break
+            else:
+                if current_resistance <= 0 or abs(float(snap.get("resistance", 0.0)) - current_resistance) > max(current_resistance * 0.0025, 1e-6):
+                    break
+            count += 1
+        return count
+
+    def _assess_execution_quality(self, coin: str, direction: str, order, orderbook_signal) -> dict:
+        direction = direction.upper()
+        quality = {
+            "permitted": True,
+            "score": 70.0,
+            "summary": "Execution conditions are acceptable",
+            "blockers": [],
+            "warnings": [],
+            "spread_bps": 0.0,
+            "side_notional_usd": 0.0,
+            "estimated_slippage_bps": 0.0,
+            "depth_multiple": 0.0,
+            "persistence_cycles": 0,
+        }
+
+        if not getattr(self.cfg.trading, "require_execution_quality", True):
+            quality["summary"] = "Execution-quality gate disabled"
+            return quality
+
+        if not orderbook_signal or not getattr(orderbook_signal, "valid", False):
+            quality["permitted"] = False
+            quality["score"] = 0.0
+            quality["summary"] = "Orderbook execution quality is unavailable"
+            quality["blockers"].append("no valid orderbook snapshot")
+            return quality
+
+        spread_bps = float(getattr(orderbook_signal, "spread_bps", 0.0) or 0.0)
+        side_notional = float(
+            getattr(orderbook_signal, "bid_notional" if direction == "LONG" else "ask_notional", 0.0) or 0.0
+        )
+        size_usd = float(getattr(order, "size_usd", 0.0) or 0.0)
+        depth_multiple = side_notional / max(size_usd, 1e-9) if size_usd > 0 else 0.0
+        estimated_slippage_bps = (spread_bps * 0.5) + ((size_usd / max(side_notional, 1e-9)) * 10_000.0)
+        persistence_cycles = self._orderbook_persistence_cycles(coin, direction, orderbook_signal)
+
+        quality.update({
+            "spread_bps": round(spread_bps, 3),
+            "side_notional_usd": round(side_notional, 2),
+            "estimated_slippage_bps": round(estimated_slippage_bps, 3),
+            "depth_multiple": round(depth_multiple, 3),
+            "persistence_cycles": persistence_cycles,
+        })
+
+        max_spread = float(getattr(self.cfg.trading, "max_execution_spread_bps", 12.0) or 12.0)
+        min_depth_multiple = float(getattr(self.cfg.trading, "min_execution_depth_multiple", 10.0) or 10.0)
+        max_slippage = float(getattr(self.cfg.trading, "max_execution_slippage_bps", 18.0) or 18.0)
+        min_persistence = int(getattr(self.cfg.trading, "min_orderbook_persistence_cycles", 2) or 2)
+        breakout_state = str(getattr(orderbook_signal, "breakout_state", "NONE") or "NONE")
+        level_interaction = str(getattr(orderbook_signal, "level_interaction", "BETWEEN_LEVELS") or "BETWEEN_LEVELS")
+        confirmed_break = breakout_state in {"CONFIRMED_BULLISH_BREAKOUT", "CONFIRMED_BEARISH_BREAKDOWN"}
+        direction_blocked = (
+            direction == "LONG" and getattr(orderbook_signal, "block_longs", False)
+        ) or (
+            direction == "SHORT" and getattr(orderbook_signal, "block_shorts", False)
+        )
+
+        if direction_blocked:
+            quality["blockers"].append("orderbook/key levels are blocking this direction")
+        if spread_bps > max_spread:
+            quality["blockers"].append(f"spread too wide ({spread_bps:.1f}bps > {max_spread:.1f}bps)")
+        if depth_multiple < min_depth_multiple:
+            quality["blockers"].append(
+                f"book depth too thin ({depth_multiple:.1f}x size < {min_depth_multiple:.1f}x)"
+            )
+        if estimated_slippage_bps > max_slippage:
+            quality["blockers"].append(
+                f"estimated slippage too high ({estimated_slippage_bps:.1f}bps > {max_slippage:.1f}bps)"
+            )
+        if level_interaction == "RANGE_COMPRESSION" and not confirmed_break:
+            quality["blockers"].append("orderbook still shows range compression")
+        if persistence_cycles < min_persistence and not confirmed_break:
+            quality["blockers"].append(
+                f"key level has only persisted {persistence_cycles}/{min_persistence} cycles"
+            )
+
+        if quality["blockers"]:
+            quality["permitted"] = False
+            quality["score"] = max(0.0, 70.0 - 14.0 * len(quality["blockers"]))
+            quality["summary"] = "; ".join(quality["blockers"][:3])
+        else:
+            depth_bonus = min(15.0, max(0.0, (depth_multiple - min_depth_multiple) * 1.5))
+            persistence_bonus = min(10.0, max(0, persistence_cycles - min_persistence) * 3.0)
+            spread_penalty = min(10.0, spread_bps / max(max_spread, 1e-9) * 6.0)
+            slippage_penalty = min(10.0, estimated_slippage_bps / max(max_slippage, 1e-9) * 6.0)
+            quality["score"] = round(max(0.0, min(100.0, 74.0 + depth_bonus + persistence_bonus - spread_penalty - slippage_penalty)), 2)
+            quality["summary"] = (
+                f"spread {spread_bps:.1f}bps, est slippage {estimated_slippage_bps:.1f}bps, "
+                f"depth {depth_multiple:.1f}x, persistence {persistence_cycles}c"
+            )
+        return quality
+
+    def _detect_position_invalidation(self, coin: str, current_pos: str, signal) -> str:
+        pos = self.risk.positions.get(coin)
+        if not pos:
+            return ""
+
+        sig = dict(self._last_signals.get(coin, {}) or {})
+        thesis = dict(sig.get("thesis", {}) or {})
+        hold_minutes = (time.time() - pos.opened_at) / 60.0 if pos.opened_at else 0.0
+        entry_ctx = dict((pos.metadata or {}).get("entry_context", {}) or {})
+        planned_stop = float(entry_ctx.get("planned_stop_loss") or pos.stop_loss or 0.0)
+        planned_tp = float(entry_ctx.get("planned_take_profit") or pos.take_profit or 0.0)
+        risk_per_unit = abs(pos.entry_price - planned_stop) if planned_stop > 0 else 0.0
+        reward_per_unit = abs(planned_tp - pos.entry_price) if planned_tp > 0 else 0.0
+        live_price = float(sig.get("live_price", signal.price) or signal.price or pos.entry_price)
+        favorable_move = self._signed_move(pos.direction, pos.entry_price, live_price)
+        adverse_move = max(0.0, -favorable_move)
+        adverse_r = adverse_move / max(risk_per_unit, 1e-9) if risk_per_unit > 0 else 0.0
+        tp_progress = favorable_move / max(reward_per_unit, 1e-9) if reward_per_unit > 0 else 0.0
+
+        structure_trend = str(sig.get("structure_trend", "") or "").upper()
+        mtf_bias = str(sig.get("mtf_bias", "FLAT") or "FLAT").upper()
+        breakout_state = str(sig.get("orderbook_breakout_state", "NONE") or "NONE").upper()
+        thesis_permitted = bool(thesis.get("permitted", signal.action in {"LONG", "SHORT"}))
+        thesis_state = str(thesis.get("state", "") or "").upper()
+        thesis_conflicts = float(thesis.get("conflict_points", 0.0) or 0.0)
+
+        early_minutes = float(getattr(self.cfg.trading, "early_invalidation_minutes", 90.0) or 90.0)
+        early_adverse_r = float(getattr(self.cfg.trading, "early_invalidation_adverse_r", 0.55) or 0.55)
+        htf_min_minutes = float(getattr(self.cfg.trading, "htf_invalidation_min_minutes", 60.0) or 60.0)
+        time_stop_minutes = float(getattr(self.cfg.trading, "time_stop_minutes", 360.0) or 360.0)
+        time_stop_min_progress = float(getattr(self.cfg.trading, "time_stop_min_tp_progress", 0.25) or 0.25)
+
+        structure_against = (
+            (pos.direction == "LONG" and structure_trend == "DOWNTREND") or
+            (pos.direction == "SHORT" and structure_trend == "UPTREND")
+        )
+        breakout_against = (
+            (pos.direction == "LONG" and breakout_state == "CONFIRMED_BEARISH_BREAKDOWN") or
+            (pos.direction == "SHORT" and breakout_state == "CONFIRMED_BULLISH_BREAKOUT")
+        )
+        mtf_against = (
+            (pos.direction == "LONG" and mtf_bias == "BEARISH") or
+            (pos.direction == "SHORT" and mtf_bias == "BULLISH")
+        )
+
+        if hold_minutes <= early_minutes and adverse_r >= early_adverse_r and not thesis_permitted:
+            return "micro_invalidation"
+        if (structure_against or breakout_against) and (not thesis_permitted or thesis_state == "NO_TRADE" or thesis_conflicts >= 2):
+            return "structure_invalidation"
+        if hold_minutes >= htf_min_minutes and mtf_against and (not thesis_permitted or thesis_conflicts >= 1):
+            return "htf_invalidation"
+        if hold_minutes >= time_stop_minutes and tp_progress < time_stop_min_progress and (not thesis_permitted or thesis_state == "NO_TRADE"):
+            return "time_stop"
+        return ""
+
+    def _build_closed_trade_dataset_record(
+        self,
+        coin: str,
+        pos,
+        exit_price: float,
+        exit_reason: str,
+        hold_minutes: float,
+        entry_ctx: dict,
+        last_sig: dict,
+        csv_trade: dict | None,
+    ) -> dict:
+        entry_price = float(pos.entry_price or 0.0)
+        if entry_price <= 0:
+            return {}
+        if pos.direction == "LONG":
+            pnl_pct = (exit_price - entry_price) / entry_price * 100.0
+        else:
+            pnl_pct = (entry_price - exit_price) / entry_price * 100.0
+        pnl_usd = pnl_pct / 100.0 * float(pos.size_usd or 0.0)
+
+        return {
+            "trade_id": (csv_trade or {}).get("trade_id"),
+            "coin": coin,
+            "direction": pos.direction,
+            "exchange": pos.exchange,
+            "opened_at_ts": pos.opened_at,
+            "closed_at_ts": time.time(),
+            "hold_minutes": round(hold_minutes, 2),
+            "entry_price": round(entry_price, 6),
+            "exit_price": round(float(exit_price or 0.0), 6),
+            "size_usd": round(float(pos.size_usd or 0.0), 2),
+            "size_coin": round(float(pos.size_coin or 0.0), 8),
+            "pnl_usd": round(pnl_usd, 4),
+            "pnl_pct": round(pnl_pct, 4),
+            "exit_reason": exit_reason,
+            "outcome": "WIN" if pnl_usd > 0 else "LOSS" if pnl_usd < 0 else "BREAKEVEN",
+            "signal_score": entry_ctx.get("score", last_sig.get("score", 50.0)),
+            "thesis": dict(entry_ctx.get("thesis", {}) or last_sig.get("thesis", {}) or {}),
+            "trade_plan": dict(entry_ctx.get("trade_plan", {}) or {}),
+            "execution_quality": dict(entry_ctx.get("execution_quality", {}) or {}),
+            "entry_context": dict(entry_ctx or {}),
+            "exit_context": {
+                "signal_action": last_sig.get("action", "FLAT"),
+                "signal_score": last_sig.get("score", 50.0),
+                "thesis_state": last_sig.get("thesis_state", ""),
+                "thesis_summary": last_sig.get("thesis_summary", ""),
+                "mtf_bias": last_sig.get("mtf_bias", "FLAT"),
+                "market_regime": last_sig.get("market_regime", "RANGING"),
+                "dominant_regime": last_sig.get("dominant_regime", "MIXED"),
+                "orderbook_breakout_state": last_sig.get("orderbook_breakout_state", "NONE"),
+                "orderbook_interaction": last_sig.get("orderbook_interaction", "BETWEEN_LEVELS"),
+            },
+            "plan_outcome": {
+                "captured_r_multiple": entry_ctx.get("captured_r_multiple"),
+                "tp_progress_ratio": entry_ctx.get("tp_progress_ratio"),
+                "remaining_to_tp_pct": entry_ctx.get("remaining_to_tp_pct"),
+                "remaining_to_sl_pct": entry_ctx.get("remaining_to_sl_pct"),
+                "stop_pressure_ratio": entry_ctx.get("stop_pressure_ratio"),
+            },
+        }
 
     def _build_entry_context(self, coin: str, signal, order=None, entry_type: str = "signal_entry") -> dict:
         sig = dict(getattr(self, "_last_signals", {}).get(coin, {}) or {})
@@ -1008,6 +1318,12 @@ class TradingAgent:
             "daily_breakout_level": sig.get("daily_breakout_level", 0.0),
             "daily_breakdown_level": sig.get("daily_breakdown_level", 0.0),
             "trade_plan": trade_plan,
+            "thesis": sig.get("thesis", {}),
+            "execution_quality": sig.get("execution_quality", {}),
+            "execution_quality_score": sig.get("execution_quality_score", 0.0),
+            "execution_quality_summary": sig.get("execution_quality_summary", ""),
+            "estimated_slippage_bps": sig.get("estimated_slippage_bps", 0.0),
+            "execution_persistence_cycles": sig.get("execution_persistence_cycles", 0),
             "conviction_tier": getattr(order, "conviction_tier", ""),
             "conviction_pct": getattr(order, "conviction_pct", 0.0),
         }
@@ -1210,7 +1526,9 @@ class TradingAgent:
 
     def _place_limit_order(self, coin: str, direction: str, limit_price: float,
                            size_usd: float, sl: float, tp: float,
-                           score: float, reason: str = "re_entry"):
+                           score: float, reason: str = "re_entry",
+                           entry_context: Optional[dict] = None,
+                           trade_plan: Optional[dict] = None):
         """Place a limit order on the first available exchange and register it."""
         exchanges = self._eligible_exchanges(coin)
         if not exchanges:
@@ -1239,28 +1557,34 @@ class TradingAgent:
                     exchange_order_id = result.order_id,
                     reason            = reason,
                     metadata          = {
-                        "entry_context": self._build_entry_context(
-                            coin,
-                            type("PendingSignal", (), {
-                                "action": direction,
-                                "score": score,
-                                "confidence": "MEDIUM",
-                                "reason": reason,
-                                "flat_reason": "",
-                                "trade_plan": {
-                                    "entry_price": limit_price,
-                                    "stop_loss": sl,
-                                    "take_profit": tp,
-                                    "risk_pct": round(abs(limit_price - sl) / max(limit_price, 1e-9) * 100, 3),
-                                    "reward_pct": round(abs(tp - limit_price) / max(limit_price, 1e-9) * 100, 3),
-                                    "risk_reward_ratio": round(
-                                        abs(tp - limit_price) / max(abs(limit_price - sl), 1e-9), 3
+                        "entry_context": (
+                            dict(entry_context or {})
+                            or self._build_entry_context(
+                                coin,
+                                type("PendingSignal", (), {
+                                    "action": direction,
+                                    "score": score,
+                                    "confidence": "MEDIUM",
+                                    "reason": reason,
+                                    "flat_reason": "",
+                                    "trade_plan": (
+                                        dict(trade_plan or {})
+                                        or {
+                                            "entry_price": limit_price,
+                                            "stop_loss": sl,
+                                            "take_profit": tp,
+                                            "risk_pct": round(abs(limit_price - sl) / max(limit_price, 1e-9) * 100, 3),
+                                            "reward_pct": round(abs(tp - limit_price) / max(limit_price, 1e-9) * 100, 3),
+                                            "risk_reward_ratio": round(
+                                                abs(tp - limit_price) / max(abs(limit_price - sl), 1e-9), 3
+                                            ),
+                                            "stop_basis": "limit_plan",
+                                            "target_basis": "limit_plan",
+                                        }
                                     ),
-                                    "stop_basis": "limit_plan",
-                                    "target_basis": "limit_plan",
-                                },
-                            })(),
-                            entry_type=reason,
+                                })(),
+                                entry_type=reason,
+                            )
                         )
                     },
                 )
@@ -1293,8 +1617,11 @@ class TradingAgent:
                 log.info(f"[{coin}] Skipping limit order — position already open")
                 return
 
-            self._place_limit_order(coin, direction, price, size_usd,
-                                    sl, tp, score, reason)
+            self._place_limit_order(
+                coin, direction, price, size_usd, sl, tp, score, reason,
+                entry_context=action.get("entry_context"),
+                trade_plan=action.get("trade_plan"),
+            )
 
         elif action["type"] == "cancel_limit":
             coin     = action["coin"]
@@ -1436,6 +1763,7 @@ class TradingAgent:
 
             # No-emotion re-entry: if TP was hit, schedule a limit re-entry
             if info.get("was_take_profit"):
+                exit_entry_context = dict((info.get("metadata") or {}).get("entry_context", {}) or {})
                 log.info(f"[{coin}] TP hit — scheduling re-entry watch "
                          f"(fib retracement from ${info['entry_price']:.2f} → ${info['tp_price']:.2f})")
                 self.order_mgr.schedule_reentry(
@@ -1445,11 +1773,14 @@ class TradingAgent:
                     tp_price     = info["tp_price"],
                     size_usd     = min(info["size_usd"], self.cfg.trading.max_trade_usd),
                     signal_score = 65.0,   # assume medium-high conviction for re-entry
+                    trade_plan   = dict(exit_entry_context.get("trade_plan", {}) or {}),
+                    entry_context= exit_entry_context,
                 )
 
     def _close_position(self, coin: str, reason: str, price: float):
         pos   = self.risk.positions.get(coin)
         entry = pos.entry_price if pos else price
+        open_trade_snapshot = trade_logger.get_open_trade(coin)
 
         exit_price = price
         exchanges = self._eligible_exchanges(coin)
@@ -1513,7 +1844,7 @@ class TradingAgent:
 
         was_tp = reason == "take_profit"
         self.risk.record_close(coin, exit_price, reason, was_take_profit=was_tp)
-        trade_logger.log_close(coin, exit_price=exit_price, exit_reason=reason)
+        csv_trade = trade_logger.log_close(coin, exit_price=exit_price, exit_reason=reason)
 
         # ── Record outcome to trade memory for self-learning ─────────────────
         if pos:
@@ -1521,6 +1852,18 @@ class TradingAgent:
             last_sig     = self._last_signals.get(coin, {})
             entry_ctx    = dict((getattr(pos, "metadata", {}) or {}).get("entry_context", {}) or {})
             entry_ctx    = self._annotate_exit_against_plan(pos.direction, entry_ctx, entry, exit_price)
+            dataset_record = self._build_closed_trade_dataset_record(
+                coin,
+                pos,
+                exit_price,
+                reason,
+                hold_minutes,
+                entry_ctx,
+                last_sig,
+                csv_trade or open_trade_snapshot,
+            )
+            if dataset_record:
+                trade_dataset.append_closed_trade(dataset_record)
             trend_ctx    = entry_ctx.get("mtf_bias") or last_sig.get("mtf_bias", "FLAT")
             # Pull regime context so RL can learn which regimes are profitable
             market_regime   = entry_ctx.get("market_regime") or last_sig.get("market_regime",   "RANGING")
@@ -1658,6 +2001,7 @@ class TradingAgent:
             # Persist MTF bias for trade memory context
             if coin in self._last_signals:
                 self._last_signals[coin]["mtf_bias"] = mtf.combined_bias or "FLAT"
+                self._last_signals[coin]["mtf_status"] = "ok"
             if signal.action == "LONG" and not mtf.allow_long:
                 log.info(f"[{coin}] 🕐 MTF blocks LONG — {mtf.reason}")
                 return False
@@ -1667,11 +2011,17 @@ class TradingAgent:
             log.info(f"[{coin}] MTF combined={mtf.combined_bias} adj={mtf.score_adjustment:+.0f}")
             return True
         except CircuitBreakerError:
-            log.warning(f"[{coin}] MTF circuit open - allowing signal")
-            return True
+            log.warning(f"[{coin}] MTF circuit open")
+            if coin in self._last_signals:
+                self._last_signals[coin]["mtf_bias"] = "UNAVAILABLE"
+                self._last_signals[coin]["mtf_status"] = "circuit_open"
+            return not getattr(self.cfg.trading, "strict_confirmation_fail_closed", True)
         except Exception as e:
             log.warning(f"[{coin}] MTF failed: {e}")
-            return True
+            if coin in self._last_signals:
+                self._last_signals[coin]["mtf_bias"] = "UNAVAILABLE"
+                self._last_signals[coin]["mtf_status"] = "error"
+            return not getattr(self.cfg.trading, "strict_confirmation_fail_closed", True)
 
     def _check_news_safe(self, coin: str, signal) -> bool:
         """Legacy wrapper — kept for compatibility. Use _check_news_extreme instead."""
@@ -1683,11 +2033,11 @@ class TradingAgent:
             )
             return self._check_news_extreme(coin, signal, news)
         except CircuitBreakerError:
-            log.warning(f"[{coin}] News circuit open - allowing signal")
-            return True
+            log.warning(f"[{coin}] News circuit open")
+            return not getattr(self.cfg.trading, "strict_confirmation_fail_closed", True)
         except Exception as e:
             log.warning(f"[{coin}] News signal failed: {e}")
-            return True
+            return not getattr(self.cfg.trading, "strict_confirmation_fail_closed", True)
 
     def _check_news_extreme(self, coin: str, signal, news) -> bool:
         """
@@ -1865,9 +2215,7 @@ class TradingAgent:
         log_path = TRADES_CSV
         if log_path.exists():
             try:
-                import csv as csv_mod
-                with open(log_path, newline="") as f:
-                    trades_data = list(csv_mod.DictReader(f))
+                trades_data = trade_logger.read_closed_trades()
             except Exception as e:
                 log.debug(f"trades_log.csv read failed: {e}")
 

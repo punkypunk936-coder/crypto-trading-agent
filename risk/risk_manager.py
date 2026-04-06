@@ -609,6 +609,7 @@ class RiskManager:
                     "entry_price":     pos.entry_price,
                     "tp_price":        pos.take_profit,
                     "size_usd":        pos.size_usd,
+                    "metadata":        dict(pos.metadata or {}),
                 })
 
         return exits

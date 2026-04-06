@@ -17,16 +17,20 @@ import pandas as pd
 
 import checkpoint as checkpoint_module
 import agent as agent_module
+import backtest as backtest_module
 import main as main_module
+import trade_dataset as trade_dataset_module
 import trade_logger as trade_logger_module
 from indicators import trade_memory as trade_memory_module
 from agent import TradingAgent
 from config import Config
+from circuit_breaker import CircuitBreakerError
 from dashboard import app as dashboard_module
 from exchanges.base import AccountState, BaseExchange, OrderResult, LimitOrderStatus
 from exchanges.dry_run import DryRunExchange
 from risk.risk_manager import OrderRequest, OpenPosition
 from strategy.aggressive_strategy import AggressiveStrategy
+from strategy.order_manager import OrderManager
 
 
 class StubExchange(BaseExchange):
@@ -1201,6 +1205,128 @@ def test_trade_memory_directional_pause_and_guard() -> None:
             trade_memory_module.MEMORY_FILE = original_memory_file
 
 
+def test_mtf_fail_closed_blocks_when_confirmation_is_unavailable() -> None:
+    agent = object.__new__(TradingAgent)
+    agent.cfg = build_config()
+    agent.cfg.trading.strict_confirmation_fail_closed = True
+    agent._last_signals = {"BTC": {}}
+
+    class BrokenCircuit:
+        def call(self, *_args, **_kwargs):
+            raise CircuitBreakerError("mtf unavailable")
+
+    agent._mtf_circuit = BrokenCircuit()
+    allowed = agent._check_mtf_safe("BTC", Signal("LONG"))
+    assert allowed is False, "strict confirmation mode should fail closed when MTF is unavailable"
+    assert agent._last_signals["BTC"]["mtf_bias"] == "UNAVAILABLE"
+
+
+def test_execution_quality_gate_blocks_thin_unstable_orderbooks() -> None:
+    agent = object.__new__(TradingAgent)
+    agent.cfg = build_config()
+    agent._orderbook_history = {
+        "BTC": [{
+            "breakout_state": "NONE",
+            "level_interaction": "BETWEEN_LEVELS",
+            "support": 99.0,
+            "resistance": 101.0,
+            "spread_bps": 22.0,
+            "bid_notional": 500.0,
+            "ask_notional": 500.0,
+        }]
+    }
+    order = OrderRequest(
+        coin="BTC",
+        direction="LONG",
+        size_usd=100.0,
+        size_coin=1.0,
+        price=100.0,
+        stop_loss=96.0,
+        take_profit=108.0,
+    )
+    orderbook_signal = SimpleNamespace(
+        valid=True,
+        spread_bps=22.0,
+        bid_notional=500.0,
+        ask_notional=500.0,
+        breakout_state="NONE",
+        level_interaction="BETWEEN_LEVELS",
+        nearest_support=99.0,
+        nearest_resistance=101.0,
+        block_longs=False,
+        block_shorts=False,
+    )
+    quality = agent._assess_execution_quality("BTC", "LONG", order, orderbook_signal)
+    assert quality["permitted"] is False, "thin or unstable books should block market entries"
+    assert quality["blockers"], "the gate should explain what failed"
+
+
+def test_reentry_watch_inherits_dynamic_trade_plan() -> None:
+    manager = OrderManager()
+    manager.schedule_reentry(
+        coin="BTC",
+        direction="LONG",
+        entry_price=80.0,
+        tp_price=120.0,
+        size_usd=100.0,
+        signal_score=70.0,
+        trade_plan={"risk_pct": 2.0, "risk_reward_ratio": 2.5},
+        entry_context={"trade_plan": {"risk_pct": 2.0, "risk_reward_ratio": 2.5}},
+    )
+    actions = manager.tick({"BTC": 100.0})
+    assert actions and actions[0]["type"] == "place_limit"
+    assert round(actions[0]["sl"], 2) == 98.00
+    assert round(actions[0]["tp"], 2) == 105.00
+
+
+def test_trade_logger_normalizes_legacy_headerless_log() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        temp_log = Path(tmpdir) / "trades_log.csv"
+        row = [
+            "1", "BTC", "LONG", "2026-01-01 00:00", "2026-01-01 01:00", "60",
+            "100", "105", "100", "2", "5", "5", "95", "110", "take_profit", "72", "WIN",
+        ]
+        temp_log.write_text(",".join(row) + "\n")
+
+        original_log = trade_logger_module.LOG_FILE
+        try:
+            trade_logger_module.LOG_FILE = temp_log
+            rows = trade_logger_module.read_closed_trades()
+            assert len(rows) == 1
+            assert rows[0]["coin"] == "BTC"
+            assert temp_log.read_text().splitlines()[0].startswith("trade_id,coin,direction")
+        finally:
+            trade_logger_module.LOG_FILE = original_log
+
+
+def test_trade_memory_can_hard_block_failing_direction_family() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        original_memory_file = trade_memory_module.MEMORY_FILE
+        try:
+            trade_memory_module.MEMORY_FILE = Path(tmpdir) / "trade_memory.json"
+            memory = trade_memory_module.TradeMemory()
+            for _ in range(4):
+                memory.record_trade(
+                    coin="ETH",
+                    direction="SHORT",
+                    signal_score=32.0,
+                    entry_price=100.0,
+                    exit_price=105.0,
+                    exit_reason="stop_loss",
+                    hold_minutes=30.0,
+                    trend_context="UP",
+                    market_regime="TRENDING",
+                    dominant_regime="TREND",
+                    volatility_label="NORMAL",
+                    entry_context={"mtf_bias": "BULLISH", "confidence": "LOW"},
+                )
+            guard = memory.get_directional_guard("ETH", "SHORT")
+            assert guard["hard_block"] is True, "repeated low-win-rate failures should embargo the direction"
+            assert guard["hard_block_reason"], "hard block should explain why the setup family is embargoed"
+        finally:
+            trade_memory_module.MEMORY_FILE = original_memory_file
+
+
 def run_all() -> None:
     test_checkpoint_recovery()
     print("PASS checkpoint recovery")
@@ -1248,6 +1374,16 @@ def run_all() -> None:
     print("PASS richer RL loss reasoning")
     test_trade_memory_directional_pause_and_guard()
     print("PASS directional RL guardrails")
+    test_mtf_fail_closed_blocks_when_confirmation_is_unavailable()
+    print("PASS fail-closed MTF safety")
+    test_execution_quality_gate_blocks_thin_unstable_orderbooks()
+    print("PASS execution-quality gate")
+    test_reentry_watch_inherits_dynamic_trade_plan()
+    print("PASS re-entry dynamic trade plan")
+    test_trade_logger_normalizes_legacy_headerless_log()
+    print("PASS legacy trade log normalization")
+    test_trade_memory_can_hard_block_failing_direction_family()
+    print("PASS directional hard embargo")
 
 
 if __name__ == "__main__":

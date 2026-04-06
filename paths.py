@@ -33,6 +33,7 @@ TRADES_CSV     = DATA_DIR / "trades_log.csv"       # Full closed-trade log
 KILL_FILE      = DATA_DIR / "KILL"                 # Touch to gracefully stop agent
 CONTROL_JSON   = DATA_DIR / "control.json"         # Dashboard/operator control state
 DASHBOARD_SNAPSHOT_JSON = DATA_DIR / "dashboard_snapshot.json"  # Canonical dashboard payload
+TRADE_DATASET_JSONL = DATA_DIR / "trade_dataset.jsonl"          # Structured closed-trade dataset for learning
 
 # ── Logs directory ────────────────────────────────────────────────────────────
 LOGS_DIR = DATA_DIR / "logs"

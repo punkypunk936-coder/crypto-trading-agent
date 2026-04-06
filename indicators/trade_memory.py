@@ -39,6 +39,8 @@ from paths import TRADE_MEMORY as MEMORY_FILE
 MAX_TRADES_PER_COIN    = 50    # remember more history per coin
 COOLDOWN_CYCLES        = 6    # 6-cycle cooldown after consecutive losses (was 4)
 DIRECTION_PAUSE_CYCLES = 4    # short pause for one coin+direction after repeated bad setups
+DIRECTION_EMBARGO_MIN_TRADES = 4
+DIRECTION_EMBARGO_MAX_WIN_RATE = 0.25
 MIN_HOLD_THRESHOLD     = 180  # flag reversals faster: 3h not 4h (was 240)
 CONSECUTIVE_LOSS_LIMIT = 3    # still triggers at 3 losses in a row
 
@@ -349,7 +351,7 @@ class TradeMemory:
         recent = self._trades.get(coin, [])
         same_dir = [t for t in recent[-15:] if t.direction == direction]
         if not same_dir:
-            return {"threshold_boost": 0.0, "pause_cycles": 0, "reasons": []}
+            return {"threshold_boost": 0.0, "pause_cycles": 0, "reasons": [], "hard_block": False, "hard_block_reason": ""}
 
         key = self._pause_key(coin, direction)
         threshold_boost = 0.0
@@ -374,10 +376,25 @@ class TradeMemory:
         tighten(3.0, "marginal edge", "MARGINAL_EDGE")
 
         pause_cycles = self._directional_pause.get(key, 0)
+        same_dir_wr = sum(1 for t in same_dir if t.is_win) / len(same_dir) if same_dir else 0.0
+        recent_three_losses = len(same_dir) >= 3 and all(not t.is_win for t in same_dir[-3:])
+        hard_block = (
+            len(same_dir) >= DIRECTION_EMBARGO_MIN_TRADES
+            and same_dir_wr <= DIRECTION_EMBARGO_MAX_WIN_RATE
+            and recent_three_losses
+        )
+        hard_block_reason = ""
+        if hard_block:
+            hard_block_reason = (
+                f"embargoed after {len(same_dir)} {direction} trades with "
+                f"{same_dir_wr*100:.0f}% win rate"
+            )
         return {
             "threshold_boost": round(min(threshold_boost, 12.0), 2),
             "pause_cycles": pause_cycles,
             "reasons": reasons[:3],
+            "hard_block": hard_block,
+            "hard_block_reason": hard_block_reason,
         }
 
     def tick_cooldowns(self) -> None:

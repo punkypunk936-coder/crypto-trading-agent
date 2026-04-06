@@ -5,11 +5,10 @@ even if the agent is stopped mid-session.
 """
 
 import csv
-import os
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
 from logger import get_logger
 from paths import TRADES_CSV
 
@@ -28,17 +27,80 @@ HEADERS = [
     "result",
 ]
 
-def _load_last_id() -> int:
-    """Resume trade ID counter from existing log."""
+
+def _file_has_headers() -> bool:
     if not LOG_FILE.exists():
-        return 0
+        return False
     try:
         with LOG_FILE.open(newline="") as f:
-            rows = list(csv.DictReader(f))
-            if rows:
-                return int(rows[-1]["trade_id"])
+            first = next(csv.reader(f), [])
     except Exception:
-        pass
+        return False
+    return list(first) == HEADERS
+
+
+def _normalize_legacy_log() -> None:
+    if not LOG_FILE.exists() or _file_has_headers():
+        return
+
+    rows = []
+    try:
+        with LOG_FILE.open(newline="") as f:
+            reader = csv.reader(f)
+            for row in reader:
+                if len(row) == len(HEADERS):
+                    rows.append(row)
+    except Exception as exc:
+        log.warning(f"Could not normalize legacy trade log: {exc}")
+        return
+
+    tmp_path = Path(f"{LOG_FILE}.tmp")
+    with tmp_path.open("w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(HEADERS)
+        writer.writerows(rows)
+    tmp_path.replace(LOG_FILE)
+    log.warning(f"Normalized legacy trade log without headers: {LOG_FILE}")
+
+
+def _ensure_headers() -> None:
+    if not LOG_FILE.exists():
+        with LOG_FILE.open("w", newline="") as f:
+            csv.DictWriter(f, fieldnames=HEADERS).writeheader()
+        log.info(f"Created trade log: {LOG_FILE}")
+        return
+    _normalize_legacy_log()
+    if LOG_FILE.exists() and LOG_FILE.stat().st_size == 0:
+        with LOG_FILE.open("w", newline="") as f:
+            csv.DictWriter(f, fieldnames=HEADERS).writeheader()
+
+
+def _read_rows() -> list[dict]:
+    if not LOG_FILE.exists():
+        return []
+    _ensure_headers()
+    try:
+        with LOG_FILE.open(newline="") as f:
+            return list(csv.DictReader(f))
+    except Exception as exc:
+        log.warning(f"Trade log read failed: {exc}")
+        return []
+
+
+def read_closed_trades(limit: Optional[int] = None) -> list[dict]:
+    rows = _read_rows()
+    if limit is None:
+        return rows
+    return rows[-limit:]
+
+
+def _load_last_id() -> int:
+    rows = _read_rows()
+    if rows:
+        try:
+            return int(rows[-1].get("trade_id", 0) or 0)
+        except Exception:
+            return 0
     return 0
 
 
@@ -47,39 +109,47 @@ _open_trades: dict = {}
 _trade_counter: int = _load_last_id()
 
 
-def _ensure_headers():
-    if not LOG_FILE.exists():
-        with LOG_FILE.open("w", newline="") as f:
-            csv.DictWriter(f, fieldnames=HEADERS).writeheader()
-        log.info(f"Created trade log: {LOG_FILE}")
-
-
-def log_open(coin: str, direction: str, entry_price: float,
-             size_usd: float, stop_loss: float, take_profit: float,
-             signal_score: float, leverage: int = 3):
+def log_open(
+    coin: str,
+    direction: str,
+    entry_price: float,
+    size_usd: float,
+    stop_loss: float,
+    take_profit: float,
+    signal_score: float,
+    leverage: int = 3,
+) -> int:
     """Call this when a trade is opened."""
     global _trade_counter
     _ensure_headers()
     _trade_counter += 1
     _open_trades[coin] = {
-        "trade_id":    _trade_counter,
-        "coin":        coin,
-        "direction":   direction,
-        "opened_at":   datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
+        "trade_id": _trade_counter,
+        "coin": coin,
+        "direction": direction,
+        "opened_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
         "entry_price": entry_price,
-        "size_usd":    size_usd,
-        "leverage":    leverage,
-        "stop_loss":   stop_loss,
+        "size_usd": size_usd,
+        "leverage": leverage,
+        "stop_loss": stop_loss,
         "take_profit": take_profit,
-        "signal_score":round(signal_score, 1),
+        "signal_score": round(signal_score, 1),
     }
     log.debug(f"[{coin}] Trade #{_trade_counter} logged as open")
+    return _trade_counter
 
 
-def restore_open(coin: str, direction: str, entry_price: float,
-                 size_usd: float, stop_loss: float, take_profit: float,
-                 leverage: int = 3, signal_score: float = 0.0,
-                 opened_at: Optional[str] = None):
+def restore_open(
+    coin: str,
+    direction: str,
+    entry_price: float,
+    size_usd: float,
+    stop_loss: float,
+    take_profit: float,
+    leverage: int = 3,
+    signal_score: float = 0.0,
+    opened_at: Optional[str] = None,
+) -> None:
     """
     Restore an open trade so later closes still hit the CSV log.
     Does NOT increment _trade_counter to avoid duplicate rows on restart.
@@ -87,33 +157,30 @@ def restore_open(coin: str, direction: str, entry_price: float,
     """
     _ensure_headers()
     if coin in _open_trades:
-        return   # already restored — do not duplicate
+        return
 
-    # Try to find the last trade_id for this coin in the CSV
     restored_id = _find_last_open_id(coin)
     if restored_id is None:
-        # No existing open trade found in CSV — use current counter
         global _trade_counter
         _trade_counter += 1
         restored_id = _trade_counter
 
     _open_trades[coin] = {
-        "trade_id":     restored_id,
-        "coin":         coin,
-        "direction":    direction,
-        "opened_at":    opened_at or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
-        "entry_price":  entry_price,
-        "size_usd":     size_usd,
-        "leverage":     leverage,
-        "stop_loss":    stop_loss,
-        "take_profit":  take_profit,
+        "trade_id": restored_id,
+        "coin": coin,
+        "direction": direction,
+        "opened_at": opened_at or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
+        "entry_price": entry_price,
+        "size_usd": size_usd,
+        "leverage": leverage,
+        "stop_loss": stop_loss,
+        "take_profit": take_profit,
         "signal_score": round(signal_score, 1),
     }
     log.info(f"[{coin}] Restored open trade #{restored_id} for logging continuity")
 
 
-def update_open(coin: str, entry_price: float, size_usd: float,
-                stop_loss: float, take_profit: float):
+def update_open(coin: str, entry_price: float, size_usd: float, stop_loss: float, take_profit: float) -> None:
     """Adjust the currently open trade after a confirmed scale-in."""
     trade = _open_trades.get(coin)
     if not trade:
@@ -129,40 +196,34 @@ def update_open(coin: str, entry_price: float, size_usd: float,
     )
 
 
-def _find_last_open_id(coin: str) -> Optional[int]:
-    """
-    Scan the CSV for the last entry for this coin that has no corresponding
-    close (i.e., an open that was not yet closed). Returns its trade_id.
-    Because we write one row per closed trade, an 'unclosed' trade simply
-    won't appear as a closed row in the file — we return None to signal a
-    fresh assignment is needed.
+def get_open_trade(coin: str) -> Optional[dict]:
+    trade = _open_trades.get(coin)
+    return dict(trade) if trade else None
 
-    In practice this just prevents us from incrementing the counter on every
-    restart and creating phantom sequential IDs.
-    """
+
+def _find_last_open_id(coin: str) -> Optional[int]:
     if not LOG_FILE.exists():
         return None
-    try:
-        with LOG_FILE.open(newline="") as f:
-            rows = [r for r in csv.DictReader(f) if r.get("coin") == coin]
-        if rows:
-            return int(rows[-1]["trade_id"])
-    except Exception:
-        pass
+    rows = [r for r in _read_rows() if r.get("coin") == coin]
+    if rows:
+        try:
+            return int(rows[-1].get("trade_id", 0) or 0)
+        except Exception:
+            return None
     return None
 
 
-def log_close(coin: str, exit_price: float, exit_reason: str):
+def log_close(coin: str, exit_price: float, exit_reason: str) -> Optional[dict]:
     """Call this when a trade is closed. Writes a full row to the CSV."""
     trade = _open_trades.pop(coin, None)
     if not trade:
         log.warning(f"[{coin}] log_close called but no open trade found")
-        return
+        return None
 
-    closed_at   = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
-    opened_ts   = datetime.strptime(trade["opened_at"], "%Y-%m-%d %H:%M")
-    closed_ts   = datetime.strptime(closed_at,          "%Y-%m-%d %H:%M")
-    duration    = round((closed_ts - opened_ts).total_seconds() / 60, 1)
+    closed_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+    opened_ts = datetime.strptime(trade["opened_at"], "%Y-%m-%d %H:%M")
+    closed_ts = datetime.strptime(closed_at, "%Y-%m-%d %H:%M")
+    duration = round((closed_ts - opened_ts).total_seconds() / 60, 1)
 
     entry = trade["entry_price"]
     if trade["direction"] == "LONG":
@@ -171,28 +232,29 @@ def log_close(coin: str, exit_price: float, exit_reason: str):
         pnl_pct = (entry - exit_price) / entry
 
     pnl_usd = pnl_pct * trade["size_usd"]
-    result  = "WIN" if pnl_usd >= 0 else "LOSS"
+    result = "WIN" if pnl_usd >= 0 else "LOSS"
 
     row = {
-        "trade_id":      trade["trade_id"],
-        "coin":          coin,
-        "direction":     trade["direction"],
-        "opened_at":     trade["opened_at"],
-        "closed_at":     closed_at,
+        "trade_id": trade["trade_id"],
+        "coin": coin,
+        "direction": trade["direction"],
+        "opened_at": trade["opened_at"],
+        "closed_at": closed_at,
         "duration_mins": duration,
-        "entry_price":   round(entry, 4),
-        "exit_price":    round(exit_price, 4),
-        "size_usd":      round(trade["size_usd"], 2),
-        "leverage":      trade["leverage"],
-        "pnl_usd":       round(pnl_usd, 2),
-        "pnl_pct":       round(pnl_pct * 100, 2),
-        "stop_loss":     round(trade["stop_loss"], 4),
-        "take_profit":   round(trade["take_profit"], 4),
-        "exit_reason":   exit_reason,
-        "signal_score":  trade["signal_score"],
-        "result":        result,
+        "entry_price": round(entry, 4),
+        "exit_price": round(exit_price, 4),
+        "size_usd": round(trade["size_usd"], 2),
+        "leverage": trade["leverage"],
+        "pnl_usd": round(pnl_usd, 2),
+        "pnl_pct": round(pnl_pct * 100, 2),
+        "stop_loss": round(trade["stop_loss"], 4),
+        "take_profit": round(trade["take_profit"], 4),
+        "exit_reason": exit_reason,
+        "signal_score": trade["signal_score"],
+        "result": result,
     }
 
+    _ensure_headers()
     with LOG_FILE.open("a", newline="") as f:
         csv.DictWriter(f, fieldnames=HEADERS).writerow(row)
 
@@ -200,3 +262,4 @@ def log_close(coin: str, exit_price: float, exit_reason: str):
         f"[{coin}] Trade #{trade['trade_id']} logged: {result} "
         f"{pnl_pct*100:+.2f}% (${pnl_usd:+.2f}) | {exit_reason}"
     )
+    return row

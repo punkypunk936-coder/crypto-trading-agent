@@ -41,15 +41,20 @@ Limitations
 import sys
 import argparse
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from typing import List, Optional
 import pandas as pd
 import numpy as np
 
 # ── Load agent modules ────────────────────────────────────────
 from config import config
-from data.market_data import fetch_candles
+from data.market_data import completed_candle_frame, fetch_candles
 from indicators.technical import compute_signals
 from indicators.advanced  import compute_advanced_signals
+from indicators.candlestick_patterns import compute_candlestick_patterns
+from indicators.mtf import _combine as combine_mtf_bias
+from indicators.mtf import _compute_bias as compute_timeframe_bias
+from indicators.regimes import compute_regimes
 from strategy.aggressive_strategy import AggressiveStrategy
 from logger import get_logger
 
@@ -63,144 +68,352 @@ NEUTRAL_SENTIMENT = {
 }
 
 
+def _ensure_timestamp_index(df: pd.DataFrame) -> pd.DataFrame:
+    work = df.copy()
+    if "timestamp" in work.columns:
+        ts = pd.to_datetime(work["timestamp"], errors="coerce", utc=True)
+        if ts.notna().any():
+            work.index = ts
+            return work
+    work.index = pd.date_range(end=datetime.utcnow(), periods=len(work), freq="h")
+    return work
+
+
+def _resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:
+    work = _ensure_timestamp_index(df)
+    agg = (
+        work[["open", "high", "low", "close", "volume"]]
+        .resample(rule)
+        .agg({
+            "open": "first",
+            "high": "max",
+            "low": "min",
+            "close": "last",
+            "volume": "sum",
+        })
+        .dropna()
+        .reset_index(drop=True)
+    )
+    return agg
+
+
+def _mtf_from_window(coin: str, window: pd.DataFrame):
+    one_h = completed_candle_frame(window)
+    four_h = completed_candle_frame(_resample_ohlcv(window, "4h"))
+    twelve_h = completed_candle_frame(_resample_ohlcv(window, "12h"))
+    if one_h is None or len(one_h) < 20:
+        return None
+    b1 = compute_timeframe_bias(one_h, "1h")
+    b4 = compute_timeframe_bias(four_h, "4h") if four_h is not None and len(four_h) >= 20 else None
+    b12 = compute_timeframe_bias(twelve_h, "12h") if twelve_h is not None and len(twelve_h) >= 20 else None
+    return combine_mtf_bias(coin, b1, b4, b12)
+
+
+def _local_level_proxy(window: pd.DataFrame, price: float):
+    if window is None or window.empty:
+        return None
+    recent = window.tail(min(len(window), 48))
+    if len(recent) < 12:
+        return None
+
+    resistance = float(recent["high"].tail(24).max())
+    support = float(recent["low"].tail(24).min())
+    resistance_distance = abs(resistance - price) / max(price, 1e-9) * 100 if resistance > 0 else 0.0
+    support_distance = abs(price - support) / max(price, 1e-9) * 100 if support > 0 else 0.0
+    breakout_state = "NONE"
+    if resistance > 0 and price > resistance * 1.001:
+        breakout_state = "CONFIRMED_BULLISH_BREAKOUT"
+    elif support > 0 and price < support * 0.999:
+        breakout_state = "CONFIRMED_BEARISH_BREAKDOWN"
+
+    level_interaction = "BETWEEN_LEVELS"
+    range_compression = support_distance <= 0.55 and resistance_distance <= 0.55
+    if range_compression and breakout_state == "NONE":
+        level_interaction = "RANGE_COMPRESSION"
+    elif support_distance <= 0.45:
+        level_interaction = "AT_SUPPORT"
+    elif resistance_distance <= 0.45:
+        level_interaction = "AT_RESISTANCE"
+    elif support_distance <= 1.25:
+        level_interaction = "ABOVE_SUPPORT"
+    elif resistance_distance <= 1.25:
+        level_interaction = "BELOW_RESISTANCE"
+    elif breakout_state == "CONFIRMED_BULLISH_BREAKOUT":
+        level_interaction = "ABOVE_BREAKOUT"
+    elif breakout_state == "CONFIRMED_BEARISH_BREAKDOWN":
+        level_interaction = "BELOW_BREAKDOWN"
+
+    score = 50.0
+    if level_interaction in {"AT_SUPPORT", "ABOVE_SUPPORT"}:
+        score += 8.0
+    if level_interaction in {"AT_RESISTANCE", "BELOW_RESISTANCE"}:
+        score -= 8.0
+    if breakout_state == "CONFIRMED_BULLISH_BREAKOUT":
+        score += 10.0
+    elif breakout_state == "CONFIRMED_BEARISH_BREAKDOWN":
+        score -= 10.0
+    if level_interaction == "RANGE_COMPRESSION":
+        score = 50.0 + (score - 50.0) * 0.35
+
+    return SimpleNamespace(
+        valid=True,
+        score=score,
+        level_interaction=level_interaction,
+        breakout_state=breakout_state,
+        block_longs=level_interaction in {"AT_RESISTANCE", "BELOW_RESISTANCE", "RANGE_COMPRESSION"} and breakout_state != "CONFIRMED_BULLISH_BREAKOUT",
+        block_shorts=level_interaction in {"AT_SUPPORT", "ABOVE_SUPPORT", "RANGE_COMPRESSION"} and breakout_state != "CONFIRMED_BEARISH_BREAKDOWN",
+        favor_longs=breakout_state == "CONFIRMED_BULLISH_BREAKOUT" or level_interaction in {"AT_SUPPORT", "ABOVE_SUPPORT"},
+        favor_shorts=breakout_state == "CONFIRMED_BEARISH_BREAKDOWN" or level_interaction in {"AT_RESISTANCE", "BELOW_RESISTANCE"},
+        nearest_support=support,
+        nearest_resistance=resistance,
+        nearest_support_distance_pct=support_distance,
+        nearest_resistance_distance_pct=resistance_distance,
+        nearest_support_strength=0.8,
+        nearest_resistance_strength=0.8,
+        support_levels=[],
+        resistance_levels=[],
+        imbalance_ratio=0.0,
+        bid_notional=1_000_000.0,
+        ask_notional=1_000_000.0,
+        spread_bps=1.0,
+        daily_breakout_level=resistance,
+        daily_breakdown_level=support,
+    )
+
+
 # ─────────────────────────────────────────────────────────────
 # Backtest engine
 # ─────────────────────────────────────────────────────────────
 
 class Backtester:
-    def __init__(self, coin: str, df: pd.DataFrame,
-                 starting_balance: float = 10_000.0,
-                 trade_size_usd: float   = 20.0,
-                 stop_loss_pct: float    = 0.10,
-                 take_profit_pct: float  = 0.50,
-                 leverage: int           = 3):
-        self.coin           = coin
-        self.df             = df.reset_index(drop=True)
-        self.balance        = starting_balance
-        self.starting_bal   = starting_balance
-        self.trade_size     = trade_size_usd
-        self.sl_pct         = stop_loss_pct
-        self.tp_pct         = take_profit_pct
-        self.leverage       = leverage
-        self.strategy       = AggressiveStrategy(config.trading, config.indicators)
+    def __init__(
+        self,
+        coin: str,
+        df: pd.DataFrame,
+        starting_balance: float = 10_000.0,
+        trade_size_usd: float = 20.0,
+        stop_loss_pct: float = 0.10,
+        take_profit_pct: float = 0.50,
+        leverage: int = 3,
+    ):
+        self.coin = coin
+        self.df = df.reset_index(drop=True)
+        self.balance = starting_balance
+        self.starting_bal = starting_balance
+        self.trade_size = trade_size_usd
+        self.sl_pct = stop_loss_pct
+        self.tp_pct = take_profit_pct
+        self.leverage = leverage
+        self.strategy = AggressiveStrategy(config.trading, config.indicators)
         self.trades: List[dict] = []
         self.equity_curve: List[float] = []
+        self.flat_streak = 0
 
-    def run(self, min_candles: int = 50) -> dict:
-        """
-        Walk through candles chronologically.
-        At each step we have candles[0:i] — no future data.
-        """
-        df      = self.df
-        n       = len(df)
-        position= None   # {"direction", "entry_price", "sl", "tp", "size_usd", "opened_at"}
+    def _fill_price(self, direction: str, reference_price: float, *, for_exit: bool = False) -> float:
+        slip_bps = float(getattr(config.trading, "backtest_market_slippage_bps", 4.0) or 4.0) / 10_000.0
+        if direction == "LONG":
+            return reference_price * (1 + slip_bps)  # buys fill slightly worse
+        return reference_price * (1 - slip_bps)      # sells fill slightly worse
 
-        log.info(f"[{self.coin}] Running backtest on {n} candles…")
+    def _close_position(self, position: dict, exit_price: float, exit_reason: str, closed_at) -> None:
+        pnl = self._calc_pnl(position, exit_price)
+        self.balance += position["size_usd"] + pnl
+        self.trades.append({
+            "coin": self.coin,
+            "direction": position["direction"],
+            "entry_price": position["entry_price"],
+            "exit_price": exit_price,
+            "size_usd": position["size_usd"],
+            "pnl_usd": round(pnl, 2),
+            "pnl_pct": round(pnl / position["size_usd"] * 100, 2),
+            "exit_reason": exit_reason,
+            "opened_at": position["opened_at"],
+            "closed_at": str(closed_at),
+            "balance_after": round(self.balance, 2),
+        })
+
+    def run(self, min_candles: int = 80) -> dict:
+        df = self.df
+        n = len(df)
+        position = None
+
+        log.info(f"[{self.coin}] Running walk-forward backtest on {n} candles…")
 
         for i in range(min_candles, n):
             window = df.iloc[:i].copy()
-            price  = float(df.iloc[i]["close"])
-            ts     = df.iloc[i].get("timestamp", str(i))
+            analysis_window = completed_candle_frame(window)
+            if analysis_window is None or len(analysis_window) < 50:
+                continue
 
-            self.equity_curve.append(self._equity(position, price))
+            current_row = df.iloc[i]
+            entry_reference_price = float(current_row.get("open", current_row["close"]))
+            mark_price = float(current_row["close"])
+            hi = float(current_row["high"])
+            lo = float(current_row["low"])
+            ts = current_row.get("timestamp", str(i))
 
-            # ── Check exits on current candle ──────────────────
+            self.equity_curve.append(self._equity(position, mark_price))
+
+            try:
+                tech = compute_signals(analysis_window, self.coin, config.indicators, config.trading)
+                advanced = compute_advanced_signals(analysis_window, self.coin)
+                regimes = compute_regimes(analysis_window, self.coin)
+                candle_patterns = compute_candlestick_patterns(analysis_window, self.coin)
+                mtf = _mtf_from_window(self.coin, window)
+                orderbook_signal = _local_level_proxy(analysis_window, float(analysis_window["close"].iloc[-1]))
+            except Exception:
+                continue
+
+            if not tech.valid:
+                continue
+
+            tech.closed_price = float(analysis_window["close"].iloc[-1])
+            tech.live_price = entry_reference_price
+            tech.price = entry_reference_price
+
+            signal = self.strategy.generate_signal(
+                tech,
+                advanced,
+                NEUTRAL_SENTIMENT,
+                position["direction"] if position else None,
+                regimes,
+                news_signal=None,
+                candle_patterns=candle_patterns,
+                memory_adjustment=0.0,
+                instrument_type=config.trading.instrument_types.get(self.coin, "crypto"),
+                funding_oi_signal=None,
+                orderbook_signal=orderbook_signal,
+            )
+
+            if mtf:
+                if signal.action == "LONG" and not mtf.allow_long:
+                    signal.action = "FLAT"
+                    signal.flat_reason = f"MTF blocked LONG ({mtf.reason})"
+                elif signal.action == "SHORT" and not mtf.allow_short:
+                    signal.action = "FLAT"
+                    signal.flat_reason = f"MTF blocked SHORT ({mtf.reason})"
+
+            # ── Check exits first using the current candle range ───────────
             if position:
                 exit_reason = None
-                hi = float(df.iloc[i]["high"])
-                lo = float(df.iloc[i]["low"])
-
+                exit_price = mark_price
                 if position["direction"] == "LONG":
                     if lo <= position["sl"]:
                         exit_reason = "stop_loss"
-                        exit_price  = position["sl"]
+                        exit_price = self._fill_price("SHORT", position["sl"], for_exit=True)
                     elif hi >= position["tp"]:
                         exit_reason = "take_profit"
-                        exit_price  = position["tp"]
-                else:   # SHORT
+                        exit_price = self._fill_price("SHORT", position["tp"], for_exit=True)
+                else:
                     if hi >= position["sl"]:
                         exit_reason = "stop_loss"
-                        exit_price  = position["sl"]
+                        exit_price = self._fill_price("LONG", position["sl"], for_exit=True)
                     elif lo <= position["tp"]:
                         exit_reason = "take_profit"
-                        exit_price  = position["tp"]
+                        exit_price = self._fill_price("LONG", position["tp"], for_exit=True)
 
                 if exit_reason:
-                    pnl = self._calc_pnl(position, exit_price)
-                    self.balance += position["size_usd"] + pnl
-                    self.trades.append({
-                        "coin":        self.coin,
-                        "direction":   position["direction"],
-                        "entry_price": position["entry_price"],
-                        "exit_price":  exit_price,
-                        "size_usd":    position["size_usd"],
-                        "pnl_usd":     round(pnl, 2),
-                        "pnl_pct":     round(pnl / position["size_usd"] * 100, 2),
-                        "exit_reason": exit_reason,
-                        "opened_at":   position["opened_at"],
-                        "closed_at":   str(ts),
-                        "balance_after": round(self.balance, 2),
-                    })
+                    self._close_position(position, exit_price, exit_reason, ts)
                     position = None
-
-            # ── Generate signal ────────────────────────────────
-            if position is None:
-                try:
-                    tech     = compute_signals(window, self.coin, config.indicators, config.trading)
-                    advanced = compute_advanced_signals(window, self.coin)
-                    if not tech.valid:
-                        continue
-
-                    current_dir = position["direction"] if position else None
-                    signal = self.strategy.generate_signal(
-                        tech, advanced, NEUTRAL_SENTIMENT, current_dir
-                    )
-                except Exception:
+                    self.flat_streak = 0
                     continue
+
+            if position:
+                hold_minutes = max(60.0, (i - position["opened_index"]) * 60.0)
+                planned_tp = abs(position["tp"] - position["entry_price"])
+                favorable_move = (
+                    mark_price - position["entry_price"]
+                    if position["direction"] == "LONG"
+                    else position["entry_price"] - mark_price
+                )
+                tp_progress = favorable_move / max(planned_tp, 1e-9) if planned_tp > 0 else 0.0
 
                 if signal.action == "FLAT":
-                    continue
-
-                size_usd = min(self.trade_size, self.balance * 0.20)
-                if size_usd < 1:
-                    continue
-
-                self.balance -= size_usd
-
-                if signal.action == "LONG":
-                    sl = price * (1 - self.sl_pct)
-                    tp = price * (1 + self.tp_pct)
+                    self.flat_streak += 1
                 else:
-                    sl = price * (1 + self.sl_pct)
-                    tp = price * (1 - self.tp_pct)
+                    self.flat_streak = 0
 
-                position = {
-                    "direction":   signal.action,
-                    "entry_price": price,
-                    "sl":          sl,
-                    "tp":          tp,
-                    "size_usd":    size_usd,
-                    "opened_at":   str(ts),
-                }
+                if self.flat_streak >= config.trading.max_flat_cycles_with_position:
+                    exit_price = self._fill_price(
+                        "SHORT" if position["direction"] == "LONG" else "LONG",
+                        entry_reference_price,
+                        for_exit=True,
+                    )
+                    self._close_position(position, exit_price, "conviction_lost", ts)
+                    position = None
+                    self.flat_streak = 0
+                    continue
 
-        # Close any remaining open position at last price
+                if (
+                    hold_minutes >= config.trading.time_stop_minutes
+                    and tp_progress < config.trading.time_stop_min_tp_progress
+                    and signal.action == "FLAT"
+                ):
+                    exit_price = self._fill_price(
+                        "SHORT" if position["direction"] == "LONG" else "LONG",
+                        entry_reference_price,
+                        for_exit=True,
+                    )
+                    self._close_position(position, exit_price, "time_stop", ts)
+                    position = None
+                    self.flat_streak = 0
+                    continue
+
+                if (
+                    signal.action in {"LONG", "SHORT"}
+                    and signal.action != position["direction"]
+                    and hold_minutes >= config.trading.min_hold_minutes
+                ):
+                    exit_price = self._fill_price(
+                        "SHORT" if position["direction"] == "LONG" else "LONG",
+                        entry_reference_price,
+                        for_exit=True,
+                    )
+                    self._close_position(position, exit_price, "signal_reversal", ts)
+                    position = None
+                    self.flat_streak = 0
+                    continue
+
+            if position is not None or signal.action == "FLAT":
+                continue
+
+            size_usd = min(self.trade_size, self.balance * 0.20)
+            if size_usd < 1:
+                continue
+
+            fill_price = self._fill_price(signal.action, entry_reference_price, for_exit=False)
+            sl = float(signal.stop_loss_price or 0.0)
+            tp = float(signal.take_profit_price or 0.0)
+            if signal.action == "LONG":
+                if sl <= 0:
+                    sl = fill_price * (1 - self.sl_pct)
+                if tp <= 0:
+                    tp = fill_price * (1 + self.tp_pct)
+            else:
+                if sl <= 0:
+                    sl = fill_price * (1 + self.sl_pct)
+                if tp <= 0:
+                    tp = fill_price * (1 - self.tp_pct)
+
+            self.balance -= size_usd
+            position = {
+                "direction": signal.action,
+                "entry_price": fill_price,
+                "sl": sl,
+                "tp": tp,
+                "size_usd": size_usd,
+                "opened_at": str(ts),
+                "opened_index": i,
+                "score": signal.score,
+            }
+
         if position:
-            last_price = float(df.iloc[-1]["close"])
-            pnl = self._calc_pnl(position, last_price)
-            self.balance += position["size_usd"] + pnl
-            self.trades.append({
-                "coin":        self.coin,
-                "direction":   position["direction"],
-                "entry_price": position["entry_price"],
-                "exit_price":  last_price,
-                "size_usd":    position["size_usd"],
-                "pnl_usd":     round(pnl, 2),
-                "pnl_pct":     round(pnl / position["size_usd"] * 100, 2),
-                "exit_reason": "end_of_data",
-                "opened_at":   position["opened_at"],
-                "closed_at":   "end",
-                "balance_after": round(self.balance, 2),
-            })
+            last_price = self._fill_price(
+                "SHORT" if position["direction"] == "LONG" else "LONG",
+                float(df.iloc[-1]["close"]),
+                for_exit=True,
+            )
+            self._close_position(position, last_price, "end_of_data", "end")
 
         return self._summary()
 
