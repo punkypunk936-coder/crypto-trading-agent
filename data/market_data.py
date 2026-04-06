@@ -33,6 +33,25 @@ LIGHTER_API_BASE_URL = "https://mainnet.zklighter.elliot.ai"
 _cache: dict = {}
 CACHE_TTL_SECONDS = 60   # re-fetch after 60 s
 
+
+def completed_candle_frame(df: Optional[pd.DataFrame], *, min_rows: int = 2) -> Optional[pd.DataFrame]:
+    """
+    Return a dataframe that excludes the still-forming latest candle.
+
+    The live agent loops every 2 minutes while most conviction logic runs on 1H+
+    candles. Using the in-progress bar for signal generation creates fake
+    breakouts and brittle conviction, so we trim the newest row whenever we have
+    enough history to do so safely.
+    """
+    if df is None:
+        return None
+
+    completed = df.copy()
+    if len(completed) >= max(2, min_rows):
+        completed = completed.iloc[:-1].copy()
+    return completed.reset_index(drop=True)
+
+
 # Hyperliquid uses these exact tickers — map any aliases
 TICKER_MAP = {
     "HYPE": "HYPE",   # Hyperliquid native token — supported directly

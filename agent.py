@@ -33,7 +33,7 @@ from datetime import datetime
 import os
 from config import Config
 from logger import get_logger
-from data.market_data import fetch_candles, get_current_price
+from data.market_data import completed_candle_frame, fetch_candles, get_current_price
 import trade_logger
 from indicators.technical import compute_signals
 from indicators.advanced  import compute_advanced_signals
@@ -480,15 +480,33 @@ class TradingAgent:
             log.warning(f"[{coin}] No candle data — skipping")
             return
 
+        analysis_df = df
+        if getattr(self.cfg.trading, "use_closed_candles_for_conviction", True):
+            analysis_df = completed_candle_frame(df)
+            if analysis_df is None or analysis_df.empty:
+                log.warning(f"[{coin}] No completed candles available — skipping")
+                return
+
+        live_price = float(df["close"].iloc[-1]) if len(df) else 0.0
+        analysis_price = float(analysis_df["close"].iloc[-1]) if len(analysis_df) else live_price
+        if getattr(self.cfg.trading, "use_closed_candles_for_conviction", True):
+            log.info(
+                f"[{coin}] Conviction on completed {self.cfg.trading.candle_interval} candles "
+                f"@ {analysis_price:.2f} | live price {live_price:.2f}"
+            )
+
         # Classic indicators
-        tech = compute_signals(df, coin, icfg, self.cfg.trading)
+        tech = compute_signals(analysis_df, coin, icfg, self.cfg.trading)
+        tech.closed_price = analysis_price
+        tech.live_price = live_price or tech.price
+        tech.price = tech.live_price
 
         # Advanced / structure indicators
-        advanced = compute_advanced_signals(df, coin)
+        advanced = compute_advanced_signals(analysis_df, coin)
 
         # Market regime indicators
         try:
-            regimes = compute_regimes(df, coin)
+            regimes = compute_regimes(analysis_df, coin)
             log.info(f"[{coin}] Regime: {regimes.dominant_regime} "
                      f"(mom={regimes.momentum_score:.0f} trend={regimes.trend_score:.0f} "
                      f"mr={regimes.mean_rev_score:.0f} vol={regimes.volatility_score:.0f} "
@@ -499,7 +517,7 @@ class TradingAgent:
 
         # Candlestick pattern analysis (pure OHLCV, no API)
         try:
-            candle_patterns = compute_candlestick_patterns(df, coin)
+            candle_patterns = compute_candlestick_patterns(analysis_df, coin)
         except Exception as e:
             log.warning(f"[{coin}] Candlestick patterns failed: {e}")
             candle_patterns = None
@@ -536,7 +554,7 @@ class TradingAgent:
         funding_oi_signal = None
         if instrument_type == "crypto":
             try:
-                funding_oi_signal = get_funding_oi_cvd(coin, df)
+                funding_oi_signal = get_funding_oi_cvd(coin, analysis_df)
             except Exception as e:
                 log.debug(f"[{coin}] FundingOI skipped: {e}")
 
@@ -589,12 +607,16 @@ class TradingAgent:
 
         # Store signal for dashboard + memory (enriched with new intelligence)
         trade_plan = dict(getattr(signal, "trade_plan", {}) or {})
+        thesis = dict(getattr(signal, "thesis", {}) or {})
         self._last_signals[coin] = {
             "action":          signal.action,
             "decision":        signal.action,
             "score":           signal.score,
             "confidence":      signal.confidence,
             "price":           signal.price,
+            "analysis_price":  analysis_price,
+            "live_price":      live_price,
+            "using_closed_candles": bool(getattr(self.cfg.trading, "use_closed_candles_for_conviction", True)),
             "reason":          signal.reason,
             "flat_reason":     signal.flat_reason,
             "decision_reason": signal.reason or signal.flat_reason or "",
@@ -665,6 +687,17 @@ class TradingAgent:
             "stop_basis":      trade_plan.get("stop_basis", ""),
             "target_basis":    trade_plan.get("target_basis", ""),
             "price_action_summary": trade_plan.get("price_action_summary", ""),
+            "thesis_candidate_action": thesis.get("candidate_action", signal.action),
+            "thesis_state":    thesis.get("state", "NO_TRADE"),
+            "thesis_permitted": thesis.get("permitted", signal.action in ("LONG", "SHORT")),
+            "thesis_quality":  thesis.get("quality", signal.confidence),
+            "thesis_alignment_points": thesis.get("alignment_points", 0.0),
+            "thesis_conflict_points": thesis.get("conflict_points", 0.0),
+            "thesis_conviction_score": thesis.get("conviction_score", signal.score),
+            "thesis_summary":  thesis.get("summary", ""),
+            "thesis_reasons":  thesis.get("reasons", []),
+            "thesis_blockers": thesis.get("blockers", []),
+            "thesis":          thesis,
             "trade_plan":      trade_plan,
             "execution_mode":  "tradable" if coin in self._tradable_coin_set else "observation_only",
         }

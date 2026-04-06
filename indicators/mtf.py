@@ -30,7 +30,7 @@ from typing import Optional
 import pandas as pd
 import numpy as np
 
-from data.market_data import fetch_candles
+from data.market_data import fetch_candles, completed_candle_frame
 from logger import get_logger
 
 log = get_logger("mtf")
@@ -79,8 +79,9 @@ def compute_mtf(coin: str, candle_interval_1h: str = "1h") -> MTFAnalysis:
     biases = {}
     for key, tf in tf_map.items():
         df = fetch_candles(coin=coin, interval=tf, lookback=LOOKBACK)
-        if df is not None and len(df) >= 20:
-            biases[key] = _compute_bias(df, tf)
+        closed_df = completed_candle_frame(df)
+        if closed_df is not None and len(closed_df) >= 20:
+            biases[key] = _compute_bias(closed_df, tf)
         else:
             log.debug(f"[{coin}] No {tf} candles available — skipping this TF")
             biases[key] = None

@@ -13,6 +13,8 @@ import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
+import pandas as pd
+
 import checkpoint as checkpoint_module
 import agent as agent_module
 import main as main_module
@@ -596,6 +598,218 @@ def test_probing_breakout_does_not_override_nearby_resistance() -> None:
     assert "resistance" in signal.flat_reason.lower()
 
 
+def test_thesis_gate_blocks_high_score_range_compression_setup() -> None:
+    cfg = build_config()
+    strategy = AggressiveStrategy(cfg.trading, cfg.indicators)
+
+    tech = SimpleNamespace(
+        valid=True,
+        coin="BTC",
+        price=100.0,
+        rsi=31.0,
+        rsi_score=82.0,
+        macd_hist=1.8,
+        macd_score=78.0,
+        bb_score=74.0,
+        ema_score=72.0,
+        volume_score=1.5,
+    )
+    advanced = SimpleNamespace(
+        valid=True,
+        fib=SimpleNamespace(score=68.0, levels={"38.2%": 98.0, "61.8%": 102.0}, nearest_level_name="61.8%", nearest_level_price=102.0, description="Fib levels"),
+        msb=SimpleNamespace(score=52.0, msb_type="NONE", structure_trend="RANGING", last_swing_high=102.2, last_swing_low=97.8, description="Ranging structure"),
+        ob=SimpleNamespace(score=64.0, inside_bullish_ob=False, inside_bearish_ob=False, bullish_obs=[(98.6, 97.9)], bearish_obs=[(102.4, 101.8)], description="Order blocks"),
+        fvg=SimpleNamespace(score=63.0, bullish_fvgs=[(98.4, 98.9)], bearish_fvgs=[(101.6, 102.0)], inside_bullish_fvg=False, inside_bearish_fvg=False, description="FVG"),
+        atr=SimpleNamespace(atr=1.2, atr_pct=1.2, volatility_label="normal"),
+    )
+    regimes = SimpleNamespace(
+        valid=True,
+        dominant_regime="TREND",
+        momentum_score=70.0,
+        trend_score=76.0,
+        mean_rev_score=48.0,
+        volatility_score=58.0,
+        absorption_score=44.0,
+        catalyst_score=55.0,
+    )
+    candles = SimpleNamespace(valid=True, score=51.0, patterns=["Doji"], trend_3="FLAT")
+    sentiment = {"signal_score": 58.0, "label": "Neutral", "raw_score": 50, "is_extreme": False}
+    orderbook_signal = SimpleNamespace(
+        valid=True,
+        score=62.0,
+        imbalance_ratio=0.10,
+        level_interaction="RANGE_COMPRESSION",
+        breakout_state="NONE",
+        favor_longs=True,
+        favor_shorts=False,
+        block_longs=False,
+        block_shorts=True,
+        nearest_support=99.1,
+        nearest_support_distance_pct=0.9,
+        nearest_support_strength=0.8,
+        nearest_resistance=100.9,
+        nearest_resistance_distance_pct=0.9,
+        nearest_resistance_strength=0.82,
+        support_levels=[{"price": 99.1, "strength": 0.8, "source": "orderbook", "label": "bid_wall"}],
+        resistance_levels=[{"price": 100.9, "strength": 0.82, "source": "orderbook", "label": "ask_wall"}],
+        daily_breakout_level=101.6,
+        daily_breakdown_level=98.3,
+    )
+
+    signal = strategy.generate_signal(
+        tech=tech,
+        advanced=advanced,
+        sentiment=sentiment,
+        current_position=None,
+        regimes=regimes,
+        news_signal=None,
+        candle_patterns=candles,
+        memory_adjustment=0.0,
+        instrument_type="crypto",
+        funding_oi_signal=SimpleNamespace(
+            valid=True,
+            composite_score=58.0,
+            funding_label="neutral",
+            oi_change_pct=1.2,
+            cvd_divergence="NONE",
+        ),
+        orderbook_signal=orderbook_signal,
+    )
+
+    assert signal.action == "FLAT", "range compression should block even a high-scoring directional setup"
+    assert signal.thesis["state"] == "NO_TRADE"
+    assert "range compression" in signal.flat_reason.lower() or "ranging" in signal.flat_reason.lower()
+
+
+def test_agent_uses_completed_candles_for_conviction_but_live_price_for_execution() -> None:
+    cfg = build_config()
+    cfg.trading.use_orderbook_levels = False
+
+    original_fetch = agent_module.fetch_candles
+    original_compute_signals = agent_module.compute_signals
+    original_compute_advanced = agent_module.compute_advanced_signals
+    original_compute_regimes = agent_module.compute_regimes
+    original_compute_candles = agent_module.compute_candlestick_patterns
+    original_get_funding = agent_module.get_funding_oi_cvd
+
+    captured = {}
+    df = pd.DataFrame({
+        "timestamp": pd.date_range("2026-04-05", periods=5, freq="1h", tz="UTC"),
+        "open": [100.0, 101.0, 102.0, 103.0, 108.0],
+        "high": [101.0, 102.0, 103.0, 104.0, 110.0],
+        "low": [99.0, 100.0, 101.0, 102.0, 107.0],
+        "close": [100.0, 101.0, 102.0, 103.0, 109.0],
+        "volume": [10.0, 11.0, 12.0, 13.0, 14.0],
+        "trades": [1, 1, 1, 1, 1],
+    })
+
+    def fake_fetch_candles(*args, **kwargs):
+        return df.copy()
+
+    def fake_compute_signals(frame, coin, icfg, trading_cfg):
+        captured["signal_rows"] = len(frame)
+        captured["signal_last_close"] = float(frame["close"].iloc[-1])
+        return SimpleNamespace(
+            valid=True,
+            coin=coin,
+            price=float(frame["close"].iloc[-1]),
+            rsi=50.0,
+            rsi_score=50.0,
+            macd_hist=0.0,
+            macd_score=50.0,
+            bb_score=50.0,
+            ema_score=50.0,
+            volume_score=1.0,
+        )
+
+    def fake_compute_advanced(frame, coin):
+        captured["advanced_rows"] = len(frame)
+        return SimpleNamespace(
+            valid=True,
+            fib=SimpleNamespace(score=50.0, levels={}, nearest_level_name="", nearest_level_price=0.0, description="Fib"),
+            msb=SimpleNamespace(score=50.0, msb_type="NONE", structure_trend="RANGING", last_swing_high=0.0, last_swing_low=0.0, description="Range"),
+            ob=SimpleNamespace(score=50.0, inside_bullish_ob=False, inside_bearish_ob=False, bullish_obs=[], bearish_obs=[], description="Order blocks"),
+            fvg=SimpleNamespace(score=50.0, inside_bullish_fvg=False, inside_bearish_fvg=False, bullish_fvgs=[], bearish_fvgs=[], description="FVG"),
+            atr=SimpleNamespace(atr=1.0, atr_pct=1.0, volatility_label="normal"),
+        )
+
+    def fake_compute_regimes(frame, coin):
+        return SimpleNamespace(
+            valid=True,
+            dominant_regime="MIXED",
+            momentum_score=50.0,
+            trend_score=50.0,
+            mean_rev_score=50.0,
+            volatility_score=50.0,
+            absorption_score=50.0,
+            catalyst_score=50.0,
+        )
+
+    def fake_compute_candles(frame, coin):
+        return SimpleNamespace(valid=True, score=50.0, patterns=[], trend_3="FLAT")
+
+    def fake_get_funding(*args, **kwargs):
+        return None
+
+    try:
+        agent_module.fetch_candles = fake_fetch_candles
+        agent_module.compute_signals = fake_compute_signals
+        agent_module.compute_advanced_signals = fake_compute_advanced
+        agent_module.compute_regimes = fake_compute_regimes
+        agent_module.compute_candlestick_patterns = fake_compute_candles
+        agent_module.get_funding_oi_cvd = fake_get_funding
+
+        agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=1000.0)])
+
+        def fake_generate_signal(*args, **kwargs):
+            tech = args[0]
+            captured["strategy_price"] = tech.price
+            captured["strategy_closed_price"] = getattr(tech, "closed_price", 0.0)
+            return SimpleNamespace(
+                action="FLAT",
+                score=50.0,
+                confidence="LOW",
+                price=tech.price,
+                reason="No trade",
+                flat_reason="No trade",
+                stop_loss_price=0.0,
+                take_profit_price=0.0,
+                trade_plan={},
+                thesis={
+                    "candidate_action": "FLAT",
+                    "state": "NO_TRADE",
+                    "permitted": False,
+                    "quality": "LOW",
+                    "alignment_points": 0.0,
+                    "conflict_points": 0.0,
+                    "conviction_score": 25.0,
+                    "summary": "No trade",
+                    "reasons": [],
+                    "blockers": [],
+                },
+            )
+
+        agent.strategy.generate_signal = fake_generate_signal
+        agent._analyse_coin(
+            "BTC",
+            {"signal_score": 50.0, "label": "Neutral", "raw_score": 50, "is_extreme": False},
+            portfolio_usd=1000.0,
+        )
+    finally:
+        agent_module.fetch_candles = original_fetch
+        agent_module.compute_signals = original_compute_signals
+        agent_module.compute_advanced_signals = original_compute_advanced
+        agent_module.compute_regimes = original_compute_regimes
+        agent_module.compute_candlestick_patterns = original_compute_candles
+        agent_module.get_funding_oi_cvd = original_get_funding
+
+    assert captured["signal_rows"] == 4, "conviction indicators should run on completed candles only"
+    assert captured["advanced_rows"] == 4, "advanced structure should also use completed candles"
+    assert captured["signal_last_close"] == 103.0
+    assert captured["strategy_closed_price"] == 103.0
+    assert captured["strategy_price"] == 109.0, "execution context should still carry the live price"
+
+
 def test_scale_in_does_not_mutate_before_fill() -> None:
     cfg = build_config()
     cfg.trading.max_trade_usd = 300.0
@@ -1008,6 +1222,10 @@ def run_all() -> None:
     print("PASS confirmed breakout promotion")
     test_probing_breakout_does_not_override_nearby_resistance()
     print("PASS probing breakout guard")
+    test_thesis_gate_blocks_high_score_range_compression_setup()
+    print("PASS thesis no-trade gate")
+    test_agent_uses_completed_candles_for_conviction_but_live_price_for_execution()
+    print("PASS completed-candle conviction split")
     test_scale_in_does_not_mutate_before_fill()
     print("PASS scale-in accounting")
     test_order_sizing_scales_with_conviction_and_tempers_euphoria()

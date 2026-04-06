@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 from indicators.technical import TechnicalSignals
 from indicators.advanced  import AdvancedSignals
 from indicators.regimes   import RegimeSignals
@@ -21,6 +21,7 @@ class TradeSignal:
     take_profit_price: float = 0.0
     instrument_type: str = "crypto"  # "crypto" | "index"
     trade_plan: dict = field(default_factory=dict)
+    thesis: dict = field(default_factory=dict)
 
 
 class AggressiveStrategy:
@@ -73,6 +74,252 @@ class AggressiveStrategy:
     @staticmethod
     def _is_confirmed_bearish_breakdown(orderbook_signal) -> bool:
         return str(getattr(orderbook_signal, "breakout_state", "")).upper() == "CONFIRMED_BEARISH_BREAKDOWN"
+
+    def _evaluate_trade_thesis(
+        self,
+        *,
+        action: str,
+        score: float,
+        current_position=None,
+        advanced=None,
+        regimes=None,
+        candle_patterns=None,
+        news_signal=None,
+        funding_oi_signal=None,
+        orderbook_signal=None,
+        trade_plan: Dict | None = None,
+    ) -> dict:
+        thesis = {
+            "candidate_action": action,
+            "state": "NO_TRADE",
+            "permitted": False,
+            "quality": "LOW",
+            "alignment_points": 0.0,
+            "conflict_points": 0.0,
+            "conviction_score": 50.0,
+            "summary": "No directional thesis qualified",
+            "reasons": [],
+            "blockers": [],
+        }
+        if action not in ("LONG", "SHORT"):
+            thesis["summary"] = "Raw score remained inside the no-trade zone"
+            return thesis
+
+        bullish = action == "LONG"
+        same_direction_position = current_position == action
+        alignment = 0.0
+        conflicts = 0.0
+        reasons: List[str] = []
+        blockers: List[str] = []
+
+        bullish_msb = {"BULLISH_CHOCH", "BULLISH_BOS"}
+        bearish_msb = {"BEARISH_CHOCH", "BEARISH_BOS"}
+
+        msb = getattr(advanced, "msb", None)
+        msb_type = str(getattr(msb, "msb_type", "NONE") or "NONE").upper()
+        structure_trend = str(getattr(msb, "structure_trend", "RANGING") or "RANGING").upper()
+        dominant_regime = str(getattr(regimes, "dominant_regime", "MIXED") or "MIXED").upper()
+        breakout_state = str(getattr(orderbook_signal, "breakout_state", "NONE") or "NONE").upper()
+        level_interaction = str(getattr(orderbook_signal, "level_interaction", "BETWEEN_LEVELS") or "BETWEEN_LEVELS").upper()
+        confirmed_breakout = (
+            self._is_confirmed_bullish_breakout(orderbook_signal)
+            if bullish else
+            self._is_confirmed_bearish_breakdown(orderbook_signal)
+        )
+        probing_breakout = breakout_state == (
+            "PROBING_BULLISH_BREAKOUT" if bullish else "PROBING_BEARISH_BREAKDOWN"
+        )
+
+        if confirmed_breakout:
+            alignment += 2.0
+            reasons.append("daily breakout is already confirmed")
+        elif probing_breakout:
+            conflicts += 0.5
+            reasons.append("breakout is only probing and has not closed yet")
+
+        if bullish:
+            if msb_type in bullish_msb:
+                alignment += 2.0
+                reasons.append("market structure break is bullish")
+            elif msb_type in bearish_msb:
+                conflicts += 2.0
+                blockers.append("market structure still resolves bearish")
+
+            if structure_trend == "UPTREND":
+                alignment += 2.0
+                reasons.append("higher structure remains in an uptrend")
+            elif structure_trend == "DOWNTREND":
+                conflicts += 2.0
+                blockers.append("higher structure is still a downtrend")
+            elif structure_trend == "RANGING" and getattr(self.tcfg, "thesis_block_on_range_conditions", True) and not confirmed_breakout:
+                blockers.append("higher structure is still ranging")
+        else:
+            if msb_type in bearish_msb:
+                alignment += 2.0
+                reasons.append("market structure break is bearish")
+            elif msb_type in bullish_msb:
+                conflicts += 2.0
+                blockers.append("market structure still resolves bullish")
+
+            if structure_trend == "DOWNTREND":
+                alignment += 2.0
+                reasons.append("higher structure remains in a downtrend")
+            elif structure_trend == "UPTREND":
+                conflicts += 2.0
+                blockers.append("higher structure is still an uptrend")
+            elif structure_trend == "RANGING" and getattr(self.tcfg, "thesis_block_on_range_conditions", True) and not confirmed_breakout:
+                blockers.append("higher structure is still ranging")
+
+        if dominant_regime in {"TREND", "MOMENTUM", "BREAKOUT"}:
+            alignment += 1.5
+            reasons.append(f"{dominant_regime.lower()} regime supports follow-through")
+        elif dominant_regime in {"ABSORPTION", "MIXED"}:
+            if getattr(self.tcfg, "thesis_block_on_range_conditions", True) and not confirmed_breakout:
+                blockers.append(f"{dominant_regime.lower()} regime is too indecisive for a fresh trade")
+            else:
+                conflicts += 0.5
+        elif dominant_regime == "MEAN_REV":
+            conflicts += 1.0
+            reasons.append("mean-reversion regime lowers continuation quality")
+
+        if candle_patterns and getattr(candle_patterns, "valid", False):
+            candle_trend = str(getattr(candle_patterns, "trend_3", "FLAT") or "FLAT").upper()
+            indecision = self._indecision_candle_context(candle_patterns)
+            directional_candles = (
+                self._bullish_candle_context(candle_patterns)
+                if bullish else
+                self._bearish_candle_context(candle_patterns)
+            )
+            opposing_candles = (
+                self._bearish_candle_context(candle_patterns)
+                if bullish else
+                self._bullish_candle_context(candle_patterns)
+            )
+            directional_trend = "UP" if bullish else "DOWN"
+            opposing_trend = "DOWN" if bullish else "UP"
+
+            if directional_candles or candle_trend == directional_trend:
+                alignment += 1.0
+                reasons.append("recent candles confirm the direction")
+            elif opposing_candles or candle_trend == opposing_trend:
+                conflicts += 1.0
+                reasons.append("recent candles still lean the other way")
+
+            if indecision and not confirmed_breakout:
+                blockers.append("recent candles are still indecisive")
+
+        if news_signal and getattr(news_signal, "valid", False) and getattr(news_signal, "article_count", 0) > 0:
+            news_score = float(getattr(news_signal, "score", 50.0) or 50.0)
+            if (bullish and news_score >= 55.0) or ((not bullish) and news_score <= 45.0):
+                alignment += 1.0
+                reasons.append("newsflow is aligned with the direction")
+            elif (bullish and news_score <= 45.0) or ((not bullish) and news_score >= 55.0):
+                conflicts += 1.0
+                reasons.append("newsflow is leaning the other way")
+
+        if funding_oi_signal and getattr(funding_oi_signal, "valid", False):
+            foc_score = float(getattr(funding_oi_signal, "composite_score", 50.0) or 50.0)
+            if (bullish and foc_score >= 55.0) or ((not bullish) and foc_score <= 45.0):
+                alignment += 1.0
+                reasons.append("order-flow confirms the move")
+            elif (bullish and foc_score <= 45.0) or ((not bullish) and foc_score >= 55.0):
+                conflicts += 1.0
+                reasons.append("order-flow is not confirming the move")
+
+        if orderbook_signal and getattr(orderbook_signal, "valid", False):
+            orderbook_score = float(getattr(orderbook_signal, "score", 50.0) or 50.0)
+            if bullish:
+                if getattr(orderbook_signal, "block_longs", False) and not confirmed_breakout:
+                    blockers.append("overhead supply/resistance is still active")
+                elif getattr(orderbook_signal, "favor_longs", False) or orderbook_score >= 58.0:
+                    alignment += 1.5
+                    reasons.append("orderbook and key levels support the long")
+                elif orderbook_score <= 45.0:
+                    conflicts += 1.0
+                    reasons.append("orderbook still leans against the long")
+            else:
+                if getattr(orderbook_signal, "block_shorts", False) and not confirmed_breakout:
+                    blockers.append("demand/support is still defending below price")
+                elif getattr(orderbook_signal, "favor_shorts", False) or orderbook_score <= 42.0:
+                    alignment += 1.5
+                    reasons.append("orderbook and key levels support the short")
+                elif orderbook_score >= 55.0:
+                    conflicts += 1.0
+                    reasons.append("orderbook still leans against the short")
+
+            if level_interaction == "RANGE_COMPRESSION" and getattr(self.tcfg, "thesis_block_on_range_conditions", True) and not confirmed_breakout:
+                blockers.append("price is compressed between nearby support and resistance")
+
+        rr = float((trade_plan or {}).get("risk_reward_ratio", 0.0) or 0.0)
+        min_rr = float(getattr(self.tcfg, "thesis_min_risk_reward_ratio", 1.75) or 1.75)
+        if rr > 0 and rr >= min_rr:
+            alignment += 1.0
+            reasons.append(f"planned R:R {rr:.2f} is good enough")
+        elif trade_plan:
+            blockers.append(f"planned R:R {rr:.2f} is below {min_rr:.2f}")
+
+        long_thresh = float(self.tcfg.signal_long_threshold)
+        short_thresh = float(self.tcfg.signal_short_threshold)
+        if current_position == "LONG":
+            short_thresh -= 4.0
+            long_thresh += 4.0
+        elif current_position == "SHORT":
+            long_thresh += 4.0
+            short_thresh -= 4.0
+
+        score_buffer = score - long_thresh if bullish else short_thresh - score
+        min_buffer = float(getattr(self.tcfg, "thesis_min_score_buffer", 3.0) or 3.0)
+        if same_direction_position:
+            if score_buffer >= 1.0:
+                alignment += 0.5
+                reasons.append("same-direction thesis is still intact")
+        elif score_buffer >= min_buffer:
+            alignment += 1.0
+            reasons.append("directional score cleared the trigger with room to spare")
+        elif not confirmed_breakout:
+            blockers.append("score only barely crossed the trigger without enough thesis buffer")
+
+        min_alignment = float(getattr(self.tcfg, "thesis_min_alignment_points", 4) or 4)
+        max_conflicts = float(getattr(self.tcfg, "thesis_max_conflict_points", 1) or 1)
+        permitted = not blockers and alignment >= min_alignment and conflicts <= max_conflicts
+
+        conviction_score = 50.0 + alignment * 7.5 - conflicts * 8.0
+        if confirmed_breakout:
+            conviction_score += 6.0
+        conviction_score = max(0.0, min(100.0, conviction_score))
+
+        if permitted:
+            quality = "HIGH" if alignment >= (min_alignment + 2.0) and conflicts == 0 else "MEDIUM"
+            summary = "; ".join(reasons[:3]) if reasons else "Directional thesis qualified"
+            state = "QUALIFIED"
+        else:
+            quality = "LOW"
+            if blockers:
+                summary = blockers[0]
+            elif alignment < min_alignment:
+                summary = (
+                    f"only {alignment:.1f} aligned thesis checks "
+                    f"(need at least {min_alignment:.0f})"
+                )
+            else:
+                summary = (
+                    f"too many thesis conflicts remain "
+                    f"({conflicts:.1f} > {max_conflicts:.0f})"
+                )
+            state = "NO_TRADE"
+
+        thesis.update({
+            "state": state,
+            "permitted": permitted,
+            "quality": quality,
+            "alignment_points": round(alignment, 2),
+            "conflict_points": round(conflicts, 2),
+            "conviction_score": round(conviction_score, 2),
+            "summary": summary,
+            "reasons": reasons[:6],
+            "blockers": blockers[:4],
+        })
+        return thesis
 
     def _build_trade_plan(self, tech, advanced, action, confidence, regimes=None, candle_patterns=None, orderbook_signal=None):
         if action == "FLAT" or tech.price <= 0:
@@ -618,14 +865,95 @@ class AggressiveStrategy:
         distance = abs(raw_score - 50.0)
         confidence = "HIGH" if distance >= 20 else "MEDIUM" if distance >= 10 else "LOW"
 
-        # ── 17. Strategic FLAT reasoning ─────────────────────────────────────
+        # ── 17. Preliminary trade plan + thesis gate ────────────────────────
+        sl_price = tp_price = 0.0
+        trade_plan = {}
+        thesis = {
+            "candidate_action": action,
+            "state": "NO_TRADE",
+            "permitted": action in ("LONG", "SHORT"),
+            "quality": confidence,
+            "alignment_points": 0.0,
+            "conflict_points": 0.0,
+            "conviction_score": round(distance * 2.0, 2),
+            "summary": "Raw score remained inside the no-trade zone",
+            "reasons": [],
+            "blockers": [],
+        }
+        thesis_guard_reason = ""
+        candidate_action = action
+        if tech.price > 0 and candidate_action != "FLAT":
+            if getattr(self.tcfg, "dynamic_trade_planning", True):
+                trade_plan = self._build_trade_plan(
+                    tech=tech,
+                    advanced=advanced,
+                    action=candidate_action,
+                    confidence=confidence,
+                    regimes=regimes,
+                    candle_patterns=candle_patterns,
+                    orderbook_signal=orderbook_signal,
+                )
+                sl_price = float(trade_plan.get("stop_loss", 0.0) or 0.0)
+                tp_price = float(trade_plan.get("take_profit", 0.0) or 0.0)
+            if sl_price <= 0 or tp_price <= 0:
+                if action == "LONG":
+                    sl_price = tech.price * (1 - self.tcfg.stop_loss_pct)
+                    tp_price = tech.price * (1 + self.tcfg.take_profit_pct)
+                else:
+                    sl_price = tech.price * (1 + self.tcfg.stop_loss_pct)
+                    tp_price = tech.price * (1 - self.tcfg.take_profit_pct)
+                trade_plan = {
+                    "entry_price": round(float(tech.price), 6),
+                    "stop_loss": round(float(sl_price), 6),
+                    "take_profit": round(float(tp_price), 6),
+                    "risk_pct": round(abs(tech.price - sl_price) / tech.price * 100, 3),
+                    "reward_pct": round(abs(tp_price - tech.price) / tech.price * 100, 3),
+                    "risk_reward_ratio": round(
+                        abs(tp_price - tech.price) / max(abs(tech.price - sl_price), 1e-9), 3
+                    ),
+                    "stop_basis": "static_pct",
+                    "target_basis": "static_pct",
+                    "price_action_summary": "",
+                }
+
+            thesis = self._evaluate_trade_thesis(
+                action=candidate_action,
+                score=raw_score,
+                current_position=current_position,
+                advanced=advanced,
+                regimes=regimes,
+                candle_patterns=candle_patterns,
+                news_signal=news_signal,
+                funding_oi_signal=funding_oi_signal,
+                orderbook_signal=orderbook_signal,
+                trade_plan=trade_plan,
+            )
+            if not thesis.get("permitted", False):
+                action = "FLAT"
+                thesis_guard_reason = str(thesis.get("summary", "") or "")
+                sl_price = 0.0
+                tp_price = 0.0
+                trade_plan = {}
+        elif candidate_action == "FLAT":
+            thesis["permitted"] = False
+            thesis["quality"] = "LOW"
+            thesis["conviction_score"] = round(max(0.0, min(100.0, 50.0 - distance)), 2)
+
+        # ── 18. Strategic FLAT reasoning ─────────────────────────────────────
         # When staying flat, build a clear explanation so the dashboard shows
         # WHY the agent chose not to trade — inaction is intentional, not lazy.
         flat_reason = ""
         if action == "FLAT":
             flat_parts = []
+            if thesis_guard_reason:
+                flat_parts.append(thesis_guard_reason)
+
             # Primary reason: score position
-            if 45 <= raw_score <= 55:
+            if candidate_action == "LONG" and raw_score >= long_thresh:
+                flat_parts.append(f"Score {raw_score:.0f} triggered LONG, but the thesis was not strong enough")
+            elif candidate_action == "SHORT" and raw_score <= short_thresh:
+                flat_parts.append(f"Score {raw_score:.0f} triggered SHORT, but the thesis was not strong enough")
+            elif 45 <= raw_score <= 55:
                 flat_parts.append(f"Score {raw_score:.0f} — deep neutral zone")
             elif raw_score < long_thresh:
                 flat_parts.append(f"Score {raw_score:.0f} — needs ≥{long_thresh:.0f} for LONG")
@@ -659,7 +987,7 @@ class AggressiveStrategy:
             if instrument_type == "index":
                 flat_parts.append("Index: waiting for macro confirmation")
 
-            if orderbook_guard_reason:
+            if orderbook_guard_reason and orderbook_guard_reason not in flat_parts:
                 flat_parts.insert(0, orderbook_guard_reason)
             elif orderbook_signal and getattr(orderbook_signal, "valid", False):
                 if getattr(orderbook_signal, "level_interaction", "BETWEEN_LEVELS") != "BETWEEN_LEVELS":
@@ -674,46 +1002,10 @@ class AggressiveStrategy:
             flat_reason = " · ".join(flat_parts) if flat_parts else "Insufficient conviction"
             log.info(f"[{tech.coin}] ✋ FLAT — {flat_reason}")
 
-        # ── 18. Stop-loss / take-profit ──────────────────────────────────────
-        sl_price = tp_price = 0.0
-        trade_plan = {}
-        if tech.price > 0 and action != "FLAT":
-            if getattr(self.tcfg, "dynamic_trade_planning", True):
-                trade_plan = self._build_trade_plan(
-                    tech=tech,
-                    advanced=advanced,
-                    action=action,
-                    confidence=confidence,
-                    regimes=regimes,
-                    candle_patterns=candle_patterns,
-                    orderbook_signal=orderbook_signal,
-                )
-                sl_price = float(trade_plan.get("stop_loss", 0.0) or 0.0)
-                tp_price = float(trade_plan.get("take_profit", 0.0) or 0.0)
-            if sl_price <= 0 or tp_price <= 0:
-                if action == "LONG":
-                    sl_price = tech.price * (1 - self.tcfg.stop_loss_pct)
-                    tp_price = tech.price * (1 + self.tcfg.take_profit_pct)
-                else:
-                    sl_price = tech.price * (1 + self.tcfg.stop_loss_pct)
-                    tp_price = tech.price * (1 - self.tcfg.take_profit_pct)
-                trade_plan = {
-                    "entry_price": round(float(tech.price), 6),
-                    "stop_loss": round(float(sl_price), 6),
-                    "take_profit": round(float(tp_price), 6),
-                    "risk_pct": round(abs(tech.price - sl_price) / tech.price * 100, 3),
-                    "reward_pct": round(abs(tp_price - tech.price) / tech.price * 100, 3),
-                    "risk_reward_ratio": round(
-                        abs(tp_price - tech.price) / max(abs(tech.price - sl_price), 1e-9), 3
-                    ),
-                    "stop_basis": "static_pct",
-                    "target_basis": "static_pct",
-                    "price_action_summary": "",
-                }
-
         reason = self._build_reason(
             tech, advanced, sentiment, raw_score, action,
-            vol_ratio, regimes, news_signal, candle_patterns, orderbook_signal
+            vol_ratio, regimes, news_signal, candle_patterns, orderbook_signal,
+            thesis=thesis,
         )
 
         log.info(
@@ -733,14 +1025,23 @@ class AggressiveStrategy:
             take_profit_price = tp_price,
             instrument_type   = instrument_type,
             trade_plan        = trade_plan,
+            thesis            = thesis,
         )
 
     def _build_reason(
         self, tech, advanced, sentiment, score, action,
-        vol_ratio, regimes=None, news_signal=None, candle_patterns=None, orderbook_signal=None
+        vol_ratio, regimes=None, news_signal=None, candle_patterns=None, orderbook_signal=None,
+        thesis=None,
     ):
         parts = []
         msb = advanced.msb
+        thesis_summary = str((thesis or {}).get("summary", "") or "")
+        thesis_quality = str((thesis or {}).get("quality", "") or "")
+        if thesis_summary:
+            prefix = "Thesis"
+            if thesis_quality:
+                prefix += f" {thesis_quality.lower()}"
+            parts.append(f"{prefix}: {thesis_summary}")
         parts.append(msb.description if msb.msb_type != "NONE"
                      else f"Structure: {msb.structure_trend}")
 

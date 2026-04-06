@@ -145,7 +145,17 @@ class TradingConfig:
     check_interval_seconds: int  = 120    # Run cycle every 2 minutes
     candle_interval: str         = "1h"   # Candle size for indicator maths
     lookback_periods: int        = 100    # Candles to load each cycle
+    use_closed_candles_for_conviction: bool = True  # Build conviction from completed candles, not the live bar
     reconcile_every_n_cycles: int = 10    # Reconcile exchange truth every N cycles in live mode
+
+    # ── Thesis / abstention guardrails ──────────────────
+    # The raw score may suggest direction, but the thesis layer decides whether
+    # the setup is actually good enough to deserve a trade.
+    thesis_min_alignment_points: int = 4
+    thesis_max_conflict_points: int = 1
+    thesis_min_score_buffer: float = 3.0
+    thesis_min_risk_reward_ratio: float = 1.75
+    thesis_block_on_range_conditions: bool = True
 
     # ── Live runtime guardrails ─────────────────────────
     require_ac_power_for_live: bool = True
