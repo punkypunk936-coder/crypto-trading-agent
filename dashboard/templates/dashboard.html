@@ -1183,24 +1183,21 @@
       <div class="card-label">🗺️ Daily Market Map</div>
       <div class="review-actions">
         <button class="tool-btn" onclick="editGlobalMapNotes()">GLOBAL NOTES</button>
-        <button class="tool-btn" onclick="editMarketMap()">ADD / UPDATE</button>
+        <button class="tool-btn" onclick="editMarketMap()">MANUAL OVERRIDE</button>
       </div>
     </div>
     <div class="map-meta" id="market-map-meta">Waiting for market map...</div>
     <div id="market-map-body">
-      <div class="empty-state">No daily market map loaded yet</div>
+      <div class="empty-state">Building live map...</div>
     </div>
   </div>
   <div class="card">
     <div class="card-label-row">
-      <div class="card-label">🧪 Trade Review Lab</div>
-      <div class="review-actions">
-        <button class="tool-btn" onclick="reviewNextTrade()">REVIEW NEXT</button>
-      </div>
+      <div class="card-label">🧠 Agent Learning</div>
     </div>
-    <div class="review-meta" id="review-meta">Waiting for review stats...</div>
+    <div class="review-meta" id="review-meta">Waiting for learning stats...</div>
     <div id="review-body">
-      <div class="empty-state">No review data yet</div>
+      <div class="empty-state">No lessons absorbed yet</div>
     </div>
   </div>
 </div>
@@ -1217,10 +1214,10 @@
       <table>
         <thead><tr>
           <th>#</th><th>Coin</th><th>Dir</th><th>Opened</th><th>Closed</th>
-          <th>Entry</th><th>Exit</th><th>Margin</th><th>Notional</th><th>P&amp;L $</th><th>P&amp;L %</th><th>Reason</th><th>Review</th><th>Action</th>
+          <th>P&amp;L $</th><th>P&amp;L %</th><th>Opened Because</th><th>Closed Because</th><th>Lesson</th>
         </tr></thead>
         <tbody id="trades-body">
-          <tr><td colspan="14" class="muted" style="text-align:center;padding:24px;">No closed trades yet</td></tr>
+          <tr><td colspan="10" class="muted" style="text-align:center;padding:24px;">No closed trades yet</td></tr>
         </tbody>
       </table>
     </div>
@@ -1294,6 +1291,7 @@ let latestTrades = [];
 let latestMarketMap = { coins: {} };
 let latestReviewStore = { reviews: {} };
 let latestReviewSummary = {};
+let latestLearningSummary = {};
 
 function toggleTrades() {
   const wrap = document.getElementById('trades-wrap');
@@ -1326,7 +1324,9 @@ function trackedCoins() {
 
 function renderMarketMapSummary(summary, marketMap) {
   const meta = document.getElementById('market-map-meta');
-  meta.textContent = 'Mapped coins ' + (summary.count || 0)
+  meta.textContent = 'Mapped ' + (summary.count || 0) + '/' + trackedCoins().length
+    + ' • manual ' + (summary.manual_count || 0)
+    + ' • auto ' + (summary.auto_count || 0)
     + ' • bullish ' + (summary.bullish || 0)
     + ' • bearish ' + (summary.bearish || 0)
     + ' • updated ' + stampText(summary.updated_at || (marketMap || {}).updated_at);
@@ -1351,14 +1351,15 @@ function renderMarketMapSummary(summary, marketMap) {
     const entry = entries[coin];
     if (!entry) {
       html += '<div class="map-card map-card-empty">'
-        + '<div class="map-card-top"><div class="map-coin">' + esc(coin) + '</div><span class="' + biasClass('NEUTRAL') + '">UNMAPPED</span></div>'
-        + '<div class="map-notes">No key levels saved yet. Add supports, resistances, and daily close triggers so the agent knows the bigger map.</div>'
-        + '<div class="map-card-actions"><button class="tool-btn" onclick="editMarketMap(' + JSON.stringify(coin) + ')">SET MAP</button></div>'
+        + '<div class="map-card-top"><div class="map-coin">' + esc(coin) + '</div><span class="review-chip">AUTO PENDING</span></div>'
+        + '<div class="map-notes">No structure map is available yet for this asset. Add a manual override if you want custom levels immediately.</div>'
+        + '<div class="map-card-actions"><button class="tool-btn" onclick="editMarketMap(' + JSON.stringify(coin) + ')">OVERRIDE</button></div>'
         + '</div>';
       return;
     }
+    const source = String(entry.source || (entry.auto_generated ? 'AUTO' : 'MANUAL')).toUpperCase();
     html += '<div class="map-card">'
-      + '<div class="map-card-top"><div class="map-coin">' + esc(coin) + '</div><span class="' + biasClass(entry.bias) + '">' + esc(String(entry.bias || 'NEUTRAL')) + '</span></div>'
+      + '<div class="map-card-top"><div class="map-coin">' + esc(coin) + '</div><div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;"><span class="review-chip">' + esc(source === 'AUTO' ? 'AUTO MAP' : 'MANUAL') + '</span><span class="' + biasClass(entry.bias) + '">' + esc(String(entry.bias || 'NEUTRAL')) + '</span></div></div>'
       + '<div class="map-levels">'
         + '<div class="map-level-row"><span>Confidence</span><strong>' + esc(String(entry.confidence || 'MEDIUM')) + '</strong></div>'
         + '<div class="map-level-row"><span>Supports</span><strong>' + esc(csvText(entry.supports)) + '</strong></div>'
@@ -1368,10 +1369,10 @@ function renderMarketMapSummary(summary, marketMap) {
         + '<div class="map-level-row"><span>Playbook</span><strong>' + esc(String(entry.trade_mode || '--')) + '</strong></div>'
       + '</div>'
       + '<div class="map-zone"><strong>Demand:</strong> ' + esc(zoneText(entry.demand_zone)) + ' • <strong>Supply:</strong> ' + esc(zoneText(entry.supply_zone)) + '</div>'
-      + '<div class="map-notes">' + esc(shortText(entry.notes || 'No coin-specific notes yet.', 180)) + '</div>'
+      + '<div class="map-notes"><strong>Map:</strong> ' + esc(shortText(entry.summary || entry.notes || 'No coin-specific notes yet.', 180)) + '</div>'
       + '<div class="map-card-actions">'
-        + '<button class="tool-btn" onclick="editMarketMap(' + JSON.stringify(coin) + ')">EDIT</button>'
-        + '<button class="tool-btn" onclick="deleteMarketMap(' + JSON.stringify(coin) + ')">DELETE</button>'
+        + '<button class="tool-btn" onclick="editMarketMap(' + JSON.stringify(coin) + ')">' + (source === 'AUTO' ? 'OVERRIDE' : 'EDIT') + '</button>'
+        + (source === 'AUTO' ? '' : '<button class="tool-btn" onclick="deleteMarketMap(' + JSON.stringify(coin) + ')">DELETE</button>')
       + '</div>'
       + '</div>';
   });
@@ -1379,39 +1380,43 @@ function renderMarketMapSummary(summary, marketMap) {
   body.innerHTML = html;
 }
 
-function renderReviewSummary(summary, trades) {
+function renderLearningSummary(summary, trades) {
   const meta = document.getElementById('review-meta');
-  meta.textContent = 'Reviewed ' + (summary.count || 0)
-    + ' • coverage ' + fmt(summary.coverage_pct || 0, 1) + '%'
-    + ' • updated ' + stampText(summary.updated_at);
+  meta.textContent = 'Lessons ' + (summary.count || 0)
+    + ' • wins ' + (summary.wins || 0)
+    + ' • losses ' + (summary.losses || 0)
+    + ' • refreshed ' + stampText((latestState || {}).last_cycle);
 
   const body = document.getElementById('review-body');
-  const unreviewed = (trades || []).filter((trade) => !trade.review).slice(0, 5);
+  const lessons = (summary.recent_lessons || []).slice(0, 5);
+  const latest = summary.latest || null;
   let html = '<div class="review-stack"><div class="review-summary-grid">'
-    + '<div class="review-summary-box"><div class="card-label">Coverage</div><div class="review-count">' + fmt(summary.coverage_pct || 0, 1) + '%</div><div class="review-count-sub">' + (summary.count || 0) + ' trades labeled</div></div>'
-    + '<div class="review-summary-box"><div class="card-label">Verdicts</div><div class="review-chip-list">'
-      + (Object.keys(summary.verdicts || {}).length
-        ? Object.entries(summary.verdicts || {}).map(([key, count]) => '<span class="review-chip ' + reviewChipClass(key) + '">' + esc(key.replaceAll('_', ' ')) + ' ' + esc(String(count)) + '</span>').join('')
-        : '<span class="review-chip">NONE YET</span>')
-      + '</div></div>'
-    + '<div class="review-summary-box"><div class="card-label">Thesis</div>' + reviewBreakdownHtml('Thesis quality', summary.thesis_quality || {}) + '</div>'
-    + '<div class="review-summary-box"><div class="card-label">Execution</div>' + reviewBreakdownHtml('Execution quality', summary.execution_quality || {}) + '</div>'
+    + '<div class="review-summary-box"><div class="card-label">Closed Trades</div><div class="review-count">' + esc(String(summary.count || 0)) + '</div><div class="review-count-sub">recent lessons absorbed</div></div>'
+    + '<div class="review-summary-box"><div class="card-label">Winning Lessons</div><div class="review-count green">' + esc(String(summary.wins || 0)) + '</div><div class="review-count-sub">setups that paid</div></div>'
+    + '<div class="review-summary-box"><div class="card-label">Losing Lessons</div><div class="review-count red">' + esc(String(summary.losses || 0)) + '</div><div class="review-count-sub">mistakes now tracked</div></div>'
+    + '<div class="review-summary-box"><div class="card-label">Learning Loop</div><div class="review-notes">The agent keeps the detailed labeling internally and surfaces only the trade logic and the lesson here.</div></div>'
     + '</div>';
 
-  html += '<div class="review-summary-box"><div class="card-label-row"><div class="card-label">Review Queue</div>'
-    + '<button class="tool-btn" onclick="reviewNextTrade()">NEXT TRADE</button></div>';
-  if (unreviewed.length) {
-    html += '<div class="review-queue">'
-      + unreviewed.map((trade) => '<div class="review-queue-item">'
-        + '<div class="review-queue-main"><div class="review-queue-title">' + esc(String(trade.coin || '')) + ' ' + esc(String(trade.direction || '')) + ' #' + esc(String(trade.trade_id || '')) + '</div>'
-        + '<div class="review-queue-sub">' + esc(shortText(trade.exit_reason || 'No exit reason recorded', 80)) + ' • PnL ' + fmtD(Number(trade.pnl_usd || 0)) + '</div></div>'
-        + '<button class="tool-btn" onclick="saveTradeReview(' + JSON.stringify(String(trade.trade_id || '')) + ', ' + JSON.stringify(String(trade.coin || '')) + ', ' + JSON.stringify(String(trade.direction || '')) + ')">LABEL</button>'
-        + '</div>').join('')
+  if (latest) {
+    html += '<div class="review-summary-box">'
+      + '<div class="card-label-row"><div class="card-label">Latest Closed Trade</div><div class="' + (latest.result === 'WIN' ? 'green' : latest.result === 'LOSS' ? 'red' : 'muted') + '">' + esc(String(latest.coin || '')) + ' ' + esc(String(latest.direction || '')) + ' • ' + fmtD(Number(latest.pnl_usd || 0)) + '</div></div>'
+      + '<div class="review-notes"><strong>Opened because:</strong> ' + esc(shortText(latest.open_logic || 'No opening logic recorded', 180)) + '</div>'
+      + '<div class="review-notes"><strong>Closed because:</strong> ' + esc(shortText(latest.close_logic || 'No closing logic recorded', 180)) + '</div>'
+      + '<div class="review-notes"><strong>Lesson:</strong> ' + esc(shortText(latest.lesson || 'No lesson recorded yet.', 220)) + '</div>'
       + '</div>';
-  } else {
-    html += '<div class="empty-state" style="padding:18px 0 6px;">Recent trades are all labeled. Keep reviewing fresh closes so the guardrails stay sharp.</div>';
   }
-  html += '</div></div>';
+
+  if (lessons.length) {
+    html += '<div class="review-summary-box"><div class="card-label">Recent Lessons</div><div class="review-queue">'
+      + lessons.map((lesson) => '<div class="review-queue-item">'
+        + '<div class="review-queue-main"><div class="review-queue-title">' + esc(String(lesson.coin || '')) + ' ' + esc(String(lesson.direction || '')) + '</div>'
+        + '<div class="review-queue-sub">' + fmtD(Number(lesson.pnl_usd || 0)) + ' • ' + esc(shortText(lesson.lesson || 'No lesson recorded yet.', 130)) + '</div></div>'
+        + '</div>').join('')
+      + '</div></div>';
+  } else {
+    html += '<div class="empty-state" style="padding:18px 0 6px;">Once a few trades close, the agent will surface the main lesson from each one here.</div>';
+  }
+  html += '</div>';
   body.innerHTML = html;
 }
 
@@ -1560,6 +1565,7 @@ async function refresh() {
     latestMarketMap = data.market_map || { coins: {} };
     latestReviewStore = data.trade_reviews || { reviews: {} };
     latestReviewSummary = data.review_summary || {};
+    latestLearningSummary = data.learning_summary || {};
 
     // Header
     let updateText = 'Updated: ' + data.server_time;
@@ -1728,7 +1734,9 @@ async function refresh() {
           '<div><div class="pos-meta">Margin</div><div class="pos-val">$' + fmt(p.size_usd, 0) + '</div></div>' +
           '<div><div class="pos-meta">Notional</div><div class="pos-val blue">$' + fmt(p.size_usd * (s.leverage || 2), 0) + '</div></div>' +
           '<div><div class="pos-meta">Unrealised P&L</div><div class="pos-val ' + pnlCls + '" style="font-size:16px;">' + fmtD(p.unrealised_pnl) + '<span style="font-size:12px;opacity:0.7;margin-left:4px;">(' + (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%)</span></div></div>' +
-        '</div>';
+        '</div>' +
+        '<div class="signal-reason"><strong>Opened:</strong> ' + esc(shortText(p.entry_logic || 'No opening logic recorded.', 160)) + '</div>' +
+        '<div class="signal-reason"><strong>Now:</strong> ' + esc(shortText(p.current_logic || 'Holding while the thesis stays valid.', 160)) + '</div>';
       }).join('');
     } else {
       countBadge.textContent = '0';
@@ -1881,7 +1889,7 @@ async function refresh() {
       '<div class="stat-row"><span class="stat-label">Signal Bias</span><span class="stat-value">' + (sent.signal_score ? fmt(sent.signal_score, 0) + '/100' : '--') + '</span></div>';
 
     renderMarketMapSummary(data.market_map_summary || {}, latestMarketMap);
-    renderReviewSummary(latestReviewSummary, latestTrades);
+    renderLearningSummary(latestLearningSummary, latestTrades);
 
     // Pending orders
     const pendEl = document.getElementById('pending-body');
@@ -1905,37 +1913,25 @@ async function refresh() {
       closedLabel.textContent = '(' + tr.length + ' trades)';
       tradBody.innerHTML = tr.map(t => {
         const pnl    = parseFloat(t.pnl_usd || 0);
-        const pnlPct = parseFloat(t.pnl_pct || 0) * 100;
+        const pnlPct = parseFloat(t.pnl_pct || 0);
         const pnlCls = cls(pnl);
         const dir    = t.direction || '';
-        const review = t.review || null;
-        const reviewHtml = review
-          ? reviewBadgeHtml(review)
-            + '<div class="review-notes">' + esc(shortText(
-                [review.thesis_quality, review.execution_quality, review.notes].filter(Boolean).join(' • ') || 'Reviewed by operator.',
-                90
-              )) + '</div>'
-          : '<span class="review-chip">UNREVIEWED</span><div class="review-notes">Label this trade so the agent can learn from it.</div>';
         return '<tr>' +
           '<td class="muted">' + t.trade_id + '</td>' +
           '<td><strong>' + t.coin + '</strong></td>' +
           '<td><span class="pos-direction pos-' + dir.toLowerCase() + '">' + (dir === 'LONG' ? '↑' : '↓') + ' ' + dir + '</span></td>' +
           '<td class="muted" style="font-size:11px;">' + (t.opened_at||'').slice(0,16) + '</td>' +
           '<td class="muted" style="font-size:11px;">' + ((t.closed_at||'').slice(0,16)||'open') + '</td>' +
-          '<td>$' + fmt(t.entry_price) + '</td>' +
-          '<td>' + (t.exit_price ? '$'+fmt(t.exit_price) : '<span class="yellow">open</span>') + '</td>' +
-          '<td class="muted">$' + fmt(t.size_usd,0) + '</td>' +
-          '<td class="blue">$' + fmt(parseFloat(t.size_usd||0) * (s.leverage || 2), 0) + '</td>' +
           '<td class="' + pnlCls + '">' + fmtD(pnl) + '</td>' +
           '<td class="' + pnlCls + '">' + fmtP(pnlPct) + '</td>' +
-          '<td class="muted" style="font-size:11px;">' + (t.exit_reason||'--') + '</td>' +
-          '<td class="table-review-cell">' + reviewHtml + '</td>' +
-          '<td class="table-action-cell"><button class="tool-btn" onclick="saveTradeReview(' + JSON.stringify(String(t.trade_id || '')) + ', ' + JSON.stringify(String(t.coin || '')) + ', ' + JSON.stringify(String(dir || '')) + ')">' + (review ? 'EDIT' : 'REVIEW') + '</button></td>' +
+          '<td class="muted" style="font-size:11px;max-width:220px;">' + esc(shortText(t.open_logic || 'No opening logic recorded.', 150)) + '</td>' +
+          '<td class="muted" style="font-size:11px;max-width:220px;">' + esc(shortText(t.close_logic || (t.exit_reason || '--'), 150)) + '</td>' +
+          '<td class="muted" style="font-size:11px;max-width:240px;">' + esc(shortText(t.agent_lesson || 'No lesson recorded yet.', 170)) + '</td>' +
         '</tr>';
       }).join('');
     } else {
       closedLabel.textContent = '';
-      tradBody.innerHTML = '<tr><td colspan="14" class="muted" style="text-align:center;padding:24px;">No closed trades yet</td></tr>';
+      tradBody.innerHTML = '<tr><td colspan="10" class="muted" style="text-align:center;padding:24px;">No closed trades yet</td></tr>';
     }
 
   } catch(e) {

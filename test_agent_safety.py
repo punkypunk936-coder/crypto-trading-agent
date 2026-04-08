@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import urllib.request
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -1267,6 +1268,49 @@ def test_market_map_signal_respects_operator_daily_levels() -> None:
             market_map_module._get_daily_close = original_daily_close
 
 
+def test_effective_market_map_auto_maps_tracked_assets() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        original_path = market_map_module.DAILY_MARKET_MAP_JSON
+        original_fetch = market_map_module.fetch_candles
+        original_daily_close = market_map_module._get_daily_close
+        original_auto_cache = dict(market_map_module._AUTO_ENTRY_CACHE)
+        try:
+            market_map_module.DAILY_MARKET_MAP_JSON = Path(tmpdir) / "daily_market_map.json"
+            market_map_module._AUTO_ENTRY_CACHE.clear()
+            market_map_module._get_daily_close = lambda _coin, ttl_seconds=300: 112.0
+
+            df = pd.DataFrame({
+                "timestamp": pd.date_range("2026-01-01", periods=60, freq="1d", tz="UTC"),
+                "open": [100 + i * 0.4 for i in range(60)],
+                "high": [101 + i * 0.45 for i in range(60)],
+                "low": [99 + i * 0.35 for i in range(60)],
+                "close": [100 + i * 0.42 for i in range(60)],
+                "volume": [1000 + i * 10 for i in range(60)],
+                "trades": [0 for _ in range(60)],
+            })
+
+            market_map_module.fetch_candles = lambda coin, interval="1d", lookback=140: df.copy()
+
+            effective = market_map_module.build_effective_market_map(["BTC"], current_prices={"BTC": 124.0})
+            entry = effective["coins"]["BTC"]
+            assert entry["source"] == "AUTO"
+            assert entry["auto_generated"] is True
+            assert entry["supports"], "auto map should synthesize support levels"
+            assert entry["resistances"], "auto map should synthesize resistance levels"
+            assert entry["trade_mode"], "auto map should provide a playbook"
+
+            signal = market_map_module.get_market_map_signal("BTC", current_price=124.0, closed_price=123.4)
+            assert signal.valid is True
+            assert signal.source == "AUTO"
+            assert "map" in signal.summary.lower()
+        finally:
+            market_map_module.DAILY_MARKET_MAP_JSON = original_path
+            market_map_module.fetch_candles = original_fetch
+            market_map_module._get_daily_close = original_daily_close
+            market_map_module._AUTO_ENTRY_CACHE.clear()
+            market_map_module._AUTO_ENTRY_CACHE.update(original_auto_cache)
+
+
 def test_trade_review_feedback_hard_blocks_repeated_bad_thesis() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         original_reviews = trade_review_module.TRADE_REVIEWS_JSON
@@ -1340,6 +1384,59 @@ def test_dashboard_snapshot_includes_market_map_and_trade_reviews() -> None:
     assert snapshot["review_summary"]["count"] == 1
     assert snapshot["review_summary"]["coverage_pct"] == 100.0
     assert snapshot["trades"][0]["review"]["verdict"] == "GOOD_TRADE"
+
+
+def test_dashboard_snapshot_includes_trade_logic_and_learning_summary() -> None:
+    snapshot = build_dashboard_snapshot(
+        state={
+            "status": "online",
+            "cycle_number": 91,
+            "positions": [],
+            "signals": {},
+            "mode": "dry_run",
+        },
+        trades=[{
+            "trade_id": "41",
+            "coin": "BTC",
+            "direction": "LONG",
+            "opened_at": "2026-04-07 09:00",
+            "closed_at": "2026-04-07 12:00",
+            "entry_price": 70000.0,
+            "exit_price": 71400.0,
+            "size_usd": 100.0,
+            "pnl_usd": 20.0,
+            "pnl_pct": 20.0,
+            "exit_reason": "take_profit",
+        }],
+        control={"kill": {"active": False, "reason": "", "requested_at": None, "acknowledged_at": None}},
+        market_map={"coins": {"BTC": {"bias": "BULLISH", "source": "AUTO", "auto_generated": True}}},
+        trade_dataset_records=[{
+            "trade_id": "41",
+            "coin": "BTC",
+            "direction": "LONG",
+            "pnl_usd": 20.0,
+            "exit_reason": "take_profit",
+            "thesis": {"summary": "support defense long stayed intact"},
+            "trade_plan": {"risk_reward_ratio": 2.4},
+            "entry_context": {
+                "reason": "support-defense long with breakout pressure",
+                "market_map_summary": "auto bullish map; intraday reclaim in play",
+                "orderbook_interaction": "AT_SUPPORT",
+                "orderbook_breakout_state": "PROBING_BULLISH_BREAKOUT",
+            },
+            "exit_context": {
+                "thesis_summary": "follow-through held into target",
+                "orderbook_interaction": "ABOVE_BREAKOUT",
+            },
+        }],
+        server_timestamp="2026-04-07 12:05:00",
+    )
+    trade = snapshot["trades"][0]
+    assert "support-defense long" in trade["open_logic"].lower()
+    assert "target was reached" in trade["close_logic"].lower()
+    assert snapshot["learning_summary"]["count"] == 1
+    assert snapshot["learning_summary"]["latest"]["coin"] == "BTC"
+    assert snapshot["learning_summary"]["latest"]["lesson"]
 
 
 def test_dashboard_market_map_and_review_endpoints_roundtrip() -> None:
@@ -1493,6 +1590,98 @@ def test_hosted_state_sync_can_publish_snapshot_to_git_branch() -> None:
                 os.environ.pop("DASHBOARD_STATE_GIT_SYNC_ENABLED", None)
             else:
                 os.environ["DASHBOARD_STATE_GIT_SYNC_ENABLED"] = original_enabled
+
+
+def test_dashboard_remote_fallback_still_publishes_git_snapshot() -> None:
+    cfg = build_config()
+    original_state_json = agent_module.STATE_JSON
+    original_trades_csv = agent_module.TRADES_CSV
+    original_snapshot_json = agent_module.DASHBOARD_SNAPSHOT_JSON
+    original_control_json = agent_module.CONTROL_JSON
+    original_build_effective_map = agent_module.market_map.build_effective_market_map
+    original_urlopen = urllib.request.urlopen
+    original_publish = hosted_state_sync_module.publish_snapshot
+    original_dashboard_url = os.environ.get("DASHBOARD_URL")
+    original_dashboard_token = os.environ.get("DASHBOARD_TOKEN")
+    captured: dict[str, object] = {"published": False, "push_payload": None}
+
+    class _Resp:
+        def __init__(self, payload: dict, status: int = 200):
+            self._payload = payload
+            self.status = status
+
+        def read(self):
+            return json.dumps(self._payload).encode()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        temp = Path(tmpdir)
+        try:
+            agent_module.STATE_JSON = temp / "state.json"
+            agent_module.TRADES_CSV = temp / "trades.csv"
+            agent_module.DASHBOARD_SNAPSHOT_JSON = temp / "dashboard_snapshot.json"
+            agent_module.CONTROL_JSON = temp / "control.json"
+            agent_module.market_map.build_effective_market_map = lambda *args, **kwargs: {
+                "coins": {"BTC": {"bias": "BULLISH", "source": "AUTO", "auto_generated": True}}
+            }
+
+            def fake_urlopen(req, timeout=0, context=None):
+                url = req.full_url if hasattr(req, "full_url") else str(req)
+                if url.endswith("/api/push"):
+                    if hasattr(req, "data") and req.data:
+                        captured["push_payload"] = json.loads(req.data.decode())
+                    return _Resp({"ok": True, "fallback": "netlify", "storage": "fallback"})
+                if url.endswith("/api/state"):
+                    return _Resp({"control": {"kill": {"active": False}}})
+                raise AssertionError(f"Unexpected urlopen target: {url}")
+
+            def fake_publish(snapshot, **kwargs):
+                captured["published"] = True
+                captured["published_snapshot"] = snapshot
+                return True
+
+            urllib.request.urlopen = fake_urlopen
+            hosted_state_sync_module.publish_snapshot = fake_publish
+            os.environ["DASHBOARD_URL"] = "https://example.test"
+            os.environ["DASHBOARD_TOKEN"] = "secret"
+
+            agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=1000.0)])
+            agent._last_power_status = {"source": "Battery Power", "available": True}
+            agent._last_signals = {
+                "BTC": {
+                    "action": "FLAT",
+                    "score": 50.0,
+                    "confidence": "LOW",
+                    "live_price": 100.0,
+                    "analysis_price": 99.0,
+                    "decision_reason": "No trade",
+                    "thesis_summary": "No trade",
+                }
+            }
+            agent._write_state(
+                portfolio_usd=1000.0,
+                sentiment={"signal_score": 50.0, "label": "Neutral", "raw_score": 50, "is_extreme": False},
+            )
+        finally:
+            agent_module.STATE_JSON = original_state_json
+            agent_module.TRADES_CSV = original_trades_csv
+            agent_module.DASHBOARD_SNAPSHOT_JSON = original_snapshot_json
+            agent_module.CONTROL_JSON = original_control_json
+            agent_module.market_map.build_effective_market_map = original_build_effective_map
+            urllib.request.urlopen = original_urlopen
+            hosted_state_sync_module.publish_snapshot = original_publish
+            if original_dashboard_url is None:
+                os.environ.pop("DASHBOARD_URL", None)
+            else:
+                os.environ["DASHBOARD_URL"] = original_dashboard_url
+            if original_dashboard_token is None:
+                os.environ.pop("DASHBOARD_TOKEN", None)
+            else:
+                os.environ["DASHBOARD_TOKEN"] = original_dashboard_token
+
+    assert captured["published"] is True
+    push_payload = captured["push_payload"]
+    assert isinstance(push_payload, dict)
+    assert push_payload["market_map"]["coins"]["BTC"]["bias"] == "BULLISH"
 
 
 def test_trade_memory_records_richer_loss_reasoning() -> None:
@@ -1736,14 +1925,20 @@ def run_all() -> None:
     print("PASS local dashboard hosted bundle")
     test_market_map_signal_respects_operator_daily_levels()
     print("PASS daily market map signal")
+    test_effective_market_map_auto_maps_tracked_assets()
+    print("PASS auto market map coverage")
     test_trade_review_feedback_hard_blocks_repeated_bad_thesis()
     print("PASS operator review hard block")
     test_dashboard_snapshot_includes_market_map_and_trade_reviews()
     print("PASS dashboard market-map snapshot")
+    test_dashboard_snapshot_includes_trade_logic_and_learning_summary()
+    print("PASS dashboard learning summary")
     test_dashboard_market_map_and_review_endpoints_roundtrip()
     print("PASS dashboard market-map/review endpoints")
     test_hosted_state_sync_can_publish_snapshot_to_git_branch()
     print("PASS hosted dashboard git fallback sync")
+    test_dashboard_remote_fallback_still_publishes_git_snapshot()
+    print("PASS dashboard fallback publishes git snapshot")
     test_trade_memory_records_richer_loss_reasoning()
     print("PASS richer RL loss reasoning")
     test_trade_memory_directional_pause_and_guard()

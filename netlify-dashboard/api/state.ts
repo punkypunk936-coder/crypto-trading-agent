@@ -11,30 +11,67 @@ import {
   defaultState,
   defaultTradeReviews,
   json,
+  marketMapFromState,
   readNetlifyStateFallback,
   readGitFallbackJson,
   readJson,
 } from "../lib/dashboard-store";
 
+function hasRichSnapshot(snapshot: any) {
+  return Boolean(
+    snapshot &&
+    typeof snapshot === "object" &&
+    snapshot.state &&
+    snapshot.market_map_summary &&
+    snapshot.learning_summary &&
+    snapshot.control &&
+    snapshot.trade_reviews,
+  );
+}
+
 export async function GET() {
   const cacheHeaders = { "Cache-Control": "public, s-maxage=15, stale-while-revalidate=45" };
+  let thinFallbackSnapshot: any = null;
   try {
     let snapshot = null;
     try {
       snapshot = await readJson(SNAPSHOT_PATH, null);
     } catch {
       snapshot = await readNetlifyStateFallback();
-      if (!snapshot) {
+      thinFallbackSnapshot = snapshot;
+      if (!hasRichSnapshot(snapshot)) {
         snapshot = await readGitFallbackJson(SNAPSHOT_PATH, null);
       }
     }
-    if (snapshot && typeof snapshot === "object" && snapshot.state) {
+    if (hasRichSnapshot(snapshot)) {
       return json(snapshot, { headers: cacheHeaders });
     }
 
     const netlifySnapshot = await readNetlifyStateFallback();
-    if (netlifySnapshot) {
+    if (hasRichSnapshot(netlifySnapshot)) {
       return json(netlifySnapshot, { headers: cacheHeaders });
+    }
+    if (netlifySnapshot && typeof netlifySnapshot === "object" && netlifySnapshot.state) {
+      thinFallbackSnapshot = netlifySnapshot;
+    }
+
+    const gitSnapshot = await readGitFallbackJson(SNAPSHOT_PATH, null);
+    if (hasRichSnapshot(gitSnapshot)) {
+      return json(gitSnapshot, { headers: cacheHeaders });
+    }
+
+    if (thinFallbackSnapshot && typeof thinFallbackSnapshot === "object" && thinFallbackSnapshot.state) {
+      return json(
+        buildSnapshot(
+          thinFallbackSnapshot.state,
+          thinFallbackSnapshot.trades || [],
+          thinFallbackSnapshot.control || defaultControl(),
+          marketMapFromState(thinFallbackSnapshot.state),
+          thinFallbackSnapshot.trade_reviews || defaultTradeReviews(),
+          thinFallbackSnapshot.server_time,
+        ),
+        { headers: cacheHeaders },
+      );
     }
 
     const loaders = [

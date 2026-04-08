@@ -36,11 +36,22 @@ export async function POST(request: Request) {
 
     return json({ ok: true, cycle: snapshot?.state?.cycle_number || data?.state?.cycle_number || 0 });
   } catch (error) {
-    const forwarded = await forwardNetlifyPush(data, request.headers.get("X-Token") || "");
+    const snapshot = data.snapshot && typeof data.snapshot === "object" && data.snapshot.state
+      ? data.snapshot
+      : buildSnapshot(data.state, data.trades || [], data.control, data.market_map, data.trade_reviews);
+    const forwardPayload = {
+      snapshot,
+      state: snapshot?.state || data.state || {},
+      trades: Array.isArray(snapshot?.trades) ? snapshot.trades : (data.trades || []),
+      control: snapshot?.control || data.control || {},
+      market_map: snapshot?.market_map || data.market_map || {},
+      trade_reviews: snapshot?.trade_reviews || data.trade_reviews || {},
+    };
+    const forwarded = await forwardNetlifyPush(forwardPayload, request.headers.get("X-Token") || "");
     if (forwarded.ok) {
       return json(
         typeof forwarded.data === "object" && forwarded.data !== null
-          ? { ...forwarded.data, fallback: "netlify" }
+          ? { ...forwarded.data, fallback: "netlify", storage: "fallback" }
           : { ok: true, fallback: "netlify" },
       );
     }

@@ -2253,6 +2253,18 @@ class TradingAgent:
                 p_out["candle_patterns"]    = sig.get("candle_patterns", [])
                 p_out["news_score"]         = sig.get("news_score", 50.0)
                 p_out["memory_cooldown"]    = sig.get("memory_cooldown", 0)
+                entry_ctx = dict((pos.metadata or {}).get("entry_context", {}) or {})
+                entry_thesis = dict(entry_ctx.get("thesis", {}) or {})
+                p_out["entry_logic"] = (
+                    entry_ctx.get("reason")
+                    or entry_thesis.get("summary")
+                    or sig.get("thesis_summary", "")
+                )
+                p_out["current_logic"] = (
+                    sig.get("decision_reason")
+                    or sig.get("thesis_summary", "")
+                    or ""
+                )
 
         state = {
             "status":        "running",
@@ -2301,7 +2313,23 @@ class TradingAgent:
             except Exception as e:
                 log.debug(f"trades_log.csv read failed: {e}")
 
-        market_map_data = market_map.load_market_map()
+        trade_dataset_records = []
+        try:
+            trade_dataset_records = trade_dataset.load_closed_trades(limit=max(200, len(trades_data) + 20))
+        except Exception as e:
+            log.debug(f"trade_dataset.jsonl read failed: {e}")
+
+        market_map_data = market_map.build_effective_market_map(
+            self._analysis_coins,
+            current_prices={
+                coin: float((sig or {}).get("live_price") or (sig or {}).get("price") or 0.0)
+                for coin, sig in (getattr(self, "_last_signals", {}) or {}).items()
+            },
+            closed_prices={
+                coin: float((sig or {}).get("analysis_price") or (sig or {}).get("price") or 0.0)
+                for coin, sig in (getattr(self, "_last_signals", {}) or {}).items()
+            },
+        )
         review_data = trade_review.load_reviews()
 
         control_data = default_control()
@@ -2318,6 +2346,7 @@ class TradingAgent:
             control_data,
             market_map=market_map_data,
             trade_reviews=review_data,
+            trade_dataset_records=trade_dataset_records,
         )
         try:
             DASHBOARD_SNAPSHOT_JSON.write_text(json.dumps(snapshot, indent=2))
@@ -2327,6 +2356,7 @@ class TradingAgent:
         # Push the exact local dashboard snapshot to the hosted dashboard.
         remote_url = os.environ.get("DASHBOARD_URL", "")
         remote_push_ok = False
+        remote_push_used_fallback = False
         if remote_url:
             try:
                 import ssl
@@ -2337,6 +2367,8 @@ class TradingAgent:
                     "state": state,
                     "trades": trades_data,
                     "control": control_data,
+                    "market_map": market_map_data,
+                    "trade_reviews": review_data,
                 }).encode()
                 req = urllib.request.Request(
                     remote_url.rstrip("/") + "/api/push",
@@ -2354,8 +2386,24 @@ class TradingAgent:
                 except ImportError:
                     ctx.check_hostname = False
                     ctx.verify_mode = ssl.CERT_NONE
-                urllib.request.urlopen(req, timeout=15, context=ctx)
-                remote_push_ok = True
+                resp = urllib.request.urlopen(req, timeout=15, context=ctx)
+                body = resp.read().decode() if hasattr(resp, "read") else ""
+                remote_payload = {}
+                if body:
+                    try:
+                        remote_payload = json.loads(body)
+                    except Exception:
+                        remote_payload = {"raw": body}
+                remote_push_ok = bool(getattr(resp, "status", 200) < 400)
+                if isinstance(remote_payload, dict) and remote_payload.get("ok") is False:
+                    remote_push_ok = False
+                remote_push_used_fallback = bool(
+                    isinstance(remote_payload, dict)
+                    and (
+                        remote_payload.get("fallback")
+                        or str(remote_payload.get("storage") or "").lower() == "fallback"
+                    )
+                )
 
                 # Check for remote kill signal
                 try:
@@ -2399,7 +2447,7 @@ class TradingAgent:
                         pass
                 log.debug(f"Remote dashboard push failed: {detail}")
 
-        if not remote_push_ok:
+        if (not remote_push_ok) or remote_push_used_fallback:
             hosted_state_sync.publish_snapshot(
                 snapshot,
                 state=state,

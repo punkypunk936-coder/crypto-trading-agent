@@ -16,6 +16,7 @@ from datetime import datetime
 
 from flask import Flask, render_template, jsonify, request, abort, send_file
 import market_map as market_map_store
+import trade_dataset
 import trade_logger
 import trade_review as trade_review_store
 from paths import (
@@ -76,6 +77,13 @@ def _load_market_map_local() -> dict:
         return market_map_store.default_market_map()
 
 
+def _load_trade_dataset_local() -> list:
+    try:
+        return trade_dataset.load_closed_trades(limit=250)
+    except Exception:
+        return []
+
+
 def _load_trade_reviews_local() -> dict:
     try:
         return trade_review_store.load_reviews()
@@ -129,12 +137,19 @@ def _snapshot_needs_refresh() -> bool:
 
 
 def _build_local_snapshot(server_timestamp: str | None = None) -> dict:
+    state = _load_state_local()
+    tracked_coins = market_map_store.tracked_coins_from_state(state)
+    effective_market_map = market_map_store.build_effective_market_map(
+        tracked_coins,
+        base_map=_load_market_map_local(),
+    )
     return build_dashboard_snapshot(
-        _load_state_local(),
+        state,
         _load_trades_local(),
         _load_control_local(),
-        market_map=_load_market_map_local(),
+        market_map=effective_market_map,
         trade_reviews=_load_trade_reviews_local(),
+        trade_dataset_records=_load_trade_dataset_local(),
         server_timestamp=server_timestamp,
     )
 
@@ -252,7 +267,16 @@ def api_kill():
 @app.route("/api/market-map", methods=["GET", "POST"])
 def api_market_map():
     if request.method == "GET":
-        return jsonify(_load_market_map_local())
+        state = (_remote_state.get("snapshot") or {}).get("state") if isinstance(_remote_state.get("snapshot"), dict) else None
+        if not isinstance(state, dict):
+            state = _load_state_local()
+        tracked_coins = market_map_store.tracked_coins_from_state(state)
+        return jsonify(
+            market_map_store.build_effective_market_map(
+                tracked_coins,
+                base_map=_load_market_map_local(),
+            )
+        )
 
     data = request.get_json(silent=True) or {}
     if data.get("delete") and data.get("coin"):
@@ -263,8 +287,14 @@ def api_market_map():
         payload = market_map_store.save_market_map(data)
     with _lock:
         if _remote_state["snapshot"] is not None:
-            _remote_state["snapshot"]["market_map"] = payload
-            _remote_state["snapshot"]["market_map_summary"] = market_map_store.review_summary(payload)
+            state = (_remote_state["snapshot"] or {}).get("state") or {}
+            tracked_coins = market_map_store.tracked_coins_from_state(state)
+            effective_market_map = market_map_store.build_effective_market_map(
+                tracked_coins,
+                base_map=payload,
+            )
+            _remote_state["snapshot"]["market_map"] = effective_market_map
+            _remote_state["snapshot"]["market_map_summary"] = market_map_store.review_summary(effective_market_map)
         else:
             _save_snapshot_local(_build_local_snapshot())
     return jsonify({"ok": True, "market_map": payload})
