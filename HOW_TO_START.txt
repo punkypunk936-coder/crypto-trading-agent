@@ -1,0 +1,92 @@
+╔══════════════════════════════════════════════════════════════╗
+║          CRYPTO PERPS TRADING AGENT  —  HOW TO START         ║
+║                  Lighter Paper Trading First                 ║
+╚══════════════════════════════════════════════════════════════╝
+
+PRIMARY MODE
+────────────
+This repo is now hardened for **local Mac first**, using:
+- launchd for 24x7 runtime
+- Lighter-only market scope
+- BTC / ETH / SOL as the active trade universe
+- HYPE / SP500 / TAO as analysis-only watchlist assets
+- dry-run first
+
+STEP 1 — INSTALL DEPENDENCIES
+─────────────────────────────
+cd ~/Desktop/trading_agent/crypto_trading_agent
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+
+STEP 2 — CREATE .env
+────────────────────
+cp .env.example .env
+
+For dry-run, you can leave the live trading keys empty.
+
+STEP 3 — RUN PREFLIGHT
+──────────────────────
+.venv/bin/python3 main.py --preflight
+
+This checks:
+- Python version
+- writable state directory
+- market-data connectivity
+- supported coin scope
+- analysis/watchlist scope
+- dashboard configuration
+- Lighter live readiness
+- local power safety for live mode
+
+STEP 4 — RESET PAPER STATE (OPTIONAL)
+──────────────────────────────────────
+Use this only when you explicitly want a clean paper-trading run:
+
+.venv/bin/python3 main.py --paper-reset
+
+STEP 5 — RUN PAPER TRADING MANUALLY
+────────────────────────────────────
+.venv/bin/python3 main.py --dry-run
+
+Useful commands:
+- account/status: `.venv/bin/python3 main.py --dry-run --status`
+- override coins: `.venv/bin/python3 main.py --dry-run --coins BTC ETH`
+- faster cycle: `.venv/bin/python3 main.py --dry-run --interval 60`
+
+STEP 6 — INSTALL THE BACKGROUND SERVICES
+─────────────────────────────────────────
+./install_launchagent.sh
+
+This installs two launchd services:
+- `com.manvinder.crypto-trading-agent`
+- `com.manvinder.crypto-trading-dashboard`
+
+STEP 7 — CHECK STATUS
+─────────────────────
+./status_launchagent.sh
+
+Local dashboard:
+- http://127.0.0.1:8080
+
+STOP SERVICES
+─────────────
+./stop_launchagent.sh
+
+LIVE TRADING
+────────────
+Do not switch to live until:
+- dry-run has been stable for 48–72 hours
+- `--preflight` passes for live mode
+- your Lighter account is created/funded
+- `python3 main.py --lighter-bootstrap` has produced the required API credentials
+- the Mac is on AC power with healthy battery headroom
+
+Then use:
+- `.venv/bin/python3 main.py --live`
+
+NOTES
+─────
+- Chart confirmation is off by default
+- News integration is off by default
+- Local live trading now enforces AC-power / battery safety checks
+- Legacy `com.punky.trading-agent` is no longer the primary runtime path

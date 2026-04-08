@@ -1,0 +1,115 @@
+================================================================================
+TRADING AGENT HARDENING CHANGES - 2026-03-22
+================================================================================
+
+CHANGE 1: Extended Checkpoint Recovery Window
+─────────────────────────────────────────────
+File: agent.py (line 129)
+Change: max_age_seconds=900 → max_age_seconds=3600
+
+Impact:
+  ✓ Agent can now recover positions from checkpoints up to 1 hour old
+  ✓ Prevents orphaned positions on exchange if agent is down for < 1 hour
+  ✓ Safer recovery without starting completely fresh
+
+Behavior:
+  • If agent crashes/restarts within 60 minutes, it will recover from last checkpoint
+  • Maintains open positions and trading state across restarts
+  • Reduces risk of duplicate orders or forgotten positions
+
+
+CHANGE 2: Watchdog Monitoring Script
+──────────────────────────────────────
+File: watchdog.sh (NEW)
+Location: /mnt/crypto_trading_agent/watchdog.sh
+
+Features:
+  ✓ Monitors agent process (run_forever.sh) every 5 minutes via cron
+  ✓ Checks state.json freshness (max 10 minutes old)
+  ✓ Auto-restarts agent if:
+    • run_forever.sh process is not running
+    • state.json hasn't been updated in 10+ minutes (frozen agent)
+  ✓ Sends macOS notification alerts on restart
+  ✓ Logs all checks to logs/watchdog.log with timestamps
+
+Process Monitoring:
+  • Uses: pgrep -f "run_forever.sh"
+  • Detects dead processes immediately
+
+State Monitoring:
+  • Checks state.json modification time
+  • 10-minute staleness threshold triggers restart
+  • Indicates agent is stuck/frozen if state not updating
+
+Auto-Recovery:
+  • Kills stuck processes and restarts cleanly
+  • Runs in background with full logging
+  • Sends visual alert to user
+
+
+CHANGE 3: Cron Installer Script
+───────────────────────────────
+File: install_watchdog.sh (NEW)
+Location: /mnt/crypto_trading_agent/install_watchdog.sh
+
+Purpose:
+  ✓ Adds watchdog.sh to user's crontab automatically
+  ✓ Prevents duplicate cron entries
+  ✓ Ensures watchdog runs every 5 minutes
+
+Installation:
+  $ ./install_watchdog.sh
+
+Features:
+  • Idempotent (safe to run multiple times)
+  • Checks for existing entry before adding
+  • Provides clear confirmation message
+  • Executable and ready to use
+
+
+================================================================================
+HOW TO USE
+================================================================================
+
+1. Install the watchdog to run at startup:
+   $ cd /mnt/crypto_trading_agent
+   $ ./install_watchdog.sh
+
+2. Verify installation:
+   $ crontab -l | grep watchdog.sh
+
+3. Monitor watchdog logs:
+   $ tail -f /mnt/crypto_trading_agent/logs/watchdog.log
+
+4. Manual test (optional):
+   $ /mnt/crypto_trading_agent/watchdog.sh
+
+Expected output in logs/watchdog.log:
+   [2026-03-22 16:30:01] === Watchdog cycle started ===
+   [2026-03-22 16:30:01] OK: state.json is fresh (45s old)
+   [2026-03-22 16:30:02] OK: Agent process and state are healthy
+   [2026-03-22 16:30:02] === Watchdog cycle completed ===
+
+
+================================================================================
+SAFETY IMPROVEMENTS SUMMARY
+================================================================================
+
+Before Hardening:
+  ✗ Agent restart with orphaned positions risk
+  ✗ No automatic failure detection
+  ✗ Dead processes not automatically restarted
+  ✗ Frozen agent cycles not detected
+  ✗ Manual intervention required
+
+After Hardening:
+  ✓ Safe recovery from 1-hour outages
+  ✓ Automatic failure detection every 5 minutes
+  ✓ Auto-restart on process death
+  ✓ Auto-restart on state staleness
+  ✓ Minimal manual intervention needed
+  ✓ Alert notifications on failures
+  ✓ Full logging for audit trail
+
+
+================================================================================

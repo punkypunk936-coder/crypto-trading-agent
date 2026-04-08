@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.manvinder.crypto-trading-agent</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime/run_background_agent.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+    <key>TRADING_AGENT_MODE</key>
+    <string>paper</string>
+    <key>TRADING_AGENT_KEEP_AWAKE</key>
+    <string>1</string>
+    <key>TRADING_AGENT_CAFFEINATE_FLAGS</key>
+    <string>-dimsu</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime/logs/launchd.stdout.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime/logs/launchd.stderr.log</string>
+</dict>
+</plist>

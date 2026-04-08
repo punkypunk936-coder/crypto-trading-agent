@@ -1,0 +1,75 @@
+╔══════════════════════════════════════════════════════════════════╗
+║           CRYPTO TRADING AGENT  —  SETUP GUIDE                   ║
+║                Local Mac First • Dry-Run Before Live            ║
+╚══════════════════════════════════════════════════════════════════╝
+
+IMPORTANT
+─────────
+This agent is now tuned for:
+- Lighter-first runtime
+- BTC / ETH / SOL only by default
+- launchd-managed 24x7 local paper trading
+
+QUICK START
+───────────
+1. `python3 -m venv .venv`
+2. `.venv/bin/pip install -r requirements.txt`
+3. `cp .env.example .env`
+4. `.venv/bin/python3 main.py --preflight`
+5. `.venv/bin/python3 main.py --dry-run`
+
+BACKGROUND MODE
+───────────────
+To run continuously on your Mac:
+
+1. `./install_launchagent.sh`
+2. `./status_launchagent.sh`
+3. Open the local dashboard at `http://127.0.0.1:8080`
+
+WHAT PREFLIGHT CHECKS
+─────────────────────
+- Python version >= 3.10
+- writable data directory
+- market-data probes
+- supported symbol scope
+- dashboard token/url consistency
+- optional dependency readiness
+- Lighter live bootstrap status
+
+PAPER RESET
+───────────
+To clear dry-run state deliberately:
+
+`.venv/bin/python3 main.py --paper-reset`
+
+This removes local paper-trading state files only when the agent is not running.
+
+LIVE READINESS
+──────────────
+Live trading stays blocked until all of these exist in `.env`:
+- `LIGHTER_L1_PRIVATE_KEY`
+- `LIGHTER_ACCOUNT_INDEX`
+- `LIGHTER_API_KEY_INDEX`
+- `LIGHTER_API_PRIVATE_KEY`
+- `LIGHTER_API_BASE_URL`
+- `LIGHTER_WEB3_URL`
+
+If the account index / API key values are missing, create/fund the Lighter account first and then run:
+
+`.venv/bin/python3 main.py --lighter-bootstrap`
+
+OPTIONAL FEATURES
+─────────────────
+Disabled by default:
+- chart confirmation
+- news sentiment
+- Telegram alerts
+
+Enable them only after the base runtime is stable.
+
+CLOUD
+─────
+Cloud is phase 2.
+Use Railway only:
+- root worker service for `main.py`
+- separate Railway dashboard service for `dashboard/app.py`
