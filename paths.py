@@ -34,6 +34,9 @@ KILL_FILE      = DATA_DIR / "KILL"                 # Touch to gracefully stop ag
 CONTROL_JSON   = DATA_DIR / "control.json"         # Dashboard/operator control state
 DASHBOARD_SNAPSHOT_JSON = DATA_DIR / "dashboard_snapshot.json"  # Canonical dashboard payload
 TRADE_DATASET_JSONL = DATA_DIR / "trade_dataset.jsonl"          # Structured closed-trade dataset for learning
+DAILY_MARKET_MAP_JSON = DATA_DIR / "daily_market_map.json"      # Operator-owned daily key-level / thesis map
+TRADE_REVIEWS_JSON = DATA_DIR / "trade_reviews.json"            # Operator review labels for closed trades
+DASHBOARD_STATE_SYNC_REPO = DATA_DIR / ".dashboard_state_sync"  # Local clone/worktree for hosted dashboard fallback sync
 
 # ── Logs directory ────────────────────────────────────────────────────────────
 LOGS_DIR = DATA_DIR / "logs"

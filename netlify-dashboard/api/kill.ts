@@ -48,7 +48,7 @@ export async function POST(request: Request) {
               control: next,
               server_time: timestamp,
             }
-          : buildSnapshot(null, [], next, timestamp),
+          : buildSnapshot(null, [], next, null, null, timestamp),
       ),
     ]);
     return json({ ok: true, control: next });

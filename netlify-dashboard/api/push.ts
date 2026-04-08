@@ -1,9 +1,12 @@
 import {
   CONTROL_PATH,
+  MARKET_MAP_PATH,
   SNAPSHOT_PATH,
   STATE_PATH,
+  TRADE_REVIEWS_PATH,
   TRADES_PATH,
   buildSnapshot,
+  forwardNetlifyPush,
   json,
   unauthorized,
   writeJson,
@@ -22,17 +25,31 @@ export async function POST(request: Request) {
   try {
     const snapshot = data.snapshot && typeof data.snapshot === "object" && data.snapshot.state
       ? data.snapshot
-      : buildSnapshot(data.state, data.trades || [], data.control);
+      : buildSnapshot(data.state, data.trades || [], data.control, data.market_map, data.trade_reviews);
 
     await writeJson(SNAPSHOT_PATH, snapshot);
     await writeJson(STATE_PATH, snapshot.state || data.state || {});
     await writeJson(TRADES_PATH, Array.isArray(data.trades) ? data.trades : (snapshot.trades || []));
     await writeJson(CONTROL_PATH, snapshot.control || data.control || {});
+    await writeJson(MARKET_MAP_PATH, snapshot.market_map || data.market_map || {});
+    await writeJson(TRADE_REVIEWS_PATH, snapshot.trade_reviews || data.trade_reviews || {});
 
     return json({ ok: true, cycle: snapshot?.state?.cycle_number || data?.state?.cycle_number || 0 });
   } catch (error) {
+    const forwarded = await forwardNetlifyPush(data, request.headers.get("X-Token") || "");
+    if (forwarded.ok) {
+      return json(
+        typeof forwarded.data === "object" && forwarded.data !== null
+          ? { ...forwarded.data, fallback: "netlify" }
+          : { ok: true, fallback: "netlify" },
+      );
+    }
     return json(
-      { ok: false, error: error instanceof Error ? error.message : "Push failed" },
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : "Push failed",
+        fallback_error: forwarded.data,
+      },
       { status: 500 },
     );
   }

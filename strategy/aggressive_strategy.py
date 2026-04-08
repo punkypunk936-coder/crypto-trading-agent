@@ -75,6 +75,80 @@ class AggressiveStrategy:
     def _is_confirmed_bearish_breakdown(orderbook_signal) -> bool:
         return str(getattr(orderbook_signal, "breakout_state", "")).upper() == "CONFIRMED_BEARISH_BREAKDOWN"
 
+    def _qualifies_support_defense_long(
+        self,
+        *,
+        raw_score: float,
+        advanced=None,
+        candle_patterns=None,
+        orderbook_signal=None,
+        market_map_signal=None,
+    ) -> bool:
+        if not getattr(self.tcfg, "support_defense_long_enabled", True):
+            return False
+        if not orderbook_signal or not getattr(orderbook_signal, "valid", False):
+            return False
+
+        breakout_state = str(getattr(orderbook_signal, "breakout_state", "NONE") or "NONE").upper()
+        if breakout_state in {"CONFIRMED_BEARISH_BREAKDOWN", "PROBING_BEARISH_BREAKDOWN"}:
+            return False
+        if str(getattr(orderbook_signal, "level_interaction", "BETWEEN_LEVELS") or "BETWEEN_LEVELS").upper() == "RANGE_COMPRESSION":
+            return False
+        if getattr(orderbook_signal, "block_longs", False):
+            return False
+
+        support_distance = float(getattr(orderbook_signal, "nearest_support_distance_pct", 0.0) or 0.0)
+        max_support_distance = float(getattr(self.tcfg, "support_defense_max_support_distance_pct", 0.40) or 0.40)
+        if support_distance <= 0 or support_distance > max_support_distance:
+            return False
+
+        if raw_score < float(getattr(self.tcfg, "support_defense_long_score_floor", 24.0) or 24.0):
+            return False
+
+        orderbook_score = float(getattr(orderbook_signal, "score", 50.0) or 50.0)
+        min_book_score = float(getattr(self.tcfg, "support_defense_min_orderbook_score", 62.0) or 62.0)
+        imbalance = float(getattr(orderbook_signal, "imbalance_ratio", 0.0) or 0.0)
+        min_imbalance = float(getattr(self.tcfg, "support_defense_min_imbalance", 0.10) or 0.10)
+        if orderbook_score < min_book_score:
+            return False
+        if imbalance < min_imbalance and not getattr(orderbook_signal, "favor_longs", False):
+            return False
+
+        map_supportive = False
+        map_blocks_shorts = False
+        if market_map_signal and getattr(market_map_signal, "valid", False):
+            if getattr(market_map_signal, "block_longs", False):
+                return False
+            map_blocks_shorts = bool(getattr(market_map_signal, "block_shorts", False))
+            map_supportive = bool(
+                getattr(market_map_signal, "favor_longs", False)
+                or getattr(market_map_signal, "in_demand_zone", False)
+                or str(getattr(market_map_signal, "bias", "NEUTRAL") or "NEUTRAL").upper() == "BULLISH"
+            )
+
+        if not (getattr(orderbook_signal, "block_shorts", False) or map_blocks_shorts):
+            return False
+
+        if not (
+            getattr(orderbook_signal, "favor_longs", False)
+            or breakout_state in {"PROBING_BULLISH_BREAKOUT", "CONFIRMED_BULLISH_BREAKOUT"}
+            or map_supportive
+        ):
+            return False
+
+        bearish_msb = {"BEARISH_CHOCH", "BEARISH_BOS"}
+        msb = getattr(advanced, "msb", None)
+        msb_type = str(getattr(msb, "msb_type", "NONE") or "NONE").upper()
+        structure_trend = str(getattr(msb, "structure_trend", "RANGING") or "RANGING").upper()
+        if msb_type in bearish_msb or structure_trend == "DOWNTREND":
+            return False
+
+        if candle_patterns and getattr(candle_patterns, "valid", False):
+            if self._bearish_candle_context(candle_patterns):
+                return False
+
+        return True
+
     def _evaluate_trade_thesis(
         self,
         *,
@@ -87,6 +161,7 @@ class AggressiveStrategy:
         news_signal=None,
         funding_oi_signal=None,
         orderbook_signal=None,
+        market_map_signal=None,
         trade_plan: Dict | None = None,
     ) -> dict:
         thesis = {
@@ -129,13 +204,30 @@ class AggressiveStrategy:
         probing_breakout = breakout_state == (
             "PROBING_BULLISH_BREAKOUT" if bullish else "PROBING_BEARISH_BREAKDOWN"
         )
+        support_defense_long = (
+            bullish and self._qualifies_support_defense_long(
+                raw_score=score,
+                advanced=advanced,
+                candle_patterns=candle_patterns,
+                orderbook_signal=orderbook_signal,
+                market_map_signal=market_map_signal,
+            )
+        )
+
+        if support_defense_long:
+            alignment += 1.5
+            reasons.append("strong support defense is holding beneath price")
 
         if confirmed_breakout:
             alignment += 2.0
             reasons.append("daily breakout is already confirmed")
         elif probing_breakout:
-            conflicts += 0.5
-            reasons.append("breakout is only probing and has not closed yet")
+            if support_defense_long:
+                alignment += 0.5
+                reasons.append("breakout is probing, but support-defense flow is aligned")
+            else:
+                conflicts += 0.5
+                reasons.append("breakout is only probing and has not closed yet")
 
         if bullish:
             if msb_type in bullish_msb:
@@ -152,7 +244,11 @@ class AggressiveStrategy:
                 conflicts += 2.0
                 blockers.append("higher structure is still a downtrend")
             elif structure_trend == "RANGING" and getattr(self.tcfg, "thesis_block_on_range_conditions", True) and not confirmed_breakout:
-                blockers.append("higher structure is still ranging")
+                if support_defense_long:
+                    alignment += 1.0
+                    reasons.append("support-defense setup allows a range low reclaim before full breakout confirmation")
+                else:
+                    blockers.append("higher structure is still ranging")
         else:
             if msb_type in bearish_msb:
                 alignment += 2.0
@@ -231,6 +327,9 @@ class AggressiveStrategy:
             if bullish:
                 if getattr(orderbook_signal, "block_longs", False) and not confirmed_breakout:
                     blockers.append("overhead supply/resistance is still active")
+                elif support_defense_long:
+                    alignment += 1.5
+                    reasons.append("orderbook is aggressively defending support for longs")
                 elif getattr(orderbook_signal, "favor_longs", False) or orderbook_score >= 58.0:
                     alignment += 1.5
                     reasons.append("orderbook and key levels support the long")
@@ -249,6 +348,27 @@ class AggressiveStrategy:
 
             if level_interaction == "RANGE_COMPRESSION" and getattr(self.tcfg, "thesis_block_on_range_conditions", True) and not confirmed_breakout:
                 blockers.append("price is compressed between nearby support and resistance")
+
+        if market_map_signal and getattr(market_map_signal, "valid", False):
+            market_bias = str(getattr(market_map_signal, "bias", "NEUTRAL") or "NEUTRAL").upper()
+            if bullish:
+                if getattr(market_map_signal, "block_longs", False):
+                    blockers.append("daily market map still warns against longs here")
+                elif getattr(market_map_signal, "favor_longs", False):
+                    alignment += 1.5
+                    reasons.append("daily market map supports the long")
+                if market_bias == "BEARISH":
+                    conflicts += 1.0
+                    reasons.append("daily operator bias still leans bearish")
+            else:
+                if getattr(market_map_signal, "block_shorts", False):
+                    blockers.append("daily market map still warns against shorts here")
+                elif getattr(market_map_signal, "favor_shorts", False):
+                    alignment += 1.5
+                    reasons.append("daily market map supports the short")
+                if market_bias == "BULLISH":
+                    conflicts += 1.0
+                    reasons.append("daily operator bias still leans bullish")
 
         rr = float((trade_plan or {}).get("risk_reward_ratio", 0.0) or 0.0)
         min_rr = float(getattr(self.tcfg, "thesis_min_risk_reward_ratio", 1.75) or 1.75)
@@ -276,6 +396,9 @@ class AggressiveStrategy:
         elif score_buffer >= min_buffer:
             alignment += 1.0
             reasons.append("directional score cleared the trigger with room to spare")
+        elif support_defense_long and score_buffer >= 0.5:
+            alignment += 0.75
+            reasons.append("support-defense reclaim can trigger closer to the threshold")
         elif not confirmed_breakout:
             blockers.append("score only barely crossed the trigger without enough thesis buffer")
 
@@ -321,7 +444,7 @@ class AggressiveStrategy:
         })
         return thesis
 
-    def _build_trade_plan(self, tech, advanced, action, confidence, regimes=None, candle_patterns=None, orderbook_signal=None):
+    def _build_trade_plan(self, tech, advanced, action, confidence, regimes=None, candle_patterns=None, orderbook_signal=None, market_map_signal=None):
         if action == "FLAT" or tech.price <= 0:
             return {}
 
@@ -468,6 +591,20 @@ class AggressiveStrategy:
                     if 0 < price < entry:
                         target_candidates.append((price, f"key_support_{level.get('label', 'wall')}"))
 
+        if market_map_signal and getattr(market_map_signal, "valid", False):
+            mapped_support = float(getattr(market_map_signal, "nearest_support", 0.0) or 0.0)
+            mapped_resistance = float(getattr(market_map_signal, "nearest_resistance", 0.0) or 0.0)
+            if action == "LONG":
+                if 0 < mapped_support < entry:
+                    stop_candidates.append((mapped_support - atr * 0.06, "market_map_support"))
+                if mapped_resistance > entry:
+                    target_candidates.append((mapped_resistance, "market_map_resistance"))
+            else:
+                if mapped_resistance > entry:
+                    stop_candidates.append((mapped_resistance + atr * 0.06, "market_map_resistance"))
+                if 0 < mapped_support < entry:
+                    target_candidates.append((mapped_support, "market_map_support"))
+
         base_stop = entry - stop_distance if action == "LONG" else entry + stop_distance
         base_target = (
             entry + stop_distance * target_r_multiple
@@ -582,6 +719,7 @@ class AggressiveStrategy:
         instrument_type: str = "crypto",  # "crypto" | "index"
         funding_oi_signal=None,    # FundingOISignal from indicators/funding_oi_cvd.py
         orderbook_signal=None,
+        market_map_signal=None,
     ):
         if not tech.valid:
             return TradeSignal(coin=tech.coin, action="FLAT", score=50.0,
@@ -777,6 +915,15 @@ class AggressiveStrategy:
                 f"imbalance={imbalance:+.2f}"
             )
 
+        if market_map_signal and getattr(market_map_signal, "valid", False):
+            map_adjustment = float(getattr(market_map_signal, "score_adjustment", 0.0) or 0.0)
+            map_adjustment *= float(getattr(self.tcfg, "market_map_score_influence", 1.0) or 1.0)
+            raw_score += map_adjustment
+            log.info(
+                f"[{tech.coin}] MarketMap: bias={getattr(market_map_signal, 'bias', 'NEUTRAL')} "
+                f"adj={map_adjustment:+.1f} summary={getattr(market_map_signal, 'summary', '')[:72]}"
+            )
+
         raw_score = max(0.0, min(100.0, raw_score))
 
         # ── 14. Memory-based score adjustment ────────────────────────────────
@@ -861,6 +1008,23 @@ class AggressiveStrategy:
                         raw_score = min(raw_score, short_thresh - 0.5)
                         action = "SHORT"
 
+            support_defense_long = self._qualifies_support_defense_long(
+                raw_score=raw_score,
+                advanced=advanced,
+                candle_patterns=candle_patterns,
+                orderbook_signal=orderbook_signal,
+                market_map_signal=market_map_signal,
+            )
+            if support_defense_long and action in {"FLAT", "SHORT"}:
+                raw_score = max(raw_score, long_thresh + 0.5)
+                action = "LONG"
+                orderbook_guard_reason = (
+                    f"LONG promoted by defended support "
+                    f"{getattr(orderbook_signal, 'nearest_support', 0.0):,.2f} "
+                    f"({getattr(orderbook_signal, 'nearest_support_distance_pct', 0.0):.2f}% away)"
+                )
+                log.info(f"[{tech.coin}] Support-defense long archetype activated")
+
         # ── 16. Confidence ───────────────────────────────────────────────────
         distance = abs(raw_score - 50.0)
         confidence = "HIGH" if distance >= 20 else "MEDIUM" if distance >= 10 else "LOW"
@@ -892,6 +1056,7 @@ class AggressiveStrategy:
                     regimes=regimes,
                     candle_patterns=candle_patterns,
                     orderbook_signal=orderbook_signal,
+                    market_map_signal=market_map_signal,
                 )
                 sl_price = float(trade_plan.get("stop_loss", 0.0) or 0.0)
                 tp_price = float(trade_plan.get("take_profit", 0.0) or 0.0)
@@ -926,6 +1091,7 @@ class AggressiveStrategy:
                 news_signal=news_signal,
                 funding_oi_signal=funding_oi_signal,
                 orderbook_signal=orderbook_signal,
+                market_map_signal=market_map_signal,
                 trade_plan=trade_plan,
             )
             if not thesis.get("permitted", False):
@@ -998,13 +1164,15 @@ class AggressiveStrategy:
                     flat_parts.append(
                         f"Breakout state: {orderbook_signal.breakout_state.lower().replace('_', ' ')}"
                     )
+            if market_map_signal and getattr(market_map_signal, "valid", False):
+                flat_parts.append(f"Map: {getattr(market_map_signal, 'summary', '')}")
 
             flat_reason = " · ".join(flat_parts) if flat_parts else "Insufficient conviction"
             log.info(f"[{tech.coin}] ✋ FLAT — {flat_reason}")
 
         reason = self._build_reason(
             tech, advanced, sentiment, raw_score, action,
-            vol_ratio, regimes, news_signal, candle_patterns, orderbook_signal,
+            vol_ratio, regimes, news_signal, candle_patterns, orderbook_signal, market_map_signal,
             thesis=thesis,
         )
 
@@ -1030,7 +1198,7 @@ class AggressiveStrategy:
 
     def _build_reason(
         self, tech, advanced, sentiment, score, action,
-        vol_ratio, regimes=None, news_signal=None, candle_patterns=None, orderbook_signal=None,
+        vol_ratio, regimes=None, news_signal=None, candle_patterns=None, orderbook_signal=None, market_map_signal=None,
         thesis=None,
     ):
         parts = []
@@ -1093,5 +1261,8 @@ class AggressiveStrategy:
                 parts.append(f"Breakout: {breakout.replace('_', ' ').title()}")
             imbalance = float(getattr(orderbook_signal, "imbalance_ratio", 0.0) or 0.0)
             parts.append(f"Book imbalance {imbalance:+.2f}")
+
+        if market_map_signal and getattr(market_map_signal, "valid", False):
+            parts.append(f"Map: {getattr(market_map_signal, 'summary', '')}")
 
         return " | ".join(parts)

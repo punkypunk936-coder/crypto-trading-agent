@@ -8,11 +8,11 @@ HYPE is Hyperliquid's native token and trades on Hyperliquid itself.
 The API ticker is "HYPE" — same format as BTC/ETH/SOL.
 Hyperliquid's candleSnapshot API supports it directly.
 
-Index / macro instruments (SP500, BRENT, WTI etc.)
+Index / macro instruments (SP500, XAU, BRENT, WTI etc.)
 ───────────────────────────────
-These instruments are not part of the current Lighter execution venue. Their
-price data comes from Yahoo Finance (free, no API key) so the agent can still
-analyse macro / commodity context in the same loop.
+When an instrument is supported on Lighter we use venue-native candles/orderbook
+data first. Yahoo Finance remains the fallback for macro / commodity context
+and for venues that do not expose the symbol directly.
 """
 
 import asyncio
@@ -66,6 +66,7 @@ LIGHTER_INTERVALS = {"1m", "5m", "15m", "1h", "4h", "12h", "1d"}
 # Map our internal coin name → Yahoo Finance ticker for fallback OHLCV.
 INDEX_YAHOO_MAP = {
     "SP500": "^GSPC",   # S&P 500 — Trade[XYZ] on Hyperliquid
+    "XAU":   "GC=F",    # Gold futures
     "BRENT": "BZ=F",    # Brent crude futures
     "WTI":   "CL=F",    # WTI crude futures
     "CL":    "CL=F",    # Alias for WTI

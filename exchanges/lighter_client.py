@@ -25,20 +25,25 @@ log = get_logger("lighter")
 DEFAULT_LIGHTER_API_BASE_URL = "https://mainnet.zklighter.elliot.ai"
 
 # Map our coin tickers to Lighter's numeric perpetual market IDs.
-# Verified against live recent-trade payloads:
-#   market 0 -> ETH
-#   market 1 -> BTC
-#   market 2 -> SOL
+# Verified against live Lighter market metadata on April 8, 2026.
 COIN_TO_MARKET_ID: Dict[str, int] = {
     "ETH": 0,
     "BTC": 1,
     "SOL": 2,
+    "TAO": 13,
+    "HYPE": 24,
+    "SP500": 42,   # Lighter venue symbol is SPX; we keep SP500 as the internal alias.
+    "XAU": 92,
 }
 
 MIN_ORDER_SIZE: Dict[str, float] = {
-    "BTC": 0.0001,
-    "ETH": 0.001,
-    "SOL": 0.01,
+    "BTC": 0.0002,
+    "ETH": 0.005,
+    "SOL": 0.05,
+    "TAO": 0.05,
+    "HYPE": 0.50,
+    "SP500": 5.0,
+    "XAU": 0.003,
 }
 
 

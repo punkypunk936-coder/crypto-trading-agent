@@ -50,6 +50,104 @@ def normalize_control(control: Any) -> dict:
     return base
 
 
+def default_market_map() -> dict:
+    return {
+        "date": None,
+        "updated_at": None,
+        "global_notes": "",
+        "coins": {},
+    }
+
+
+def normalize_market_map(market_map: Any) -> dict:
+    base = default_market_map()
+    if not isinstance(market_map, dict):
+        return base
+    base["date"] = market_map.get("date")
+    base["updated_at"] = market_map.get("updated_at")
+    base["global_notes"] = str(market_map.get("global_notes") or "")
+    base["coins"] = dict(market_map.get("coins") or {})
+    return base
+
+
+def default_trade_reviews() -> dict:
+    return {
+        "updated_at": None,
+        "reviews": {},
+    }
+
+
+def normalize_trade_reviews(trade_reviews: Any) -> dict:
+    base = default_trade_reviews()
+    if not isinstance(trade_reviews, dict):
+        return base
+    base["updated_at"] = trade_reviews.get("updated_at")
+    base["reviews"] = dict(trade_reviews.get("reviews") or {})
+    return base
+
+
+def market_map_summary(market_map: dict) -> dict:
+    coins = dict((market_map or {}).get("coins") or {})
+    bullish = 0
+    bearish = 0
+    neutral = 0
+    for entry in coins.values():
+        bias = str((entry or {}).get("bias") or "NEUTRAL").upper()
+        if bias == "BULLISH":
+            bullish += 1
+        elif bias == "BEARISH":
+            bearish += 1
+        else:
+            neutral += 1
+    return {
+        "count": len(coins),
+        "bullish": bullish,
+        "bearish": bearish,
+        "neutral": neutral,
+        "updated_at": (market_map or {}).get("updated_at"),
+    }
+
+
+def merge_reviews_into_trades(trades: Iterable[dict] | None, trade_reviews: dict) -> list[dict]:
+    reviews = dict((trade_reviews or {}).get("reviews") or {})
+    out = []
+    for trade in list(trades or []):
+        item = dict(trade or {})
+        review = reviews.get(str(item.get("trade_id") or ""))
+        if review:
+            item["review"] = dict(review)
+        out.append(item)
+    return out
+
+
+def review_summary(trades: Iterable[dict] | None, trade_reviews: dict) -> dict:
+    reviews = list(dict((trade_reviews or {}).get("reviews") or {}).values())
+    verdicts: dict[str, int] = {}
+    thesis_quality: dict[str, int] = {}
+    execution_quality: dict[str, int] = {}
+    for review in reviews:
+        verdict = str(review.get("verdict") or "")
+        if verdict:
+            verdicts[verdict] = verdicts.get(verdict, 0) + 1
+        thesis = str(review.get("thesis_quality") or "")
+        if thesis:
+            thesis_quality[thesis] = thesis_quality.get(thesis, 0) + 1
+        execution = str(review.get("execution_quality") or "")
+        if execution:
+            execution_quality[execution] = execution_quality.get(execution, 0) + 1
+    safe_trades = list(trades or [])
+    reviewed = sum(1 for trade in safe_trades if dict(trade or {}).get("review"))
+    coverage = round(reviewed / len(safe_trades) * 100, 1) if safe_trades else 0.0
+    return {
+        "count": len(reviews),
+        "coverage_pct": coverage,
+        "verdicts": verdicts,
+        "thesis_quality": thesis_quality,
+        "execution_quality": execution_quality,
+        "updated_at": (trade_reviews or {}).get("updated_at"),
+    }
+
+
 def calc_stats(trades: Iterable[dict] | None) -> dict:
     safe_trades = list(trades or [])
     if not safe_trades:
@@ -190,16 +288,24 @@ def build_dashboard_snapshot(
     state: Any,
     trades: Iterable[dict] | None,
     control: Any = None,
+    market_map: Any = None,
+    trade_reviews: Any = None,
     *,
     server_timestamp: str | None = None,
 ) -> dict:
-    safe_trades = list(trades or [])
+    normalized_market_map = normalize_market_map(market_map)
+    normalized_trade_reviews = normalize_trade_reviews(trade_reviews)
+    safe_trades = merge_reviews_into_trades(trades or [], normalized_trade_reviews)
     shaped_state = augment_state(state)
     return {
         "state": shaped_state,
         "trades": safe_trades[-50:][::-1],
         "stats": calc_stats(safe_trades),
         "control": normalize_control(control),
+        "market_map": normalized_market_map,
+        "market_map_summary": market_map_summary(normalized_market_map),
+        "trade_reviews": normalized_trade_reviews,
+        "review_summary": review_summary(safe_trades, normalized_trade_reviews),
         "runtime": runtime_status(shaped_state),
         "server_time": server_timestamp or server_time(),
     }

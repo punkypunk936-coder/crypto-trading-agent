@@ -142,6 +142,23 @@
     color: #fff;
     animation: haltPulse 1s ease-in-out infinite;
   }
+  .tool-btn {
+    padding: 7px 12px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    font-family: var(--mono);
+    cursor: pointer;
+    border: 1px solid rgba(91, 140, 255, 0.28);
+    background: rgba(91, 140, 255, 0.10);
+    color: var(--blue);
+    transition: all 0.25s ease;
+  }
+  .tool-btn:hover {
+    background: rgba(91, 140, 255, 0.18);
+    border-color: rgba(91, 140, 255, 0.42);
+  }
   .badge {
     padding: 6px 14px;
     border-radius: 20px;
@@ -239,6 +256,200 @@
     color: var(--text-secondary);
     margin-top: 6px;
     font-family: var(--mono);
+  }
+  .card-label-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .card-label-row .card-label {
+    margin-bottom: 0;
+  }
+  .map-meta, .review-meta {
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-family: var(--mono);
+  }
+  .market-map-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+  }
+  .map-card {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    background: rgba(255,255,255,0.02);
+  }
+  .map-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .map-coin {
+    font-size: 16px;
+    font-weight: 800;
+    font-family: var(--mono);
+  }
+  .map-bias {
+    padding: 4px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.7px;
+    font-family: var(--mono);
+    border: 1px solid var(--border);
+  }
+  .map-bias-bullish { color: var(--green); background: var(--green-dim); border-color: rgba(0,230,138,0.24); }
+  .map-bias-bearish { color: var(--red); background: var(--red-dim); border-color: rgba(255,77,106,0.24); }
+  .map-bias-neutral { color: var(--yellow); background: var(--yellow-dim); border-color: rgba(255,184,77,0.24); }
+  .map-levels {
+    display: grid;
+    gap: 8px;
+  }
+  .map-level-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .map-level-row strong {
+    color: var(--text);
+    font-family: var(--mono);
+  }
+  .map-notes {
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.45;
+  }
+  .review-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+  }
+  .review-summary-box {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    background: rgba(255,255,255,0.02);
+  }
+  .review-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    font-family: var(--mono);
+    border: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .review-good { color: var(--green); background: var(--green-dim); border-color: rgba(0,230,138,0.24); }
+  .review-bad-thesis, .review-both-bad { color: var(--red); background: var(--red-dim); border-color: rgba(255,77,106,0.24); }
+  .review-bad-execution { color: var(--yellow); background: var(--yellow-dim); border-color: rgba(255,184,77,0.24); }
+  .review-miss { color: var(--blue); background: var(--blue-dim); border-color: rgba(91,140,255,0.24); }
+  .review-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .review-notes {
+    font-size: 11px;
+    color: var(--text-secondary);
+    line-height: 1.35;
+  }
+  .map-global-notes {
+    margin-bottom: 14px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: rgba(91, 140, 255, 0.08);
+    border: 1px solid rgba(91, 140, 255, 0.14);
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+  .map-card-empty {
+    border-style: dashed;
+    opacity: 0.92;
+  }
+  .map-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+  }
+  .map-zone {
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+  }
+  .review-stack {
+    display: grid;
+    gap: 12px;
+  }
+  .review-count {
+    font-size: 24px;
+    font-family: var(--mono);
+    font-weight: 800;
+  }
+  .review-count-sub {
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-family: var(--mono);
+  }
+  .review-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .review-queue {
+    display: grid;
+    gap: 10px;
+  }
+  .review-queue-item {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--border);
+    align-items: center;
+  }
+  .review-queue-main {
+    display: grid;
+    gap: 4px;
+  }
+  .review-queue-title {
+    font-size: 12px;
+    font-weight: 700;
+    font-family: var(--mono);
+  }
+  .review-queue-sub {
+    font-size: 11px;
+    color: var(--text-secondary);
+    line-height: 1.35;
+  }
+  .table-review-cell {
+    min-width: 190px;
+  }
+  .table-action-cell {
+    min-width: 100px;
+  }
+  .table-action-cell .tool-btn {
+    width: 100%;
+    justify-content: center;
   }
 
   /* ── Layout Grids ──────────────────────── */
@@ -965,6 +1176,35 @@
   </div>
 </div>
 
+<!-- Daily Market Map + Review Lab -->
+<div class="grid-2">
+  <div class="card">
+    <div class="card-label-row">
+      <div class="card-label">🗺️ Daily Market Map</div>
+      <div class="review-actions">
+        <button class="tool-btn" onclick="editGlobalMapNotes()">GLOBAL NOTES</button>
+        <button class="tool-btn" onclick="editMarketMap()">ADD / UPDATE</button>
+      </div>
+    </div>
+    <div class="map-meta" id="market-map-meta">Waiting for market map...</div>
+    <div id="market-map-body">
+      <div class="empty-state">No daily market map loaded yet</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-label-row">
+      <div class="card-label">🧪 Trade Review Lab</div>
+      <div class="review-actions">
+        <button class="tool-btn" onclick="reviewNextTrade()">REVIEW NEXT</button>
+      </div>
+    </div>
+    <div class="review-meta" id="review-meta">Waiting for review stats...</div>
+    <div id="review-body">
+      <div class="empty-state">No review data yet</div>
+    </div>
+  </div>
+</div>
+
 <!-- Closed Trade Log -->
 <div class="full-width" style="margin-bottom:32px;">
   <div class="card" style="padding-bottom:8px;">
@@ -977,10 +1217,10 @@
       <table>
         <thead><tr>
           <th>#</th><th>Coin</th><th>Dir</th><th>Opened</th><th>Closed</th>
-          <th>Entry</th><th>Exit</th><th>Margin</th><th>Notional</th><th>P&amp;L $</th><th>P&amp;L %</th><th>Reason</th>
+          <th>Entry</th><th>Exit</th><th>Margin</th><th>Notional</th><th>P&amp;L $</th><th>P&amp;L %</th><th>Reason</th><th>Review</th><th>Action</th>
         </tr></thead>
         <tbody id="trades-body">
-          <tr><td colspan="12" class="muted" style="text-align:center;padding:24px;">No closed trades yet</td></tr>
+          <tr><td colspan="14" class="muted" style="text-align:center;padding:24px;">No closed trades yet</td></tr>
         </tbody>
       </table>
     </div>
@@ -1005,7 +1245,55 @@ const shortText = (v, max=120) => {
   const text = String(v == null ? '' : v).trim();
   return text.length > max ? text.slice(0, max - 1) + '…' : text;
 };
+const csvText = (values, dec=2) => {
+  const list = Array.isArray(values) ? values : [];
+  if (!list.length) return '--';
+  return list.map((value) => fmt(value, dec)).join(', ');
+};
+const zoneText = (zone) => {
+  if (!zone || (!zone.low && !zone.high)) return '--';
+  return fmt(zone.low || 0) + ' → ' + fmt(zone.high || zone.low || 0);
+};
+const reviewChipClass = (verdict) => {
+  const key = String(verdict || '').toUpperCase();
+  if (key === 'GOOD_TRADE') return 'review-good';
+  if (key === 'BAD_THESIS') return 'review-bad-thesis';
+  if (key === 'BAD_EXECUTION') return 'review-bad-execution';
+  if (key === 'BOTH_BAD') return 'review-both-bad';
+  if (key === 'MISS') return 'review-miss';
+  return '';
+};
+const biasClass = (bias) => {
+  const key = String(bias || 'NEUTRAL').toLowerCase();
+  if (key === 'bullish') return 'map-bias map-bias-bullish';
+  if (key === 'bearish') return 'map-bias map-bias-bearish';
+  return 'map-bias map-bias-neutral';
+};
+const stampText = (value) => String(value || '').slice(0, 16) || '--';
+const normalizeChoice = (value, allowed, fallback) => {
+  const text = String(value == null ? '' : value).trim().toUpperCase();
+  return allowed.includes(text) ? text : fallback;
+};
+const reviewBadgeHtml = (review) => {
+  if (!review) return '<span class="review-chip">UNREVIEWED</span>';
+  const verdict = String(review.verdict || 'GOOD_TRADE').toUpperCase();
+  return '<span class="review-chip ' + reviewChipClass(verdict) + '">' + esc(verdict.replaceAll('_', ' ')) + '</span>';
+};
+const reviewBreakdownHtml = (label, values) => {
+  const entries = Object.entries(values || {}).filter(([, count]) => count);
+  if (!entries.length) {
+    return '<div class="review-notes">' + esc(label) + ': none yet</div>';
+  }
+  return '<div class="review-notes"><strong>' + esc(label) + ':</strong> '
+    + esc(entries.map(([key, count]) => key.replaceAll('_', ' ') + ' ' + count).join(' • '))
+    + '</div>';
+};
 let latestControl = null;
+let latestState = null;
+let latestTrades = [];
+let latestMarketMap = { coins: {} };
+let latestReviewStore = { reviews: {} };
+let latestReviewSummary = {};
 
 function toggleTrades() {
   const wrap = document.getElementById('trades-wrap');
@@ -1022,6 +1310,242 @@ function formatTimer(seconds) {
   return m + ':' + String(s).padStart(2, '0');
 }
 
+function trackedCoins() {
+  const coins = new Set();
+  const configCoins = (((latestState || {}).config || {}).coins || []);
+  const signalCoins = Object.keys(((latestState || {}).signals || {}));
+  const mappedCoins = Object.keys(((latestMarketMap || {}).coins || {}));
+  [configCoins, signalCoins, mappedCoins].forEach((values) => {
+    (values || []).forEach((coin) => {
+      const text = String(coin || '').trim().toUpperCase();
+      if (text) coins.add(text);
+    });
+  });
+  return Array.from(coins).sort();
+}
+
+function renderMarketMapSummary(summary, marketMap) {
+  const meta = document.getElementById('market-map-meta');
+  meta.textContent = 'Mapped coins ' + (summary.count || 0)
+    + ' • bullish ' + (summary.bullish || 0)
+    + ' • bearish ' + (summary.bearish || 0)
+    + ' • updated ' + stampText(summary.updated_at || (marketMap || {}).updated_at);
+
+  const body = document.getElementById('market-map-body');
+  const coins = trackedCoins();
+  const entries = (marketMap || {}).coins || {};
+  const globalNotes = String((marketMap || {}).global_notes || '').trim();
+
+  if (!coins.length && !Object.keys(entries).length) {
+    body.innerHTML = '<div class="empty-state"><div class="empty-icon">🗺️</div>No daily market map yet. Add BTC / ETH / SOL key levels so the agent can anchor its thesis to your higher-timeframe view.</div>';
+    return;
+  }
+
+  let html = '';
+  if (globalNotes) {
+    html += '<div class="map-global-notes"><strong>Global notes:</strong> ' + esc(globalNotes) + '</div>';
+  }
+
+  html += '<div class="market-map-grid">';
+  coins.forEach((coin) => {
+    const entry = entries[coin];
+    if (!entry) {
+      html += '<div class="map-card map-card-empty">'
+        + '<div class="map-card-top"><div class="map-coin">' + esc(coin) + '</div><span class="' + biasClass('NEUTRAL') + '">UNMAPPED</span></div>'
+        + '<div class="map-notes">No key levels saved yet. Add supports, resistances, and daily close triggers so the agent knows the bigger map.</div>'
+        + '<div class="map-card-actions"><button class="tool-btn" onclick="editMarketMap(' + JSON.stringify(coin) + ')">SET MAP</button></div>'
+        + '</div>';
+      return;
+    }
+    html += '<div class="map-card">'
+      + '<div class="map-card-top"><div class="map-coin">' + esc(coin) + '</div><span class="' + biasClass(entry.bias) + '">' + esc(String(entry.bias || 'NEUTRAL')) + '</span></div>'
+      + '<div class="map-levels">'
+        + '<div class="map-level-row"><span>Confidence</span><strong>' + esc(String(entry.confidence || 'MEDIUM')) + '</strong></div>'
+        + '<div class="map-level-row"><span>Supports</span><strong>' + esc(csvText(entry.supports)) + '</strong></div>'
+        + '<div class="map-level-row"><span>Resistances</span><strong>' + esc(csvText(entry.resistances)) + '</strong></div>'
+        + '<div class="map-level-row"><span>Daily long above</span><strong>' + esc(csvText(entry.daily_close_long_above)) + '</strong></div>'
+        + '<div class="map-level-row"><span>Daily short below</span><strong>' + esc(csvText(entry.daily_close_short_below)) + '</strong></div>'
+        + '<div class="map-level-row"><span>Playbook</span><strong>' + esc(String(entry.trade_mode || '--')) + '</strong></div>'
+      + '</div>'
+      + '<div class="map-zone"><strong>Demand:</strong> ' + esc(zoneText(entry.demand_zone)) + ' • <strong>Supply:</strong> ' + esc(zoneText(entry.supply_zone)) + '</div>'
+      + '<div class="map-notes">' + esc(shortText(entry.notes || 'No coin-specific notes yet.', 180)) + '</div>'
+      + '<div class="map-card-actions">'
+        + '<button class="tool-btn" onclick="editMarketMap(' + JSON.stringify(coin) + ')">EDIT</button>'
+        + '<button class="tool-btn" onclick="deleteMarketMap(' + JSON.stringify(coin) + ')">DELETE</button>'
+      + '</div>'
+      + '</div>';
+  });
+  html += '</div>';
+  body.innerHTML = html;
+}
+
+function renderReviewSummary(summary, trades) {
+  const meta = document.getElementById('review-meta');
+  meta.textContent = 'Reviewed ' + (summary.count || 0)
+    + ' • coverage ' + fmt(summary.coverage_pct || 0, 1) + '%'
+    + ' • updated ' + stampText(summary.updated_at);
+
+  const body = document.getElementById('review-body');
+  const unreviewed = (trades || []).filter((trade) => !trade.review).slice(0, 5);
+  let html = '<div class="review-stack"><div class="review-summary-grid">'
+    + '<div class="review-summary-box"><div class="card-label">Coverage</div><div class="review-count">' + fmt(summary.coverage_pct || 0, 1) + '%</div><div class="review-count-sub">' + (summary.count || 0) + ' trades labeled</div></div>'
+    + '<div class="review-summary-box"><div class="card-label">Verdicts</div><div class="review-chip-list">'
+      + (Object.keys(summary.verdicts || {}).length
+        ? Object.entries(summary.verdicts || {}).map(([key, count]) => '<span class="review-chip ' + reviewChipClass(key) + '">' + esc(key.replaceAll('_', ' ')) + ' ' + esc(String(count)) + '</span>').join('')
+        : '<span class="review-chip">NONE YET</span>')
+      + '</div></div>'
+    + '<div class="review-summary-box"><div class="card-label">Thesis</div>' + reviewBreakdownHtml('Thesis quality', summary.thesis_quality || {}) + '</div>'
+    + '<div class="review-summary-box"><div class="card-label">Execution</div>' + reviewBreakdownHtml('Execution quality', summary.execution_quality || {}) + '</div>'
+    + '</div>';
+
+  html += '<div class="review-summary-box"><div class="card-label-row"><div class="card-label">Review Queue</div>'
+    + '<button class="tool-btn" onclick="reviewNextTrade()">NEXT TRADE</button></div>';
+  if (unreviewed.length) {
+    html += '<div class="review-queue">'
+      + unreviewed.map((trade) => '<div class="review-queue-item">'
+        + '<div class="review-queue-main"><div class="review-queue-title">' + esc(String(trade.coin || '')) + ' ' + esc(String(trade.direction || '')) + ' #' + esc(String(trade.trade_id || '')) + '</div>'
+        + '<div class="review-queue-sub">' + esc(shortText(trade.exit_reason || 'No exit reason recorded', 80)) + ' • PnL ' + fmtD(Number(trade.pnl_usd || 0)) + '</div></div>'
+        + '<button class="tool-btn" onclick="saveTradeReview(' + JSON.stringify(String(trade.trade_id || '')) + ', ' + JSON.stringify(String(trade.coin || '')) + ', ' + JSON.stringify(String(trade.direction || '')) + ')">LABEL</button>'
+        + '</div>').join('')
+      + '</div>';
+  } else {
+    html += '<div class="empty-state" style="padding:18px 0 6px;">Recent trades are all labeled. Keep reviewing fresh closes so the guardrails stay sharp.</div>';
+  }
+  html += '</div></div>';
+  body.innerHTML = html;
+}
+
+async function postJson(path, payload) {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {}),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || data.message || response.statusText || 'Request failed');
+  }
+  return data;
+}
+
+async function editGlobalMapNotes() {
+  const current = String((latestMarketMap || {}).global_notes || '');
+  const next = prompt('Global market-map notes for the day', current);
+  if (next === null) return;
+  try {
+    await postJson('/api/market-map', {
+      ...(latestMarketMap || {}),
+      global_notes: next,
+    });
+    await refresh();
+  } catch (error) {
+    alert('Failed to save market-map notes: ' + error.message);
+  }
+}
+
+async function editMarketMap(coin = '') {
+  const existingCoin = String(coin || '').trim().toUpperCase();
+  const existing = ((latestMarketMap || {}).coins || {})[existingCoin] || {};
+  const nextCoin = String(prompt('Coin symbol', existingCoin || '') || '').trim().toUpperCase();
+  if (!nextCoin) return;
+  const biasInput = prompt('Bias: BULLISH / BEARISH / NEUTRAL', existing.bias || 'NEUTRAL');
+  if (biasInput === null) return;
+  const bias = normalizeChoice(biasInput, ['BULLISH', 'BEARISH', 'NEUTRAL'], existing.bias || 'NEUTRAL');
+  const confidenceInput = prompt('Confidence: LOW / MEDIUM / HIGH', existing.confidence || 'MEDIUM');
+  if (confidenceInput === null) return;
+  const confidence = normalizeChoice(confidenceInput, ['LOW', 'MEDIUM', 'HIGH'], existing.confidence || 'MEDIUM');
+  const supports = prompt('Supports (comma-separated)', Array.isArray(existing.supports) ? existing.supports.join(', ') : '');
+  if (supports === null) return;
+  const resistances = prompt('Resistances (comma-separated)', Array.isArray(existing.resistances) ? existing.resistances.join(', ') : '');
+  if (resistances === null) return;
+  const longAbove = prompt('Daily close LONG above levels (comma-separated)', Array.isArray(existing.daily_close_long_above) ? existing.daily_close_long_above.join(', ') : '');
+  if (longAbove === null) return;
+  const shortBelow = prompt('Daily close SHORT below levels (comma-separated)', Array.isArray(existing.daily_close_short_below) ? existing.daily_close_short_below.join(', ') : '');
+  if (shortBelow === null) return;
+  const demandLow = prompt('Demand zone low', existing.demand_zone && existing.demand_zone.low ? existing.demand_zone.low : '');
+  if (demandLow === null) return;
+  const demandHigh = prompt('Demand zone high', existing.demand_zone && existing.demand_zone.high ? existing.demand_zone.high : '');
+  if (demandHigh === null) return;
+  const supplyLow = prompt('Supply zone low', existing.supply_zone && existing.supply_zone.low ? existing.supply_zone.low : '');
+  if (supplyLow === null) return;
+  const supplyHigh = prompt('Supply zone high', existing.supply_zone && existing.supply_zone.high ? existing.supply_zone.high : '');
+  if (supplyHigh === null) return;
+  const tradeMode = prompt('Playbook / trade mode (optional)', existing.trade_mode || '');
+  if (tradeMode === null) return;
+  const notes = prompt('Notes', existing.notes || '');
+  if (notes === null) return;
+  try {
+    await postJson('/api/market-map', {
+      coin: nextCoin,
+      bias,
+      confidence,
+      supports,
+      resistances,
+      daily_close_long_above: longAbove,
+      daily_close_short_below: shortBelow,
+      demand_zone: { low: demandLow, high: demandHigh },
+      supply_zone: { low: supplyLow, high: supplyHigh },
+      trade_mode: tradeMode,
+      notes,
+    });
+    await refresh();
+  } catch (error) {
+    alert('Failed to save market map: ' + error.message);
+  }
+}
+
+async function deleteMarketMap(coin) {
+  if (!coin) return;
+  if (!confirm('Delete the market map entry for ' + coin + '?')) return;
+  try {
+    await postJson('/api/market-map', { coin, delete: true });
+    await refresh();
+  } catch (error) {
+    alert('Failed to delete market map: ' + error.message);
+  }
+}
+
+async function saveTradeReview(tradeId, coin, direction) {
+  const current = (((latestReviewStore || {}).reviews || {})[String(tradeId)] || {});
+  const verdictInput = prompt('Verdict: GOOD_TRADE / BAD_THESIS / BAD_EXECUTION / BOTH_BAD / MISS', current.verdict || 'GOOD_TRADE');
+  if (verdictInput === null) return;
+  const verdict = normalizeChoice(verdictInput, ['GOOD_TRADE', 'BAD_THESIS', 'BAD_EXECUTION', 'BOTH_BAD', 'MISS'], current.verdict || 'GOOD_TRADE');
+  const thesisInput = prompt('Thesis quality: STRONG / MIXED / WEAK / GOOD / OK / POOR', current.thesis_quality || 'MIXED');
+  if (thesisInput === null) return;
+  const thesisQuality = normalizeChoice(thesisInput, ['STRONG', 'MIXED', 'WEAK', 'GOOD', 'OK', 'POOR'], current.thesis_quality || 'MIXED');
+  const executionInput = prompt('Execution quality: STRONG / MIXED / WEAK / GOOD / OK / POOR', current.execution_quality || 'OK');
+  if (executionInput === null) return;
+  const executionQuality = normalizeChoice(executionInput, ['STRONG', 'MIXED', 'WEAK', 'GOOD', 'OK', 'POOR'], current.execution_quality || 'OK');
+  const tags = prompt('Tags (comma-separated)', Array.isArray(current.tags) ? current.tags.join(', ') : '');
+  if (tags === null) return;
+  const notes = prompt('Review notes', current.notes || '');
+  if (notes === null) return;
+  try {
+    await postJson('/api/reviews', {
+      trade_id: String(tradeId),
+      coin: String(coin || ''),
+      direction: String(direction || ''),
+      verdict,
+      thesis_quality: thesisQuality,
+      execution_quality: executionQuality,
+      tags,
+      notes,
+    });
+    await refresh();
+  } catch (error) {
+    alert('Failed to save trade review: ' + error.message);
+  }
+}
+
+function reviewNextTrade() {
+  const next = (latestTrades || []).find((trade) => !trade.review);
+  if (!next) {
+    alert('All recent closed trades are already reviewed.');
+    return;
+  }
+  saveTradeReview(String(next.trade_id || ''), String(next.coin || ''), String(next.direction || ''));
+}
+
 async function refresh() {
   try {
     const res  = await fetch('/api/state');
@@ -1031,6 +1555,11 @@ async function refresh() {
     const tr   = data.trades;
     const runtime = data.runtime || {};
     latestControl = data.control || null;
+    latestState = s || {};
+    latestTrades = Array.isArray(tr) ? tr : [];
+    latestMarketMap = data.market_map || { coins: {} };
+    latestReviewStore = data.trade_reviews || { reviews: {} };
+    latestReviewSummary = data.review_summary || {};
 
     // Header
     let updateText = 'Updated: ' + data.server_time;
@@ -1351,6 +1880,9 @@ async function refresh() {
       '<div class="stat-row"><span class="stat-label">Mood</span><span class="stat-value ' + fngColor + '">' + fngLabel + '</span></div>' +
       '<div class="stat-row"><span class="stat-label">Signal Bias</span><span class="stat-value">' + (sent.signal_score ? fmt(sent.signal_score, 0) + '/100' : '--') + '</span></div>';
 
+    renderMarketMapSummary(data.market_map_summary || {}, latestMarketMap);
+    renderReviewSummary(latestReviewSummary, latestTrades);
+
     // Pending orders
     const pendEl = document.getElementById('pending-body');
     const pending = s.pending_orders || [];
@@ -1376,6 +1908,14 @@ async function refresh() {
         const pnlPct = parseFloat(t.pnl_pct || 0) * 100;
         const pnlCls = cls(pnl);
         const dir    = t.direction || '';
+        const review = t.review || null;
+        const reviewHtml = review
+          ? reviewBadgeHtml(review)
+            + '<div class="review-notes">' + esc(shortText(
+                [review.thesis_quality, review.execution_quality, review.notes].filter(Boolean).join(' • ') || 'Reviewed by operator.',
+                90
+              )) + '</div>'
+          : '<span class="review-chip">UNREVIEWED</span><div class="review-notes">Label this trade so the agent can learn from it.</div>';
         return '<tr>' +
           '<td class="muted">' + t.trade_id + '</td>' +
           '<td><strong>' + t.coin + '</strong></td>' +
@@ -1389,10 +1929,13 @@ async function refresh() {
           '<td class="' + pnlCls + '">' + fmtD(pnl) + '</td>' +
           '<td class="' + pnlCls + '">' + fmtP(pnlPct) + '</td>' +
           '<td class="muted" style="font-size:11px;">' + (t.exit_reason||'--') + '</td>' +
+          '<td class="table-review-cell">' + reviewHtml + '</td>' +
+          '<td class="table-action-cell"><button class="tool-btn" onclick="saveTradeReview(' + JSON.stringify(String(t.trade_id || '')) + ', ' + JSON.stringify(String(t.coin || '')) + ', ' + JSON.stringify(String(dir || '')) + ')">' + (review ? 'EDIT' : 'REVIEW') + '</button></td>' +
         '</tr>';
       }).join('');
     } else {
       closedLabel.textContent = '';
+      tradBody.innerHTML = '<tr><td colspan="14" class="muted" style="text-align:center;padding:24px;">No closed trades yet</td></tr>';
     }
 
   } catch(e) {

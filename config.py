@@ -47,14 +47,15 @@ class ExchangeConfig:
 @dataclass
 class TradingConfig:
     # Coins / instruments the agent will trade
-    # Primary tradable universe on the current Lighter runtime.
+    # Baseline execution universe. Additional watchlist symbols that are
+    # supported on the active venue are auto-promoted at startup.
     coins: List[str]            = field(default_factory=lambda: ["BTC", "ETH", "SOL"])
 
     # Broader watchlist / learning universe.
     # These assets are analysed and shown in the dashboard even when they are
     # not tradable on the primary execution venue.
     analysis_coins: List[str]   = field(default_factory=lambda: [
-        "BTC", "ETH", "SOL", "HYPE", "SP500", "TAO", "BRENT", "WTI"
+        "BTC", "ETH", "SOL", "HYPE", "SP500", "TAO", "XAU", "BRENT", "WTI"
     ])
 
     # ── Instrument type classification ───────────────────────────────────────
@@ -69,6 +70,7 @@ class TradingConfig:
         "HYPE":  "crypto",
         "TAO":   "crypto",
         "SP500": "index",
+        "XAU":   "index",
         "BRENT": "index",
         "WTI":   "index",
         "CL":    "index",
@@ -163,6 +165,11 @@ class TradingConfig:
     thesis_min_risk_reward_ratio: float = 1.75
     thesis_block_on_range_conditions: bool = True
     strict_confirmation_fail_closed: bool = True
+    support_defense_long_enabled: bool = True
+    support_defense_long_score_floor: float = 24.0
+    support_defense_max_support_distance_pct: float = 0.40
+    support_defense_min_orderbook_score: float = 62.0
+    support_defense_min_imbalance: float = 0.10
 
     # ── Thesis invalidation ladder ───────────────────────
     early_invalidation_minutes: float = 90.0
@@ -170,6 +177,11 @@ class TradingConfig:
     htf_invalidation_min_minutes: float = 60.0
     time_stop_minutes: float = 360.0
     time_stop_min_tp_progress: float = 0.25
+    use_daily_market_map: bool = True
+    market_map_guard_distance_pct: float = 1.10
+    market_map_score_influence: float = 1.00
+    market_map_countertrend_penalty: float = 6.0
+    market_map_alignment_boost: float = 4.0
 
     # ── Live runtime guardrails ─────────────────────────
     require_ac_power_for_live: bool = True

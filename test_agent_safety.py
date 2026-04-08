@@ -18,14 +18,18 @@ import pandas as pd
 import checkpoint as checkpoint_module
 import agent as agent_module
 import backtest as backtest_module
+import hosted_state_sync as hosted_state_sync_module
 import main as main_module
+import market_map as market_map_module
 import trade_dataset as trade_dataset_module
 import trade_logger as trade_logger_module
+import trade_review as trade_review_module
 from indicators import trade_memory as trade_memory_module
 from agent import TradingAgent
 from config import Config
 from circuit_breaker import CircuitBreakerError
 from dashboard import app as dashboard_module
+from dashboard.snapshot import build_dashboard_snapshot
 from exchanges.base import AccountState, BaseExchange, OrderResult, LimitOrderStatus
 from exchanges.dry_run import DryRunExchange
 from risk.risk_manager import OrderRequest, OpenPosition
@@ -242,7 +246,7 @@ def test_checkpoint_recovery_skips_unsupported_state() -> None:
 
 def test_unsupported_symbols_fail_trade_universe_validation() -> None:
     cfg = build_config()
-    cfg.trading.coins = ["BTC", "HYPE"]
+    cfg.trading.coins = ["BTC", "BRENT"]
     original_config = main_module.config
     main_module.config = cfg
     try:
@@ -284,7 +288,21 @@ def test_supported_watchlist_assets_are_promoted_into_tradeable_universe() -> No
     main_module.config = cfg
     try:
         active = main_module.enforce_trade_universe()
-        assert active == ["BTC", "HYPE", "SP500", "TAO"]
+        assert active == ["BTC", "HYPE", "TAO"]
+    finally:
+        main_module.config = original_config
+
+
+def test_lighter_promotes_growth_and_macro_symbols_into_tradeable_universe() -> None:
+    cfg = build_config()
+    cfg.exchange.use_lighter = True
+    cfg.exchange.use_hyperliquid = False
+    cfg.trading.analysis_coins = ["BTC", "HYPE", "TAO", "SP500", "XAU"]
+    original_config = main_module.config
+    main_module.config = cfg
+    try:
+        active = main_module.enforce_trade_universe()
+        assert active == ["BTC", "HYPE", "TAO", "SP500", "XAU"]
     finally:
         main_module.config = original_config
 
@@ -448,6 +466,84 @@ def test_orderbook_support_blocks_weak_short_into_demand() -> None:
 
     assert signal.action == "FLAT", "short should be blocked when price is sitting on strong support/demand"
     assert "support" in signal.flat_reason.lower() or "demand" in signal.flat_reason.lower()
+
+
+def test_support_defense_long_promotes_defended_reclaim_setup() -> None:
+    cfg = build_config()
+    strategy = AggressiveStrategy(cfg.trading, cfg.indicators)
+
+    tech = SimpleNamespace(
+        valid=True,
+        coin="BTC",
+        price=100.0,
+        rsi=54.0,
+        rsi_score=34.0,
+        macd_hist=-0.5,
+        macd_score=36.0,
+        bb_score=40.0,
+        ema_score=39.0,
+        volume_score=1.15,
+    )
+    advanced = SimpleNamespace(
+        valid=True,
+        fib=SimpleNamespace(score=41.0, levels={"38.2%": 98.6, "61.8%": 101.6}, nearest_level_name="61.8%", nearest_level_price=101.6, description="Fib resistance nearby"),
+        msb=SimpleNamespace(score=48.0, msb_type="NONE", structure_trend="RANGING", last_swing_high=102.4, last_swing_low=98.1, description="Range holding"),
+        ob=SimpleNamespace(score=45.0, inside_bullish_ob=False, inside_bearish_ob=False, bullish_obs=[(99.1, 98.5)], bearish_obs=[(102.2, 101.4)], description="Order blocks"),
+        fvg=SimpleNamespace(score=46.0, bullish_fvgs=[(98.8, 99.2)], bearish_fvgs=[(101.7, 102.0)], inside_bullish_fvg=False, inside_bearish_fvg=False, description="FVG"),
+        atr=SimpleNamespace(atr=1.35, atr_pct=1.35, volatility_label="normal"),
+    )
+    regimes = SimpleNamespace(
+        valid=True,
+        dominant_regime="BREAKOUT",
+        momentum_score=43.0,
+        trend_score=44.0,
+        mean_rev_score=49.0,
+        volatility_score=54.0,
+        absorption_score=48.0,
+        catalyst_score=56.0,
+    )
+    candles = SimpleNamespace(valid=True, score=58.0, patterns=["Hammer"], trend_3="UP")
+    sentiment = {"signal_score": 48.0, "label": "Neutral", "raw_score": 50, "is_extreme": False}
+    orderbook_signal = SimpleNamespace(
+        valid=True,
+        score=73.2,
+        imbalance_ratio=0.85,
+        level_interaction="AT_SUPPORT",
+        breakout_state="PROBING_BULLISH_BREAKOUT",
+        favor_longs=True,
+        favor_shorts=False,
+        block_longs=False,
+        block_shorts=True,
+        nearest_support=99.96,
+        nearest_support_distance_pct=0.04,
+        nearest_support_strength=0.96,
+        nearest_resistance=101.8,
+        nearest_resistance_distance_pct=1.8,
+        nearest_resistance_strength=0.44,
+        support_levels=[{"price": 99.96, "strength": 0.96, "source": "orderbook", "label": "bid_wall"}],
+        resistance_levels=[{"price": 101.8, "strength": 0.44, "source": "daily", "label": "daily_resistance"}],
+        daily_breakout_level=101.6,
+        daily_breakdown_level=98.1,
+    )
+
+    signal = strategy.generate_signal(
+        tech=tech,
+        advanced=advanced,
+        sentiment=sentiment,
+        current_position=None,
+        regimes=regimes,
+        news_signal=None,
+        candle_patterns=candles,
+        memory_adjustment=-6.0,
+        instrument_type="crypto",
+        funding_oi_signal=None,
+        orderbook_signal=orderbook_signal,
+    )
+
+    assert signal.action == "LONG", "defended support + probing bullish breakout should promote a strict reclaim long"
+    assert signal.trade_plan["stop_loss"] < signal.price
+    assert signal.thesis["permitted"] is True
+    assert any("support defense" in reason.lower() for reason in signal.thesis["reasons"])
 
 
 def test_confirmed_breakout_can_promote_borderline_long() -> None:
@@ -1135,6 +1231,270 @@ def test_local_dashboard_serves_hosted_bundle() -> None:
     assert served == hosted_bundle, "local dashboard root should serve the exact hosted UI bundle"
 
 
+def test_market_map_signal_respects_operator_daily_levels() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        original_path = market_map_module.DAILY_MARKET_MAP_JSON
+        original_daily_close = market_map_module._get_daily_close
+        try:
+            market_map_module.DAILY_MARKET_MAP_JSON = Path(tmpdir) / "daily_market_map.json"
+            market_map_module._get_daily_close = lambda _coin, ttl_seconds=300: 72_600.0
+            market_map_module.save_market_map({
+                "date": "2026-04-06",
+                "global_notes": "BTC daily reclaim above 71.5k and 72.5k matters",
+                "coins": {
+                    "BTC": {
+                        "bias": "BULLISH",
+                        "confidence": "HIGH",
+                        "supports": [60_000.0, 68_500.0],
+                        "resistances": [71_500.0, 72_500.0, 75_000.0],
+                        "daily_close_long_above": [71_500.0, 72_500.0],
+                        "daily_close_short_below": [67_500.0],
+                        "demand_zone": {"low": 59_500.0, "high": 60_500.0},
+                        "supply_zone": {"low": 74_500.0, "high": 75_500.0},
+                        "notes": "Above the reclaim band, shorts should stay defensive.",
+                    }
+                },
+            })
+            signal = market_map_module.get_market_map_signal("BTC", current_price=71_900.0, closed_price=71_900.0)
+            assert signal.valid is True
+            assert signal.favor_longs is True
+            assert signal.block_shorts is True
+            assert signal.above_reclaim_levels == [71_500.0, 72_500.0]
+            assert signal.score_adjustment > 0
+            assert "daily reclaim confirmed" in signal.summary.lower()
+        finally:
+            market_map_module.DAILY_MARKET_MAP_JSON = original_path
+            market_map_module._get_daily_close = original_daily_close
+
+
+def test_trade_review_feedback_hard_blocks_repeated_bad_thesis() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        original_reviews = trade_review_module.TRADE_REVIEWS_JSON
+        try:
+            trade_review_module.TRADE_REVIEWS_JSON = Path(tmpdir) / "trade_reviews.json"
+            for trade_id in ("201", "202", "203"):
+                trade_review_module.upsert_review({
+                    "trade_id": trade_id,
+                    "coin": "ETH",
+                    "direction": "SHORT",
+                    "verdict": "BAD_THESIS",
+                    "thesis_quality": "WEAK",
+                    "execution_quality": "OK",
+                    "tags": ["faded-demand"],
+                    "notes": "Shorted into demand and got squeezed.",
+                })
+            feedback = trade_review_module.get_directional_feedback("ETH", "SHORT")
+            assert feedback["hard_block"] is True
+            assert "weak ETH SHORT thesis".lower() in feedback["reason"].lower()
+        finally:
+            trade_review_module.TRADE_REVIEWS_JSON = original_reviews
+
+
+def test_dashboard_snapshot_includes_market_map_and_trade_reviews() -> None:
+    snapshot = build_dashboard_snapshot(
+        state={
+            "status": "online",
+            "cycle_number": 88,
+            "positions": [],
+            "signals": {},
+            "mode": "dry_run",
+        },
+        trades=[{
+            "trade_id": "11",
+            "coin": "BTC",
+            "direction": "LONG",
+            "opened_at": "2026-04-06 09:00",
+            "closed_at": "2026-04-06 10:00",
+            "entry_price": 70_000.0,
+            "exit_price": 71_000.0,
+            "size_usd": 100.0,
+            "pnl_usd": 10.0,
+            "pnl_pct": 0.10,
+            "exit_reason": "take_profit",
+        }],
+        control={"kill": {"active": False, "reason": "", "requested_at": None, "acknowledged_at": None}},
+        market_map={
+            "date": "2026-04-06",
+            "updated_at": "2026-04-06 08:00:00",
+            "coins": {
+                "BTC": {"bias": "BULLISH", "supports": [68_000.0], "resistances": [71_500.0]},
+            },
+        },
+        trade_reviews={
+            "updated_at": "2026-04-06 11:00:00",
+            "reviews": {
+                "11": {
+                    "trade_id": "11",
+                    "coin": "BTC",
+                    "direction": "LONG",
+                    "verdict": "GOOD_TRADE",
+                    "thesis_quality": "STRONG",
+                    "execution_quality": "GOOD",
+                    "notes": "Clean reclaim and follow-through.",
+                }
+            },
+        },
+        server_timestamp="2026-04-06 11:05:00",
+    )
+    assert snapshot["market_map_summary"]["count"] == 1
+    assert snapshot["review_summary"]["count"] == 1
+    assert snapshot["review_summary"]["coverage_pct"] == 100.0
+    assert snapshot["trades"][0]["review"]["verdict"] == "GOOD_TRADE"
+
+
+def test_dashboard_market_map_and_review_endpoints_roundtrip() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        temp = Path(tmpdir)
+        original_control = dashboard_module.CONTROL
+        original_kill = dashboard_module.KILL
+        original_state = dashboard_module.STATE
+        original_log = dashboard_module.LOG
+        original_snapshot = dashboard_module.SNAPSHOT
+        original_market_map = dashboard_module.MARKET_MAP
+        original_reviews = dashboard_module.REVIEWS
+        original_remote = dict(dashboard_module._remote_state)
+        original_market_map_path = market_map_module.DAILY_MARKET_MAP_JSON
+        original_review_path = trade_review_module.TRADE_REVIEWS_JSON
+        original_log_file = trade_logger_module.LOG_FILE
+        try:
+            dashboard_module.CONTROL = temp / "control.json"
+            dashboard_module.KILL = temp / "KILL"
+            dashboard_module.STATE = temp / "state.json"
+            dashboard_module.LOG = temp / "trades_log.csv"
+            dashboard_module.SNAPSHOT = temp / "dashboard_snapshot.json"
+            dashboard_module.MARKET_MAP = temp / "daily_market_map.json"
+            dashboard_module.REVIEWS = temp / "trade_reviews.json"
+            dashboard_module._remote_state = {
+                "snapshot": build_dashboard_snapshot(
+                    state={"status": "online", "cycle_number": 5, "positions": [], "signals": {}, "mode": "dry_run"},
+                    trades=[{
+                        "trade_id": "1",
+                        "coin": "BTC",
+                        "direction": "LONG",
+                        "opened_at": "2026-04-06 09:00",
+                        "closed_at": "2026-04-06 10:00",
+                        "entry_price": 100.0,
+                        "exit_price": 105.0,
+                        "size_usd": 100.0,
+                        "pnl_usd": 5.0,
+                        "pnl_pct": 0.05,
+                        "exit_reason": "take_profit",
+                    }],
+                    control={"kill": {"active": False, "reason": "", "requested_at": None, "acknowledged_at": None}},
+                    server_timestamp="2026-04-06 10:05:00",
+                )
+            }
+            market_map_module.DAILY_MARKET_MAP_JSON = dashboard_module.MARKET_MAP
+            trade_review_module.TRADE_REVIEWS_JSON = dashboard_module.REVIEWS
+            trade_logger_module.LOG_FILE = dashboard_module.LOG
+            dashboard_module.LOG.write_text(
+                ",".join(trade_logger_module.HEADERS) + "\n"
+                + "1,BTC,LONG,2026-04-06 09:00,2026-04-06 10:00,60,100,105,100,2,5,0.05,95,110,take_profit,72,WIN\n"
+            )
+
+            client = dashboard_module.app.test_client()
+            map_resp = client.post("/api/market-map", json={
+                "coin": "BTC",
+                "bias": "BULLISH",
+                "confidence": "HIGH",
+                "supports": "60000, 68500",
+                "resistances": "71500, 72500",
+                "daily_close_long_above": "71500, 72500",
+                "demand_zone": {"low": 60000, "high": 61000},
+                "notes": "Operator map says reclaim higher and respect demand below.",
+            })
+            assert map_resp.status_code == 200
+
+            review_resp = client.post("/api/reviews", json={
+                "trade_id": "1",
+                "coin": "BTC",
+                "direction": "LONG",
+                "verdict": "GOOD_TRADE",
+                "thesis_quality": "STRONG",
+                "execution_quality": "GOOD",
+                "notes": "Followed mapped reclaim and closed well.",
+            })
+            assert review_resp.status_code == 200
+
+            state = client.get("/api/state").get_json()
+            assert state["market_map"]["coins"]["BTC"]["bias"] == "BULLISH"
+            assert state["trade_reviews"]["reviews"]["1"]["verdict"] == "GOOD_TRADE"
+            assert state["review_summary"]["count"] == 1
+            assert state["trades"][0]["review"]["verdict"] == "GOOD_TRADE"
+        finally:
+            dashboard_module.CONTROL = original_control
+            dashboard_module.KILL = original_kill
+            dashboard_module.STATE = original_state
+            dashboard_module.LOG = original_log
+            dashboard_module.SNAPSHOT = original_snapshot
+            dashboard_module.MARKET_MAP = original_market_map
+            dashboard_module.REVIEWS = original_reviews
+            dashboard_module._remote_state = original_remote
+            market_map_module.DAILY_MARKET_MAP_JSON = original_market_map_path
+            trade_review_module.TRADE_REVIEWS_JSON = original_review_path
+            trade_logger_module.LOG_FILE = original_log_file
+
+
+def test_hosted_state_sync_can_publish_snapshot_to_git_branch() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        temp = Path(tmpdir)
+        remote = temp / "origin.git"
+        subprocess_ok = __import__("subprocess")
+        subprocess_ok.run(["git", "init", "--bare", str(remote)], check=True, capture_output=True, text=True)
+
+        original_repo_dir = hosted_state_sync_module.DASHBOARD_STATE_SYNC_REPO
+        original_url = os.environ.get("DASHBOARD_STATE_GIT_URL")
+        original_branch = os.environ.get("DASHBOARD_STATE_GIT_BRANCH")
+        original_tag = os.environ.get("DASHBOARD_STATE_GIT_TAG")
+        original_enabled = os.environ.get("DASHBOARD_STATE_GIT_SYNC_ENABLED")
+        try:
+            hosted_state_sync_module.DASHBOARD_STATE_SYNC_REPO = temp / ".dashboard_state_sync"
+            os.environ["DASHBOARD_STATE_GIT_URL"] = str(remote)
+            os.environ["DASHBOARD_STATE_GIT_BRANCH"] = "codex/dashboard-state-test"
+            os.environ["DASHBOARD_STATE_GIT_TAG"] = "dashboard-state-test"
+            os.environ["DASHBOARD_STATE_GIT_SYNC_ENABLED"] = "1"
+
+            ok = hosted_state_sync_module.publish_snapshot(
+                {
+                    "state": {"cycle_number": 321, "status": "running"},
+                    "server_time": "2026-04-08 10:00:00",
+                    "trades": [],
+                    "control": {"kill": {"active": False, "reason": "", "requested_at": None, "acknowledged_at": None}},
+                },
+                state={"cycle_number": 321, "status": "running"},
+                trades=[],
+                control={"kill": {"active": False, "reason": "", "requested_at": None, "acknowledged_at": None}},
+                market_map={"coins": {"BTC": {"bias": "BULLISH"}}},
+                trade_reviews={"reviews": {}},
+            )
+            assert ok is True
+
+            checkout = temp / "checkout"
+            subprocess_ok.run(["git", "clone", "--depth", "1", "--branch", "codex/dashboard-state-test", str(remote), str(checkout)], check=True, capture_output=True, text=True)
+            saved = json.loads((checkout / "dashboard" / "dashboard_snapshot.json").read_text())
+            assert saved["state"]["cycle_number"] == 321
+            tags = subprocess_ok.run(["git", "ls-remote", "--tags", str(remote), "dashboard-state-test"], check=True, capture_output=True, text=True)
+            assert "dashboard-state-test" in tags.stdout
+        finally:
+            hosted_state_sync_module.DASHBOARD_STATE_SYNC_REPO = original_repo_dir
+            if original_url is None:
+                os.environ.pop("DASHBOARD_STATE_GIT_URL", None)
+            else:
+                os.environ["DASHBOARD_STATE_GIT_URL"] = original_url
+            if original_branch is None:
+                os.environ.pop("DASHBOARD_STATE_GIT_BRANCH", None)
+            else:
+                os.environ["DASHBOARD_STATE_GIT_BRANCH"] = original_branch
+            if original_tag is None:
+                os.environ.pop("DASHBOARD_STATE_GIT_TAG", None)
+            else:
+                os.environ["DASHBOARD_STATE_GIT_TAG"] = original_tag
+            if original_enabled is None:
+                os.environ.pop("DASHBOARD_STATE_GIT_SYNC_ENABLED", None)
+            else:
+                os.environ["DASHBOARD_STATE_GIT_SYNC_ENABLED"] = original_enabled
+
+
 def test_trade_memory_records_richer_loss_reasoning() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         original_memory_file = trade_memory_module.MEMORY_FILE
@@ -1340,10 +1700,14 @@ def run_all() -> None:
     print("PASS analysis watchlist separation")
     test_supported_watchlist_assets_are_promoted_into_tradeable_universe()
     print("PASS watchlist promotion")
+    test_lighter_promotes_growth_and_macro_symbols_into_tradeable_universe()
+    print("PASS lighter universe expansion")
     test_dynamic_trade_plan_is_attached_to_signal()
     print("PASS dynamic trade planning")
     test_orderbook_support_blocks_weak_short_into_demand()
     print("PASS orderbook support guard")
+    test_support_defense_long_promotes_defended_reclaim_setup()
+    print("PASS support-defense long promotion")
     test_confirmed_breakout_can_promote_borderline_long()
     print("PASS confirmed breakout promotion")
     test_probing_breakout_does_not_override_nearby_resistance()
@@ -1370,6 +1734,16 @@ def run_all() -> None:
     print("PASS hosted dashboard bundle sync")
     test_local_dashboard_serves_hosted_bundle()
     print("PASS local dashboard hosted bundle")
+    test_market_map_signal_respects_operator_daily_levels()
+    print("PASS daily market map signal")
+    test_trade_review_feedback_hard_blocks_repeated_bad_thesis()
+    print("PASS operator review hard block")
+    test_dashboard_snapshot_includes_market_map_and_trade_reviews()
+    print("PASS dashboard market-map snapshot")
+    test_dashboard_market_map_and_review_endpoints_roundtrip()
+    print("PASS dashboard market-map/review endpoints")
+    test_hosted_state_sync_can_publish_snapshot_to_git_branch()
+    print("PASS hosted dashboard git fallback sync")
     test_trade_memory_records_richer_loss_reasoning()
     print("PASS richer RL loss reasoning")
     test_trade_memory_directional_pause_and_guard()

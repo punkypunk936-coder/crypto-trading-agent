@@ -50,7 +50,7 @@ CRYPTOPANIC_URL = "https://cryptopanic.com/api/v1/posts/"
 YAHOO_RSS_URL = "https://feeds.finance.yahoo.com/rss/2.0/headline"
 
 # Instruments routed to macro / commodity news instead of CryptoPanic.
-INDEX_INSTRUMENTS = {"SP500", "BRENT", "WTI", "CL", "NDX", "DJI", "VIX"}
+INDEX_INSTRUMENTS = {"SP500", "XAU", "BRENT", "WTI", "CL", "NDX", "DJI", "VIX"}
 
 # ── Macro / equity keyword weights ────────────────────────────────────────────
 # Used for SP500 and other index instruments
@@ -102,6 +102,19 @@ OIL_BEARISH_KEYWORDS: Dict[str, float] = {
     "crude build": 18, "oversupply": 22, "demand slowdown": 18,
     "recession fears": 16, "opec output hike": 28, "price cap": 14,
     "strategic reserve release": 16, "export surge": 14,
+}
+
+GOLD_BULLISH_KEYWORDS: Dict[str, float] = {
+    "safe haven": 24, "central bank buying": 24, "gold demand": 18,
+    "weaker dollar": 18, "dollar weakens": 18, "yield falls": 18,
+    "real yields fall": 22, "rate cut": 16, "geopolitical tension": 18,
+    "inflation hedge": 18, "recession fears": 12,
+}
+
+GOLD_BEARISH_KEYWORDS: Dict[str, float] = {
+    "strong dollar": 20, "dollar strengthens": 20, "yield rises": 18,
+    "real yields rise": 22, "rate hike": 18, "hawkish fed": 18,
+    "risk-on": 12, "profit taking": 10, "gold sell-off": 22,
 }
 
 # Bullish/bearish keyword weights
@@ -187,6 +200,7 @@ def _fetch_macro_news(coin: str) -> NewsSignal:
     """
     TICKER_MAP = {
         "SP500": "^GSPC",   # Hyperliquid S&P 500 perpetual → Yahoo Finance ^GSPC RSS
+        "XAU":   "GC=F",
         "BRENT": "BZ=F",
         "WTI":   "CL=F",
         "CL":    "CL=F",
@@ -270,10 +284,19 @@ def _score_macro_headline(title: str, coin: str = "") -> float:
         for kw, weight in OIL_BEARISH_KEYWORDS.items():
             if kw in lower:
                 score -= weight
+    if coin.upper() == "XAU":
+        for kw, weight in GOLD_BULLISH_KEYWORDS.items():
+            if kw in lower:
+                score += weight
+        for kw, weight in GOLD_BEARISH_KEYWORDS.items():
+            if kw in lower:
+                score -= weight
     # S&P specific boost
     if coin.upper() == "SP500" and any(t in lower for t in ["s&p", "s&p 500", "spx", "sp500", "dow", "nasdaq"]):
         score *= 1.2
     if coin.upper() in {"BRENT", "WTI", "CL"} and any(t in lower for t in ["brent", "wti", "crude", "opec", "oil"]):
+        score *= 1.15
+    if coin.upper() == "XAU" and any(t in lower for t in ["gold", "xau", "bullion", "comex", "treasury", "dollar"]):
         score *= 1.15
     return max(-100, min(100, score))
 

@@ -11,17 +11,21 @@ Deploy (Railway): set PORT env var, agent pushes to your Railway URL
 
 import json
 import os
-import csv
 import threading
 from datetime import datetime
 
 from flask import Flask, render_template, jsonify, request, abort, send_file
+import market_map as market_map_store
+import trade_logger
+import trade_review as trade_review_store
 from paths import (
     CODE_ROOT,
     CONTROL_JSON,
+    DAILY_MARKET_MAP_JSON,
     DASHBOARD_SNAPSHOT_JSON,
     KILL_FILE,
     STATE_JSON,
+    TRADE_REVIEWS_JSON,
     TRADES_CSV,
 )
 from dashboard.snapshot import (
@@ -36,6 +40,8 @@ LOG      = TRADES_CSV
 CONTROL  = CONTROL_JSON
 SNAPSHOT = DASHBOARD_SNAPSHOT_JSON
 KILL     = KILL_FILE
+MARKET_MAP = DAILY_MARKET_MAP_JSON
+REVIEWS = TRADE_REVIEWS_JSON
 HOSTED_INDEX = CODE_ROOT / "netlify-dashboard" / "public" / "index.html"
 
 # Secret token for push endpoint (set DASHBOARD_TOKEN env var for security)
@@ -57,13 +63,24 @@ def _load_state_local() -> dict:
 
 
 def _load_trades_local() -> list:
-    if not LOG.exists():
-        return []
     try:
-        with open(LOG, newline="") as f:
-            return list(csv.DictReader(f))
+        return trade_logger.read_closed_trades()
     except Exception:
         return []
+
+
+def _load_market_map_local() -> dict:
+    try:
+        return market_map_store.load_market_map()
+    except Exception:
+        return market_map_store.default_market_map()
+
+
+def _load_trade_reviews_local() -> dict:
+    try:
+        return trade_review_store.load_reviews()
+    except Exception:
+        return trade_review_store.default_reviews()
 
 
 def _load_control_local() -> dict:
@@ -102,7 +119,7 @@ def _snapshot_needs_refresh() -> bool:
         snapshot_mtime = SNAPSHOT.stat().st_mtime
     except Exception:
         return True
-    for path in (STATE, LOG, CONTROL):
+    for path in (STATE, LOG, CONTROL, MARKET_MAP, REVIEWS):
         try:
             if path.exists() and path.stat().st_mtime > snapshot_mtime:
                 return True
@@ -116,6 +133,8 @@ def _build_local_snapshot(server_timestamp: str | None = None) -> dict:
         _load_state_local(),
         _load_trades_local(),
         _load_control_local(),
+        market_map=_load_market_map_local(),
+        trade_reviews=_load_trade_reviews_local(),
         server_timestamp=server_timestamp,
     )
 
@@ -131,6 +150,8 @@ def _hydrate_snapshot_payload(data: dict, *, server_timestamp: str | None = None
         data.get("state"),
         data.get("trades", []),
         data.get("control"),
+        data.get("market_map"),
+        data.get("trade_reviews"),
         server_timestamp=server_timestamp,
     )
 
@@ -226,6 +247,50 @@ def api_kill():
     else:
         KILL.unlink(missing_ok=True)
     return jsonify({"ok": True, "control": control})
+
+
+@app.route("/api/market-map", methods=["GET", "POST"])
+def api_market_map():
+    if request.method == "GET":
+        return jsonify(_load_market_map_local())
+
+    data = request.get_json(silent=True) or {}
+    if data.get("delete") and data.get("coin"):
+        payload = market_map_store.delete_market_map_entry(str(data.get("coin")))
+    elif data.get("coin"):
+        payload = market_map_store.upsert_market_map_entry(str(data.get("coin")), data)
+    else:
+        payload = market_map_store.save_market_map(data)
+    with _lock:
+        if _remote_state["snapshot"] is not None:
+            _remote_state["snapshot"]["market_map"] = payload
+            _remote_state["snapshot"]["market_map_summary"] = market_map_store.review_summary(payload)
+        else:
+            _save_snapshot_local(_build_local_snapshot())
+    return jsonify({"ok": True, "market_map": payload})
+
+
+@app.route("/api/reviews", methods=["GET", "POST"])
+def api_reviews():
+    if request.method == "GET":
+        return jsonify(_load_trade_reviews_local())
+
+    data = request.get_json(silent=True) or {}
+    payload = trade_review_store.upsert_review(data)
+    review_summary = trade_review_store.review_summary(_load_trades_local())
+    with _lock:
+        if _remote_state["snapshot"] is not None:
+            trades = _remote_state["snapshot"].get("trades") or []
+            _remote_state["snapshot"]["trade_reviews"] = payload
+            _remote_state["snapshot"]["review_summary"] = review_summary
+            _remote_state["snapshot"]["trades"] = trade_review_store.merge_reviews_into_trades(trades)
+        else:
+            _save_snapshot_local(_build_local_snapshot())
+    return jsonify({
+        "ok": True,
+        "trade_reviews": payload,
+        "review_summary": review_summary,
+    })
 
 
 @app.route("/health")

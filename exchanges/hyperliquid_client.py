@@ -9,7 +9,10 @@ Hyperliquid markets use coin tickers directly (e.g. "BTC", "ETH", "SOL").
 All positions are USD-margined perpetuals.
 """
 
+import time
 from typing import Optional
+
+import requests
 from logger import get_logger
 from exchanges.base import BaseExchange, AccountState, OrderResult
 
@@ -18,6 +21,9 @@ log = get_logger("hyperliquid")
 
 class HyperliquidClient(BaseExchange):
     name = "Hyperliquid"
+    _SUPPORTED_CACHE: list[str] | None = None
+    _SUPPORTED_CACHE_TS: float = 0.0
+    _SUPPORTED_CACHE_TTL: float = 300.0
 
     def __init__(self, private_key: str, account_address: str, mainnet: bool = True):
         self.private_key     = private_key
@@ -171,5 +177,32 @@ class HyperliquidClient(BaseExchange):
             log.error(f"[{coin}] close_position exception: {e}")
             return OrderResult(success=False, error=str(e))
 
-    def supported_coins(self):
-        return ["BTC", "ETH", "SOL", "HYPE", "SP500", "TAO"]
+    @classmethod
+    def supported_coins(cls):
+        now = time.time()
+        if cls._SUPPORTED_CACHE and (now - cls._SUPPORTED_CACHE_TS) < cls._SUPPORTED_CACHE_TTL:
+            return list(cls._SUPPORTED_CACHE)
+
+        fallback = ["BTC", "ETH", "SOL", "HYPE", "TAO"]
+        try:
+            resp = requests.post("https://api.hyperliquid.xyz/info", json={"type": "meta"}, timeout=5)
+            resp.raise_for_status()
+            universe = resp.json().get("universe", []) or []
+            configured = {"BTC", "ETH", "SOL", "HYPE", "TAO", "SP500", "XAU"}
+            supported = sorted(
+                {
+                    str(item.get("name") or "").upper()
+                    for item in universe
+                    if str(item.get("name") or "").upper() in configured
+                }
+            )
+            if supported:
+                cls._SUPPORTED_CACHE = supported
+                cls._SUPPORTED_CACHE_TS = now
+                return list(supported)
+        except Exception as exc:
+            log.warning(f"Failed to refresh Hyperliquid supported coins from live meta: {exc}")
+
+        cls._SUPPORTED_CACHE = fallback
+        cls._SUPPORTED_CACHE_TS = now
+        return list(fallback)

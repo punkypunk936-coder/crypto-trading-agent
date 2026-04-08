@@ -27,15 +27,26 @@ import time
 import sys
 from pathlib import Path
 from typing import List, Optional, Dict
-from paths import CONTROL_JSON, DASHBOARD_SNAPSHOT_JSON, STATE_JSON, TRADES_CSV, KILL_FILE
+from paths import (
+    CONTROL_JSON,
+    DAILY_MARKET_MAP_JSON,
+    DASHBOARD_SNAPSHOT_JSON,
+    KILL_FILE,
+    STATE_JSON,
+    TRADE_REVIEWS_JSON,
+    TRADES_CSV,
+)
 from datetime import datetime
 
 import os
 from config import Config
 from logger import get_logger
 from data.market_data import completed_candle_frame, fetch_candles, get_current_price
+import hosted_state_sync
+import market_map
 import trade_dataset
 import trade_logger
+import trade_review
 from indicators.technical import compute_signals
 from indicators.advanced  import compute_advanced_signals
 from indicators.sentiment import get_fear_greed_score, sentiment_summary
@@ -578,6 +589,17 @@ class TradingAgent:
                 log.debug(f"[{coin}] Orderbook levels skipped: {e}")
         self._track_orderbook_snapshot(coin, orderbook_signal)
 
+        market_map_signal = None
+        if getattr(self.cfg.trading, "use_daily_market_map", True):
+            try:
+                market_map_signal = market_map.get_market_map_signal(
+                    coin,
+                    current_price=tech.price,
+                    closed_price=getattr(tech, "closed_price", tech.price),
+                )
+            except Exception as e:
+                log.debug(f"[{coin}] Market map skipped: {e}")
+
         # Generate signal  (LONG / SHORT / FLAT)
         signal = self.strategy.generate_signal(
             tech, advanced, sentiment, current_pos, regimes,
@@ -587,6 +609,7 @@ class TradingAgent:
             instrument_type=instrument_type,
             funding_oi_signal=funding_oi_signal,
             orderbook_signal=orderbook_signal,
+            market_map_signal=market_map_signal,
         )
 
         log.info(
@@ -680,6 +703,18 @@ class TradingAgent:
             "daily_breakout_level": orderbook_signal.daily_breakout_level if orderbook_signal and orderbook_signal.valid else 0.0,
             "daily_breakdown_level": orderbook_signal.daily_breakdown_level if orderbook_signal and orderbook_signal.valid else 0.0,
             "orderbook_valid": bool(orderbook_signal and orderbook_signal.valid),
+            "market_map_available": bool(market_map_signal and getattr(market_map_signal, "valid", False)),
+            "market_map_bias": getattr(market_map_signal, "bias", "NEUTRAL") if market_map_signal else "NEUTRAL",
+            "market_map_summary": getattr(market_map_signal, "summary", "") if market_map_signal else "",
+            "market_map_score_adjustment": getattr(market_map_signal, "score_adjustment", 0.0) if market_map_signal else 0.0,
+            "market_map_favor_longs": getattr(market_map_signal, "favor_longs", False) if market_map_signal else False,
+            "market_map_favor_shorts": getattr(market_map_signal, "favor_shorts", False) if market_map_signal else False,
+            "market_map_block_longs": getattr(market_map_signal, "block_longs", False) if market_map_signal else False,
+            "market_map_block_shorts": getattr(market_map_signal, "block_shorts", False) if market_map_signal else False,
+            "market_map_daily_close": getattr(market_map_signal, "daily_close", 0.0) if market_map_signal else 0.0,
+            "market_map_nearest_support": getattr(market_map_signal, "nearest_support", 0.0) if market_map_signal else 0.0,
+            "market_map_nearest_resistance": getattr(market_map_signal, "nearest_resistance", 0.0) if market_map_signal else 0.0,
+            "market_map_notes": getattr(market_map_signal, "notes", "") if market_map_signal else "",
             "planned_stop_loss": signal.stop_loss_price,
             "planned_take_profit": signal.take_profit_price,
             "planned_risk_pct": trade_plan.get("risk_pct", 0.0),
@@ -863,8 +898,49 @@ class TradingAgent:
             self._last_signals[coin]["decision_reason"] = signal.reason or signal.flat_reason or ""
             self._last_signals[coin]["flat_reason"] = signal.flat_reason
 
+        if signal.action in ("LONG", "SHORT"):
+            review_guard = trade_review.get_directional_feedback(coin, signal.action)
+            self._last_signals[coin]["operator_review_guard"] = review_guard
+            self._last_signals[coin]["operator_review_reasons"] = review_guard.get("reasons", [])
+            self._last_signals[coin]["operator_review_score_adjustment"] = review_guard.get("score_adjustment", 0.0)
+            if review_guard.get("hard_block", False):
+                block_reason = str(review_guard.get("reason", "") or f"operator review blocks {signal.action}")
+                log.info(f"[{coin}] 🧾 {block_reason}")
+                signal.action = "FLAT"
+                signal.flat_reason = block_reason
+                signal.reason = block_reason
+            else:
+                review_adj = float(review_guard.get("score_adjustment", 0.0) or 0.0)
+                if review_adj != 0.0:
+                    effective_score = signal.score + review_adj
+                    long_threshold = float(self.cfg.trading.signal_long_threshold)
+                    short_threshold = float(self.cfg.trading.signal_short_threshold)
+                    if signal.action == "LONG" and effective_score < long_threshold:
+                        review_reason = (
+                            f"operator review trims LONG to {effective_score:.1f} "
+                            f"(< {long_threshold:.0f})"
+                        )
+                        log.info(f"[{coin}] 🧾 {review_reason}")
+                        signal.action = "FLAT"
+                        signal.flat_reason = review_reason
+                        signal.reason = review_reason
+                    elif signal.action == "SHORT" and effective_score > short_threshold:
+                        review_reason = (
+                            f"operator review lifts SHORT to {effective_score:.1f} "
+                            f"(> {short_threshold:.0f})"
+                        )
+                        log.info(f"[{coin}] 🧾 {review_reason}")
+                        signal.action = "FLAT"
+                        signal.flat_reason = review_reason
+                        signal.reason = review_reason
+
+            self._last_signals[coin]["action"] = signal.action
+            self._last_signals[coin]["decision"] = signal.action
+            self._last_signals[coin]["decision_reason"] = signal.reason or signal.flat_reason or ""
+            self._last_signals[coin]["flat_reason"] = signal.flat_reason
+
         if signal.action == "FLAT":
-            log.info(f"[{coin}] RL guard keeps this setup flat for now")
+            log.info(f"[{coin}] Guardrails keep this setup flat for now")
             return
 
         if coin not in self._tradable_coin_set:
@@ -1317,6 +1393,11 @@ class TradingAgent:
             "orderbook_resistance_distance_pct": sig.get("orderbook_resistance_distance_pct", 0.0),
             "daily_breakout_level": sig.get("daily_breakout_level", 0.0),
             "daily_breakdown_level": sig.get("daily_breakdown_level", 0.0),
+            "market_map_bias": sig.get("market_map_bias", "NEUTRAL"),
+            "market_map_summary": sig.get("market_map_summary", ""),
+            "market_map_score_adjustment": sig.get("market_map_score_adjustment", 0.0),
+            "market_map_notes": sig.get("market_map_notes", ""),
+            "operator_review_guard": sig.get("operator_review_guard", {}),
             "trade_plan": trade_plan,
             "thesis": sig.get("thesis", {}),
             "execution_quality": sig.get("execution_quality", {}),
@@ -2199,6 +2280,7 @@ class TradingAgent:
                 "index_min_hold_minutes": self.cfg.trading.index_min_hold_minutes,
                 "reversal_boost":        self.cfg.trading.reversal_threshold_boost,
                 "check_interval_seconds": self.cfg.trading.check_interval_seconds,
+                "use_daily_market_map":  getattr(self.cfg.trading, "use_daily_market_map", True),
                 "coins":                 self._tradable_coins,
                 "analysis_coins":        self._analysis_coins,
                 "instrument_types":      self.cfg.trading.instrument_types,
@@ -2219,6 +2301,9 @@ class TradingAgent:
             except Exception as e:
                 log.debug(f"trades_log.csv read failed: {e}")
 
+        market_map_data = market_map.load_market_map()
+        review_data = trade_review.load_reviews()
+
         control_data = default_control()
         control_path = CONTROL_JSON
         if control_path.exists():
@@ -2227,7 +2312,13 @@ class TradingAgent:
             except Exception as e:
                 log.debug(f"control.json read failed: {e}")
 
-        snapshot = build_dashboard_snapshot(state, trades_data, control_data)
+        snapshot = build_dashboard_snapshot(
+            state,
+            trades_data,
+            control_data,
+            market_map=market_map_data,
+            trade_reviews=review_data,
+        )
         try:
             DASHBOARD_SNAPSHOT_JSON.write_text(json.dumps(snapshot, indent=2))
         except Exception as e:
@@ -2235,9 +2326,12 @@ class TradingAgent:
 
         # Push the exact local dashboard snapshot to the hosted dashboard.
         remote_url = os.environ.get("DASHBOARD_URL", "")
+        remote_push_ok = False
         if remote_url:
             try:
+                import ssl
                 import urllib.request
+
                 payload = json.dumps({
                     "snapshot": snapshot,
                     "state": state,
@@ -2253,7 +2347,6 @@ class TradingAgent:
                     },
                     method="POST"
                 )
-                import ssl
                 ctx = ssl.create_default_context()
                 try:
                     import certifi
@@ -2261,7 +2354,8 @@ class TradingAgent:
                 except ImportError:
                     ctx.check_hostname = False
                     ctx.verify_mode = ssl.CERT_NONE
-                resp = urllib.request.urlopen(req, timeout=15, context=ctx)
+                urllib.request.urlopen(req, timeout=15, context=ctx)
+                remote_push_ok = True
 
                 # Check for remote kill signal
                 try:
@@ -2295,7 +2389,25 @@ class TradingAgent:
                 except Exception:
                     pass  # kill signal check is best-effort
             except Exception as e:
-                log.debug(f"Remote dashboard push failed: {e}")
+                detail = str(e)
+                if hasattr(e, "read"):
+                    try:
+                        body = e.read().decode()
+                        if body:
+                            detail = f"{detail} | {body[:220]}"
+                    except Exception:
+                        pass
+                log.debug(f"Remote dashboard push failed: {detail}")
+
+        if not remote_push_ok:
+            hosted_state_sync.publish_snapshot(
+                snapshot,
+                state=state,
+                trades=trades_data,
+                control=control_data,
+                market_map=market_map_data,
+                trade_reviews=review_data,
+            )
 
     def _print_final_summary(self):
         log.info("\n" + "=" * 64)
