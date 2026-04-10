@@ -22,6 +22,8 @@ class TradeSignal:
     instrument_type: str = "crypto"  # "crypto" | "index"
     trade_plan: dict = field(default_factory=dict)
     thesis: dict = field(default_factory=dict)
+    expectancy: dict = field(default_factory=dict)
+    execution_plan: dict = field(default_factory=dict)
 
 
 class AggressiveStrategy:
@@ -170,6 +172,7 @@ class AggressiveStrategy:
         funding_oi_signal=None,
         orderbook_signal=None,
         market_map_signal=None,
+        narrative_signal=None,
         trade_plan: Dict | None = None,
     ) -> dict:
         thesis = {
@@ -396,6 +399,27 @@ class AggressiveStrategy:
                     conflicts += 1.0
                     reasons.append("daily operator bias still leans bullish")
 
+        if narrative_signal and getattr(narrative_signal, "valid", False):
+            headline_bias = str(getattr(narrative_signal, "headline_bias", "NEUTRAL") or "NEUTRAL").upper()
+            if bullish:
+                if getattr(narrative_signal, "block_longs", False):
+                    blockers.append("major headline flow still blocks longs")
+                elif headline_bias == "BULLISH":
+                    alignment += 0.75
+                    reasons.append("narrative flow supports the long")
+                elif headline_bias == "BEARISH":
+                    conflicts += 0.75
+                    reasons.append("narrative flow still leans bearish")
+            else:
+                if getattr(narrative_signal, "block_shorts", False):
+                    blockers.append("major headline flow still blocks shorts")
+                elif headline_bias == "BEARISH":
+                    alignment += 0.75
+                    reasons.append("narrative flow supports the short")
+                elif headline_bias == "BULLISH":
+                    conflicts += 0.75
+                    reasons.append("narrative flow still leans bullish")
+
         rr = float((trade_plan or {}).get("risk_reward_ratio", 0.0) or 0.0)
         min_rr = float(getattr(self.tcfg, "thesis_min_risk_reward_ratio", 1.75) or 1.75)
         if rr > 0 and rr >= min_rr:
@@ -469,6 +493,264 @@ class AggressiveStrategy:
             "blockers": blockers[:4],
         })
         return thesis
+
+    def _derive_expectancy_profile(
+        self,
+        *,
+        action: str,
+        score: float,
+        thesis: Dict | None = None,
+        trade_plan: Dict | None = None,
+        regimes=None,
+        orderbook_signal=None,
+        market_map_signal=None,
+        news_signal=None,
+        funding_oi_signal=None,
+        narrative_signal=None,
+        current_position=None,
+    ) -> dict:
+        thesis = dict(thesis or {})
+        trade_plan = dict(trade_plan or {})
+        bullish = action == "LONG"
+        same_direction_position = current_position == action
+        alignment = float(thesis.get("alignment_points", 0.0) or 0.0)
+        conflicts = float(thesis.get("conflict_points", 0.0) or 0.0)
+        conviction = float(thesis.get("conviction_score", 50.0) or 50.0)
+        rr = float(trade_plan.get("risk_reward_ratio", 0.0) or 0.0)
+
+        probability = 0.50
+        probability += ((conviction - 50.0) / 50.0) * 0.18
+        probability += min(0.14, alignment * 0.028)
+        probability -= min(0.18, conflicts * 0.045)
+        probability += max(-0.06, min(0.06, (score - 50.0) / 50.0 * 0.08))
+
+        uncertainty = 0.34
+        uncertainty -= min(0.10, alignment * 0.018)
+        uncertainty += min(0.18, conflicts * 0.035)
+        if not thesis.get("permitted", False):
+            uncertainty += 0.08
+
+        dominant_regime = str(getattr(regimes, "dominant_regime", "MIXED") or "MIXED").upper()
+        if dominant_regime in {"TREND", "MOMENTUM", "BREAKOUT"}:
+            probability += 0.03
+            uncertainty -= 0.03
+        elif dominant_regime in {"ABSORPTION", "MIXED"}:
+            uncertainty += 0.05
+        elif dominant_regime == "MEAN_REV":
+            uncertainty += 0.03
+
+        breakout_state = str(getattr(orderbook_signal, "breakout_state", "NONE") or "NONE").upper()
+        level_interaction = str(getattr(orderbook_signal, "level_interaction", "BETWEEN_LEVELS") or "BETWEEN_LEVELS").upper()
+        if orderbook_signal and getattr(orderbook_signal, "valid", False):
+            orderbook_score = float(getattr(orderbook_signal, "score", 50.0) or 50.0)
+            imbalance = float(getattr(orderbook_signal, "imbalance_mean", getattr(orderbook_signal, "imbalance_ratio", 0.0)) or 0.0)
+            orderbook_bonus = float(getattr(self.tcfg, "expectancy_orderbook_bonus", 0.05) or 0.05)
+            if (bullish and orderbook_score >= 58.0) or ((not bullish) and orderbook_score <= 42.0):
+                probability += orderbook_bonus
+                uncertainty -= 0.03
+            elif (bullish and orderbook_score <= 45.0) or ((not bullish) and orderbook_score >= 55.0):
+                probability -= orderbook_bonus
+                uncertainty += 0.05
+            if bullish and imbalance >= 0.05:
+                probability += 0.02
+            elif (not bullish) and imbalance <= -0.05:
+                probability += 0.02
+            if breakout_state.startswith("PROBING"):
+                uncertainty += 0.05
+            elif breakout_state.startswith("CONFIRMED") or breakout_state.startswith("PERSISTENT"):
+                probability += 0.03
+                uncertainty -= 0.04
+            if level_interaction == "RANGE_COMPRESSION":
+                uncertainty += 0.14
+        else:
+            uncertainty += 0.06
+
+        if market_map_signal and getattr(market_map_signal, "valid", False):
+            market_map_bonus = float(getattr(self.tcfg, "expectancy_market_map_bonus", 0.04) or 0.04)
+            if bullish and getattr(market_map_signal, "favor_longs", False):
+                probability += market_map_bonus
+            elif (not bullish) and getattr(market_map_signal, "favor_shorts", False):
+                probability += market_map_bonus
+            if bullish and getattr(market_map_signal, "block_longs", False):
+                probability -= market_map_bonus
+                uncertainty += 0.04
+            elif (not bullish) and getattr(market_map_signal, "block_shorts", False):
+                probability -= market_map_bonus
+                uncertainty += 0.04
+
+        if news_signal and getattr(news_signal, "valid", False):
+            news_score = float(getattr(news_signal, "score", 50.0) or 50.0)
+            news_bonus = float(getattr(self.tcfg, "expectancy_news_bonus", 0.04) or 0.04)
+            if (bullish and news_score >= 55.0) or ((not bullish) and news_score <= 45.0):
+                probability += news_bonus
+                uncertainty -= 0.02
+            elif (bullish and news_score <= 45.0) or ((not bullish) and news_score >= 55.0):
+                probability -= news_bonus
+                uncertainty += 0.04
+
+        if funding_oi_signal and getattr(funding_oi_signal, "valid", False):
+            foc_score = float(getattr(funding_oi_signal, "composite_score", 50.0) or 50.0)
+            if (bullish and foc_score >= 55.0) or ((not bullish) and foc_score <= 45.0):
+                probability += 0.03
+            elif (bullish and foc_score <= 45.0) or ((not bullish) and foc_score >= 55.0):
+                probability -= 0.03
+                uncertainty += 0.03
+
+        if narrative_signal and getattr(narrative_signal, "valid", False):
+            probability += float(getattr(narrative_signal, "score_adjustment", 0.0) or 0.0) / 100.0
+            uncertainty += float(getattr(narrative_signal, "uncertainty_delta", 0.0) or 0.0)
+            if bullish and getattr(narrative_signal, "block_longs", False):
+                probability -= 0.10
+            elif (not bullish) and getattr(narrative_signal, "block_shorts", False):
+                probability -= 0.10
+
+        probability = max(0.05, min(0.95, probability))
+        uncertainty = max(0.05, min(0.95, uncertainty))
+
+        expected_r = 0.0
+        if rr > 0:
+            expected_r = (probability * rr) - ((1.0 - probability) * 1.0)
+
+        expectancy_score = (
+            50.0
+            + (probability - 0.50) * 70.0
+            + expected_r * 16.0
+            - uncertainty * 22.0
+            + alignment * 1.4
+            - conflicts * 2.6
+        )
+        expectancy_score = max(0.0, min(100.0, expectancy_score))
+
+        min_probability = float(getattr(self.tcfg, "expectancy_min_probability", 0.54) or 0.54)
+        min_expected_r = float(getattr(self.tcfg, "expectancy_min_expected_r", 0.18) or 0.18)
+        max_uncertainty = float(getattr(self.tcfg, "expectancy_max_uncertainty", 0.42) or 0.42)
+        min_score = float(
+            getattr(
+                self.tcfg,
+                "expectancy_same_direction_min_score" if same_direction_position else "expectancy_min_score",
+                56.0 if not same_direction_position else 52.0,
+            )
+            or (56.0 if not same_direction_position else 52.0)
+        )
+
+        permitted = bool(thesis.get("permitted", False))
+        blockers: List[str] = []
+        reasons: List[str] = [
+            f"estimated win probability {probability * 100:.0f}%",
+            f"expected value {expected_r:+.2f}R",
+            f"uncertainty {uncertainty * 100:.0f}%",
+        ]
+        if rr > 0:
+            reasons.append(f"target profile {rr:.2f}R")
+
+        if probability < min_probability:
+            blockers.append(f"win probability {probability * 100:.0f}% is below {min_probability * 100:.0f}%")
+        if rr > 0 and expected_r < min_expected_r:
+            blockers.append(f"expected value {expected_r:+.2f}R is below {min_expected_r:.2f}R")
+        if uncertainty > max_uncertainty:
+            blockers.append(f"uncertainty {uncertainty * 100:.0f}% is above {max_uncertainty * 100:.0f}%")
+        if expectancy_score < min_score:
+            blockers.append(f"expectancy score {expectancy_score:.0f} is below {min_score:.0f}")
+
+        permitted = permitted and not blockers
+        quality = "HIGH" if expectancy_score >= 70.0 and uncertainty <= 0.28 else "MEDIUM" if expectancy_score >= min_score and uncertainty <= max_uncertainty else "LOW"
+        summary = "; ".join(reasons[:3]) if permitted else (blockers[0] if blockers else "expectancy did not clear the gate")
+        return {
+            "permitted": permitted,
+            "probability": round(probability, 4),
+            "expected_r": round(expected_r, 4),
+            "uncertainty": round(uncertainty, 4),
+            "score": round(expectancy_score, 2),
+            "quality": quality,
+            "summary": summary,
+            "reasons": reasons[:5],
+            "blockers": blockers[:4],
+        }
+
+    def _build_execution_plan(
+        self,
+        *,
+        action: str,
+        entry_price: float,
+        trade_plan: Dict | None = None,
+        expectancy: Dict | None = None,
+        orderbook_signal=None,
+    ) -> dict:
+        if action not in {"LONG", "SHORT"} or entry_price <= 0:
+            return {}
+
+        trade_plan = dict(trade_plan or {})
+        expectancy = dict(expectancy or {})
+        plan = {
+            "mode": "market",
+            "entry_price": round(entry_price, 6),
+            "limit_price": 0.0,
+            "max_wait_cycles": int(getattr(self.tcfg, "execution_limit_timeout_cycles", 6) or 6),
+            "reason": "default aggressive entry",
+        }
+        if not getattr(self.tcfg, "execution_planning_enabled", True):
+            plan["reason"] = "execution planning disabled"
+            return plan
+
+        probability = float(expectancy.get("probability", 0.0) or 0.0)
+        expectancy_score = float(expectancy.get("score", 0.0) or 0.0)
+        breakout_state = str(getattr(orderbook_signal, "breakout_state", "NONE") or "NONE").upper()
+        confirmed_breakout = breakout_state.startswith("CONFIRMED") or breakout_state.startswith("PERSISTENT")
+        passive_offset_bps = float(getattr(self.tcfg, "execution_passive_entry_offset_bps", 4.0) or 4.0) / 10_000.0
+        retest_distance_pct = float(getattr(self.tcfg, "execution_limit_retest_distance_pct", 0.40) or 0.40)
+        breakout_min_prob = float(getattr(self.tcfg, "execution_breakout_market_probability", 0.64) or 0.64)
+        breakout_min_score = float(getattr(self.tcfg, "execution_breakout_market_expectancy_score", 64.0) or 64.0)
+
+        if not orderbook_signal or not getattr(orderbook_signal, "valid", False):
+            plan["reason"] = "no orderbook context; use market entry"
+            return plan
+
+        if confirmed_breakout and probability >= breakout_min_prob and expectancy_score >= breakout_min_score:
+            plan["mode"] = "market"
+            plan["reason"] = "confirmed breakout with strong expectancy"
+            return plan
+
+        if action == "LONG":
+            support = float(getattr(orderbook_signal, "nearest_support", 0.0) or 0.0)
+            support_distance = float(getattr(orderbook_signal, "nearest_support_distance_pct", 0.0) or 0.0)
+            best_bid = float(getattr(orderbook_signal, "best_bid", 0.0) or 0.0)
+            if support > 0 and support_distance <= retest_distance_pct:
+                limit_price = max(support, best_bid or support)
+                plan.update({
+                    "mode": "limit",
+                    "limit_price": round(limit_price, 6),
+                    "entry_price": round(limit_price, 6),
+                    "reason": "buying the defended retest near support",
+                })
+            elif best_bid > 0:
+                limit_price = best_bid * (1 - passive_offset_bps)
+                plan.update({
+                    "mode": "maker_limit",
+                    "limit_price": round(limit_price, 6),
+                    "entry_price": round(limit_price, 6),
+                    "reason": "using passive bid placement to improve entry quality",
+                })
+        else:
+            resistance = float(getattr(orderbook_signal, "nearest_resistance", 0.0) or 0.0)
+            resistance_distance = float(getattr(orderbook_signal, "nearest_resistance_distance_pct", 0.0) or 0.0)
+            best_ask = float(getattr(orderbook_signal, "best_ask", 0.0) or 0.0)
+            if resistance > 0 and resistance_distance <= retest_distance_pct:
+                limit_price = min(resistance, best_ask or resistance)
+                plan.update({
+                    "mode": "limit",
+                    "limit_price": round(limit_price, 6),
+                    "entry_price": round(limit_price, 6),
+                    "reason": "selling the retest near defended resistance",
+                })
+            elif best_ask > 0:
+                limit_price = best_ask * (1 + passive_offset_bps)
+                plan.update({
+                    "mode": "maker_limit",
+                    "limit_price": round(limit_price, 6),
+                    "entry_price": round(limit_price, 6),
+                    "reason": "using passive ask placement to improve entry quality",
+                })
+        return plan
 
     def _build_trade_plan(self, tech, advanced, action, confidence, regimes=None, candle_patterns=None, orderbook_signal=None, market_map_signal=None):
         if action == "FLAT" or tech.price <= 0:
@@ -746,6 +1028,7 @@ class AggressiveStrategy:
         funding_oi_signal=None,    # FundingOISignal from indicators/funding_oi_cvd.py
         orderbook_signal=None,
         market_map_signal=None,
+        narrative_signal=None,
     ):
         if not tech.valid:
             return TradeSignal(coin=tech.coin, action="FLAT", score=50.0,
@@ -953,6 +1236,15 @@ class AggressiveStrategy:
                 f"adj={map_adjustment:+.1f} summary={getattr(market_map_signal, 'summary', '')[:72]}"
             )
 
+        if narrative_signal and getattr(narrative_signal, "valid", False):
+            narrative_adjustment = float(getattr(narrative_signal, "score_adjustment", 0.0) or 0.0)
+            raw_score += narrative_adjustment
+            if narrative_adjustment:
+                log.info(
+                    f"[{tech.coin}] Narrative: adj={narrative_adjustment:+.1f} "
+                    f"summary={getattr(narrative_signal, 'summary', '')[:72]}"
+                )
+
         raw_score = max(0.0, min(100.0, raw_score))
 
         # ── 14. Memory-based score adjustment ────────────────────────────────
@@ -1060,9 +1352,21 @@ class AggressiveStrategy:
         distance = abs(raw_score - 50.0)
         confidence = "HIGH" if distance >= 20 else "MEDIUM" if distance >= 10 else "LOW"
 
-        # ── 17. Preliminary trade plan + thesis gate ────────────────────────
+        # ── 17. Preliminary trade plan + thesis / expectancy gate ───────────
         sl_price = tp_price = 0.0
         trade_plan = {}
+        expectancy = {
+            "permitted": False,
+            "probability": 0.50,
+            "expected_r": 0.0,
+            "uncertainty": 0.50,
+            "score": round(max(0.0, min(100.0, distance * 1.6)), 2),
+            "quality": confidence,
+            "summary": "No expectancy profile because the setup remained flat",
+            "reasons": [],
+            "blockers": [],
+        }
+        execution_plan = {}
         thesis = {
             "candidate_action": action,
             "state": "NO_TRADE",
@@ -1123,18 +1427,50 @@ class AggressiveStrategy:
                 funding_oi_signal=funding_oi_signal,
                 orderbook_signal=orderbook_signal,
                 market_map_signal=market_map_signal,
+                narrative_signal=narrative_signal,
                 trade_plan=trade_plan,
             )
-            if not thesis.get("permitted", False):
+            expectancy = self._derive_expectancy_profile(
+                action=candidate_action,
+                score=raw_score,
+                thesis=thesis,
+                trade_plan=trade_plan,
+                regimes=regimes,
+                orderbook_signal=orderbook_signal,
+                market_map_signal=market_map_signal,
+                news_signal=news_signal,
+                funding_oi_signal=funding_oi_signal,
+                narrative_signal=narrative_signal,
+                current_position=current_position,
+            )
+            confidence = str(expectancy.get("quality", confidence) or confidence).upper()
+            if not expectancy.get("permitted", False):
+                action = "FLAT"
+                thesis_guard_reason = str(expectancy.get("summary", "") or "")
+                sl_price = 0.0
+                tp_price = 0.0
+                trade_plan = {}
+                execution_plan = {}
+            elif not thesis.get("permitted", False):
                 action = "FLAT"
                 thesis_guard_reason = str(thesis.get("summary", "") or "")
                 sl_price = 0.0
                 tp_price = 0.0
                 trade_plan = {}
+                execution_plan = {}
+            else:
+                execution_plan = self._build_execution_plan(
+                    action=candidate_action,
+                    entry_price=float(trade_plan.get("entry_price", tech.price) or tech.price),
+                    trade_plan=trade_plan,
+                    expectancy=expectancy,
+                    orderbook_signal=orderbook_signal,
+                )
         elif candidate_action == "FLAT":
             thesis["permitted"] = False
             thesis["quality"] = "LOW"
             thesis["conviction_score"] = round(max(0.0, min(100.0, 50.0 - distance)), 2)
+            expectancy["score"] = round(max(0.0, min(100.0, 50.0 - distance)), 2)
 
         # ── 18. Strategic FLAT reasoning ─────────────────────────────────────
         # When staying flat, build a clear explanation so the dashboard shows
@@ -1205,6 +1541,8 @@ class AggressiveStrategy:
             tech, advanced, sentiment, raw_score, action,
             vol_ratio, regimes, news_signal, candle_patterns, orderbook_signal, market_map_signal,
             thesis=thesis,
+            expectancy=expectancy,
+            narrative_signal=narrative_signal,
         )
 
         log.info(
@@ -1225,22 +1563,29 @@ class AggressiveStrategy:
             instrument_type   = instrument_type,
             trade_plan        = trade_plan,
             thesis            = thesis,
+            expectancy        = expectancy,
+            execution_plan    = execution_plan,
         )
 
     def _build_reason(
         self, tech, advanced, sentiment, score, action,
         vol_ratio, regimes=None, news_signal=None, candle_patterns=None, orderbook_signal=None, market_map_signal=None,
         thesis=None,
+        expectancy=None,
+        narrative_signal=None,
     ):
         parts = []
         msb = advanced.msb
         thesis_summary = str((thesis or {}).get("summary", "") or "")
         thesis_quality = str((thesis or {}).get("quality", "") or "")
+        expectancy_summary = str((expectancy or {}).get("summary", "") or "")
         if thesis_summary:
             prefix = "Thesis"
             if thesis_quality:
                 prefix += f" {thesis_quality.lower()}"
             parts.append(f"{prefix}: {thesis_summary}")
+        if expectancy_summary:
+            parts.append(f"Expectancy: {expectancy_summary}")
         parts.append(msb.description if msb.msb_type != "NONE"
                      else f"Structure: {msb.structure_trend}")
 
@@ -1295,5 +1640,10 @@ class AggressiveStrategy:
 
         if market_map_signal and getattr(market_map_signal, "valid", False):
             parts.append(f"Map: {getattr(market_map_signal, 'summary', '')}")
+
+        if narrative_signal and getattr(narrative_signal, "valid", False):
+            narrative_summary = str(getattr(narrative_signal, "summary", "") or "")
+            if narrative_summary:
+                parts.append(f"Narrative: {narrative_summary}")
 
         return " | ".join(parts)

@@ -102,6 +102,8 @@ def build_config() -> Config:
     cfg.trading.coins = ["BTC"]
     cfg.trading.max_trade_usd = 100.0
     cfg.trading.min_trade_usd = 100.0
+    cfg.trading.use_news = False
+    cfg.trading.use_narrative_gate = False
     return cfg
 
 
@@ -784,6 +786,57 @@ def test_thesis_gate_blocks_high_score_range_compression_setup() -> None:
     assert "range compression" in signal.flat_reason.lower() or "ranging" in signal.flat_reason.lower()
 
 
+def test_expectancy_gate_rejects_thin_edge_setup() -> None:
+    cfg = build_config()
+    strategy = AggressiveStrategy(cfg.trading, cfg.indicators)
+
+    expectancy = strategy._derive_expectancy_profile(
+        action="LONG",
+        score=65.0,
+        thesis={
+            "permitted": True,
+            "alignment_points": 4.0,
+            "conflict_points": 0.5,
+            "conviction_score": 60.0,
+        },
+        trade_plan={"risk_reward_ratio": 0.90},
+        regimes=SimpleNamespace(valid=True, dominant_regime="MIXED"),
+        orderbook_signal=SimpleNamespace(valid=True, level_interaction="RANGE_COMPRESSION", breakout_state="NONE", score=52.0),
+        market_map_signal=None,
+        news_signal=None,
+        funding_oi_signal=None,
+        narrative_signal=None,
+        current_position=None,
+    )
+
+    assert expectancy["permitted"] is False
+    assert expectancy["blockers"], "thin-edge setup should explain why expectancy failed"
+
+
+def test_execution_plan_prefers_limit_entry_on_defended_support() -> None:
+    cfg = build_config()
+    strategy = AggressiveStrategy(cfg.trading, cfg.indicators)
+
+    plan = strategy._build_execution_plan(
+        action="LONG",
+        entry_price=100.0,
+        trade_plan={"risk_reward_ratio": 2.1},
+        expectancy={"probability": 0.63, "score": 68.0},
+        orderbook_signal=SimpleNamespace(
+            valid=True,
+            breakout_state="NONE",
+            nearest_support=99.8,
+            nearest_support_distance_pct=0.20,
+            best_bid=99.92,
+            best_ask=100.02,
+        ),
+    )
+
+    assert plan["mode"] == "limit"
+    assert plan["limit_price"] > 0
+    assert "support" in plan["reason"].lower()
+
+
 def test_agent_uses_completed_candles_for_conviction_but_live_price_for_execution() -> None:
     cfg = build_config()
     cfg.trading.use_orderbook_levels = False
@@ -1005,6 +1058,47 @@ def test_order_sizing_scales_with_conviction_and_tempers_euphoria() -> None:
     assert low_conviction.approved and high_conviction.approved
     assert high_conviction.size_usd > low_conviction.size_usd, "higher conviction should allocate more capital"
     assert supported_extreme.size_usd > cautious_extreme.size_usd, "weak RL history should dampen euphoric sizing"
+
+
+def test_narrative_gate_blocks_event_risk_without_exceptional_expectancy() -> None:
+    cfg = build_config()
+    cfg.trading.use_narrative_gate = True
+    agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=1000.0)])
+    signal = SimpleNamespace(
+        action="LONG",
+        score=66.0,
+        expectancy={"score": 66.0, "probability": 0.57},
+    )
+    narrative_signal = SimpleNamespace(
+        valid=True,
+        block_longs=False,
+        block_shorts=False,
+        event_risk_active=True,
+        summary="CPI is within the narrative risk window",
+    )
+
+    assert agent._check_narrative_gate("BTC", signal, narrative_signal) is False
+
+
+def test_backtest_summary_includes_baselines() -> None:
+    cfg = build_config()
+    original_config = backtest_module.config
+    backtest_module.config = cfg
+    try:
+        df = pd.DataFrame({
+            "timestamp": pd.date_range("2026-01-01", periods=120, freq="1h", tz="UTC"),
+            "open": [100.0 + i * 0.2 for i in range(120)],
+            "high": [100.5 + i * 0.2 for i in range(120)],
+            "low": [99.5 + i * 0.2 for i in range(120)],
+            "close": [100.2 + i * 0.2 for i in range(120)],
+            "volume": [10.0] * 120,
+        })
+        bt = backtest_module.Backtester("BTC", df, starting_balance=1000.0, trade_size_usd=50.0)
+        summary = bt._summary()
+        assert "baselines" in summary
+        assert "buy_hold_return" in summary["baselines"]
+    finally:
+        backtest_module.config = original_config
 
 
 def test_failed_close_keeps_position_open() -> None:
@@ -2072,12 +2166,20 @@ def run_all() -> None:
     print("PASS probing breakout guard")
     test_thesis_gate_blocks_high_score_range_compression_setup()
     print("PASS thesis no-trade gate")
+    test_expectancy_gate_rejects_thin_edge_setup()
+    print("PASS expectancy gate")
+    test_execution_plan_prefers_limit_entry_on_defended_support()
+    print("PASS planned limit execution")
     test_agent_uses_completed_candles_for_conviction_but_live_price_for_execution()
     print("PASS completed-candle conviction split")
     test_scale_in_does_not_mutate_before_fill()
     print("PASS scale-in accounting")
     test_order_sizing_scales_with_conviction_and_tempers_euphoria()
     print("PASS conviction sizing")
+    test_narrative_gate_blocks_event_risk_without_exceptional_expectancy()
+    print("PASS narrative event gate")
+    test_backtest_summary_includes_baselines()
+    print("PASS backtest baselines")
     test_failed_close_keeps_position_open()
     print("PASS close failure safety")
     test_preflight_reports_missing_live_bootstrap()

@@ -108,7 +108,7 @@ class TradingConfig:
     # ── FLAT-while-positioned guard ───────────────────────────────
     # If signal stays FLAT for this many consecutive cycles while holding a
     # position, the original thesis is gone → close the trade.
-    max_flat_cycles_with_position: int = 3  # ~6 min at 2min cycles
+    max_flat_cycles_with_position: int = 3  # Legacy input into conviction-decay logic, not a hard close alone
 
     # ── Position sizing ─────────────────────────────────
     max_position_pct: float       = 0.05   # Max 5% of portfolio per trade (was 2%)
@@ -131,9 +131,17 @@ class TradingConfig:
     base_target_r_multiple: float = 2.00
     min_target_r_multiple: float  = 1.35
     max_target_r_multiple: float  = 3.50
+    expectancy_min_probability: float = 0.54
+    expectancy_min_expected_r: float = 0.18
+    expectancy_max_uncertainty: float = 0.42
+    expectancy_min_score: float = 56.0
+    expectancy_same_direction_min_score: float = 52.0
+    expectancy_orderbook_bonus: float = 0.05
+    expectancy_market_map_bonus: float = 0.04
+    expectancy_news_bonus: float = 0.04
     trailing_stop_enabled: bool   = True
     trailing_stop_pct: float      = 0.12   # 12% trailing stop (locks profits as price runs)
-    use_orderbook_levels: bool    = True   # Live L2 + daily key-level intelligence for BTC/ETH/SOL
+    use_orderbook_levels: bool    = True   # Live L2 + daily key-level intelligence for venue-backed assets
     orderbook_depth_limit: int    = 120
     orderbook_daily_lookback: int = 120
     orderbook_cache_ttl_seconds: int = 25
@@ -148,11 +156,18 @@ class TradingConfig:
     orderbook_score_influence: float = 0.35
     orderbook_override_score: float = 82.0
     require_orderbook_for_crypto_entries: bool = True
+    require_orderbook_for_supported_entries: bool = True
     require_execution_quality: bool = True
     max_execution_spread_bps: float = 12.0
     min_execution_depth_multiple: float = 10.0
     max_execution_slippage_bps: float = 18.0
     min_orderbook_persistence_cycles: int = 2
+    execution_planning_enabled: bool = True
+    execution_limit_retest_distance_pct: float = 0.40
+    execution_passive_entry_offset_bps: float = 4.0
+    execution_breakout_market_probability: float = 0.64
+    execution_breakout_market_expectancy_score: float = 64.0
+    execution_limit_timeout_cycles: int = 6
 
     # ── Timing ──────────────────────────────────────────
     check_interval_seconds: int  = 120    # Run cycle every 2 minutes
@@ -182,6 +197,12 @@ class TradingConfig:
     htf_invalidation_min_minutes: float = 60.0
     time_stop_minutes: float = 360.0
     time_stop_min_tp_progress: float = 0.25
+    conviction_decay_exit_threshold: float = 58.0
+    conviction_decay_hold_threshold: float = 36.0
+    conviction_decay_flat_cycle_weight: float = 7.0
+    conviction_decay_microstructure_weight: float = 14.0
+    conviction_decay_structure_weight: float = 12.0
+    conviction_decay_expectancy_weight: float = 16.0
     use_daily_market_map: bool = True
     market_map_guard_distance_pct: float = 1.10
     market_map_score_influence: float = 1.00
@@ -214,8 +235,20 @@ class TradingConfig:
     # Fetches live news from CryptoPanic. Blocks trades when headlines
     # are strongly against the signal direction.
     # Especially important for HYPE (Hyperliquid protocol news).
-    use_news: bool               = False
+    use_news: bool               = True
     cryptopanic_auth_token: str  = field(default_factory=lambda: os.getenv("CRYPTOPANIC_AUTH_TOKEN", ""))
+    use_narrative_gate: bool     = True
+    narrative_event_risk_window_minutes: int = 90
+    narrative_post_event_cooldown_minutes: int = 45
+    narrative_event_block_min_expectancy_score: float = 72.0
+    narrative_event_block_min_probability: float = 0.60
+    narrative_headline_alignment_bonus: float = 0.06
+    narrative_headline_conflict_penalty: float = 0.08
+    narrative_event_uncertainty_add: float = 0.14
+    narrative_high_impact_keywords: List[str] = field(default_factory=lambda: [
+        "cpi", "pce", "nfp", "nonfarm payrolls", "fomc", "powell",
+        "fed", "ecb", "boj", "rate decision", "inflation", "gdp",
+    ])
 
     # ── Visual chart confirmation ────────────────────────
     # When enabled, borderline signals (score 38–62) are confirmed by

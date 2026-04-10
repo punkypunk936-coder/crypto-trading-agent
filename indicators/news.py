@@ -303,28 +303,17 @@ def _score_macro_headline(title: str, coin: str = "") -> float:
 
 def _fetch_and_score(coin: str, auth_token: str = "") -> NewsSignal:
     """Fetch news from CryptoPanic and score it."""
-    if not auth_token:
-        return NewsSignal(
-            coin=coin,
-            score=50.0,
-            raw_sentiment=0.0,
-            article_count=0,
-            velocity="LOW",
-            top_headlines=[],
-            is_extreme=False,
-            valid=False,
-            error="CRYPTOPANIC_AUTH_TOKEN is not configured",
-        )
     try:
         # CryptoPanic maps our tickers directly
         # HYPE is listed as HYPE on CryptoPanic
         params = {
-            "auth_token": auth_token,
             "currencies": coin,
             "kind":       "news",
             "filter":     "important",
             "public":     "true",
         }
+        if auth_token:
+            params["auth_token"] = auth_token
         resp = requests.get(CRYPTOPANIC_URL, params=params, timeout=8)
         resp.raise_for_status()
         data = resp.json()
@@ -389,6 +378,7 @@ def _fetch_and_score(coin: str, auth_token: str = "") -> NewsSignal:
     log.info(
         f"[{coin}] News: {count} articles | raw={raw:+.1f} | "
         f"score={indicator_score:.1f}/100 | velocity={velocity}"
+        f"{' | public feed' if not auth_token else ''}"
     )
     if top:
         log.info(f"[{coin}] Top headline: {top[0][:80]}")

@@ -104,6 +104,11 @@ class RiskManager:
         portfolio_usd: float,
         rl_win_rate: float = 50.0,    # 0-100 historical win rate for this coin/direction
         rl_pattern_boost: float = 0.0, # extra multiplier from RL pattern recognition
+        expectancy_score: float | None = None,
+        win_probability: float | None = None,
+        expected_r: float | None = None,
+        uncertainty: float | None = None,
+        thesis_conviction: float | None = None,
     ) -> OrderRequest:
         """
         Conviction-aware order sizing.
@@ -121,7 +126,9 @@ class RiskManager:
         # conviction: score distance from neutral (50).
         # We normalise from the minimum actionable threshold outward so
         # capital scales smoothly instead of jumping across a few hard tiers.
-        conviction = abs(signal_score - 50.0)  # 0-50 scale
+        expectancy_anchor = float(expectancy_score if expectancy_score is not None else signal_score)
+        conviction_anchor = float(thesis_conviction if thesis_conviction is not None else expectancy_anchor)
+        conviction = abs(conviction_anchor - 50.0)  # 0-50 scale
         entry_conviction_floor = min(
             abs(self.cfg.signal_long_threshold - 50.0),
             abs(self.cfg.signal_short_threshold - 50.0),
@@ -131,6 +138,16 @@ class RiskManager:
         base_floor = max(0.10, min(0.60, float(getattr(self.cfg, "conviction_size_floor", 0.30))))
         curve = max(0.25, float(getattr(self.cfg, "conviction_size_curve", 0.85)))
         confidence_factor = base_floor + (1.0 - base_floor) * math.pow(conviction_norm, curve)
+
+        probability = float(win_probability if win_probability is not None else 0.50)
+        probability = max(0.05, min(0.95, probability))
+        expectancy_r = float(expected_r if expected_r is not None else 0.0)
+        uncertainty_level = float(uncertainty if uncertainty is not None else 0.35)
+        uncertainty_level = max(0.0, min(1.0, uncertainty_level))
+        probability_factor = 0.85 + max(-0.15, min(0.22, (probability - 0.50) * 1.30))
+        expectancy_factor = 0.90 + max(-0.20, min(0.28, expectancy_r * 0.32))
+        uncertainty_factor = 1.0 - min(0.35, uncertainty_level * 0.42)
+        confidence_factor *= probability_factor * expectancy_factor * uncertainty_factor
 
         if conviction >= 40:          # score ≥90 or ≤10 — extreme conviction
             conviction_tier    = "EXTREME"
@@ -171,6 +188,8 @@ class RiskManager:
             if rl_win_rate < rl_guard_floor:
                 history_gap = (rl_guard_floor - rl_win_rate) / max(rl_guard_floor, 1.0)
                 euphoria_penalty = max_euphoria_penalty * excess_norm * max(0.35, history_gap)
+            if probability < 0.58 or expectancy_r < 0.20:
+                euphoria_penalty += min(0.10, excess_norm * 0.12)
             if rl_pattern_boost < 0:
                 euphoria_penalty += min(abs(rl_pattern_boost) * 0.50, max_euphoria_penalty * 0.50)
             elif rl_pattern_boost > 0 and rl_win_rate >= rl_guard_floor:
@@ -249,7 +268,7 @@ class RiskManager:
                         leverage        = self.cfg.leverage,
                         approved        = True,
                         conviction_tier = conviction_tier + "_SCALEIN",
-                        conviction_pct  = confidence_factor * 100,
+                        conviction_pct  = total_factor * 100,
                         is_scale_in     = True,
                     )
                 else:
@@ -279,6 +298,9 @@ class RiskManager:
         size_coin = size_usd / current_price if current_price > 0 else 0.0
 
         sizing_parts = [f"conv={confidence_factor*100:.0f}%"]
+        sizing_parts.append(f"p={probability*100:.0f}%")
+        sizing_parts.append(f"ev={expectancy_r:+.2f}R")
+        sizing_parts.append(f"u={uncertainty_level*100:.0f}%")
         if rl_boost:
             sizing_parts.append(f"rl={rl_boost*100:+.0f}%")
         if rl_pattern_boost:
@@ -307,7 +329,7 @@ class RiskManager:
             leverage        = self.cfg.leverage,
             approved        = True,
             conviction_tier = conviction_tier,
-            conviction_pct  = confidence_factor * 100,
+            conviction_pct  = total_factor * 100,
         )
 
     # ── Position lifecycle ─────────────────────────────────────

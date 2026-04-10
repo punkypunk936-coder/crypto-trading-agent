@@ -271,7 +271,7 @@ def run_preflight(args) -> int:
         if config.trading.cryptopanic_auth_token:
             ok("News integration enabled with CryptoPanic token")
         else:
-            fail("News integration is enabled but CRYPTOPANIC_AUTH_TOKEN is missing")
+            warn("News integration enabled without CRYPTOPANIC_AUTH_TOKEN — using public CryptoPanic feed")
     else:
         ok("News integration disabled")
 

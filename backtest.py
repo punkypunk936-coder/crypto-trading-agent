@@ -27,15 +27,14 @@ How it works
   3. At each step: computes all indicators on the candles BEFORE that point
      (no lookahead — we only use past data)
   4. Generates a signal (LONG/SHORT/FLAT)
-  5. Simulates entry/exit with SL and TP (no slippage — conservative assumption)
-  6. Tracks portfolio equity, drawdown, win rate
+  5. Simulates entry/exit with planned SL/TP and basic market/limit execution
+  6. Tracks portfolio equity, drawdown, win rate, and edges vs simple baselines
 
 Limitations
 ───────────
-  • No multi-timeframe in backtest (1H only — same as live signals)
-  • No regime signals (requires enough history per window — included where possible)
-  • Sentiment held constant at neutral (50)
-  • No limit orders / re-entry simulation (market fills assumed)
+  • Uses a local key-level proxy instead of historical L2 replay
+  • Sentiment is still neutral unless you extend the evaluator with archived news
+  • Execution planning is approximated from candles, not full order-book tape
 """
 
 import sys
@@ -181,6 +180,62 @@ def _local_level_proxy(window: pd.DataFrame, price: float):
     )
 
 
+def _local_market_map_proxy(window: pd.DataFrame, price: float):
+    if window is None or window.empty:
+        return None
+    daily = _resample_ohlcv(window, "1d")
+    daily = completed_candle_frame(daily)
+    if daily is None or daily.empty:
+        return None
+
+    recent = daily.tail(min(len(daily), 20))
+    nearest_support = float(recent["low"].min())
+    nearest_resistance = float(recent["high"].max())
+    bias = "NEUTRAL"
+    score_adjustment = 0.0
+    favor_longs = False
+    favor_shorts = False
+    block_longs = False
+    block_shorts = False
+
+    if len(recent) >= 5:
+        ema_fast = recent["close"].ewm(span=5, adjust=False).mean().iloc[-1]
+        ema_slow = recent["close"].ewm(span=10, adjust=False).mean().iloc[-1]
+        if ema_fast > ema_slow and price >= ema_fast:
+            bias = "BULLISH"
+            score_adjustment = 3.0
+            favor_longs = True
+        elif ema_fast < ema_slow and price <= ema_fast:
+            bias = "BEARISH"
+            score_adjustment = -3.0
+            favor_shorts = True
+
+    support_distance = abs(price - nearest_support) / max(price, 1e-9) * 100 if nearest_support > 0 else 0.0
+    resistance_distance = abs(nearest_resistance - price) / max(price, 1e-9) * 100 if nearest_resistance > 0 else 0.0
+    if support_distance <= 0.55:
+        favor_longs = True
+        block_shorts = True
+    if resistance_distance <= 0.55:
+        favor_shorts = True
+        block_longs = True
+
+    summary = f"{bias} bias with support {nearest_support:.2f} and resistance {nearest_resistance:.2f}"
+    return SimpleNamespace(
+        valid=True,
+        bias=bias,
+        score_adjustment=score_adjustment,
+        favor_longs=favor_longs,
+        favor_shorts=favor_shorts,
+        block_longs=block_longs,
+        block_shorts=block_shorts,
+        nearest_support=nearest_support,
+        nearest_resistance=nearest_resistance,
+        summary=summary,
+        notes="local_proxy",
+        daily_close=float(daily["close"].iloc[-1]),
+    )
+
+
 # ─────────────────────────────────────────────────────────────
 # Backtest engine
 # ─────────────────────────────────────────────────────────────
@@ -208,6 +263,8 @@ class Backtester:
         self.trades: List[dict] = []
         self.equity_curve: List[float] = []
         self.flat_streak = 0
+        self.signal_streak = {"action": None, "count": 0}
+        self.pending_entry: Optional[dict] = None
 
     def _fill_price(self, direction: str, reference_price: float, *, for_exit: bool = False) -> float:
         slip_bps = float(getattr(config.trading, "backtest_market_slippage_bps", 4.0) or 4.0) / 10_000.0
@@ -232,6 +289,142 @@ class Backtester:
             "balance_after": round(self.balance, 2),
         })
 
+    def _update_signal_streak(self, action: str) -> bool:
+        if action not in {"LONG", "SHORT"}:
+            self.signal_streak = {"action": None, "count": 0}
+            return False
+        if self.signal_streak["action"] == action:
+            self.signal_streak["count"] += 1
+        else:
+            self.signal_streak = {"action": action, "count": 1}
+        return self.signal_streak["count"] >= int(getattr(config.trading, "signal_streak_required", 2) or 2)
+
+    def _queue_planned_entry(self, signal, size_usd: float, opened_index: int, opened_at, limit_price: float) -> None:
+        trade_plan = dict(getattr(signal, "trade_plan", {}) or {})
+        risk_per_unit = float(trade_plan.get("risk_per_unit", 0.0) or 0.0)
+        reward_per_unit = float(trade_plan.get("reward_per_unit", 0.0) or 0.0)
+        if str(signal.action).upper() == "LONG" and risk_per_unit > 0 and reward_per_unit > 0:
+            sl = limit_price - risk_per_unit
+            tp = limit_price + reward_per_unit
+        elif str(signal.action).upper() == "SHORT" and risk_per_unit > 0 and reward_per_unit > 0:
+            sl = limit_price + risk_per_unit
+            tp = limit_price - reward_per_unit
+        else:
+            sl = float(signal.stop_loss_price or 0.0)
+            tp = float(signal.take_profit_price or 0.0)
+        self.pending_entry = {
+            "direction": signal.action,
+            "entry_price": limit_price,
+            "sl": sl,
+            "tp": tp,
+            "size_usd": size_usd,
+            "opened_at": str(opened_at),
+            "opened_index": opened_index,
+            "score": signal.score,
+            "expectancy": dict(getattr(signal, "expectancy", {}) or {}),
+            "trade_plan": trade_plan,
+            "execution_plan": dict(getattr(signal, "execution_plan", {}) or {}),
+            "wait_cycles": 0,
+        }
+
+    def _check_pending_entry_fill(self, current_row, index: int):
+        if not self.pending_entry:
+            return None
+
+        pending = self.pending_entry
+        pending["wait_cycles"] += 1
+        hi = float(current_row["high"])
+        lo = float(current_row["low"])
+        price = float(pending["entry_price"])
+        direction = str(pending["direction"])
+        fillable = lo <= price <= hi
+        max_wait = int(((pending.get("execution_plan") or {}).get("max_wait_cycles")) or 6)
+
+        if fillable:
+            self.balance -= pending["size_usd"]
+            filled = dict(pending)
+            filled["entry_price"] = price
+            filled["opened_index"] = index
+            self.pending_entry = None
+            self.signal_streak = {"action": None, "count": 0}
+            return filled
+        if pending["wait_cycles"] >= max_wait:
+            self.pending_entry = None
+        return None
+
+    def _conviction_decay_score(self, position: dict, signal) -> float:
+        expectancy = dict(getattr(signal, "expectancy", {}) or {})
+        expectancy_score = float(expectancy.get("score", signal.score) or signal.score)
+        uncertainty = float(expectancy.get("uncertainty", 0.50) or 0.50)
+        expected_r = float(expectancy.get("expected_r", 0.0) or 0.0)
+        score = self.flat_streak * float(getattr(config.trading, "conviction_decay_flat_cycle_weight", 7.0) or 7.0)
+        if expectancy_score < float(getattr(config.trading, "expectancy_min_score", 56.0) or 56.0):
+            score += (float(getattr(config.trading, "expectancy_min_score", 56.0)) - expectancy_score) * 0.9
+        if uncertainty >= float(getattr(config.trading, "expectancy_max_uncertainty", 0.42) or 0.42):
+            score += (uncertainty - float(getattr(config.trading, "expectancy_max_uncertainty", 0.42))) * 40.0
+        if expected_r < float(getattr(config.trading, "expectancy_min_expected_r", 0.18) or 0.18):
+            score += float(getattr(config.trading, "conviction_decay_expectancy_weight", 16.0) or 16.0)
+        breakout_state = str(getattr(signal, "thesis", {}).get("summary", "") or "")
+        if "break" in breakout_state.lower() and signal.action == "FLAT":
+            score += 6.0
+        return max(0.0, min(100.0, score))
+
+    def _run_baselines(self) -> dict:
+        if self.df.empty:
+            return {}
+
+        first_open = float(self.df.iloc[0]["open"])
+        last_close = float(self.df.iloc[-1]["close"])
+        buy_hold_return = ((last_close - first_open) / max(first_open, 1e-9)) * 100.0
+
+        breakout_position = None
+        breakout_balance = self.starting_bal
+        dip_position = None
+        dip_balance = self.starting_bal
+
+        for i in range(25, len(self.df)):
+            window = self.df.iloc[:i].copy()
+            row = self.df.iloc[i]
+            price = float(row["close"])
+            high = float(row["high"])
+            low = float(row["low"])
+            prev_high = float(window["high"].tail(20).max())
+            ema20 = float(window["close"].ewm(span=20, adjust=False).mean().iloc[-1])
+            ema50 = float(window["close"].ewm(span=50, adjust=False).mean().iloc[-1])
+
+            if breakout_position is None and price > prev_high * 1.001:
+                breakout_position = {"entry": price, "size": self.trade_size}
+                breakout_balance -= self.trade_size
+            elif breakout_position is not None:
+                if low <= breakout_position["entry"] * 0.97 or price < ema20:
+                    pnl = ((price - breakout_position["entry"]) / breakout_position["entry"]) * breakout_position["size"] * self.leverage
+                    breakout_balance += breakout_position["size"] + pnl
+                    breakout_position = None
+
+            dip_condition = ema20 > ema50 and low <= ema20 * 1.002
+            if dip_position is None and dip_condition:
+                dip_position = {"entry": price, "size": self.trade_size}
+                dip_balance -= self.trade_size
+            elif dip_position is not None:
+                if low <= dip_position["entry"] * 0.97 or price < ema50:
+                    pnl = ((price - dip_position["entry"]) / dip_position["entry"]) * dip_position["size"] * self.leverage
+                    dip_balance += dip_position["size"] + pnl
+                    dip_position = None
+
+        if breakout_position is not None:
+            pnl = ((last_close - breakout_position["entry"]) / breakout_position["entry"]) * breakout_position["size"] * self.leverage
+            breakout_balance += breakout_position["size"] + pnl
+        if dip_position is not None:
+            pnl = ((last_close - dip_position["entry"]) / dip_position["entry"]) * dip_position["size"] * self.leverage
+            dip_balance += dip_position["size"] + pnl
+
+        return {
+            "do_nothing_return": 0.0,
+            "buy_hold_return": round(buy_hold_return, 2),
+            "breakout_return": round((breakout_balance - self.starting_bal) / max(self.starting_bal, 1e-9) * 100.0, 2),
+            "dip_buy_return": round((dip_balance - self.starting_bal) / max(self.starting_bal, 1e-9) * 100.0, 2),
+        }
+
     def run(self, min_candles: int = 80) -> dict:
         df = self.df
         n = len(df)
@@ -254,6 +447,11 @@ class Backtester:
 
             self.equity_curve.append(self._equity(position, mark_price))
 
+            if position is None:
+                filled_entry = self._check_pending_entry_fill(current_row, i)
+                if filled_entry is not None:
+                    position = filled_entry
+
             try:
                 tech = compute_signals(analysis_window, self.coin, config.indicators, config.trading)
                 advanced = compute_advanced_signals(analysis_window, self.coin)
@@ -261,6 +459,7 @@ class Backtester:
                 candle_patterns = compute_candlestick_patterns(analysis_window, self.coin)
                 mtf = _mtf_from_window(self.coin, window)
                 orderbook_signal = _local_level_proxy(analysis_window, float(analysis_window["close"].iloc[-1]))
+                market_map_signal = _local_market_map_proxy(analysis_window, float(analysis_window["close"].iloc[-1]))
             except Exception:
                 continue
 
@@ -283,6 +482,8 @@ class Backtester:
                 instrument_type=config.trading.instrument_types.get(self.coin, "crypto"),
                 funding_oi_signal=None,
                 orderbook_signal=orderbook_signal,
+                market_map_signal=market_map_signal,
+                narrative_signal=None,
             )
 
             if mtf:
@@ -333,7 +534,8 @@ class Backtester:
                 else:
                     self.flat_streak = 0
 
-                if self.flat_streak >= config.trading.max_flat_cycles_with_position:
+                decay_score = self._conviction_decay_score(position, signal)
+                if decay_score >= float(getattr(config.trading, "conviction_decay_exit_threshold", 58.0) or 58.0):
                     exit_price = self._fill_price(
                         "SHORT" if position["direction"] == "LONG" else "LONG",
                         entry_reference_price,
@@ -377,9 +579,19 @@ class Backtester:
             if position is not None or signal.action == "FLAT":
                 continue
 
+            if not self._update_signal_streak(signal.action):
+                continue
+
             size_usd = min(self.trade_size, self.balance * 0.20)
             if size_usd < 1:
                 continue
+
+            execution_plan = dict(getattr(signal, "execution_plan", {}) or {})
+            if str(execution_plan.get("mode", "market") or "market").lower() in {"limit", "maker_limit"}:
+                limit_price = float(execution_plan.get("limit_price", 0.0) or 0.0)
+                if limit_price > 0:
+                    self._queue_planned_entry(signal, size_usd, i, ts, limit_price)
+                    continue
 
             fill_price = self._fill_price(signal.action, entry_reference_price, for_exit=False)
             sl = float(signal.stop_loss_price or 0.0)
@@ -405,6 +617,9 @@ class Backtester:
                 "opened_at": str(ts),
                 "opened_index": i,
                 "score": signal.score,
+                "expectancy": dict(getattr(signal, "expectancy", {}) or {}),
+                "thesis": dict(getattr(signal, "thesis", {}) or {}),
+                "trade_plan": dict(getattr(signal, "trade_plan", {}) or {}),
             }
 
         if position:
@@ -431,8 +646,9 @@ class Backtester:
 
     def _summary(self) -> dict:
         t = self.trades
+        baselines = self._run_baselines()
         if not t:
-            return {"coin": self.coin, "trades": 0}
+            return {"coin": self.coin, "trades": 0, "baselines": baselines}
 
         pnls   = [tr["pnl_usd"] for tr in t]
         wins   = [p for p in pnls if p > 0]
@@ -449,6 +665,7 @@ class Backtester:
                 max_dd = dd
 
         total_return = (self.balance - self.starting_bal) / self.starting_bal * 100
+        best_baseline_return = max(baselines.values()) if baselines else 0.0
 
         return {
             "coin":          self.coin,
@@ -467,6 +684,9 @@ class Backtester:
             "max_drawdown":  round(max_dd, 2),
             "profit_factor": round(sum(wins) / abs(sum(losses)) if losses and sum(losses) != 0 else 0, 2),
             "trade_log":     t,
+            "baselines":     baselines,
+            "edge_vs_buy_hold": round(total_return - baselines.get("buy_hold_return", 0.0), 2),
+            "edge_vs_best_baseline": round(total_return - best_baseline_return, 2),
         }
 
 
@@ -490,7 +710,8 @@ def save_excel(results: List[dict], path: str = "backtest_results.xlsx"):
     ws.title = "Summary"
     headers = ["Coin", "Trades", "Win Rate %", "Total PnL $", "Return %",
                "Avg Win $", "Avg Loss $", "Best $", "Worst $",
-               "Max DD %", "Profit Factor", "End Balance $"]
+               "Max DD %", "Profit Factor", "End Balance $",
+               "BuyHold %", "Breakout %", "DipBuy %", "EdgeVsBest %"]
     ws.append(headers)
     for cell in ws[1]:
         cell.font = Font(bold=True, color="FFFFFF")
@@ -505,6 +726,10 @@ def save_excel(results: List[dict], path: str = "backtest_results.xlsx"):
             r["win_rate"], r["total_pnl"], r["total_return"],
             r["avg_win"], r["avg_loss"], r["best_trade"], r["worst_trade"],
             r["max_drawdown"], r["profit_factor"], r["end_balance"],
+            r.get("baselines", {}).get("buy_hold_return", 0.0),
+            r.get("baselines", {}).get("breakout_return", 0.0),
+            r.get("baselines", {}).get("dip_buy_return", 0.0),
+            r.get("edge_vs_best_baseline", 0.0),
         ]
         ws.append(row)
         fill = green_fill if r["total_pnl"] > 0 else red_fill
@@ -586,7 +811,8 @@ def main():
               f"Win={res['win_rate']:5.1f}%  "
               f"PnL=${res['total_pnl']:+,.2f}  "
               f"Return={res['total_return']:+.1f}%  "
-              f"MaxDD={res['max_drawdown']:.1f}%")
+              f"MaxDD={res['max_drawdown']:.1f}%  "
+              f"EdgeVsBest={res.get('edge_vs_best_baseline', 0.0):+.1f}%")
 
     print(f"\n  {'─'*60}")
     if all_results:

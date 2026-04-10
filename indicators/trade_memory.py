@@ -374,6 +374,9 @@ class TradeMemory:
         tighten(3.0, "poor timing", "ENTRY_TIMING_POOR")
         tighten(3.0, "candle conflict", "CANDLE_CONFLICT")
         tighten(3.0, "marginal edge", "MARGINAL_EDGE")
+        tighten(4.0, "low expectancy", "LOW_EXPECTANCY")
+        tighten(4.0, "high uncertainty", "HIGH_UNCERTAINTY")
+        tighten(5.0, "narrative event risk", "NARRATIVE_EVENT_RISK")
 
         pause_cycles = self._directional_pause.get(key, 0)
         same_dir_wr = sum(1 for t in same_dir if t.is_win) / len(same_dir) if same_dir else 0.0
@@ -559,6 +562,25 @@ class TradeMemory:
         if conviction == "LOW":
             add("LOW_CONFIDENCE_ENTRY", "The trade was opened on a low-confidence signal.")
 
+        try:
+            expectancy_score = float(ctx.get("expectancy_score", 50.0))
+        except Exception:
+            expectancy_score = 50.0
+        try:
+            expectancy_r = float(ctx.get("expectancy_expected_r", 0.0))
+        except Exception:
+            expectancy_r = 0.0
+        try:
+            expectancy_uncertainty = float(ctx.get("expectancy_uncertainty", 0.50))
+        except Exception:
+            expectancy_uncertainty = 0.50
+        if expectancy_score < 56.0:
+            add("LOW_EXPECTANCY", "The setup did not clear a strong expectancy threshold.")
+        if expectancy_r < 0.15:
+            add("MARGINAL_EDGE", "Expected edge was too thin relative to the risk taken.")
+        if expectancy_uncertainty >= 0.42:
+            add("HIGH_UNCERTAINTY", "The setup carried too much uncertainty into entry.")
+
         mtf_bias = str(ctx.get("mtf_bias", "")).upper()
         if direction == "LONG" and mtf_bias == "DOWN":
             add("HTF_CONFLICT", "Higher timeframe bias disagreed with the long setup.")
@@ -609,6 +631,9 @@ class TradeMemory:
             add("FADED_CONFIRMED_BREAKOUT", "The short faded a confirmed bullish breakout through key resistance.")
         elif direction == "LONG" and orderbook_breakout in {"CONFIRMED_BEARISH_BREAKDOWN", "PERSISTENT_BEARISH_BREAKDOWN"}:
             add("FADED_CONFIRMED_BREAKDOWN", "The long faded a confirmed bearish breakdown through key support.")
+
+        if bool(ctx.get("narrative_event_risk_active", False)):
+            add("NARRATIVE_EVENT_RISK", "The trade was opened inside a high-impact narrative event window.")
 
         try:
             planned_stop_atr = float(ctx.get("planned_stop_atr_multiple", 0.0))

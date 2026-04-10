@@ -36,6 +36,7 @@ DASHBOARD_SNAPSHOT_JSON = DATA_DIR / "dashboard_snapshot.json"  # Canonical dash
 TRADE_DATASET_JSONL = DATA_DIR / "trade_dataset.jsonl"          # Structured closed-trade dataset for learning
 DAILY_MARKET_MAP_JSON = DATA_DIR / "daily_market_map.json"      # Operator-owned daily key-level / thesis map
 TRADE_REVIEWS_JSON = DATA_DIR / "trade_reviews.json"            # Operator review labels for closed trades
+MACRO_EVENTS_JSON = DATA_DIR / "macro_events.json"              # Optional macro event calendar for narrative gating
 DASHBOARD_STATE_SYNC_REPO = DATA_DIR / ".dashboard_state_sync"  # Local clone/worktree for hosted dashboard fallback sync
 
 # ── Logs directory ────────────────────────────────────────────────────────────

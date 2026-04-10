@@ -64,6 +64,8 @@ from indicators.orderbook_levels import (
 )
 from indicators.trade_memory import trade_memory
 from indicators.funding_oi_cvd import get_funding_oi_cvd
+from exchanges.lighter_client import COIN_TO_MARKET_ID
+from narrative import get_narrative_signal
 from strategy.aggressive_strategy import AggressiveStrategy
 from strategy.order_manager import OrderManager, PendingOrder, ReEntryWatch
 from risk.risk_manager import RiskManager, OrderRequest, OpenPosition
@@ -584,6 +586,18 @@ class TradingAgent:
             except Exception as e:
                 log.warning(f"[{coin}] News fetch failed: {e}")
 
+        narrative_signal = None
+        if getattr(self.cfg.trading, "use_narrative_gate", True):
+            try:
+                narrative_signal = get_narrative_signal(
+                    coin,
+                    news_signal=news_signal,
+                    risk_window_minutes=getattr(self.cfg.trading, "narrative_event_risk_window_minutes", 90),
+                    post_event_cooldown_minutes=getattr(self.cfg.trading, "narrative_post_event_cooldown_minutes", 45),
+                )
+            except Exception as e:
+                log.debug(f"[{coin}] Narrative gate skipped: {e}")
+
         # Trade memory adjustment
         current_pos = self.risk.position_direction(coin)
         prelim_dir  = "LONG" if tech.rsi_score >= 50 else "SHORT"
@@ -610,7 +624,8 @@ class TradingAgent:
 
         # Live orderbook + higher-timeframe key levels
         orderbook_signal = None
-        if instrument_type == "crypto" and getattr(self.cfg.trading, "use_orderbook_levels", True):
+        supports_orderbook = self._supports_orderbook_context(coin)
+        if supports_orderbook and getattr(self.cfg.trading, "use_orderbook_levels", True):
             try:
                 orderbook_signal = self._orderbook_circuit.call(
                     get_orderbook_levels,
@@ -649,6 +664,7 @@ class TradingAgent:
             funding_oi_signal=funding_oi_signal,
             orderbook_signal=orderbook_signal,
             market_map_signal=market_map_signal,
+            narrative_signal=narrative_signal,
         )
 
         log.info(
@@ -696,6 +712,14 @@ class TradingAgent:
             "news_velocity":  news_signal.velocity      if news_signal and news_signal.valid else "LOW",
             "news_headline":  news_signal.top_headlines[0][:80] if news_signal and news_signal.valid and news_signal.top_headlines else "",
             "news_articles":  news_signal.article_count if news_signal and news_signal.valid else 0,
+            "narrative_summary": getattr(narrative_signal, "summary", "") if narrative_signal else "",
+            "narrative_event_risk_active": bool(getattr(narrative_signal, "event_risk_active", False)) if narrative_signal else False,
+            "narrative_event_name": getattr(narrative_signal, "event_name", "") if narrative_signal else "",
+            "narrative_event_importance": getattr(narrative_signal, "event_importance", "NONE") if narrative_signal else "NONE",
+            "narrative_minutes_to_event": getattr(narrative_signal, "minutes_to_event", None) if narrative_signal else None,
+            "narrative_headline_bias": getattr(narrative_signal, "headline_bias", "NEUTRAL") if narrative_signal else "NEUTRAL",
+            "narrative_score_adjustment": getattr(narrative_signal, "score_adjustment", 0.0) if narrative_signal else 0.0,
+            "narrative_uncertainty_delta": getattr(narrative_signal, "uncertainty_delta", 0.0) if narrative_signal else 0.0,
             # Memory / learning
             "memory_adj":      memory_adj,
             "memory_cooldown": self._memory._cooldown.get(coin, 0),
@@ -784,6 +808,15 @@ class TradingAgent:
             "thesis_reasons":  thesis.get("reasons", []),
             "thesis_blockers": thesis.get("blockers", []),
             "thesis":          thesis,
+            "expectancy_probability": getattr(signal, "expectancy", {}).get("probability", 0.50),
+            "expectancy_expected_r": getattr(signal, "expectancy", {}).get("expected_r", 0.0),
+            "expectancy_uncertainty": getattr(signal, "expectancy", {}).get("uncertainty", 0.50),
+            "expectancy_score": getattr(signal, "expectancy", {}).get("score", signal.score),
+            "expectancy_summary": getattr(signal, "expectancy", {}).get("summary", ""),
+            "expectancy_reasons": getattr(signal, "expectancy", {}).get("reasons", []),
+            "expectancy_blockers": getattr(signal, "expectancy", {}).get("blockers", []),
+            "expectancy": getattr(signal, "expectancy", {}),
+            "execution_plan": getattr(signal, "execution_plan", {}),
             "trade_plan":      trade_plan,
             "execution_quality": {},
             "execution_quality_score": 0.0,
@@ -809,26 +842,23 @@ class TradingAgent:
                 return
 
         if signal.action == "FLAT":
-            # ── FLAT-while-positioned: close position if conviction is gone ──
-            # If the market has turned sideways while we're holding, and the
-            # signal stays FLAT for N consecutive cycles, the original thesis
-            # no longer holds — exit cleanly rather than waiting for SL.
             if current_pos:
                 flat_count = self._flat_streak.get(coin, 0) + 1
                 self._flat_streak[coin] = flat_count
-                max_flat = getattr(self.cfg.trading, 'max_flat_cycles_with_position', 3)
-                if flat_count >= max_flat:
+                decay = self._assess_conviction_decay(coin, current_pos, signal)
+                self._last_signals[coin]["conviction_decay"] = decay
+                if decay.get("should_exit", False):
                     log.info(
-                        f"[{coin}] 🏳️  Conviction gone: FLAT for {flat_count} cycles "
-                        f"while {current_pos} open — closing (no thesis = no trade)"
+                        f"[{coin}] 🏳️ Conviction decay {decay.get('score', 0):.0f} "
+                        f"— closing {current_pos}. {decay.get('summary', '')}"
                     )
                     self._close_position(coin, "conviction_lost", signal.price)
                     self._flat_streak.pop(coin, None)
                     self._signal_streak.pop(coin, None)
                 else:
                     log.info(
-                        f"[{coin}] 🏳️  FLAT signal ({flat_count}/{max_flat} cycles) "
-                        f"— holding {current_pos} but watching conviction"
+                        f"[{coin}] 🏳️ FLAT while {current_pos} open — "
+                        f"decay {decay.get('score', 0):.0f}. {decay.get('summary', '')}"
                     )
             else:
                 self._flat_streak.pop(coin, None)
@@ -839,9 +869,13 @@ class TradingAgent:
             return
 
         if (
-            instrument_type == "crypto"
+            supports_orderbook
             and getattr(self.cfg.trading, "use_orderbook_levels", True)
-            and getattr(self.cfg.trading, "require_orderbook_for_crypto_entries", True)
+            and (
+                getattr(self.cfg.trading, "require_orderbook_for_crypto_entries", True)
+                if instrument_type == "crypto"
+                else getattr(self.cfg.trading, "require_orderbook_for_supported_entries", True)
+            )
             and (not orderbook_signal or not orderbook_signal.valid)
         ):
             log.info(f"[{coin}] 🧱 Missing valid orderbook context — fail-closed, skipping entry")
@@ -861,6 +895,9 @@ class TradingAgent:
         if self.cfg.trading.use_news and news_signal:
             if not self._check_news_extreme(coin, signal, news_signal):
                 return
+
+        if not self._check_narrative_gate(coin, signal, narrative_signal):
+            return
 
         # ── Chart confirmation on borderline signals ────────────
         if self.cfg.trading.use_chart_confirmation:
@@ -1097,12 +1134,17 @@ class TradingAgent:
             coin              = coin,
             direction         = signal.action,
             signal_score      = signal.score,
-            current_price     = signal.price,
+            current_price     = float((getattr(signal, "execution_plan", {}) or {}).get("entry_price", signal.price) or signal.price),
             stop_loss_price   = signal.stop_loss_price,
             take_profit_price = signal.take_profit_price,
             portfolio_usd     = portfolio_usd,
             rl_win_rate       = rl_win_rate_for_sizing,
             rl_pattern_boost  = rl_pattern_boost,
+            expectancy_score  = float((getattr(signal, "expectancy", {}) or {}).get("score", signal.score) or signal.score),
+            win_probability   = float((getattr(signal, "expectancy", {}) or {}).get("probability", 0.50) or 0.50),
+            expected_r        = float((getattr(signal, "expectancy", {}) or {}).get("expected_r", 0.0) or 0.0),
+            uncertainty       = float((getattr(signal, "expectancy", {}) or {}).get("uncertainty", 0.50) or 0.50),
+            thesis_conviction = float((getattr(signal, "thesis", {}) or {}).get("conviction_score", signal.score) or signal.score),
         )
 
         if not order.approved:
@@ -1118,6 +1160,32 @@ class TradingAgent:
         if not execution_quality.get("permitted", True):
             log.info(f"[{coin}] ⚙️ Execution-quality gate blocked entry: {execution_quality.get('summary', '')}")
             return
+
+        execution_plan = dict(getattr(signal, "execution_plan", {}) or {})
+        plan_mode = str(execution_plan.get("mode", "market") or "market").lower()
+        if plan_mode in {"limit", "maker_limit"}:
+            if self.order_mgr.has_pending(coin):
+                log.info(f"[{coin}] Planned entry limit already pending — waiting for fill/cancel")
+                return
+            limit_price = float(execution_plan.get("limit_price", 0.0) or 0.0)
+            if limit_price > 0:
+                self._place_limit_order(
+                    coin,
+                    signal.action,
+                    limit_price,
+                    order.size_usd,
+                    order.stop_loss,
+                    order.take_profit,
+                    signal.score,
+                    reason="initial_limit",
+                    entry_context=self._build_entry_context(coin, signal, order, entry_type="initial_limit"),
+                    trade_plan=dict(getattr(signal, "trade_plan", {}) or {}),
+                )
+                log.info(
+                    f"[{coin}] 📋 Planned {plan_mode} entry @ ${limit_price:.2f} "
+                    f"({execution_plan.get('reason', 'execution plan')})"
+                )
+                return
 
         self._execute_order(coin, signal, order)
 
@@ -1263,6 +1331,121 @@ class TradingAgent:
             )
         return quality
 
+    @staticmethod
+    def _supports_orderbook_context(coin: str) -> bool:
+        return str(coin or "").upper() in COIN_TO_MARKET_ID
+
+    def _check_narrative_gate(self, coin: str, signal, narrative_signal) -> bool:
+        if not getattr(self.cfg.trading, "use_narrative_gate", True):
+            return True
+        if not narrative_signal or not getattr(narrative_signal, "valid", False):
+            return True
+
+        expectancy = dict(getattr(signal, "expectancy", {}) or {})
+        expectancy_score = float(expectancy.get("score", signal.score) or signal.score)
+        probability = float(expectancy.get("probability", 0.50) or 0.50)
+
+        if signal.action == "LONG" and getattr(narrative_signal, "block_longs", False):
+            log.info(f"[{coin}] 🧭 Narrative gate blocks LONG: {getattr(narrative_signal, 'summary', '')}")
+            return False
+        if signal.action == "SHORT" and getattr(narrative_signal, "block_shorts", False):
+            log.info(f"[{coin}] 🧭 Narrative gate blocks SHORT: {getattr(narrative_signal, 'summary', '')}")
+            return False
+
+        if getattr(narrative_signal, "event_risk_active", False):
+            min_score = float(getattr(self.cfg.trading, "narrative_event_block_min_expectancy_score", 72.0) or 72.0)
+            min_probability = float(getattr(self.cfg.trading, "narrative_event_block_min_probability", 0.60) or 0.60)
+            if expectancy_score < min_score or probability < min_probability:
+                log.info(
+                    f"[{coin}] 🗓️ Narrative event risk active — "
+                    f"need expectancy ≥{min_score:.0f} and p ≥{min_probability*100:.0f}% "
+                    f"(have {expectancy_score:.0f}, {probability*100:.0f}%)"
+                )
+                return False
+        return True
+
+    def _assess_conviction_decay(self, coin: str, current_pos: str, signal) -> dict:
+        pos = self.risk.positions.get(coin)
+        if not pos:
+            return {"should_exit": False, "score": 0.0, "summary": "no open position"}
+
+        sig = dict(self._last_signals.get(coin, {}) or {})
+        entry_ctx = dict((pos.metadata or {}).get("entry_context", {}) or {})
+        hold_minutes = (time.time() - pos.opened_at) / 60.0 if pos.opened_at else 0.0
+        planned_tp = float(entry_ctx.get("planned_take_profit") or pos.take_profit or 0.0)
+        reward_distance = abs(planned_tp - pos.entry_price) if planned_tp > 0 else 0.0
+        live_price = float(sig.get("live_price", signal.price) or signal.price or pos.entry_price)
+        favorable_move = self._signed_move(pos.direction, pos.entry_price, live_price)
+        tp_progress = favorable_move / max(reward_distance, 1e-9) if reward_distance > 0 else 0.0
+        flat_cycles = self._flat_streak.get(coin, 0)
+
+        expectancy = dict(sig.get("expectancy", {}) or getattr(signal, "expectancy", {}) or {})
+        thesis = dict(sig.get("thesis", {}) or getattr(signal, "thesis", {}) or {})
+        expectancy_score = float(expectancy.get("score", 50.0) or 50.0)
+        uncertainty = float(expectancy.get("uncertainty", 0.50) or 0.50)
+        thesis_permitted = bool(thesis.get("permitted", signal.action in {"LONG", "SHORT"}))
+        structure_trend = str(sig.get("structure_trend", "RANGING") or "RANGING").upper()
+        breakout_state = str(sig.get("orderbook_breakout_state", "NONE") or "NONE").upper()
+
+        score = 0.0
+        reasons: list[str] = []
+        flat_weight = float(getattr(self.cfg.trading, "conviction_decay_flat_cycle_weight", 7.0) or 7.0)
+        micro_weight = float(getattr(self.cfg.trading, "conviction_decay_microstructure_weight", 14.0) or 14.0)
+        structure_weight = float(getattr(self.cfg.trading, "conviction_decay_structure_weight", 12.0) or 12.0)
+        expectancy_weight = float(getattr(self.cfg.trading, "conviction_decay_expectancy_weight", 16.0) or 16.0)
+
+        if signal.action == "FLAT":
+            score += flat_cycles * flat_weight
+            reasons.append(f"signal flat for {flat_cycles} cycles")
+
+        if not thesis_permitted:
+            score += expectancy_weight
+            reasons.append("thesis no longer qualifies")
+
+        if expectancy_score < float(getattr(self.cfg.trading, "expectancy_min_score", 56.0) or 56.0):
+            deficit = max(0.0, float(getattr(self.cfg.trading, "expectancy_min_score", 56.0)) - expectancy_score)
+            score += min(22.0, deficit * 0.9)
+            reasons.append(f"expectancy slipped to {expectancy_score:.0f}")
+
+        if uncertainty >= float(getattr(self.cfg.trading, "expectancy_max_uncertainty", 0.42) or 0.42):
+            score += (uncertainty - float(getattr(self.cfg.trading, "expectancy_max_uncertainty", 0.42))) * 40.0
+            reasons.append("uncertainty expanded materially")
+
+        structure_against = (
+            (pos.direction == "LONG" and structure_trend == "DOWNTREND")
+            or (pos.direction == "SHORT" and structure_trend == "UPTREND")
+        )
+        breakout_against = (
+            (pos.direction == "LONG" and breakout_state in {"CONFIRMED_BEARISH_BREAKDOWN", "PERSISTENT_BEARISH_BREAKDOWN"})
+            or (pos.direction == "SHORT" and breakout_state in {"CONFIRMED_BULLISH_BREAKOUT", "PERSISTENT_BULLISH_BREAKOUT"})
+        )
+        if structure_against:
+            score += structure_weight
+            reasons.append("higher structure flipped against the trade")
+        if breakout_against:
+            score += micro_weight
+            reasons.append("orderbook breakout now points the other way")
+
+        if hold_minutes >= float(getattr(self.cfg.trading, "time_stop_minutes", 360.0) or 360.0) and tp_progress < float(getattr(self.cfg.trading, "time_stop_min_tp_progress", 0.25) or 0.25):
+            score += 12.0
+            reasons.append("time stop is approaching with poor progress")
+
+        if tp_progress >= 0.60:
+            score -= 12.0
+            reasons.append("trade has already travelled far enough to avoid panic-exit")
+        elif favorable_move > 0:
+            score -= min(8.0, tp_progress * 8.0)
+
+        score = max(0.0, min(100.0, score))
+        exit_threshold = float(getattr(self.cfg.trading, "conviction_decay_exit_threshold", 58.0) or 58.0)
+        hold_threshold = float(getattr(self.cfg.trading, "conviction_decay_hold_threshold", 36.0) or 36.0)
+        summary = "; ".join(reasons[:3]) if reasons else "conviction is stable"
+        if score >= exit_threshold:
+            return {"should_exit": True, "score": round(score, 2), "summary": summary}
+        if score >= hold_threshold:
+            return {"should_exit": False, "score": round(score, 2), "summary": f"watch closely: {summary}"}
+        return {"should_exit": False, "score": round(score, 2), "summary": summary}
+
     def _detect_position_invalidation(self, coin: str, current_pos: str, signal) -> str:
         pos = self.risk.positions.get(coin)
         if not pos:
@@ -1364,6 +1547,10 @@ class TradingAgent:
                 "signal_score": last_sig.get("score", 50.0),
                 "thesis_state": last_sig.get("thesis_state", ""),
                 "thesis_summary": last_sig.get("thesis_summary", ""),
+                "expectancy_score": last_sig.get("expectancy_score", last_sig.get("score", 50.0)),
+                "expectancy_probability": last_sig.get("expectancy_probability", 0.50),
+                "expectancy_expected_r": last_sig.get("expectancy_expected_r", 0.0),
+                "expectancy_uncertainty": last_sig.get("expectancy_uncertainty", 0.50),
                 "mtf_bias": last_sig.get("mtf_bias", "FLAT"),
                 "market_regime": last_sig.get("market_regime", "RANGING"),
                 "dominant_regime": last_sig.get("dominant_regime", "MIXED"),
@@ -1457,9 +1644,22 @@ class TradingAgent:
             "market_map_summary": sig.get("market_map_summary", ""),
             "market_map_score_adjustment": sig.get("market_map_score_adjustment", 0.0),
             "market_map_notes": sig.get("market_map_notes", ""),
+            "narrative_summary": sig.get("narrative_summary", ""),
+            "narrative_event_risk_active": sig.get("narrative_event_risk_active", False),
+            "narrative_event_name": sig.get("narrative_event_name", ""),
+            "narrative_event_importance": sig.get("narrative_event_importance", "NONE"),
+            "narrative_minutes_to_event": sig.get("narrative_minutes_to_event"),
+            "narrative_headline_bias": sig.get("narrative_headline_bias", "NEUTRAL"),
             "operator_review_guard": sig.get("operator_review_guard", {}),
             "trade_plan": trade_plan,
             "thesis": sig.get("thesis", {}),
+            "expectancy": sig.get("expectancy", {}),
+            "expectancy_probability": sig.get("expectancy_probability", 0.50),
+            "expectancy_expected_r": sig.get("expectancy_expected_r", 0.0),
+            "expectancy_uncertainty": sig.get("expectancy_uncertainty", 0.50),
+            "expectancy_score": sig.get("expectancy_score", sig.get("score", 50.0)),
+            "expectancy_summary": sig.get("expectancy_summary", ""),
+            "execution_plan": sig.get("execution_plan", {}),
             "execution_quality": sig.get("execution_quality", {}),
             "execution_quality_score": sig.get("execution_quality_score", 0.0),
             "execution_quality_summary": sig.get("execution_quality_summary", ""),
