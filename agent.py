@@ -39,7 +39,10 @@ from paths import (
 from datetime import datetime
 
 import os
+import analog_engine
 from config import Config
+import decision_dataset
+import feature_store
 from logger import get_logger
 from data.market_data import completed_candle_frame, fetch_candles, get_current_price
 import hosted_state_sync
@@ -124,6 +127,7 @@ class TradingAgent:
             ex.name: get_exchange_circuit(ex.name) for ex in exchanges
         }
         self._memory = trade_memory          # reinforcement learning module
+        self._analog_engine = analog_engine.HistoricalAnalogEngine(cfg.trading)
 
         # ── Signal streak: require N consecutive cycles before entering ──────
         # Prevents entering on the very first noisy crossing of a threshold.
@@ -825,6 +829,7 @@ class TradingAgent:
             "execution_persistence_cycles": 0,
             "execution_mode":  "tradable" if coin in self._tradable_coin_set else "observation_only",
         }
+        self._apply_analog_context(coin, signal, current_pos)
 
         mtf_allows_signal = True
         if self.cfg.trading.use_mtf and (current_pos or signal.action != "FLAT"):
@@ -839,6 +844,14 @@ class TradingAgent:
                 self._close_position(coin, invalidation_reason, signal.price)
                 self._flat_streak.pop(coin, None)
                 self._signal_streak.pop(coin, None)
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="position_invalidation_close",
+                    signal=signal,
+                    current_position=current_pos,
+                    blocked=True,
+                )
                 return
 
         if signal.action == "FLAT":
@@ -855,17 +868,47 @@ class TradingAgent:
                     self._close_position(coin, "conviction_lost", signal.price)
                     self._flat_streak.pop(coin, None)
                     self._signal_streak.pop(coin, None)
+                    self._record_decision_snapshot(
+                        coin,
+                        portfolio_usd=portfolio_usd,
+                        stage="conviction_exit",
+                        signal=signal,
+                        current_position=current_pos,
+                        blocked=True,
+                    )
                 else:
                     log.info(
                         f"[{coin}] 🏳️ FLAT while {current_pos} open — "
                         f"decay {decay.get('score', 0):.0f}. {decay.get('summary', '')}"
                     )
+                    self._record_decision_snapshot(
+                        coin,
+                        portfolio_usd=portfolio_usd,
+                        stage="hold_existing_position",
+                        signal=signal,
+                        current_position=current_pos,
+                    )
             else:
                 self._flat_streak.pop(coin, None)
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="flat_no_trade",
+                    signal=signal,
+                    blocked=True,
+                )
             return
 
         # ── Multi-timeframe confirmation ────────────────────────
         if mtf_allows_signal is False:
+            self._record_decision_snapshot(
+                coin,
+                portfolio_usd=portfolio_usd,
+                stage="mtf_block",
+                signal=signal,
+                current_position=current_pos,
+                blocked=True,
+            )
             return
 
         if (
@@ -879,6 +922,14 @@ class TradingAgent:
             and (not orderbook_signal or not orderbook_signal.valid)
         ):
             log.info(f"[{coin}] 🧱 Missing valid orderbook context — fail-closed, skipping entry")
+            self._record_decision_snapshot(
+                coin,
+                portfolio_usd=portfolio_usd,
+                stage="missing_orderbook_context",
+                signal=signal,
+                current_position=current_pos,
+                blocked=True,
+            )
             return
 
         if (
@@ -887,6 +938,14 @@ class TradingAgent:
             and (not news_signal or not news_signal.valid)
         ):
             log.info(f"[{coin}] 📰 Missing valid news confirmation — fail-closed, skipping entry")
+            self._record_decision_snapshot(
+                coin,
+                portfolio_usd=portfolio_usd,
+                stage="missing_news_confirmation",
+                signal=signal,
+                current_position=current_pos,
+                blocked=True,
+            )
             return
 
         # ── News extreme-event gate (secondary safety net) ───────
@@ -894,9 +953,25 @@ class TradingAgent:
         # This gate only blocks if news is catastrophically against the signal.
         if self.cfg.trading.use_news and news_signal:
             if not self._check_news_extreme(coin, signal, news_signal):
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="extreme_news_block",
+                    signal=signal,
+                    current_position=current_pos,
+                    blocked=True,
+                )
                 return
 
         if not self._check_narrative_gate(coin, signal, narrative_signal):
+            self._record_decision_snapshot(
+                coin,
+                portfolio_usd=portfolio_usd,
+                stage="narrative_gate_block",
+                signal=signal,
+                current_position=current_pos,
+                blocked=True,
+            )
             return
 
         # ── Chart confirmation on borderline signals ────────────
@@ -905,17 +980,41 @@ class TradingAgent:
             if not chart_verdict or not chart_verdict.valid:
                 if getattr(self.cfg.trading, "strict_confirmation_fail_closed", True):
                     log.info(f"[{coin}] 👁️  Chart confirmation unavailable — fail-closed, skipping entry")
+                    self._record_decision_snapshot(
+                        coin,
+                        portfolio_usd=portfolio_usd,
+                        stage="chart_confirmation_unavailable",
+                        signal=signal,
+                        current_position=current_pos,
+                        blocked=True,
+                    )
                     return
             elif chart_verdict.action == "WAIT":
                 log.info(f"[{coin}] 👁️  Chart analyst says WAIT "
                          f"({chart_verdict.confidence}) — skipping this cycle. "
                          f"Reason: {chart_verdict.reasoning[:80]}")
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="chart_wait",
+                    signal=signal,
+                    current_position=current_pos,
+                    blocked=True,
+                )
                 return
             elif chart_verdict.action != signal.action:
                 log.info(
                     f"[{coin}] 👁️  Chart analyst disagrees: "
                     f"indicators={signal.action} chart={chart_verdict.action} "
                     f"— skipping. Reason: {chart_verdict.reasoning[:80]}"
+                )
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="chart_disagrees",
+                    signal=signal,
+                    current_position=current_pos,
+                    blocked=True,
                 )
                 return
             else:
@@ -977,10 +1076,7 @@ class TradingAgent:
                             signal.flat_reason = tighten_reason
                             signal.reason = tighten_reason
 
-            self._last_signals[coin]["action"] = signal.action
-            self._last_signals[coin]["decision"] = signal.action
-            self._last_signals[coin]["decision_reason"] = signal.reason or signal.flat_reason or ""
-            self._last_signals[coin]["flat_reason"] = signal.flat_reason
+            self._sync_signal_snapshot(coin, signal)
 
         if signal.action in ("LONG", "SHORT"):
             review_guard = trade_review.get_directional_feedback(coin, signal.action)
@@ -1018,22 +1114,41 @@ class TradingAgent:
                         signal.flat_reason = review_reason
                         signal.reason = review_reason
 
-            self._last_signals[coin]["action"] = signal.action
-            self._last_signals[coin]["decision"] = signal.action
-            self._last_signals[coin]["decision_reason"] = signal.reason or signal.flat_reason or ""
-            self._last_signals[coin]["flat_reason"] = signal.flat_reason
+            self._sync_signal_snapshot(coin, signal)
 
         if signal.action == "FLAT":
             log.info(f"[{coin}] Guardrails keep this setup flat for now")
+            self._record_decision_snapshot(
+                coin,
+                portfolio_usd=portfolio_usd,
+                stage="guardrails_flat",
+                signal=signal,
+                current_position=current_pos,
+                blocked=True,
+            )
             return
 
         if coin not in self._tradable_coin_set:
             log.info(f"[{coin}] Observation-only asset — signal tracked, no execution on the Lighter runtime")
+            self._record_decision_snapshot(
+                coin,
+                portfolio_usd=portfolio_usd,
+                stage="observation_only",
+                signal=signal,
+            )
             return
 
         # ── Loss-based circuit breaker check ────────────────
         if self.risk.is_trading_halted():
             log.info(f"[{coin}] ⏸️  Skipping — loss circuit breaker active")
+            self._record_decision_snapshot(
+                coin,
+                portfolio_usd=portfolio_usd,
+                stage="loss_circuit_breaker",
+                signal=signal,
+                current_position=current_pos,
+                blocked=True,
+            )
             return
 
         # Cancel any re-entry watch if we're opening a fresh signal
@@ -1050,6 +1165,14 @@ class TradingAgent:
                 f"(closed {(time.time()-reversal_ts):.0f}s ago)"
             )
             self._signal_streak.pop(coin, None)   # reset streak too
+            self._record_decision_snapshot(
+                coin,
+                portfolio_usd=portfolio_usd,
+                stage="post_reversal_cooldown",
+                signal=signal,
+                current_position=current_pos,
+                blocked=True,
+            )
             return
 
         # ── Anti-whipsaw: guard signal reversals ─────────────────────────────
@@ -1069,6 +1192,14 @@ class TradingAgent:
                         f"{hold_minutes:.0f}m (min={min_hold:.0f}m) — "
                         f"blocking reversal {current_pos}→{signal.action}"
                     )
+                    self._record_decision_snapshot(
+                        coin,
+                        portfolio_usd=portfolio_usd,
+                        stage="anti_whipsaw_hold_block",
+                        signal=signal,
+                        current_position=current_pos,
+                        blocked=True,
+                    )
                     return
 
             # Check reversal conviction — needs stronger signal than fresh entry
@@ -1080,6 +1211,14 @@ class TradingAgent:
                         f"[{coin}] ⚡ Reversal blocked: SHORT→LONG needs score "
                         f"≥{required_score:.0f} but got {signal.score:.1f}"
                     )
+                    self._record_decision_snapshot(
+                        coin,
+                        portfolio_usd=portfolio_usd,
+                        stage="reversal_conviction_block",
+                        signal=signal,
+                        current_position=current_pos,
+                        blocked=True,
+                    )
                     return
             elif signal.action == "SHORT":
                 required_score = self.cfg.trading.signal_short_threshold - reversal_boost
@@ -1087,6 +1226,14 @@ class TradingAgent:
                     log.info(
                         f"[{coin}] ⚡ Reversal blocked: LONG→SHORT needs score "
                         f"≤{required_score:.0f} but got {signal.score:.1f}"
+                    )
+                    self._record_decision_snapshot(
+                        coin,
+                        portfolio_usd=portfolio_usd,
+                        stage="reversal_conviction_block",
+                        signal=signal,
+                        current_position=current_pos,
+                        blocked=True,
                     )
                     return
 
@@ -1098,6 +1245,14 @@ class TradingAgent:
             self._reversal_cooldown[coin] = time.time()
             self._signal_streak.pop(coin, None)
             self._flat_streak.pop(coin, None)
+            self._record_decision_snapshot(
+                coin,
+                portfolio_usd=portfolio_usd,
+                stage="signal_reversal_close",
+                signal=signal,
+                current_position=current_pos,
+                blocked=True,
+            )
             return
 
         # ── Directional signal: reset flat streak ──────────────────────────
@@ -1119,6 +1274,13 @@ class TradingAgent:
                 log.info(
                     f"[{coin}] 🔁 Signal streak: {signal.action} confirmed "
                     f"{streak['count']}/{required_streak} cycles — waiting for confirmation"
+                )
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="signal_streak_wait",
+                    signal=signal,
+                    blocked=True,
                 )
                 return
             else:
@@ -1149,6 +1311,14 @@ class TradingAgent:
 
         if not order.approved:
             log.info(f"[{coin}] Rejected: {order.rejection_reason}")
+            self._record_decision_snapshot(
+                coin,
+                portfolio_usd=portfolio_usd,
+                stage="risk_rejected",
+                signal=signal,
+                current_position=current_pos,
+                blocked=True,
+            )
             return
 
         execution_quality = self._assess_execution_quality(coin, signal.action, order, orderbook_signal)
@@ -1157,8 +1327,17 @@ class TradingAgent:
         self._last_signals[coin]["execution_quality_summary"] = execution_quality.get("summary", "")
         self._last_signals[coin]["estimated_slippage_bps"] = execution_quality.get("estimated_slippage_bps", 0.0)
         self._last_signals[coin]["execution_persistence_cycles"] = execution_quality.get("persistence_cycles", 0)
+        self._sync_signal_snapshot(coin, signal)
         if not execution_quality.get("permitted", True):
             log.info(f"[{coin}] ⚙️ Execution-quality gate blocked entry: {execution_quality.get('summary', '')}")
+            self._record_decision_snapshot(
+                coin,
+                portfolio_usd=portfolio_usd,
+                stage="execution_quality_block",
+                signal=signal,
+                current_position=current_pos,
+                blocked=True,
+            )
             return
 
         execution_plan = dict(getattr(signal, "execution_plan", {}) or {})
@@ -1166,10 +1345,19 @@ class TradingAgent:
         if plan_mode in {"limit", "maker_limit"}:
             if self.order_mgr.has_pending(coin):
                 log.info(f"[{coin}] Planned entry limit already pending — waiting for fill/cancel")
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="entry_limit_already_pending",
+                    signal=signal,
+                    current_position=current_pos,
+                    blocked=True,
+                    pending_limit=True,
+                )
                 return
             limit_price = float(execution_plan.get("limit_price", 0.0) or 0.0)
             if limit_price > 0:
-                self._place_limit_order(
+                placed = self._place_limit_order(
                     coin,
                     signal.action,
                     limit_price,
@@ -1185,9 +1373,27 @@ class TradingAgent:
                     f"[{coin}] 📋 Planned {plan_mode} entry @ ${limit_price:.2f} "
                     f"({execution_plan.get('reason', 'execution plan')})"
                 )
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="limit_entry_placed" if placed else "limit_entry_failed",
+                    signal=signal,
+                    current_position=current_pos,
+                    blocked=not placed,
+                    pending_limit=placed,
+                )
                 return
 
-        self._execute_order(coin, signal, order)
+        executed = self._execute_order(coin, signal, order)
+        self._record_decision_snapshot(
+            coin,
+            portfolio_usd=portfolio_usd,
+            stage="market_entry_opened" if executed else "market_entry_failed",
+            signal=signal,
+            current_position=current_pos,
+            executed=bool(executed),
+            blocked=not bool(executed),
+        )
 
     # ── Execution ─────────────────────────────────────────────
 
@@ -1234,6 +1440,159 @@ class TradingAgent:
                     break
             count += 1
         return count
+
+    def _sync_signal_snapshot(self, coin: str, signal) -> None:
+        if coin not in self._last_signals:
+            return
+
+        trade_plan = dict(getattr(signal, "trade_plan", {}) or {})
+        thesis = dict(getattr(signal, "thesis", {}) or {})
+        expectancy = dict(getattr(signal, "expectancy", {}) or {})
+        execution_plan = dict(getattr(signal, "execution_plan", {}) or {})
+        snap = self._last_signals[coin]
+        snap.update({
+            "action": signal.action,
+            "decision": signal.action,
+            "score": float(getattr(signal, "score", snap.get("score", 50.0)) or snap.get("score", 50.0)),
+            "confidence": getattr(signal, "confidence", snap.get("confidence", "LOW")),
+            "reason": getattr(signal, "reason", snap.get("reason", "")),
+            "flat_reason": getattr(signal, "flat_reason", snap.get("flat_reason", "")),
+            "decision_reason": getattr(signal, "reason", "") or getattr(signal, "flat_reason", "") or "",
+            "planned_stop_loss": getattr(signal, "stop_loss_price", snap.get("planned_stop_loss", 0.0)),
+            "planned_take_profit": getattr(signal, "take_profit_price", snap.get("planned_take_profit", 0.0)),
+            "planned_risk_pct": trade_plan.get("risk_pct", snap.get("planned_risk_pct", 0.0)),
+            "planned_reward_pct": trade_plan.get("reward_pct", snap.get("planned_reward_pct", 0.0)),
+            "planned_risk_reward_ratio": trade_plan.get("risk_reward_ratio", snap.get("planned_risk_reward_ratio", 0.0)),
+            "planned_stop_atr_multiple": trade_plan.get("stop_atr_multiple", snap.get("planned_stop_atr_multiple", 0.0)),
+            "planned_target_atr_multiple": trade_plan.get("target_atr_multiple", snap.get("planned_target_atr_multiple", 0.0)),
+            "planned_target_r_multiple": trade_plan.get("target_r_multiple", snap.get("planned_target_r_multiple", 0.0)),
+            "stop_basis": trade_plan.get("stop_basis", snap.get("stop_basis", "")),
+            "target_basis": trade_plan.get("target_basis", snap.get("target_basis", "")),
+            "price_action_summary": trade_plan.get("price_action_summary", snap.get("price_action_summary", "")),
+            "thesis_candidate_action": thesis.get("candidate_action", snap.get("thesis_candidate_action", signal.action)),
+            "thesis_state": thesis.get("state", snap.get("thesis_state", "NO_TRADE")),
+            "thesis_permitted": thesis.get("permitted", snap.get("thesis_permitted", False)),
+            "thesis_quality": thesis.get("quality", snap.get("thesis_quality", snap.get("confidence", "LOW"))),
+            "thesis_alignment_points": thesis.get("alignment_points", snap.get("thesis_alignment_points", 0.0)),
+            "thesis_conflict_points": thesis.get("conflict_points", snap.get("thesis_conflict_points", 0.0)),
+            "thesis_conviction_score": thesis.get("conviction_score", snap.get("thesis_conviction_score", signal.score)),
+            "thesis_summary": thesis.get("summary", snap.get("thesis_summary", "")),
+            "thesis_reasons": thesis.get("reasons", snap.get("thesis_reasons", [])),
+            "thesis_blockers": thesis.get("blockers", snap.get("thesis_blockers", [])),
+            "thesis": thesis,
+            "expectancy_probability": expectancy.get("probability", snap.get("expectancy_probability", 0.50)),
+            "expectancy_expected_r": expectancy.get("expected_r", snap.get("expectancy_expected_r", 0.0)),
+            "expectancy_uncertainty": expectancy.get("uncertainty", snap.get("expectancy_uncertainty", 0.50)),
+            "expectancy_score": expectancy.get("score", snap.get("expectancy_score", signal.score)),
+            "expectancy_summary": expectancy.get("summary", snap.get("expectancy_summary", "")),
+            "expectancy_reasons": expectancy.get("reasons", snap.get("expectancy_reasons", [])),
+            "expectancy_blockers": expectancy.get("blockers", snap.get("expectancy_blockers", [])),
+            "expectancy": expectancy,
+            "execution_plan": execution_plan,
+            "trade_plan": trade_plan,
+        })
+
+    def _apply_analog_context(self, coin: str, signal, current_position: str | None):
+        snap = dict(self._last_signals.get(coin, {}) or {})
+        candidate_action = signal.action if signal.action in {"LONG", "SHORT"} else str(
+            (getattr(signal, "thesis", {}) or {}).get("candidate_action", snap.get("thesis_candidate_action", "FLAT"))
+        ).upper()
+        analog = self._analog_engine.evaluate(coin, candidate_action, snap)
+
+        if coin in self._last_signals:
+            self._last_signals[coin].update({
+                "analog_candidate_action": candidate_action,
+                "analog_verdict": analog.get("verdict", "INSUFFICIENT"),
+                "analog_sample_size": analog.get("sample_size", 0),
+                "analog_avg_similarity": analog.get("avg_similarity", 0.0),
+                "analog_reliability": analog.get("reliability", 0.0),
+                "analog_win_rate": analog.get("win_rate", 0.0),
+                "analog_avg_pnl_pct": analog.get("avg_pnl_pct", 0.0),
+                "analog_avg_captured_r": analog.get("avg_captured_r", 0.0),
+                "analog_supportive": analog.get("supportive", False),
+                "analog_adverse": analog.get("adverse", False),
+                "analog_hard_block": analog.get("hard_block", False),
+                "analog_score_adjustment": analog.get("score_adjustment", 0.0),
+                "analog_probability_adjustment": analog.get("probability_adjustment", 0.0),
+                "analog_expected_r_adjustment": analog.get("expected_r_adjustment", 0.0),
+                "analog_uncertainty_adjustment": analog.get("uncertainty_adjustment", 0.0),
+                "analog_summary": analog.get("summary", ""),
+                "analog_top_matches": analog.get("top_matches", []),
+            })
+
+        if signal.action in {"LONG", "SHORT"}:
+            blended_expectancy = self._analog_engine.blend_expectancy(
+                getattr(signal, "expectancy", {}) or {},
+                analog,
+                same_direction_position=bool(current_position and current_position == signal.action),
+            )
+            signal.expectancy = blended_expectancy
+            score_delta = float(analog.get("score_adjustment", 0.0) or 0.0)
+            if score_delta:
+                signal.score = max(0.0, min(100.0, float(signal.score) + score_delta))
+            if isinstance(getattr(signal, "thesis", None), dict):
+                signal.thesis["analog_summary"] = analog.get("summary", "")
+                signal.thesis["analog_verdict"] = analog.get("verdict", "INSUFFICIENT")
+            if not blended_expectancy.get("permitted", True):
+                flat_reason = str(blended_expectancy.get("summary", "") or analog.get("summary", "") or "historical analogs do not support the setup")
+                log.info(f"[{coin}] 🧠 Analog gate keeps {signal.action} flat: {flat_reason}")
+                signal.action = "FLAT"
+                signal.flat_reason = flat_reason
+                signal.reason = flat_reason
+
+        self._sync_signal_snapshot(coin, signal)
+        return analog
+
+    def _record_decision_snapshot(
+        self,
+        coin: str,
+        *,
+        portfolio_usd: float,
+        stage: str,
+        signal=None,
+        current_position: str | None = None,
+        executed: bool = False,
+        blocked: bool = False,
+        pending_limit: bool = False,
+    ) -> None:
+        if not getattr(self.cfg.trading, "decision_dataset_enabled", True):
+            return
+
+        snap = dict(self._last_signals.get(coin, {}) or {})
+        if signal is not None:
+            snap.setdefault("action", getattr(signal, "action", "FLAT"))
+            snap.setdefault("decision", getattr(signal, "action", "FLAT"))
+            snap.setdefault("decision_reason", getattr(signal, "reason", "") or getattr(signal, "flat_reason", "") or "")
+            snap.setdefault("flat_reason", getattr(signal, "flat_reason", ""))
+            snap.setdefault("score", getattr(signal, "score", 50.0))
+            snap.setdefault("confidence", getattr(signal, "confidence", "LOW"))
+        if not snap:
+            return
+
+        record = {
+            "cycle_number": self._cycle,
+            "coin": coin,
+            "stage": stage,
+            "candidate_action": snap.get("thesis_candidate_action", snap.get("action", "FLAT")),
+            "final_action": snap.get("action", "FLAT"),
+            "decision_reason": snap.get("decision_reason", ""),
+            "has_position": bool(current_position),
+            "current_position": current_position or "",
+            "tradable": coin in self._tradable_coin_set,
+            "execution_mode": snap.get("execution_mode", "observation_only"),
+            "executed": bool(executed),
+            "blocked": bool(blocked),
+            "pending_limit": bool(pending_limit),
+            "portfolio_usd": round(float(portfolio_usd or 0.0), 2),
+            "available_usd": round(float(self.risk.available_capital(float(portfolio_usd or 0.0))), 2),
+            "signal_snapshot": snap,
+        }
+        try:
+            decision_dataset.append_decision(record)
+            if getattr(self.cfg.trading, "feature_store_enabled", True):
+                feature_store.append_decision_feature_row(record)
+        except Exception as exc:
+            log.debug(f"[{coin}] Decision dataset append skipped: {exc}")
 
     def _assess_execution_quality(self, coin: str, direction: str, order, orderbook_signal) -> dict:
         direction = direction.upper()
@@ -1749,7 +2108,7 @@ class TradingAgent:
         exchanges = self._eligible_exchanges(coin)
         if not exchanges:
             log.error(f"[{coin}] No exchange supports this symbol")
-            return
+            return False
 
         for ex in exchanges:
             ex.set_leverage(coin, self.cfg.trading.leverage)
@@ -1790,7 +2149,7 @@ class TradingAgent:
                         self.notifier.error_alert(
                             f"CRITICAL: {coin} {signal.action} order succeeded on {ex.name} but verification failed"
                         )
-                        return
+                        return False
                     pos = self.risk.positions.get(coin)
                     if pos:
                         if order.is_scale_in:
@@ -1858,12 +2217,13 @@ class TradingAgent:
                     f"{order.size_coin:.6f} @ ${fill_price:.2f} "
                     f"| SL ${order.stop_loss:.2f} TP ${order.take_profit:.2f}"
                 )
-                return
+                return True
             elif not result:
                 log.error(f"[{coin}] ❌ No result returned from {ex.name}")
                 self.notifier.error_alert(
                     f"{signal.action} failed on {ex.name} for {coin}: No result returned"
                 )
+        return False
 
     def _place_limit_order(self, coin: str, direction: str, limit_price: float,
                            size_usd: float, sl: float, tp: float,
@@ -1874,7 +2234,7 @@ class TradingAgent:
         exchanges = self._eligible_exchanges(coin)
         if not exchanges:
             log.error(f"[{coin}] No exchange supports limit orders for this symbol")
-            return
+            return False
         for ex in exchanges:
             ex.set_leverage(coin, self.cfg.trading.leverage)
             size_coin = size_usd / limit_price if limit_price > 0 else 0
@@ -1934,9 +2294,10 @@ class TradingAgent:
                     f"[{coin}] 📋 Limit {direction} placed @ ${limit_price:.2f} "
                     f"SL=${sl:.2f} TP=${tp:.2f} (reason={reason})"
                 )
-                return
+                return True
             else:
                 log.error(f"[{coin}] Limit order failed on {ex.name}: {result.error}")
+        return False
 
     # ── Order manager action handler ──────────────────────────
 
@@ -2205,6 +2566,11 @@ class TradingAgent:
             )
             if dataset_record:
                 trade_dataset.append_closed_trade(dataset_record)
+                if getattr(self.cfg.trading, "feature_store_enabled", True):
+                    try:
+                        feature_store.append_closed_trade_feature_row(dataset_record)
+                    except Exception as exc:
+                        log.debug(f"[{coin}] Closed-trade feature row skipped: {exc}")
             trend_ctx    = entry_ctx.get("mtf_bias") or last_sig.get("mtf_bias", "FLAT")
             # Pull regime context so RL can learn which regimes are profitable
             market_regime   = entry_ctx.get("market_regime") or last_sig.get("market_regime",   "RANGING")

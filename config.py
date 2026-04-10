@@ -253,6 +253,28 @@ class TradingConfig:
         "fed", "ecb", "boj", "rate decision", "inflation", "gdp",
     ])
 
+    # ── Decision intelligence / AI prep ───────────────────────
+    decision_dataset_enabled: bool = True
+    feature_store_enabled: bool = True
+    analog_engine_enabled: bool = True
+    analog_history_limit: int = 1500
+    analog_min_samples: int = 5
+    analog_hard_block_min_samples: int = 8
+    analog_similarity_floor: float = 0.58
+    analog_min_reliability: float = 0.42
+    analog_same_coin_bonus: float = 0.08
+    analog_same_instrument_bonus: float = 0.04
+    analog_max_examples: int = 5
+    analog_supportive_win_rate: float = 0.57
+    analog_adverse_win_rate: float = 0.43
+    analog_hard_block_win_rate: float = 0.35
+    analog_positive_expected_r: float = 0.18
+    analog_negative_expected_r: float = -0.10
+    analog_score_adjustment_cap: float = 4.0
+    analog_probability_adjustment_cap: float = 0.06
+    analog_expected_r_adjustment_cap: float = 0.12
+    analog_uncertainty_adjustment_cap: float = 0.08
+
     # ── Visual chart confirmation ────────────────────────
     # When enabled, borderline signals (score 38–62) are confirmed by
     # sending a chart screenshot to Claude's vision API before trading.

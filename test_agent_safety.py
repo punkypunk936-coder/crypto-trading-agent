@@ -19,7 +19,10 @@ import pandas as pd
 
 import checkpoint as checkpoint_module
 import agent as agent_module
+import analog_engine as analog_engine_module
 import backtest as backtest_module
+import decision_dataset as decision_dataset_module
+import feature_store as feature_store_module
 import hosted_state_sync as hosted_state_sync_module
 import main as main_module
 import market_map as market_map_module
@@ -2317,6 +2320,333 @@ def test_trade_memory_can_hard_block_failing_direction_family() -> None:
             trade_memory_module.MEMORY_FILE = original_memory_file
 
 
+def test_decision_dataset_and_feature_store_capture_flat_decisions() -> None:
+    original_decision_path = decision_dataset_module.DECISION_DATASET_JSONL
+    original_feature_path = feature_store_module.FEATURE_STORE_JSONL
+    with tempfile.TemporaryDirectory() as tmpdir:
+        decision_dataset_module.DECISION_DATASET_JSONL = Path(tmpdir) / "decision_dataset.jsonl"
+        feature_store_module.FEATURE_STORE_JSONL = Path(tmpdir) / "feature_store.jsonl"
+        try:
+            record = {
+                "cycle_number": 42,
+                "coin": "BTC",
+                "stage": "guardrails_flat",
+                "candidate_action": "LONG",
+                "final_action": "FLAT",
+                "decision_reason": "waiting for reclaim confirmation",
+                "has_position": False,
+                "current_position": "",
+                "tradable": True,
+                "execution_mode": "tradable",
+                "executed": False,
+                "blocked": True,
+                "pending_limit": False,
+                "signal_snapshot": {
+                    "action": "FLAT",
+                    "decision": "FLAT",
+                    "score": 61.5,
+                    "confidence": "MEDIUM",
+                    "decision_reason": "waiting for reclaim confirmation",
+                    "flat_reason": "waiting for reclaim confirmation",
+                    "instrument_type": "crypto",
+                    "candle_score": 58.0,
+                    "news_score": 54.0,
+                    "market_regime": "TREND",
+                    "dominant_regime": "TREND",
+                    "orderbook_score": 66.0,
+                    "market_map_bias": "BULLISH",
+                    "planned_risk_pct": 1.2,
+                    "planned_reward_pct": 2.8,
+                    "planned_risk_reward_ratio": 2.33,
+                    "thesis_candidate_action": "LONG",
+                    "thesis_state": "NO_TRADE",
+                    "thesis_permitted": False,
+                    "thesis_quality": "MEDIUM",
+                    "thesis_alignment_points": 4.0,
+                    "thesis_conflict_points": 2.0,
+                    "thesis_conviction_score": 61.5,
+                    "expectancy_probability": 0.56,
+                    "expectancy_expected_r": 0.22,
+                    "expectancy_uncertainty": 0.34,
+                    "expectancy_score": 60.0,
+                },
+            }
+            decision_dataset_module.append_decision(record)
+            feature_store_module.append_decision_feature_row(record)
+
+            decisions = decision_dataset_module.load_decisions()
+            feature_rows = feature_store_module.load_feature_rows(row_type="decision")
+            assert len(decisions) == 1, "decision dataset should capture flat cycle decisions"
+            assert decisions[0]["final_action"] == "FLAT"
+            assert len(feature_rows) == 1, "feature store should mirror decision rows"
+            assert feature_rows[0]["features"]["score"] == 61.5
+            assert feature_rows[0]["features"]["ctx_stage"] == "guardrails_flat"
+            assert feature_rows[0]["labels"]["blocked"] is True
+        finally:
+            decision_dataset_module.DECISION_DATASET_JSONL = original_decision_path
+            feature_store_module.FEATURE_STORE_JSONL = original_feature_path
+
+
+def test_historical_analog_engine_blends_supportive_history() -> None:
+    cfg = build_config()
+    cfg.trading.analog_min_samples = 3
+    cfg.trading.analog_hard_block_min_samples = 4
+    cfg.trading.analog_similarity_floor = 0.50
+    engine = analog_engine_module.HistoricalAnalogEngine(cfg.trading)
+
+    original_loader = analog_engine_module.trade_dataset.load_closed_trades
+    try:
+        def _record(trade_id: str, pnl_pct: float, captured_r: float) -> dict:
+            return {
+                "trade_id": trade_id,
+                "coin": "BTC",
+                "direction": "LONG",
+                "signal_score": 71.0,
+                "pnl_pct": pnl_pct,
+                "pnl_usd": pnl_pct * 10.0,
+                "hold_minutes": 180.0,
+                "outcome": "WIN" if pnl_pct > 0 else "LOSS",
+                "exit_reason": "take_profit" if pnl_pct > 0 else "stop_loss",
+                "entry_context": {
+                    "score": 71.0,
+                    "confidence": "HIGH",
+                    "instrument_type": "crypto",
+                    "mtf_bias": "BULLISH",
+                    "candle_score": 66.0,
+                    "candle_trend": "UP",
+                    "news_score": 57.0,
+                    "news_velocity": "MEDIUM",
+                    "memory_adj": 0.5,
+                    "rl_total_trades": 8,
+                    "rl_win_rate": 62.0,
+                    "rl_pattern_boost": 1.0,
+                    "market_regime": "TREND",
+                    "dominant_regime": "TREND",
+                    "volatility_label": "NORMAL",
+                    "foc_score": 58.0,
+                    "funding_label": "NORMAL",
+                    "orderbook_score": 72.0,
+                    "market_map_bias": "BULLISH",
+                    "market_map_summary": "reclaim held",
+                    "planned_risk_pct": 1.1,
+                    "planned_reward_pct": 2.9,
+                    "planned_risk_reward_ratio": 2.64,
+                    "planned_stop_atr_multiple": 1.2,
+                    "planned_target_atr_multiple": 2.8,
+                    "planned_target_r_multiple": 2.3,
+                    "stop_basis": "support",
+                    "target_basis": "resistance",
+                    "price_action_summary": "breakout retest",
+                    "expectancy_probability": 0.62,
+                    "expectancy_expected_r": 0.42,
+                    "expectancy_uncertainty": 0.21,
+                    "expectancy_score": 71.0,
+                    "execution_mode": "tradable",
+                },
+                "thesis": {
+                    "candidate_action": "LONG",
+                    "state": "TRADEABLE",
+                    "permitted": True,
+                    "quality": "HIGH",
+                    "alignment_points": 6.0,
+                    "conflict_points": 1.0,
+                    "conviction_score": 71.0,
+                    "summary": "trend and orderbook aligned",
+                },
+                "trade_plan": {
+                    "risk_pct": 1.1,
+                    "reward_pct": 2.9,
+                    "risk_reward_ratio": 2.64,
+                    "stop_atr_multiple": 1.2,
+                    "target_atr_multiple": 2.8,
+                    "target_r_multiple": 2.3,
+                    "stop_basis": "support",
+                    "target_basis": "resistance",
+                    "price_action_summary": "breakout retest",
+                },
+                "execution_quality": {
+                    "score": 77.0,
+                    "summary": "good depth",
+                    "estimated_slippage_bps": 5.0,
+                    "persistence_cycles": 3,
+                },
+                "plan_outcome": {
+                    "captured_r_multiple": captured_r,
+                },
+            }
+
+        analog_engine_module.trade_dataset.load_closed_trades = lambda limit=None: [
+            _record("a1", 2.6, 1.4),
+            _record("a2", 3.4, 1.8),
+            _record("a3", 1.9, 1.1),
+            _record("a4", 2.2, 1.3),
+        ]
+
+        current_signal = {
+            "action": "LONG",
+            "score": 70.0,
+            "confidence": "HIGH",
+            "instrument_type": "crypto",
+            "candle_score": 65.0,
+            "news_score": 56.0,
+            "market_regime": "TREND",
+            "dominant_regime": "TREND",
+            "orderbook_score": 70.0,
+            "orderbook_imbalance": 0.18,
+            "market_map_bias": "BULLISH",
+            "planned_risk_pct": 1.0,
+            "planned_reward_pct": 2.8,
+            "planned_risk_reward_ratio": 2.6,
+            "planned_stop_atr_multiple": 1.2,
+            "planned_target_atr_multiple": 2.7,
+            "planned_target_r_multiple": 2.2,
+            "stop_basis": "support",
+            "target_basis": "resistance",
+            "thesis_candidate_action": "LONG",
+            "thesis_state": "TRADEABLE",
+            "thesis_quality": "HIGH",
+            "thesis_alignment_points": 6.0,
+            "thesis_conflict_points": 1.0,
+            "thesis_conviction_score": 70.0,
+            "expectancy_probability": 0.60,
+            "expectancy_expected_r": 0.35,
+            "expectancy_uncertainty": 0.24,
+            "expectancy_score": 69.0,
+            "execution_mode": "tradable",
+            "execution_quality_score": 75.0,
+            "estimated_slippage_bps": 6.0,
+        }
+
+        analog = engine.evaluate("BTC", "LONG", current_signal)
+        assert analog["supportive"] is True, "strong winning analogs should support similar live setups"
+        assert analog["score_adjustment"] > 0.0
+        blended = engine.blend_expectancy(
+            {
+                "permitted": True,
+                "probability": 0.60,
+                "expected_r": 0.35,
+                "uncertainty": 0.24,
+                "score": 69.0,
+                "summary": "base expectancy is acceptable",
+                "reasons": [],
+                "blockers": [],
+            },
+            analog,
+        )
+        assert blended["probability"] > 0.60
+        assert blended["score"] > 69.0
+        assert blended["permitted"] is True
+    finally:
+        analog_engine_module.trade_dataset.load_closed_trades = original_loader
+
+
+def test_agent_apply_analog_context_can_flatten_bad_setup() -> None:
+    cfg = build_config()
+    exchange = DryRunExchange(starting_balance_usd=1000.0)
+    exchange.connect()
+    live = TradingAgent(cfg, [exchange])
+    live._last_signals["BTC"] = {
+        "action": "LONG",
+        "decision": "LONG",
+        "score": 68.0,
+        "confidence": "HIGH",
+        "decision_reason": "breakout retest",
+        "flat_reason": "",
+        "instrument_type": "crypto",
+        "planned_risk_pct": 1.0,
+        "planned_reward_pct": 2.5,
+        "planned_risk_reward_ratio": 2.5,
+        "thesis_candidate_action": "LONG",
+        "thesis_state": "TRADEABLE",
+        "thesis_quality": "HIGH",
+        "thesis_alignment_points": 6.0,
+        "thesis_conflict_points": 0.0,
+        "thesis_conviction_score": 68.0,
+        "expectancy_probability": 0.61,
+        "expectancy_expected_r": 0.33,
+        "expectancy_uncertainty": 0.22,
+        "expectancy_score": 68.0,
+        "execution_mode": "tradable",
+    }
+    signal = SimpleNamespace(
+        action="LONG",
+        score=68.0,
+        confidence="HIGH",
+        reason="breakout retest",
+        flat_reason="",
+        stop_loss_price=98.0,
+        take_profit_price=105.0,
+        trade_plan={},
+        execution_plan={},
+        thesis={
+            "candidate_action": "LONG",
+            "state": "TRADEABLE",
+            "permitted": True,
+            "quality": "HIGH",
+            "alignment_points": 6.0,
+            "conflict_points": 0.0,
+            "conviction_score": 68.0,
+            "summary": "trend and levels aligned",
+            "reasons": [],
+            "blockers": [],
+        },
+        expectancy={
+            "permitted": True,
+            "probability": 0.61,
+            "expected_r": 0.33,
+            "uncertainty": 0.22,
+            "score": 68.0,
+            "summary": "good baseline expectancy",
+            "reasons": [],
+            "blockers": [],
+        },
+    )
+
+    class StubAnalogEngine:
+        def evaluate(self, coin, action, signal_snapshot):
+            return {
+                "enabled": True,
+                "verdict": "HARD_BLOCK",
+                "sample_size": 9,
+                "avg_similarity": 0.81,
+                "reliability": 0.73,
+                "win_rate": 0.22,
+                "avg_pnl_pct": -2.1,
+                "avg_captured_r": -0.9,
+                "supportive": False,
+                "adverse": True,
+                "hard_block": True,
+                "score_adjustment": -4.0,
+                "probability_adjustment": -0.06,
+                "expected_r_adjustment": -0.12,
+                "uncertainty_adjustment": 0.08,
+                "summary": "historical analog engine hard-blocked the setup",
+                "top_matches": [],
+            }
+
+        def blend_expectancy(self, expectancy, analog, same_direction_position=False):
+            payload = dict(expectancy)
+            payload.update({
+                "permitted": False,
+                "score": 64.0,
+                "probability": 0.55,
+                "expected_r": 0.21,
+                "uncertainty": 0.30,
+                "summary": "historical analog engine hard-blocked the setup",
+                "blockers": ["historical analog engine hard-blocked the setup"],
+                "reasons": [],
+            })
+            return payload
+
+    live._analog_engine = StubAnalogEngine()
+    analog = live._apply_analog_context("BTC", signal, None)
+    assert analog["hard_block"] is True
+    assert signal.action == "FLAT", "hard-blocked analogs should flatten the live setup"
+    assert "hard-blocked" in signal.flat_reason
+    assert live._last_signals["BTC"]["analog_hard_block"] is True
+    assert live._last_signals["BTC"]["analog_verdict"] == "HARD_BLOCK"
+
+
 def run_all() -> None:
     test_checkpoint_recovery()
     print("PASS checkpoint recovery")
@@ -2414,6 +2744,12 @@ def run_all() -> None:
     print("PASS legacy trade log normalization")
     test_trade_memory_can_hard_block_failing_direction_family()
     print("PASS directional hard embargo")
+    test_decision_dataset_and_feature_store_capture_flat_decisions()
+    print("PASS decision dataset + feature store")
+    test_historical_analog_engine_blends_supportive_history()
+    print("PASS historical analog engine")
+    test_agent_apply_analog_context_can_flatten_bad_setup()
+    print("PASS analog integration flattening")
 
 
 if __name__ == "__main__":
