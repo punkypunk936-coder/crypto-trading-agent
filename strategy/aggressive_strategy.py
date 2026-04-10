@@ -85,6 +85,32 @@ class AggressiveStrategy:
     def _is_persistent_bearish_breakdown(orderbook_signal) -> bool:
         return str(getattr(orderbook_signal, "breakout_state", "")).upper() == "PERSISTENT_BEARISH_BREAKDOWN"
 
+    def _market_map_supports_breakout_long_override(self, market_map_signal, breakout_state: str) -> bool:
+        if not getattr(self.tcfg, "support_defense_map_override_enabled", True):
+            return False
+        if not market_map_signal or not getattr(market_map_signal, "valid", False):
+            return False
+
+        breakout_state = str(breakout_state or "NONE").upper()
+        bias = str(getattr(market_map_signal, "bias", "NEUTRAL") or "NEUTRAL").upper()
+        if bias == "BEARISH":
+            return False
+        if getattr(market_map_signal, "below_breakdown_levels", []):
+            return False
+
+        confirmed = breakout_state in {"CONFIRMED_BULLISH_BREAKOUT", "PERSISTENT_BULLISH_BREAKOUT"}
+        probing = breakout_state == "PROBING_BULLISH_BREAKOUT"
+        if confirmed:
+            return True
+        if probing and (
+            getattr(market_map_signal, "above_reclaim_levels", [])
+            or getattr(market_map_signal, "probing_above_reclaim_levels", [])
+            or getattr(market_map_signal, "in_demand_zone", False)
+            or bias == "BULLISH"
+        ):
+            return True
+        return False
+
     def _qualifies_support_defense_long(
         self,
         *,
@@ -100,6 +126,7 @@ class AggressiveStrategy:
             return False
 
         breakout_state = str(getattr(orderbook_signal, "breakout_state", "NONE") or "NONE").upper()
+        breakout_override = self._market_map_supports_breakout_long_override(market_map_signal, breakout_state)
         if breakout_state in {"CONFIRMED_BEARISH_BREAKDOWN", "PERSISTENT_BEARISH_BREAKDOWN", "PROBING_BEARISH_BREAKDOWN"}:
             return False
         if str(getattr(orderbook_signal, "level_interaction", "BETWEEN_LEVELS") or "BETWEEN_LEVELS").upper() == "RANGE_COMPRESSION":
@@ -112,7 +139,10 @@ class AggressiveStrategy:
         if support_distance <= 0 or support_distance > max_support_distance:
             return False
 
-        if raw_score < float(getattr(self.tcfg, "support_defense_long_score_floor", 24.0) or 24.0):
+        score_floor = float(getattr(self.tcfg, "support_defense_long_score_floor", 24.0) or 24.0)
+        breakout_score_floor = float(getattr(self.tcfg, "support_defense_breakout_score_floor", 36.0) or 36.0)
+        min_score = breakout_score_floor if breakout_override else score_floor
+        if raw_score < min_score:
             return False
 
         orderbook_score = float(getattr(orderbook_signal, "score", 50.0) or 50.0)
@@ -127,13 +157,14 @@ class AggressiveStrategy:
         map_supportive = False
         map_blocks_shorts = False
         if market_map_signal and getattr(market_map_signal, "valid", False):
-            if getattr(market_map_signal, "block_longs", False):
+            if getattr(market_map_signal, "block_longs", False) and not breakout_override:
                 return False
             map_blocks_shorts = bool(getattr(market_map_signal, "block_shorts", False))
             map_supportive = bool(
                 getattr(market_map_signal, "favor_longs", False)
                 or getattr(market_map_signal, "in_demand_zone", False)
                 or str(getattr(market_map_signal, "bias", "NEUTRAL") or "NEUTRAL").upper() == "BULLISH"
+                or breakout_override
             )
 
         if not (getattr(orderbook_signal, "block_shorts", False) or map_blocks_shorts):
@@ -228,6 +259,9 @@ class AggressiveStrategy:
                 orderbook_signal=orderbook_signal,
                 market_map_signal=market_map_signal,
             )
+        )
+        market_map_breakout_override = (
+            bullish and self._market_map_supports_breakout_long_override(market_map_signal, breakout_state)
         )
 
         if support_defense_long:
@@ -381,8 +415,11 @@ class AggressiveStrategy:
         if market_map_signal and getattr(market_map_signal, "valid", False):
             market_bias = str(getattr(market_map_signal, "bias", "NEUTRAL") or "NEUTRAL").upper()
             if bullish:
-                if getattr(market_map_signal, "block_longs", False):
+                if getattr(market_map_signal, "block_longs", False) and not market_map_breakout_override:
                     blockers.append("daily market map still warns against longs here")
+                elif getattr(market_map_signal, "block_longs", False) and market_map_breakout_override:
+                    conflicts += 0.35
+                    reasons.append("mapped supply is overhead, but breakout reclaim is overriding it")
                 elif getattr(market_map_signal, "favor_longs", False):
                     alignment += 1.5
                     reasons.append("daily market map supports the long")
@@ -517,6 +554,15 @@ class AggressiveStrategy:
         conflicts = float(thesis.get("conflict_points", 0.0) or 0.0)
         conviction = float(thesis.get("conviction_score", 50.0) or 50.0)
         rr = float(trade_plan.get("risk_reward_ratio", 0.0) or 0.0)
+        support_defense_long = (
+            bullish and self._qualifies_support_defense_long(
+                raw_score=score,
+                advanced=None,
+                candle_patterns=None,
+                orderbook_signal=orderbook_signal,
+                market_map_signal=market_map_signal,
+            )
+        )
 
         probability = 0.50
         probability += ((conviction - 50.0) / 50.0) * 0.18
@@ -562,6 +608,14 @@ class AggressiveStrategy:
                 uncertainty -= 0.04
             if level_interaction == "RANGE_COMPRESSION":
                 uncertainty += 0.14
+
+            if support_defense_long:
+                support_bonus = float(getattr(self.tcfg, "support_defense_expectancy_bonus", 0.05) or 0.05)
+                probability += support_bonus
+                uncertainty -= 0.03
+                if breakout_state.startswith("CONFIRMED") or breakout_state.startswith("PERSISTENT"):
+                    probability += 0.025
+                    uncertainty -= 0.02
         else:
             uncertainty += 0.06
 

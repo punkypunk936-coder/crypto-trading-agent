@@ -23,6 +23,8 @@ import backtest as backtest_module
 import hosted_state_sync as hosted_state_sync_module
 import main as main_module
 import market_map as market_map_module
+from data import market_data as market_data_module
+from indicators import news as news_module
 from indicators import orderbook_levels as orderbook_levels_module
 import trade_dataset as trade_dataset_module
 import trade_logger as trade_logger_module
@@ -551,6 +553,104 @@ def test_support_defense_long_promotes_defended_reclaim_setup() -> None:
     assert any("support defense" in reason.lower() for reason in signal.thesis["reasons"])
 
 
+def test_confirmed_breakout_can_override_neutral_supply_map_for_support_defense_long() -> None:
+    cfg = build_config()
+    strategy = AggressiveStrategy(cfg.trading, cfg.indicators)
+
+    tech = SimpleNamespace(
+        valid=True,
+        coin="ETH",
+        price=100.0,
+        rsi=54.0,
+        rsi_score=44.0,
+        macd_hist=0.2,
+        macd_score=48.0,
+        bb_score=46.0,
+        ema_score=47.0,
+        volume_score=1.05,
+    )
+    advanced = SimpleNamespace(
+        valid=True,
+        fib=SimpleNamespace(score=45.0, levels={"38.2%": 98.6, "61.8%": 101.1}, nearest_level_name="61.8%", nearest_level_price=101.1, description="Fib resistance nearby"),
+        msb=SimpleNamespace(score=56.0, msb_type="NONE", structure_trend="UPTREND", last_swing_high=103.2, last_swing_low=98.2, description="Uptrend still intact"),
+        ob=SimpleNamespace(score=48.0, inside_bullish_ob=False, inside_bearish_ob=False, bullish_obs=[(99.1, 98.7)], bearish_obs=[(101.7, 101.2)], description="Order blocks"),
+        fvg=SimpleNamespace(score=46.0, bullish_fvgs=[(98.9, 99.3)], bearish_fvgs=[(101.3, 101.8)], inside_bullish_fvg=False, inside_bearish_fvg=False, description="FVG"),
+        atr=SimpleNamespace(atr=1.2, atr_pct=1.2, volatility_label="normal"),
+    )
+    regimes = SimpleNamespace(
+        valid=True,
+        dominant_regime="BREAKOUT",
+        momentum_score=55.0,
+        trend_score=62.0,
+        mean_rev_score=49.0,
+        volatility_score=44.0,
+        absorption_score=36.0,
+        catalyst_score=54.0,
+    )
+    candles = SimpleNamespace(valid=True, score=50.0, patterns=["Spinning Top"], trend_3="UP")
+    sentiment = {"signal_score": 48.0, "label": "Neutral", "raw_score": 50, "is_extreme": False}
+    orderbook_signal = SimpleNamespace(
+        valid=True,
+        score=73.0,
+        imbalance_ratio=0.16,
+        imbalance_mean=0.10,
+        level_interaction="AT_SUPPORT",
+        breakout_state="CONFIRMED_BULLISH_BREAKOUT",
+        favor_longs=True,
+        favor_shorts=False,
+        block_longs=False,
+        block_shorts=True,
+        nearest_support=99.7,
+        nearest_support_distance_pct=0.3,
+        nearest_support_strength=0.88,
+        nearest_resistance=101.4,
+        nearest_resistance_distance_pct=1.4,
+        nearest_resistance_strength=0.52,
+        support_levels=[{"price": 99.7, "strength": 0.88, "source": "orderbook", "label": "bid_wall"}],
+        resistance_levels=[{"price": 101.4, "strength": 0.52, "source": "daily", "label": "daily_resistance"}],
+        daily_breakout_level=100.9,
+        daily_breakdown_level=97.8,
+    )
+    market_map_signal = SimpleNamespace(
+        valid=True,
+        bias="NEUTRAL",
+        favor_longs=False,
+        favor_shorts=True,
+        block_longs=True,
+        block_shorts=False,
+        in_demand_zone=False,
+        in_supply_zone=True,
+        above_reclaim_levels=[],
+        probing_above_reclaim_levels=[],
+        below_breakdown_levels=[],
+        nearest_support=99.4,
+        nearest_support_distance_pct=0.6,
+        nearest_resistance=101.2,
+        nearest_resistance_distance_pct=1.2,
+        summary="auto neutral map; price is sitting in mapped supply; price is pressing mapped resistance",
+    )
+
+    signal = strategy.generate_signal(
+        tech=tech,
+        advanced=advanced,
+        sentiment=sentiment,
+        current_position=None,
+        regimes=regimes,
+        news_signal=None,
+        candle_patterns=candles,
+        memory_adjustment=0.0,
+        instrument_type="crypto",
+        funding_oi_signal=None,
+        orderbook_signal=orderbook_signal,
+        market_map_signal=market_map_signal,
+    )
+
+    assert signal.action == "LONG"
+    assert signal.thesis["permitted"] is True
+    assert signal.expectancy["permitted"] is True
+    assert any("support defense" in reason.lower() for reason in signal.thesis["reasons"])
+
+
 def test_confirmed_breakout_can_promote_borderline_long() -> None:
     cfg = build_config()
     strategy = AggressiveStrategy(cfg.trading, cfg.indicators)
@@ -701,6 +801,84 @@ def test_probing_breakout_does_not_override_nearby_resistance() -> None:
 
     assert signal.action == "FLAT", "probing above resistance should not override a nearby ceiling without daily confirmation"
     assert "resistance" in signal.flat_reason.lower()
+
+
+def test_crypto_news_falls_back_to_google_when_cryptopanic_is_unavailable() -> None:
+    class _Resp:
+        def __init__(self, status_code: int, *, json_payload=None, content: bytes = b""):
+            self.status_code = status_code
+            self._json_payload = json_payload or {}
+            self.content = content
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise requests.HTTPError(f"{self.status_code} boom")
+
+        def json(self):
+            return self._json_payload
+
+    import requests
+
+    original_get = news_module.requests.get
+    original_cache = dict(news_module._cache)
+    original_backoff = dict(news_module._source_backoff)
+    try:
+        news_module._cache.clear()
+        news_module._source_backoff.clear()
+
+        def fake_get(url, params=None, **kwargs):
+            if "cryptopanic.com" in url:
+                return _Resp(404)
+            if "news.google.com" in url:
+                return _Resp(
+                    200,
+                    content=(
+                        b'<?xml version="1.0"?><rss><channel>'
+                        b"<item><title>Bitcoin breakout as ETF demand rises</title></item>"
+                        b"<item><title>BTC holds key support and rallies</title></item>"
+                        b"</channel></rss>"
+                    ),
+                )
+            raise AssertionError(f"unexpected url {url}")
+
+        news_module.requests.get = fake_get
+        signal = news_module.get_news_signal("BTC", auth_token="")
+        assert signal.valid is True
+        assert signal.article_count == 2
+        assert signal.score > 50.0
+        assert any("breakout" in title.lower() for title in signal.top_headlines)
+    finally:
+        news_module.requests.get = original_get
+        news_module._cache.clear()
+        news_module._cache.update(original_cache)
+        news_module._source_backoff.clear()
+        news_module._source_backoff.update(original_backoff)
+
+
+def test_market_data_reuses_stale_yahoo_candles_when_live_fetch_fails() -> None:
+    import requests
+
+    original_get = market_data_module.requests.get
+    original_cache = dict(market_data_module._cache)
+    try:
+        now = time.time()
+        stale_df = pd.DataFrame([
+            {"timestamp": pd.Timestamp("2026-04-10T00:00:00Z"), "open": 6800.0, "high": 6810.0, "low": 6795.0, "close": 6805.0, "volume": 10.0, "trades": 0},
+            {"timestamp": pd.Timestamp("2026-04-10T01:00:00Z"), "open": 6805.0, "high": 6825.0, "low": 6800.0, "close": 6820.0, "volume": 12.0, "trades": 0},
+        ])
+        market_data_module._cache["SP500_1h_yf"] = (now - 120, stale_df)
+
+        def boom(*args, **kwargs):
+            raise requests.HTTPError("429 too many requests")
+
+        market_data_module.requests.get = boom
+        df = market_data_module._fetch_candles_yahoo("SP500", "1h", 2)
+        assert df is not None
+        assert float(df["close"].iloc[-1]) == 6820.0
+    finally:
+        market_data_module.requests.get = original_get
+        market_data_module._cache.clear()
+        market_data_module._cache.update(original_cache)
 
 
 def test_thesis_gate_blocks_high_score_range_compression_setup() -> None:
@@ -2160,10 +2338,16 @@ def run_all() -> None:
     print("PASS orderbook support guard")
     test_support_defense_long_promotes_defended_reclaim_setup()
     print("PASS support-defense long promotion")
+    test_confirmed_breakout_can_override_neutral_supply_map_for_support_defense_long()
+    print("PASS support-defense breakout map override")
     test_confirmed_breakout_can_promote_borderline_long()
     print("PASS confirmed breakout promotion")
     test_probing_breakout_does_not_override_nearby_resistance()
     print("PASS probing breakout guard")
+    test_crypto_news_falls_back_to_google_when_cryptopanic_is_unavailable()
+    print("PASS crypto news fallback")
+    test_market_data_reuses_stale_yahoo_candles_when_live_fetch_fails()
+    print("PASS stale market data fallback")
     test_thesis_gate_blocks_high_score_range_compression_setup()
     print("PASS thesis no-trade gate")
     test_expectancy_gate_rejects_thin_edge_setup()

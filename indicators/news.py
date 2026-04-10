@@ -33,6 +33,8 @@ import time
 import re
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict
+import copy
+import xml.etree.ElementTree as ET
 import requests
 
 from logger import get_logger
@@ -41,13 +43,17 @@ log = get_logger("news")
 
 # Cache news for 10 minutes — no need to hit API every 2 min cycle
 CACHE_TTL = 600
+STALE_CACHE_TTL = 3600
+SOURCE_BACKOFF_TTL = 900
 
 # CryptoPanic free API (no token = public posts, 50/hr rate limit)
 CRYPTOPANIC_URL = "https://cryptopanic.com/api/v1/posts/"
+GOOGLE_NEWS_RSS_URL = "https://news.google.com/rss/search"
 
 # Yahoo Finance RSS — free, no API key — used for equity indexes
 # ^GSPC = S&P 500 | ^IXIC = NASDAQ | ^DJI = Dow Jones
 YAHOO_RSS_URL = "https://feeds.finance.yahoo.com/rss/2.0/headline"
+REQUEST_HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
 
 # Instruments routed to macro / commodity news instead of CryptoPanic.
 INDEX_INSTRUMENTS = {"SP500", "XAU", "BRENT", "WTI", "CL", "NDX", "DJI", "VIX"}
@@ -173,6 +179,85 @@ class NewsSignal:
 # ── Module-level cache ────────────────────────────────────────────────────
 
 _cache: Dict[str, dict] = {}   # coin → {ts, signal}
+_source_backoff: Dict[str, float] = {}
+
+CRYPTO_NEWS_QUERIES: Dict[str, str] = {
+    "BTC": "Bitcoin OR BTC crypto",
+    "ETH": "Ethereum OR ETH crypto",
+    "SOL": "Solana OR SOL crypto",
+    "HYPE": "Hyperliquid OR HYPE token OR Hyperliquid protocol",
+    "TAO": "Bittensor OR TAO token",
+}
+
+MACRO_NEWS_QUERIES: Dict[str, str] = {
+    "SP500": "S&P 500 OR SPX OR US stocks OR Wall Street",
+    "XAU": "gold OR XAU OR bullion OR treasury yields",
+    "BRENT": "Brent crude OR oil OR OPEC",
+    "WTI": "WTI crude OR oil OR OPEC",
+    "CL": "WTI crude OR oil OR OPEC",
+    "NDX": "Nasdaq OR NDX OR US tech stocks",
+    "DJI": "Dow Jones OR DJI OR US industrials",
+    "VIX": "VIX OR volatility index OR stock market volatility",
+}
+
+
+def _backoff_active(key: str) -> bool:
+    return time.time() < float(_source_backoff.get(key, 0.0) or 0.0)
+
+
+def _set_backoff(key: str, ttl_seconds: int = SOURCE_BACKOFF_TTL) -> None:
+    _source_backoff[key] = time.time() + max(60, int(ttl_seconds or SOURCE_BACKOFF_TTL))
+
+
+def _clear_backoff(key: str) -> None:
+    _source_backoff.pop(key, None)
+
+
+def _clone_signal(signal: NewsSignal, **updates) -> NewsSignal:
+    payload = copy.deepcopy(signal.__dict__)
+    payload.update(updates)
+    return NewsSignal(**payload)
+
+
+def _stale_cached_signal(coin: str) -> Optional[NewsSignal]:
+    cached = _cache.get(coin)
+    if not cached:
+        return None
+    age = time.time() - float(cached.get("ts", 0.0) or 0.0)
+    if age > STALE_CACHE_TTL:
+        return None
+    signal = cached.get("signal")
+    if not isinstance(signal, NewsSignal):
+        return None
+    return _clone_signal(
+        signal,
+        valid=True,
+        error=(f"stale cache reused after live feed issue: {signal.error}" if signal.error else "stale cache reused"),
+    )
+
+
+def _parse_rss_titles(content: bytes, limit: int = 20) -> List[str]:
+    try:
+        root = ET.fromstring(content)
+    except Exception:
+        return []
+    titles: List[str] = []
+    for item in root.findall(".//item"):
+        title = (item.findtext("title") or "").strip()
+        if not title:
+            continue
+        title = re.sub(r"\s*-\s*[^-]{1,60}$", "", title).strip()
+        titles.append(title)
+        if len(titles) >= limit:
+            break
+    return titles
+
+
+def _fetch_google_news_headlines(query: str, *, limit: int = 20) -> List[str]:
+    params = {"q": f"{query} when:1d", "hl": "en-US", "gl": "US", "ceid": "US:en"}
+    resp = requests.get(GOOGLE_NEWS_RSS_URL, params=params, timeout=8, headers=REQUEST_HEADERS)
+    resp.raise_for_status()
+    return _parse_rss_titles(resp.content, limit=limit)
 
 
 def get_news_signal(coin: str, auth_token: str = "") -> NewsSignal:
@@ -188,6 +273,13 @@ def get_news_signal(coin: str, auth_token: str = "") -> NewsSignal:
         signal = _fetch_macro_news(coin)
     else:
         signal = _fetch_and_score(coin, auth_token=auth_token)
+
+    if not signal.valid:
+        stale = _stale_cached_signal(coin)
+        if stale:
+            _cache[coin] = {"ts": time.time(), "signal": stale}
+            log.info(f"[{coin}] Reusing stale cached news signal while live feed recovers")
+            return stale
 
     _cache[coin] = {"ts": time.time(), "signal": signal}
     return signal
@@ -210,23 +302,40 @@ def _fetch_macro_news(coin: str) -> NewsSignal:
     }
     ticker = TICKER_MAP.get(coin.upper(), "^GSPC")
 
-    try:
-        import xml.etree.ElementTree as ET
-        params = {"s": ticker, "region": "US", "lang": "en-US"}
-        resp = requests.get(YAHOO_RSS_URL, params=params, timeout=8)
-        resp.raise_for_status()
-        root = ET.fromstring(resp.content)
-        items = root.findall(".//item")
-        headlines = [
-            item.findtext("title", "") for item in items[:20]
-            if item.findtext("title", "")
-        ]
-    except Exception as e:
-        log.warning(f"[{coin}] Macro news fetch failed: {e} — using neutral")
+    headlines: List[str] = []
+    errors: List[str] = []
+    yahoo_key = f"macro:yahoo:{coin.upper()}"
+    google_key = f"macro:google:{coin.upper()}"
+
+    if not _backoff_active(yahoo_key):
+        try:
+            params = {"s": ticker, "region": "US", "lang": "en-US"}
+            resp = requests.get(YAHOO_RSS_URL, params=params, timeout=8, headers=REQUEST_HEADERS)
+            resp.raise_for_status()
+            headlines = _parse_rss_titles(resp.content, limit=20)
+            if headlines:
+                _clear_backoff(yahoo_key)
+        except Exception as e:
+            errors.append(f"Yahoo RSS: {e}")
+            _set_backoff(yahoo_key)
+
+    if not headlines and not _backoff_active(google_key):
+        query = MACRO_NEWS_QUERIES.get(coin.upper(), f"{coin} markets")
+        try:
+            headlines = _fetch_google_news_headlines(query, limit=20)
+            if headlines:
+                _clear_backoff(google_key)
+        except Exception as e:
+            errors.append(f"Google News: {e}")
+            _set_backoff(google_key)
+
+    if not headlines:
+        error = " | ".join(errors) if errors else "no macro headlines returned"
+        log.warning(f"[{coin}] Macro news fetch failed: {error} — using neutral")
         return NewsSignal(coin=coin, score=50.0, raw_sentiment=0.0,
                           article_count=0, velocity="LOW",
                           top_headlines=[], is_extreme=False,
-                          valid=False, error=str(e))
+                          valid=False, error=error)
 
     if not headlines:
         return NewsSignal(coin=coin, score=50.0, raw_sentiment=0.0,
@@ -303,45 +412,70 @@ def _score_macro_headline(title: str, coin: str = "") -> float:
 
 def _fetch_and_score(coin: str, auth_token: str = "") -> NewsSignal:
     """Fetch news from CryptoPanic and score it."""
-    try:
-        # CryptoPanic maps our tickers directly
-        # HYPE is listed as HYPE on CryptoPanic
-        params = {
-            "currencies": coin,
-            "kind":       "news",
-            "filter":     "important",
-            "public":     "true",
-        }
-        if auth_token:
-            params["auth_token"] = auth_token
-        resp = requests.get(CRYPTOPANIC_URL, params=params, timeout=8)
-        resp.raise_for_status()
-        data = resp.json()
-    except Exception as e:
-        log.warning(f"[{coin}] News fetch failed: {e} — using neutral")
+    items: List[NewsItem] = []
+    errors: List[str] = []
+    cryptopanic_key = f"crypto:cryptopanic:{coin.upper()}"
+    google_key = f"crypto:google:{coin.upper()}"
+
+    if not _backoff_active(cryptopanic_key):
+        try:
+            params = {
+                "currencies": coin,
+                "kind":       "news",
+                "filter":     "important",
+                "public":     "true",
+            }
+            if auth_token:
+                params["auth_token"] = auth_token
+            resp = requests.get(CRYPTOPANIC_URL, params=params, timeout=8, headers=REQUEST_HEADERS)
+            resp.raise_for_status()
+            data = resp.json()
+            results = data.get("results", [])
+            for r in results[:20]:
+                title = (r.get("title") or "").strip()
+                if not title:
+                    continue
+                score = _score_headline(title, coin)
+                items.append(NewsItem(
+                    title            = title,
+                    published_at     = r.get("published_at", ""),
+                    url              = r.get("url", ""),
+                    source           = r.get("source", {}).get("title", ""),
+                    sentiment_score  = score,
+                    is_hype_relevant = coin == "HYPE" and _is_hype_specific(title),
+                ))
+            if items:
+                _clear_backoff(cryptopanic_key)
+        except Exception as e:
+            errors.append(f"CryptoPanic: {e}")
+            _set_backoff(cryptopanic_key)
+
+    if not items and not _backoff_active(google_key):
+        query = CRYPTO_NEWS_QUERIES.get(coin.upper(), f"{coin} crypto")
+        try:
+            for title in _fetch_google_news_headlines(query, limit=20):
+                score = _score_headline(title, coin)
+                items.append(NewsItem(
+                    title=title,
+                    published_at="",
+                    url="",
+                    source="Google News",
+                    sentiment_score=score,
+                    is_hype_relevant=coin == "HYPE" and _is_hype_specific(title),
+                ))
+            if items:
+                _clear_backoff(google_key)
+        except Exception as e:
+            errors.append(f"Google News: {e}")
+            _set_backoff(google_key)
+
+    if not items:
+        error = " | ".join(errors) if errors else "no crypto headlines returned"
+        log.warning(f"[{coin}] News fetch failed: {error} — using neutral")
         return NewsSignal(coin=coin, score=50.0, raw_sentiment=0.0,
                           article_count=0, velocity="LOW",
                           top_headlines=[], is_extreme=False,
-                          valid=False, error=str(e))
-
-    results = data.get("results", [])
-    if not results:
-        return NewsSignal(coin=coin, score=50.0, raw_sentiment=0.0,
-                          article_count=0, velocity="LOW",
-                          top_headlines=[], is_extreme=False, valid=True)
-
-    items: List[NewsItem] = []
-    for r in results[:20]:   # last 20 articles
-        title = r.get("title", "")
-        score = _score_headline(title, coin)
-        items.append(NewsItem(
-            title            = title,
-            published_at     = r.get("published_at", ""),
-            url              = r.get("url", ""),
-            source           = r.get("source", {}).get("title", ""),
-            sentiment_score  = score,
-            is_hype_relevant = coin == "HYPE" and _is_hype_specific(title),
-        ))
+                          valid=False, error=error)
 
     # Average headline sentiment
     scores = [it.sentiment_score for it in items]

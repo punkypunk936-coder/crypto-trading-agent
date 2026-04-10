@@ -31,7 +31,53 @@ LIGHTER_API_BASE_URL = "https://mainnet.zklighter.elliot.ai"
 
 # Simple in-memory cache: coin → (timestamp_fetched, DataFrame)
 _cache: dict = {}
+_price_cache: dict = {}
 CACHE_TTL_SECONDS = 60   # re-fetch after 60 s
+STALE_CACHE_TTL_SECONDS = 1800
+STALE_PRICE_TTL_SECONDS = 900
+
+
+def _cache_price(key: str, price: float) -> None:
+    if price and price > 0:
+        _price_cache[key] = (time.time(), float(price))
+
+
+def _get_cached_price(key: str, *, max_age_seconds: int = STALE_PRICE_TTL_SECONDS) -> Optional[float]:
+    cached = _price_cache.get(key)
+    if not cached:
+        return None
+    ts, price = cached
+    if time.time() - float(ts or 0.0) > max_age_seconds:
+        return None
+    try:
+        value = float(price or 0.0)
+    except Exception:
+        return None
+    return value if value > 0 else None
+
+
+def _cache_frame(cache_key: str, df: Optional[pd.DataFrame], *, coin: str = "") -> None:
+    if df is not None and not df.empty:
+        _cache[cache_key] = (time.time(), df)
+        try:
+            last_close = float(df["close"].iloc[-1])
+        except Exception:
+            last_close = 0.0
+        cache_coin = str(coin or "").upper().strip()
+        if last_close > 0 and cache_coin:
+            _cache_price(cache_coin, last_close)
+
+
+def _get_stale_frame(cache_key: str, *, max_age_seconds: int = STALE_CACHE_TTL_SECONDS) -> Optional[pd.DataFrame]:
+    cached = _cache.get(cache_key)
+    if not cached:
+        return None
+    ts, df = cached
+    if time.time() - float(ts or 0.0) > max_age_seconds:
+        return None
+    if df is None or df.empty:
+        return None
+    return df
 
 
 def completed_candle_frame(df: Optional[pd.DataFrame], *, min_rows: int = 2) -> Optional[pd.DataFrame]:
@@ -139,6 +185,10 @@ def _fetch_candles_lighter(coin: str, interval: str, lookback: int) -> Optional[
         )
     except Exception as e:
         log.error(f"[{coin}] Lighter candle fetch failed: {e}")
+        stale = _get_stale_frame(cache_key)
+        if stale is not None:
+            log.info(f"[{coin}] Reusing stale Lighter candles while the live feed recovers")
+            return stale
         return None
 
     candles = payload.get("c", []) or []
@@ -159,10 +209,14 @@ def _fetch_candles_lighter(coin: str, interval: str, lookback: int) -> Optional[
 
     if not rows:
         log.warning(f"[{coin}] Lighter returned no valid candles")
+        stale = _get_stale_frame(cache_key)
+        if stale is not None:
+            log.info(f"[{coin}] Reusing stale Lighter candles after empty response")
+            return stale
         return None
 
     df = pd.DataFrame(rows).sort_values("timestamp").tail(lookback).reset_index(drop=True)
-    _cache[cache_key] = (now, df)
+    _cache_frame(cache_key, df, coin=coin)
     log.debug(f"[{coin}] Lighter candles: {len(df)} rows ({interval})")
     return df
 
@@ -182,10 +236,20 @@ def _get_current_price_lighter(coin: str) -> Optional[float]:
         trades = payload.get("trades", []) or []
         if not trades:
             log.warning(f"[{coin}] Lighter returned no recent trades")
+            cached = _get_cached_price(coin.upper())
+            if cached is not None:
+                log.info(f"[{coin}] Reusing cached venue price after empty trades feed")
+                return cached
             return None
-        return float(trades[0]["price"])
+        price = float(trades[0]["price"])
+        _cache_price(coin.upper(), price)
+        return price
     except Exception as e:
         log.error(f"[{coin}] Lighter price fetch failed: {e}")
+        cached = _get_cached_price(coin.upper())
+        if cached is not None:
+            log.info(f"[{coin}] Reusing cached venue price while Lighter price feed recovers")
+            return cached
         return None
 
 
@@ -267,7 +331,7 @@ def fetch_candles(
         })
 
     df = pd.DataFrame(rows).sort_values("timestamp").reset_index(drop=True)
-    _cache[cache_key] = (now, df)
+    _cache_frame(cache_key, df, coin=coin_upper)
     log.debug(f"Fetched {len(df)} candles for {hl_coin} ({interval})")
     return df
 
@@ -312,6 +376,10 @@ def _fetch_candles_yahoo(coin: str, interval: str, lookback: int) -> Optional[pd
         volumes  = q["volume"]
     except Exception as e:
         log.error(f"[{coin}] Yahoo Finance candle fetch failed: {e}")
+        stale = _get_stale_frame(cache_key)
+        if stale is not None:
+            log.info(f"[{coin}] Reusing stale Yahoo candles while Yahoo recovers")
+            return stale
         return None
 
     rows = []
@@ -331,6 +399,10 @@ def _fetch_candles_yahoo(coin: str, interval: str, lookback: int) -> Optional[pd
 
     if not rows:
         log.warning(f"[{coin}] Yahoo Finance returned no rows")
+        stale = _get_stale_frame(cache_key)
+        if stale is not None:
+            log.info(f"[{coin}] Reusing stale Yahoo candles after empty response")
+            return stale
         return None
 
     df = pd.DataFrame(rows).sort_values("timestamp").reset_index(drop=True)
@@ -351,7 +423,7 @@ def _fetch_candles_yahoo(coin: str, interval: str, lookback: int) -> Optional[pd
     # Trim to requested lookback
     df = df.tail(lookback).reset_index(drop=True)
 
-    _cache[cache_key] = (now, df)
+    _cache_frame(cache_key, df, coin=coin)
     log.info(f"[{coin}] Yahoo Finance: {len(df)} candles ({interval}) | "
              f"last close={df['close'].iloc[-1]:.2f}")
     return df
@@ -383,10 +455,19 @@ def get_current_price(coin: str) -> Optional[float]:
         price = float(mids.get(hl_coin, 0))
         if price <= 0:
             log.warning(f"Price for {hl_coin} came back 0 — not listed or ticker wrong")
+            cached = _get_cached_price(coin_upper)
+            if cached is not None:
+                log.info(f"[{coin}] Reusing cached price after invalid Hyperliquid response")
+                return cached
             return None
+        _cache_price(coin_upper, price)
         return price
     except Exception as e:
         log.error(f"Failed to get price for {hl_coin}: {e}")
+        cached = _get_cached_price(coin_upper)
+        if cached is not None:
+            log.info(f"[{coin}] Reusing cached price while primary price feed recovers")
+            return cached
         return None
 
 
@@ -408,11 +489,20 @@ def _get_index_price_yahoo(coin: str) -> Optional[float]:
         price = next((float(c) for c in reversed(closes) if c), None)
         if price and price > 0:
             log.debug(f"[{coin}] Yahoo Finance price: {price:.2f}")
+            _cache_price(coin.upper(), price)
             return price
         log.warning(f"[{coin}] Yahoo Finance returned no valid price")
+        cached = _get_cached_price(coin.upper())
+        if cached is not None:
+            log.info(f"[{coin}] Reusing cached Yahoo price after empty response")
+            return cached
         return None
     except Exception as e:
         log.error(f"[{coin}] Yahoo Finance price fetch failed: {e}")
+        cached = _get_cached_price(coin.upper())
+        if cached is not None:
+            log.info(f"[{coin}] Reusing cached Yahoo price while feed recovers")
+            return cached
         return None
 
 

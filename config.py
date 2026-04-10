@@ -190,6 +190,9 @@ class TradingConfig:
     support_defense_max_support_distance_pct: float = 0.40
     support_defense_min_orderbook_score: float = 62.0
     support_defense_min_imbalance: float = 0.10
+    support_defense_breakout_score_floor: float = 36.0
+    support_defense_map_override_enabled: bool = True
+    support_defense_expectancy_bonus: float = 0.05
 
     # ── Thesis invalidation ladder ───────────────────────
     early_invalidation_minutes: float = 90.0
