@@ -133,6 +133,242 @@ def _compact_sentences(parts: Iterable[str], limit: int = 3) -> str:
     return " • ".join(out)
 
 
+def _safe_float(value: Any) -> float:
+    try:
+        return float(value or 0.0)
+    except Exception:
+        return 0.0
+
+
+def _pick_level(values: Any, *, prefer: str = "min", fallback: Any = None) -> float | None:
+    numbers: list[float] = []
+    for value in list(values or []):
+        number = _safe_float(value)
+        if number > 0:
+            numbers.append(number)
+    if not numbers and fallback is not None:
+        fallback_number = _safe_float(fallback)
+        if fallback_number > 0:
+            numbers.append(fallback_number)
+    if not numbers:
+        return None
+    return min(numbers) if prefer == "min" else max(numbers)
+
+
+def _primary_reason(text: Any) -> str:
+    parts = [str(part).strip() for part in str(text or "").split("·")]
+    preferred = [
+        part
+        for part in parts
+        if part
+        and not part.lower().startswith("score ")
+        and not part.lower().startswith("map:")
+        and not part.lower().startswith("breakout state:")
+        and not part.lower().startswith("key levels:")
+    ]
+    if preferred:
+        return preferred[0]
+    return parts[0] if parts else ""
+
+
+def _map_blurb(text: Any) -> str:
+    summary = str(text or "").strip()
+    if not summary:
+        return ""
+    replacements = {
+        "auto bullish map": "bullish daily view",
+        "auto bearish map": "bearish daily view",
+        "auto neutral map": "neutral daily view",
+        "daily reclaim confirmed": "reclaim is confirmed",
+        "daily breakdown confirmed": "breakdown is still active",
+        "price is sitting in mapped demand": "price is in demand",
+        "price is sitting in mapped supply": "price is in supply",
+        "price is pressing mapped resistance": "price is at resistance",
+        "price is testing mapped support": "price is testing support",
+    }
+    cleaned = summary
+    for old, new in replacements.items():
+        cleaned = cleaned.replace(old, new)
+    return cleaned
+
+
+def action_board(state: dict, market_map: dict) -> dict:
+    signals = dict((state or {}).get("signals") or {})
+    positions = list((state or {}).get("positions") or [])
+    positions_by_coin = {str(item.get("coin") or "").upper(): dict(item or {}) for item in positions}
+    tracked = set()
+    tracked.update(str(coin or "").upper() for coin in ((state or {}).get("config") or {}).get("coins", []) or [])
+    tracked.update(str(coin or "").upper() for coin in signals.keys())
+    tracked.update(str(coin or "").upper() for coin in positions_by_coin.keys())
+
+    entries = dict((market_map or {}).get("coins") or {})
+    items: list[dict[str, Any]] = []
+    order = {
+        "OPEN_LONG": 0,
+        "OPEN_SHORT": 0,
+        "READY_LONG": 1,
+        "READY_SHORT": 1,
+        "WAIT_RECLAIM": 2,
+        "WATCH_LONG": 2,
+        "WAIT_BREAKDOWN": 2,
+        "WATCH_SHORT": 2,
+        "NO_SETUP": 3,
+    }
+
+    for coin in sorted(item for item in tracked if item):
+        sig = dict(signals.get(coin) or {})
+        pos = positions_by_coin.get(coin)
+        map_entry = dict(entries.get(coin) or {})
+        tradable = (sig.get("execution_mode") or "observation_only") == "tradable" or pos is not None
+        bias = str(
+            sig.get("market_map_bias")
+            or map_entry.get("bias")
+            or "NEUTRAL"
+        ).upper()
+        support = _pick_level(
+            map_entry.get("supports"),
+            prefer="max",
+            fallback=sig.get("market_map_nearest_support"),
+        )
+        resistance = _pick_level(
+            map_entry.get("resistances"),
+            prefer="min",
+            fallback=sig.get("market_map_nearest_resistance"),
+        )
+        long_trigger = _pick_level(
+            map_entry.get("daily_close_long_above"),
+            prefer="min",
+            fallback=resistance,
+        )
+        short_trigger = _pick_level(
+            map_entry.get("daily_close_short_below"),
+            prefer="max",
+            fallback=support,
+        )
+        current_logic = str(
+            (pos or {}).get("current_logic")
+            or (pos or {}).get("entry_logic")
+            or sig.get("decision_reason")
+            or sig.get("flat_reason")
+            or ""
+        ).strip()
+        blocker = _primary_reason(sig.get("flat_reason") or sig.get("decision_reason") or "")
+        map_summary = _map_blurb(sig.get("market_map_summary") or map_entry.get("summary") or map_entry.get("notes") or "")
+        confidence = str(sig.get("confidence") or "LOW").upper()
+        score = _safe_float(sig.get("score") or 50.0)
+        action = str(sig.get("action") or "FLAT").upper()
+
+        if pos:
+            direction = str(pos.get("direction") or "").upper() or action
+            status = f"OPEN_{direction or 'LONG'}"
+            label = f"In {direction or 'LONG'}"
+            headline = _primary_reason(current_logic) or "Trade is live and being managed."
+            stop = _safe_float(pos.get("stop_loss"))
+            target = _safe_float(pos.get("take_profit"))
+            trigger = (
+                f"Stop {stop:,.2f} • Target {target:,.2f}"
+                if stop > 0 and target > 0
+                else "Trade is already open."
+            )
+        elif action == "LONG":
+            status = "READY_LONG"
+            label = "Long ready"
+            headline = _primary_reason(sig.get("decision_reason") or current_logic) or "Long setup is ready."
+            trigger = f"Entry is live now around {(_safe_float(sig.get('live_price')) or _safe_float(sig.get('price'))):,.2f}"
+        elif action == "SHORT":
+            status = "READY_SHORT"
+            label = "Short ready"
+            headline = _primary_reason(sig.get("decision_reason") or current_logic) or "Short setup is ready."
+            trigger = f"Entry is live now around {(_safe_float(sig.get('live_price')) or _safe_float(sig.get('price'))):,.2f}"
+        elif bias == "BULLISH" and bool(sig.get("market_map_block_longs")) and long_trigger:
+            status = "WAIT_RECLAIM"
+            label = "Wait for reclaim"
+            headline = (
+                "Daily bias is bullish, but the long is still blocked until price reclaims resistance."
+                if not map_summary
+                else f"Daily bias is bullish, but {map_summary}."
+            )
+            trigger = f"Long only after a reclaim above {long_trigger:,.2f}"
+        elif bias == "BEARISH" and bool(sig.get("market_map_block_shorts")) and short_trigger:
+            status = "WAIT_BREAKDOWN"
+            label = "Wait for breakdown"
+            headline = (
+                "Daily bias is bearish, but the short is still blocked until price breaks support."
+                if not map_summary
+                else f"Daily bias is bearish, but {map_summary}."
+            )
+            trigger = f"Short only after a breakdown below {short_trigger:,.2f}"
+        elif bias == "BULLISH":
+            status = "WATCH_LONG"
+            label = "Bullish watch"
+            headline = (
+                "Higher-timeframe bias is bullish, but the entry is not ready."
+                if not map_summary
+                else f"Higher-timeframe bias is bullish, and {map_summary}."
+            )
+            trigger = (
+                f"Best long trigger is above {long_trigger:,.2f}"
+                if long_trigger
+                else "Wait for cleaner long confirmation."
+            )
+        elif bias == "BEARISH":
+            status = "WATCH_SHORT"
+            label = "Bearish watch"
+            headline = (
+                "Higher-timeframe bias is bearish, but the entry is not ready."
+                if not map_summary
+                else f"Higher-timeframe bias is bearish, and {map_summary}."
+            )
+            trigger = (
+                f"Best short trigger is below {short_trigger:,.2f}"
+                if short_trigger
+                else "Wait for cleaner short confirmation."
+            )
+        else:
+            status = "NO_SETUP"
+            label = "No setup"
+            headline = blocker or "No clean edge right now."
+            trigger = "Wait for structure and order-flow to agree."
+
+        if status in {"WATCH_LONG", "WAIT_RECLAIM", "READY_LONG", "OPEN_LONG"} and support:
+            risk = f"Risk if it loses {support:,.2f}"
+        elif status in {"WATCH_SHORT", "WAIT_BREAKDOWN", "READY_SHORT", "OPEN_SHORT"} and resistance:
+            risk = f"Risk if it reclaims {resistance:,.2f}"
+        else:
+            risk = map_summary or ""
+
+        items.append(
+            {
+                "coin": coin,
+                "tradable": tradable,
+                "bias": bias,
+                "status": status,
+                "label": label,
+                "headline": headline,
+                "trigger": trigger,
+                "risk": risk,
+                "map_summary": map_summary,
+                "confidence": confidence,
+                "score": round(score, 1),
+                "pnl_usd": _safe_float(pos.get("unrealised_pnl")) if pos else 0.0,
+            }
+        )
+
+    items.sort(
+        key=lambda item: (
+            0 if item.get("tradable") else 1,
+            order.get(str(item.get("status") or "NO_SETUP"), 9),
+            -abs(_safe_float(item.get("score")) - 50.0),
+            str(item.get("coin") or ""),
+        )
+    )
+    return {
+        "updated_at": state.get("last_cycle"),
+        "lead": items[0] if items else None,
+        "items": items,
+    }
+
+
 def _entry_logic_from_record(record: dict | None, trade: dict) -> str:
     record = dict(record or {})
     entry_ctx = dict(record.get("entry_context") or {})
@@ -472,6 +708,7 @@ def build_dashboard_snapshot(
         "trades": safe_trades[-50:][::-1],
         "stats": calc_stats(safe_trades),
         "control": normalize_control(control),
+        "action_board": action_board(shaped_state, normalized_market_map),
         "market_map": normalized_market_map,
         "market_map_summary": market_map_summary(normalized_market_map),
         "trade_reviews": normalized_trade_reviews,

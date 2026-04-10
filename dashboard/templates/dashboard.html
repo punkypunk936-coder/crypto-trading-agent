@@ -441,6 +441,27 @@
     color: var(--text-secondary);
     line-height: 1.35;
   }
+  .details-card summary {
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+  }
+  .details-card summary::-webkit-details-marker {
+    display: none;
+  }
+  .details-card summary::after {
+    content: '+';
+    margin-left: auto;
+    color: var(--text-secondary);
+    font-family: var(--mono);
+    font-size: 14px;
+  }
+  .details-card[open] summary::after {
+    content: '−';
+  }
+  .details-card #review-body {
+    margin-top: 14px;
+  }
   .table-review-cell {
     min-width: 190px;
   }
@@ -1045,16 +1066,6 @@
   </div>
 </header>
 
-<!-- Circuit Breaker Banner (hidden by default) -->
-<div id="halt-banner" class="halt-banner" style="display:none;">
-  <div class="halt-icon">⚠️</div>
-  <div class="halt-text">
-    <div class="halt-title" id="halt-title">Trading Paused</div>
-    <div class="halt-detail" id="halt-detail">--</div>
-  </div>
-  <div class="halt-timer" id="halt-timer">--:--</div>
-</div>
-
 <!-- KPI Cards -->
 <div class="grid-4" id="kpis">
   <div class="card">
@@ -1070,46 +1081,28 @@
     <div class="card-sub" id="win-rate">Win rate: --</div>
   </div>
   <div class="card">
-    <div class="kpi-icon purple-bg">🔄</div>
-    <div class="card-label">Position Status</div>
+    <div class="kpi-icon purple-bg">🏁</div>
+    <div class="card-label">Win Rate</div>
     <div class="card-value" id="trade-count">--</div>
-    <div class="card-sub" id="wins-losses">Wins / Losses: --</div>
+    <div class="card-sub" id="wins-losses">Closed: --</div>
   </div>
   <div class="card">
-    <div class="kpi-icon yellow-bg">🧠</div>
-    <div class="card-label">Cycle / Sentiment</div>
+    <div class="kpi-icon yellow-bg">🎯</div>
+    <div class="card-label">Next Setup</div>
     <div class="card-value" id="cycle">--</div>
-    <div class="card-sub" id="sentiment">F&amp;G: --</div>
+    <div class="card-sub" id="sentiment">Waiting for the next clean setup...</div>
   </div>
 </div>
 
-<!-- Position + Decision Snapshot -->
-<div class="grid-2">
-  <div class="card" id="position-status-card">
-    <div class="card-label">📍 Position Status</div>
-    <div class="status-hero">
-      <div class="status-main">
-        <div class="status-value" id="position-status">FLAT</div>
-        <div class="status-detail" id="position-status-detail">Waiting for state...</div>
-      </div>
-      <div class="status-chips">
-        <span class="status-chip" id="position-open-chip">0 open</span>
-        <span class="status-chip" id="position-closed-chip">0 closed</span>
-      </div>
-    </div>
-  </div>
-  <div class="card" id="brain-status-card">
-    <div class="card-label">🧠 Brain Snapshot</div>
-    <div class="status-hero">
-      <div class="status-main">
-        <div class="status-value" id="brain-status">FLAT / WAIT</div>
-        <div class="status-detail" id="brain-status-detail">Waiting for first decision...</div>
-      </div>
-      <div class="status-chips">
-        <span class="status-chip" id="brain-long-chip">0 long</span>
-        <span class="status-chip" id="brain-short-chip">0 short</span>
-        <span class="status-chip" id="brain-flat-chip">0 flat</span>
-      </div>
+<div class="full-width">
+  <div class="card">
+    <div class="card-label">🏆 Performance</div>
+    <div id="stats-body">
+      <div class="stat-row"><span class="stat-label">Best trade</span><span class="stat-value" id="stat-best">--</span></div>
+      <div class="stat-row"><span class="stat-label">Worst trade</span><span class="stat-value" id="stat-worst">--</span></div>
+      <div class="stat-row"><span class="stat-label">Average win</span><span class="stat-value" id="stat-avgwin">--</span></div>
+      <div class="stat-row"><span class="stat-label">Average loss</span><span class="stat-value" id="stat-avgloss">--</span></div>
+      <div class="stat-row"><span class="stat-label">Today</span><span class="stat-value" id="stat-daily-pnl">--</span></div>
     </div>
   </div>
 </div>
@@ -1131,75 +1124,46 @@
   </div>
 </div>
 
-<!-- Signals + Pending -->
-<div class="grid-2">
+<!-- Action Board -->
+<div class="full-width">
   <div class="card">
-    <div class="card-label">🧠 Brain Decision Board</div>
+    <div class="card-label">🎯 Action Board</div>
+    <div class="card-sub" id="action-board-meta">Waiting for first cycle...</div>
     <div id="signals-body">
       <div class="empty-state">Waiting for first cycle...</div>
     </div>
   </div>
-  <div class="card">
-    <div class="card-label">⏳ Pending Orders &amp; Re-entry</div>
-    <div id="pending-body">
-      <div class="empty-state">None active</div>
-    </div>
-  </div>
 </div>
 
-<!-- Performance + Mood + Circuit Breaker -->
-<div class="grid-3">
-  <div class="card">
-    <div class="card-label">🏆 Performance</div>
-    <div id="stats-body">
-      <div class="stat-row"><span class="stat-label">Best trade</span><span class="stat-value" id="stat-best">--</span></div>
-      <div class="stat-row"><span class="stat-label">Worst trade</span><span class="stat-value" id="stat-worst">--</span></div>
-      <div class="stat-row"><span class="stat-label">Avg win</span><span class="stat-value" id="stat-avgwin">--</span></div>
-      <div class="stat-row"><span class="stat-label">Avg loss</span><span class="stat-value" id="stat-avgloss">--</span></div>
-      <div class="stat-row"><span class="stat-label">Daily P&amp;L</span><span class="stat-value" id="stat-daily-pnl">--</span></div>
-    </div>
-  </div>
-  <div class="card">
-    <div class="card-label">🌡️ Market Mood</div>
-    <div id="mood-body">
-      <div class="empty-state">Waiting...</div>
-    </div>
-  </div>
-  <div class="card" id="cb-card">
-    <div class="card-label">🛡️ Safety Circuit Breaker</div>
-    <div id="cb-body">
-      <div class="stat-row"><span class="stat-label">Status</span><span class="stat-value green" id="cb-status">Active</span></div>
-      <div class="stat-row"><span class="stat-label">Consecutive losses</span><span class="stat-value" id="cb-losses">0 / 5</span></div>
-      <div class="stat-row"><span class="stat-label">Daily P&amp;L limit</span><span class="stat-value" id="cb-daily-limit">--</span></div>
-      <div class="stat-row"><span class="stat-label">Drawdown limit</span><span class="stat-value" id="cb-drawdown">--</span></div>
-    </div>
-  </div>
-</div>
-
-<!-- Daily Market Map + Review Lab -->
+<!-- Daily View + Latest Lesson -->
 <div class="grid-2">
   <div class="card">
     <div class="card-label-row">
-      <div class="card-label">🗺️ Daily Market Map</div>
+      <div class="card-label">🗺️ Daily View</div>
       <div class="review-actions">
-        <button class="tool-btn" onclick="editGlobalMapNotes()">GLOBAL NOTES</button>
-        <button class="tool-btn" onclick="editMarketMap()">MANUAL OVERRIDE</button>
+        <button class="tool-btn" onclick="editMarketMap()">EDIT LEVELS</button>
       </div>
     </div>
-    <div class="map-meta" id="market-map-meta">Waiting for market map...</div>
+    <div class="map-meta" id="market-map-meta">Waiting for daily view...</div>
     <div id="market-map-body">
-      <div class="empty-state">Building live map...</div>
+      <div class="empty-state">Building live daily view...</div>
     </div>
   </div>
   <div class="card">
-    <div class="card-label-row">
-      <div class="card-label">🧠 Agent Learning</div>
+    <div class="card-label">🧾 Latest Lesson</div>
+    <div id="latest-lesson-body">
+      <div class="empty-state">No closed trades yet. The first lesson will show up here.</div>
     </div>
-    <div class="review-meta" id="review-meta">Waiting for learning stats...</div>
+  </div>
+</div>
+
+<div class="full-width">
+  <details class="card details-card" id="learning-panel">
+    <summary class="card-label">🧠 Agent Learning <span class="muted" style="font-size:10px;margin-left:4px;" id="review-meta">Waiting for learning stats...</span></summary>
     <div id="review-body">
       <div class="empty-state">No lessons absorbed yet</div>
     </div>
-  </div>
+  </details>
 </div>
 
 <!-- Closed Trade Log -->
@@ -1246,6 +1210,16 @@ const csvText = (values, dec=2) => {
   const list = Array.isArray(values) ? values : [];
   if (!list.length) return '--';
   return list.map((value) => fmt(value, dec)).join(', ');
+};
+const pickLevel = (values, fallback=null, prefer='min') => {
+  const list = (Array.isArray(values) ? values : [])
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  if (Number.isFinite(Number(fallback)) && Number(fallback) > 0) {
+    list.push(Number(fallback));
+  }
+  if (!list.length) return null;
+  return prefer === 'max' ? Math.max(...list) : Math.min(...list);
 };
 const zoneText = (zone) => {
   if (!zone || (!zone.low && !zone.high)) return '--';
@@ -1324,12 +1298,7 @@ function trackedCoins() {
 
 function renderMarketMapSummary(summary, marketMap) {
   const meta = document.getElementById('market-map-meta');
-  meta.textContent = 'Mapped ' + (summary.count || 0) + '/' + trackedCoins().length
-    + ' • manual ' + (summary.manual_count || 0)
-    + ' • auto ' + (summary.auto_count || 0)
-    + ' • bullish ' + (summary.bullish || 0)
-    + ' • bearish ' + (summary.bearish || 0)
-    + ' • updated ' + stampText(summary.updated_at || (marketMap || {}).updated_at);
+  meta.textContent = 'Higher-timeframe bias and key levels only. A bullish view is not a live long by itself. Updated ' + stampText(summary.updated_at || (marketMap || {}).updated_at);
 
   const body = document.getElementById('market-map-body');
   const coins = trackedCoins();
@@ -1358,16 +1327,31 @@ function renderMarketMapSummary(summary, marketMap) {
       return;
     }
     const source = String(entry.source || (entry.auto_generated ? 'AUTO' : 'MANUAL')).toUpperCase();
+    const longTrigger = pickLevel(entry.daily_close_long_above, null, 'min');
+    const shortTrigger = pickLevel(entry.daily_close_short_below, null, 'max');
+    const mapBias = String(entry.bias || 'NEUTRAL').toUpperCase();
+    const support = pickLevel(entry.supports, entry.demand_zone && entry.demand_zone.high, 'max');
+    const resistance = pickLevel(entry.resistances, entry.supply_zone && entry.supply_zone.low, 'min');
+    let setupLine = 'No clear directional edge from the daily view yet.';
+    if (mapBias === 'BULLISH' && longTrigger) {
+      setupLine = 'Bullish bias only. Longs earn permission after a daily close above ' + fmt(longTrigger) + '.';
+    } else if (mapBias === 'BEARISH' && shortTrigger) {
+      setupLine = 'Bearish bias only. Shorts earn permission after a daily close below ' + fmt(shortTrigger) + '.';
+    } else if (mapBias === 'BULLISH') {
+      setupLine = 'Bullish bias, but the exact long trigger is still forming.';
+    } else if (mapBias === 'BEARISH') {
+      setupLine = 'Bearish bias, but the exact short trigger is still forming.';
+    }
     html += '<div class="map-card">'
       + '<div class="map-card-top"><div class="map-coin">' + esc(coin) + '</div><div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;"><span class="review-chip">' + esc(source === 'AUTO' ? 'AUTO MAP' : 'MANUAL') + '</span><span class="' + biasClass(entry.bias) + '">' + esc(String(entry.bias || 'NEUTRAL')) + '</span></div></div>'
       + '<div class="map-levels">'
-        + '<div class="map-level-row"><span>Confidence</span><strong>' + esc(String(entry.confidence || 'MEDIUM')) + '</strong></div>'
-        + '<div class="map-level-row"><span>Supports</span><strong>' + esc(csvText(entry.supports)) + '</strong></div>'
-        + '<div class="map-level-row"><span>Resistances</span><strong>' + esc(csvText(entry.resistances)) + '</strong></div>'
-        + '<div class="map-level-row"><span>Daily long above</span><strong>' + esc(csvText(entry.daily_close_long_above)) + '</strong></div>'
-        + '<div class="map-level-row"><span>Daily short below</span><strong>' + esc(csvText(entry.daily_close_short_below)) + '</strong></div>'
+        + '<div class="map-level-row"><span>Support</span><strong>' + esc(support ? fmt(support) : csvText(entry.supports)) + '</strong></div>'
+        + '<div class="map-level-row"><span>Resistance</span><strong>' + esc(resistance ? fmt(resistance) : csvText(entry.resistances)) + '</strong></div>'
+        + '<div class="map-level-row"><span>Long trigger</span><strong>' + esc(longTrigger ? fmt(longTrigger) : '--') + '</strong></div>'
+        + '<div class="map-level-row"><span>Risk below</span><strong>' + esc(shortTrigger ? fmt(shortTrigger) : '--') + '</strong></div>'
         + '<div class="map-level-row"><span>Playbook</span><strong>' + esc(String(entry.trade_mode || '--')) + '</strong></div>'
       + '</div>'
+      + '<div class="map-zone"><strong>Daily take:</strong> ' + esc(setupLine) + '</div>'
       + '<div class="map-zone"><strong>Demand:</strong> ' + esc(zoneText(entry.demand_zone)) + ' • <strong>Supply:</strong> ' + esc(zoneText(entry.supply_zone)) + '</div>'
       + '<div class="map-notes"><strong>Map:</strong> ' + esc(shortText(entry.summary || entry.notes || 'No coin-specific notes yet.', 180)) + '</div>'
       + '<div class="map-card-actions">'
@@ -1384,8 +1368,7 @@ function renderLearningSummary(summary, trades) {
   const meta = document.getElementById('review-meta');
   meta.textContent = 'Lessons ' + (summary.count || 0)
     + ' • wins ' + (summary.wins || 0)
-    + ' • losses ' + (summary.losses || 0)
-    + ' • refreshed ' + stampText((latestState || {}).last_cycle);
+    + ' • losses ' + (summary.losses || 0);
 
   const body = document.getElementById('review-body');
   const lessons = (summary.recent_lessons || []).slice(0, 5);
@@ -1418,6 +1401,61 @@ function renderLearningSummary(summary, trades) {
   }
   html += '</div>';
   body.innerHTML = html;
+}
+
+function renderLatestLesson(summary) {
+  const body = document.getElementById('latest-lesson-body');
+  const latest = (summary || {}).latest;
+  if (!latest) {
+    body.innerHTML = '<div class="empty-state">No closed trades yet. The first trade lesson will show up here with why it opened, why it closed, and what the agent should repeat or avoid.</div>';
+    return;
+  }
+  const pnl = Number(latest.pnl_usd || 0);
+  const pnlClass = pnl > 0 ? 'green' : pnl < 0 ? 'red' : 'muted';
+  body.innerHTML = '<div class="review-summary-box">'
+    + '<div class="card-label-row"><div class="card-label">Most recent close</div><div class="' + pnlClass + '">' + esc(String(latest.coin || '')) + ' ' + esc(String(latest.direction || '')) + ' • ' + fmtD(pnl) + '</div></div>'
+    + '<div class="review-notes"><strong>Opened because:</strong> ' + esc(shortText(latest.open_logic || 'No opening logic recorded.', 180)) + '</div>'
+    + '<div class="review-notes"><strong>Closed because:</strong> ' + esc(shortText(latest.close_logic || 'No closing logic recorded.', 180)) + '</div>'
+    + '<div class="review-notes"><strong>Lesson:</strong> ' + esc(shortText(latest.lesson || 'No lesson recorded yet.', 220)) + '</div>'
+    + '</div>';
+}
+
+function renderActionBoard(board) {
+  const meta = document.getElementById('action-board-meta');
+  const body = document.getElementById('signals-body');
+  const items = Array.isArray((board || {}).items) ? board.items.filter((item) => item && item.tradable) : [];
+  const lead = (board || {}).lead || null;
+  if (!items.length) {
+    meta.textContent = 'No tracked setup yet.';
+    body.innerHTML = '<div class="empty-state">Waiting for the first clean setup...</div>';
+    return;
+  }
+  meta.textContent = lead
+    ? 'Best setup right now: ' + lead.coin + ' • ' + lead.label
+    : 'Watching ' + items.length + ' tradable assets.';
+  body.innerHTML = '<div class="decision-board"><div class="decision-grid">'
+    + items.map((item) => {
+      const status = String(item.status || 'NO_SETUP');
+      const highlight = status.includes('LONG')
+        ? 'decision-card decision-card-tradable decision-card-long'
+        : status.includes('SHORT')
+          ? 'decision-card decision-card-tradable decision-card-short'
+          : 'decision-card decision-card-tradable';
+      return '<div class="' + highlight + '">'
+        + '<div class="decision-top">'
+          + '<div><div class="decision-coin">' + esc(item.coin) + '</div><div class="decision-meta">' + esc(item.tradable ? 'TRADEABLE' : 'WATCHLIST') + '</div></div>'
+          + '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">'
+            + '<span class="review-chip">' + esc(String(item.label || 'No setup').toUpperCase()) + '</span>'
+            + '<span class="' + biasClass(item.bias) + '">' + esc(String(item.bias || 'NEUTRAL')) + '</span>'
+          + '</div>'
+        + '</div>'
+        + '<div class="decision-note"><strong>Now:</strong> ' + esc(shortText(item.headline || 'No clear edge right now.', 140)) + '</div>'
+        + '<div class="decision-note"><strong>Trigger:</strong> ' + esc(shortText(item.trigger || 'Wait for a cleaner setup.', 140)) + '</div>'
+        + '<div class="decision-note"><strong>Risk:</strong> ' + esc(shortText(item.risk || item.map_summary || 'Stay patient until the map and order-flow align.', 140)) + '</div>'
+        + (item.map_summary ? '<div class="decision-rl-note"><strong>Daily view:</strong> ' + esc(shortText(item.map_summary, 130)) + '</div>' : '')
+      + '</div>';
+    }).join('')
+    + '</div></div>';
 }
 
 async function postJson(path, payload) {
@@ -1566,6 +1604,7 @@ async function refresh() {
     latestReviewStore = data.trade_reviews || { reviews: {} };
     latestReviewSummary = data.review_summary || {};
     latestLearningSummary = data.learning_summary || {};
+    const actionBoard = data.action_board || { items: [], lead: null };
 
     // Header
     let updateText = 'Updated: ' + data.server_time;
@@ -1602,37 +1641,6 @@ async function refresh() {
       killBtn.disabled = false;
     }
 
-    // Circuit Breaker Banner
-    const cb = s.loss_circuit_breaker || {};
-    const haltBanner = document.getElementById('halt-banner');
-    if (cb.halted) {
-      haltBanner.style.display = 'flex';
-      document.getElementById('halt-title').textContent = 'Trading Paused — Safety Circuit Breaker';
-      document.getElementById('halt-detail').textContent = cb.reason || 'Circuit breaker triggered';
-      document.getElementById('halt-timer').textContent = formatTimer(cb.time_remaining);
-    } else {
-      haltBanner.style.display = 'none';
-    }
-
-    // Circuit Breaker Card
-    const cbCard = document.getElementById('cb-card');
-    const cbStatus = document.getElementById('cb-status');
-    if (cb.halted) {
-      cbCard.className = 'card card-halt';
-      cbStatus.textContent = 'HALTED';
-      cbStatus.className = 'stat-value red';
-    } else {
-      cbCard.className = 'card';
-      cbStatus.textContent = 'Active';
-      cbStatus.className = 'stat-value green';
-    }
-    const maxLoss = cb.max_consecutive_losses || 5;
-    const consLoss = cb.consecutive_losses || 0;
-    document.getElementById('cb-losses').textContent = consLoss + ' / ' + maxLoss;
-    document.getElementById('cb-losses').className = 'stat-value ' + (consLoss >= maxLoss - 1 ? 'red' : consLoss >= 2 ? 'yellow' : 'green');
-    document.getElementById('cb-daily-limit').textContent = '$' + fmt(Math.abs(cb.daily_loss_limit_usd || 500), 0);
-    document.getElementById('cb-drawdown').textContent = (cb.drawdown_halt_pct ? (cb.drawdown_halt_pct * 100) : 15) + '%';
-
     // KPIs
     document.getElementById('portfolio').textContent = '$' + fmt(s.portfolio_usd);
     document.getElementById('available').textContent = 'Available: $' + fmt(s.available_usd);
@@ -1641,71 +1649,17 @@ async function refresh() {
     pnlEl.textContent = fmtD(st.total_pnl);
     pnlEl.className = 'card-value ' + cls(st.total_pnl);
 
-    document.getElementById('win-rate').textContent = 'Win rate: ' + (st.win_rate || 0) + '%';
-
     const openN = (s.positions || []).length;
     const closedN = st.total || 0;
-    document.getElementById('trade-count').textContent = openN + ' OPEN';
+    document.getElementById('win-rate').textContent = 'Across all closed trades';
+    document.getElementById('trade-count').textContent = (st.win_rate || 0) + '%';
     document.getElementById('wins-losses').textContent = 'Closed: ' + closedN + ' • Wins: ' + (st.wins||0) + ' • Losses: ' + (st.losses||0);
-
-    document.getElementById('cycle').textContent = '#' + (s.cycle_number || '--');
-    const sent = s.sentiment || {};
-    document.getElementById('sentiment').textContent = 'F&G: ' + (sent.label||'--') + ' (' + (sent.raw_score||'--') + ')';
-
-    // Position status snapshot
-    const positionCard = document.getElementById('position-status-card');
-    const positionMain = document.getElementById('position-status');
-    const positionDetail = document.getElementById('position-status-detail');
-    const openChip = document.getElementById('position-open-chip');
-    const closedChip = document.getElementById('position-closed-chip');
-    openChip.textContent = openN + ' open';
-    closedChip.textContent = closedN + ' closed';
-    openChip.className = 'status-chip ' + (openN ? 'status-chip-green' : 'status-chip-yellow');
-    closedChip.className = 'status-chip status-chip-blue';
-    if (openN) {
-      const openSummary = (s.positions || []).map(p => p.coin + ' ' + p.direction).join(' • ');
-      positionCard.className = 'card card-highlight';
-      positionMain.textContent = openN === 1 ? '1 OPEN POSITION' : openN + ' OPEN POSITIONS';
-      positionMain.className = 'status-value green';
-      positionDetail.textContent = openSummary || 'Exposure is active.';
+    if (actionBoard.lead) {
+      document.getElementById('cycle').textContent = actionBoard.lead.coin + ' • ' + actionBoard.lead.label;
+      document.getElementById('sentiment').textContent = shortText(actionBoard.lead.trigger || actionBoard.lead.headline || 'Waiting for a cleaner setup.', 90);
     } else {
-      positionCard.className = 'card';
-      positionMain.textContent = 'FLAT';
-      positionMain.className = 'status-value muted';
-      positionDetail.textContent = '0 open positions right now. The agent is flat and waiting for a valid entry.';
-    }
-
-    // Brain snapshot
-    const decisionSummary = s.decision_summary || {};
-    const lead = decisionSummary.lead || null;
-    const brainCard = document.getElementById('brain-status-card');
-    const brainMain = document.getElementById('brain-status');
-    const brainDetail = document.getElementById('brain-status-detail');
-    const brainLong = document.getElementById('brain-long-chip');
-    const brainShort = document.getElementById('brain-short-chip');
-    const brainFlat = document.getElementById('brain-flat-chip');
-    const longCount = decisionSummary.long_count || 0;
-    const shortCount = decisionSummary.short_count || 0;
-    const flatCount = decisionSummary.flat_count || 0;
-    brainLong.textContent = longCount + ' long';
-    brainShort.textContent = shortCount + ' short';
-    brainFlat.textContent = flatCount + ' flat';
-    brainLong.className = 'status-chip ' + (longCount ? 'status-chip-green' : '');
-    brainShort.className = 'status-chip ' + (shortCount ? 'status-chip-red' : '');
-    brainFlat.className = 'status-chip ' + (flatCount ? 'status-chip-yellow' : '');
-    if (lead) {
-      const leadAction = lead.action || 'FLAT';
-      const leadCls = leadAction === 'LONG' ? 'green' : leadAction === 'SHORT' ? 'red' : 'muted';
-      const leadReason = shortText(lead.reason || 'No high-conviction setup yet.', 140);
-      brainCard.className = 'card' + (leadAction === 'FLAT' ? '' : ' card-highlight');
-      brainMain.textContent = lead.coin + ' ' + leadAction;
-      brainMain.className = 'status-value ' + leadCls;
-      brainDetail.textContent = leadReason + ' • Score ' + fmt(lead.score, 1) + ' • ' + (lead.confidence || 'LOW');
-    } else {
-      brainCard.className = 'card';
-      brainMain.textContent = 'FLAT / WAIT';
-      brainMain.className = 'status-value muted';
-      brainDetail.textContent = 'No signal decisions published yet.';
+      document.getElementById('cycle').textContent = openN ? 'Managing trades' : 'No setup';
+      document.getElementById('sentiment').textContent = openN ? 'The agent is managing open exposure.' : 'Waiting for the next clean setup.';
     }
 
     // Open Trades
@@ -1735,138 +1689,25 @@ async function refresh() {
           '<div><div class="pos-meta">Notional</div><div class="pos-val blue">$' + fmt(p.size_usd * (s.leverage || 2), 0) + '</div></div>' +
           '<div><div class="pos-meta">Unrealised P&L</div><div class="pos-val ' + pnlCls + '" style="font-size:16px;">' + fmtD(p.unrealised_pnl) + '<span style="font-size:12px;opacity:0.7;margin-left:4px;">(' + (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%)</span></div></div>' +
         '</div>' +
-        '<div class="signal-reason"><strong>Opened:</strong> ' + esc(shortText(p.entry_logic || 'No opening logic recorded.', 160)) + '</div>' +
-        '<div class="signal-reason"><strong>Now:</strong> ' + esc(shortText(p.current_logic || 'Holding while the thesis stays valid.', 160)) + '</div>';
+        '<div class="signal-reason"><strong>Opened because:</strong> ' + esc(shortText(p.entry_logic || 'No opening logic recorded.', 180)) + '</div>' +
+        '<div class="signal-reason"><strong>Holding because:</strong> ' + esc(shortText(p.current_logic || 'Holding while the thesis stays valid.', 180)) + '</div>';
       }).join('');
     } else {
       countBadge.textContent = '0';
       countBadge.className = 'open-count open-count-flat';
       openCard.className = 'card';
+      const leadEmpty = actionBoard.lead
+        ? '<div style="margin-top:8px;"><strong>Best watch:</strong> ' + esc(actionBoard.lead.coin + ' • ' + actionBoard.lead.label) + ' — ' + esc(shortText(actionBoard.lead.trigger || actionBoard.lead.headline || 'Waiting for a cleaner setup.', 110)) + '</div>'
+        : '<div style="margin-top:8px;">The agent is flat and waiting for a clean, high-conviction setup.</div>';
       openBody.innerHTML =
         '<div class="empty-state">' +
           '<div class="empty-icon">📭</div>' +
           '<div><strong>FLAT — no open positions</strong></div>' +
-          '<div style="margin-top:8px;">The agent is flat right now. Watch the Brain Decision Board for the next LONG / SHORT call.</div>' +
+          leadEmpty +
         '</div>';
     }
 
-    // Brain decision board
-    const sigEl = document.getElementById('signals-body');
-    const sigs  = s.signals || {};
-    if (Object.keys(sigs).length) {
-      const entries = Object.entries(sigs)
-        .sort((a, b) => {
-          const aSig = a[1] || {};
-          const bSig = b[1] || {};
-          const aRank = [
-            (aSig.execution_mode || '') === 'tradable' ? 1 : 0,
-            (aSig.action || 'FLAT') === 'FLAT' ? 0 : 1,
-            Math.abs((aSig.score || 50) - 50),
-          ];
-          const bRank = [
-            (bSig.execution_mode || '') === 'tradable' ? 1 : 0,
-            (bSig.action || 'FLAT') === 'FLAT' ? 0 : 1,
-            Math.abs((bSig.score || 50) - 50),
-          ];
-          for (let i = 0; i < aRank.length; i += 1) {
-            if (aRank[i] !== bRank[i]) return bRank[i] - aRank[i];
-          }
-          return a[0].localeCompare(b[0]);
-        });
-      const tradableSet = new Set(((s.config || {}).coins || []).map((coin) => String(coin).toUpperCase()));
-      const tradableEntries = entries.filter(([coin, sig]) => tradableSet.has(String(coin).toUpperCase()) || (sig.execution_mode || '') === 'tradable');
-      const watchEntries = entries.filter(([coin, sig]) => !(tradableSet.has(String(coin).toUpperCase()) || (sig.execution_mode || '') === 'tradable'));
-      const renderTradable = ([coin, sig]) => {
-        const score = sig.score || 50;
-        const action = sig.action || 'FLAT';
-        const actCls = action === 'LONG' ? 'green' : action === 'SHORT' ? 'red' : 'muted';
-        const cardCls = action === 'LONG' ? 'decision-card decision-card-tradable decision-card-long'
-          : action === 'SHORT' ? 'decision-card decision-card-tradable decision-card-short'
-          : 'decision-card decision-card-tradable';
-        const note = shortText(sig.flat_reason || sig.decision_reason || sig.reason || 'No decisive setup yet.', 120);
-        const latestFailure = shortText(sig.rl_latest_failure_summary || '', 110);
-        const topCauses = (sig.rl_top_root_causes || []).slice(0, 2);
-        const guardReasons = (sig.rl_guard_reasons || []).slice(0, 2);
-        let pauseCycles = sig.rl_pause_cycles || 0;
-        let thresholdBoost = sig.rl_threshold_boost || 0;
-        let guardLabel = action;
-        let fallbackGuard = null;
-        if (!pauseCycles && !thresholdBoost) {
-          const longGuard = sig.rl_long_guard || {};
-          const shortGuard = sig.rl_short_guard || {};
-          if ((longGuard.pause_cycles || 0) > 0 || (longGuard.threshold_boost || 0) >= (shortGuard.threshold_boost || 0)) {
-            fallbackGuard = {label: 'LONG', guard: longGuard};
-          } else if ((shortGuard.pause_cycles || 0) > 0 || (shortGuard.threshold_boost || 0) > 0) {
-            fallbackGuard = {label: 'SHORT', guard: shortGuard};
-          }
-          if (fallbackGuard) {
-            guardLabel = fallbackGuard.label;
-            pauseCycles = fallbackGuard.guard.pause_cycles || 0;
-            thresholdBoost = fallbackGuard.guard.threshold_boost || 0;
-          }
-        }
-        const effectiveReasons = guardReasons.length
-          ? guardReasons
-          : ((fallbackGuard && fallbackGuard.guard && fallbackGuard.guard.reasons) || []).slice(0, 2);
-        let guardHtml = '';
-        if (pauseCycles > 0) {
-          guardHtml = '<div class="decision-guard red">' + esc(guardLabel) + ' paused ' + pauseCycles + 'c'
-            + (effectiveReasons.length ? ' • ' + esc(effectiveReasons.join(', ')) : '')
-            + '</div>';
-        } else if (thresholdBoost > 0) {
-          guardHtml = '<div class="decision-guard">RL stricter ' + esc(guardLabel) + ' +' + fmt(thresholdBoost, 0)
-            + ' pts'
-            + (effectiveReasons.length ? ' • ' + esc(effectiveReasons.join(', ')) : '')
-            + '</div>';
-        }
-        let rlHtml = '';
-        if (latestFailure || topCauses.length) {
-          rlHtml = '<div class="decision-rl-note">'
-            + (latestFailure ? '<div><strong>Last miss:</strong> ' + esc(latestFailure) + '</div>' : '')
-            + (topCauses.length ? '<div><strong>Recurring:</strong> ' + esc(topCauses.join(', ')) + '</div>' : '')
-            + '</div>';
-        }
-        return '<div class="' + cardCls + '">' +
-          '<div class="decision-top">' +
-            '<div class="decision-coin">' + esc(coin) + '</div>' +
-            '<div class="decision-mode">TRADEABLE</div>' +
-          '</div>' +
-          '<div class="decision-action ' + actCls + '">' + esc(action) + '</div>' +
-          '<div class="decision-meta">Score ' + fmt(score, 1) + ' • ' + esc(sig.confidence || 'LOW') + (sig.mtf_bias ? ' • HTF ' + esc(sig.mtf_bias) : '') + '</div>' +
-          '<div class="decision-note">' + esc(note) + '</div>' +
-          guardHtml +
-          rlHtml +
-        '</div>';
-      };
-      const renderWatch = ([coin, sig]) => {
-        const score = sig.score || 50;
-        const action = sig.action || 'FLAT';
-        const actCls = action === 'LONG' ? 'green' : action === 'SHORT' ? 'red' : 'muted';
-        const note = shortText(sig.flat_reason || sig.decision_reason || sig.reason || 'No decisive setup yet.', 90);
-        return '<div class="watchlist-row">' +
-          '<div class="watchlist-coin">' + esc(coin) + '</div>' +
-          '<div class="signal-action ' + actCls + '">' + esc(action) + ' • ' + fmt(score, 1) + '</div>' +
-          '<div class="watchlist-note">' + esc(note) + '</div>' +
-        '</div>';
-      };
-      let html = '<div class="decision-board">';
-      if (tradableEntries.length) {
-        html += '<div>' +
-          '<div class="decision-group-title">Tradable assets</div>' +
-          '<div class="decision-grid">' + tradableEntries.map(renderTradable).join('') + '</div>' +
-        '</div>';
-      }
-      if (watchEntries.length) {
-        html += '<div>' +
-          '<div class="decision-group-title">Watchlist assets</div>' +
-          '<div class="watchlist-strip">' + watchEntries.map(renderWatch).join('') + '</div>' +
-        '</div>';
-      }
-      html += '</div>';
-      sigEl.innerHTML = html;
-    } else {
-      sigEl.innerHTML = '<div class="empty-state">Waiting for first decision cycle...</div>';
-    }
+    renderActionBoard(actionBoard);
 
     // Performance Stats
     document.getElementById('stat-best').innerHTML   = '<span class="green">' + fmtD(st.best) + '</span>';
@@ -1876,35 +1717,9 @@ async function refresh() {
     const dailyPnl = s.daily_pnl_usd || 0;
     document.getElementById('stat-daily-pnl').innerHTML = '<span class="' + cls(dailyPnl) + '">' + fmtD(dailyPnl) + '</span>';
 
-    // Market Mood
-    const moodEl = document.getElementById('mood-body');
-    const fng = sent.raw_score || 0;
-    const fngLabel = sent.label || 'Unknown';
-    const fngColor = fng <= 25 ? 'red' : fng <= 45 ? 'yellow' : fng >= 75 ? 'green' : fng >= 55 ? 'green' : 'muted';
-    const moodEmoji = fng <= 20 ? '😨' : fng <= 40 ? '😟' : fng <= 60 ? '😐' : fng <= 80 ? '😊' : '🤑';
-    moodEl.innerHTML =
-      '<div style="text-align:center;padding:8px 0 16px;"><span style="font-size:36px;">' + moodEmoji + '</span></div>' +
-      '<div class="stat-row"><span class="stat-label">Fear & Greed</span><span class="stat-value ' + fngColor + '">' + fng + '/100</span></div>' +
-      '<div class="stat-row"><span class="stat-label">Mood</span><span class="stat-value ' + fngColor + '">' + fngLabel + '</span></div>' +
-      '<div class="stat-row"><span class="stat-label">Signal Bias</span><span class="stat-value">' + (sent.signal_score ? fmt(sent.signal_score, 0) + '/100' : '--') + '</span></div>';
-
     renderMarketMapSummary(data.market_map_summary || {}, latestMarketMap);
+    renderLatestLesson(latestLearningSummary);
     renderLearningSummary(latestLearningSummary, latestTrades);
-
-    // Pending orders
-    const pendEl = document.getElementById('pending-body');
-    const pending = s.pending_orders || [];
-    if (pending.length) {
-      pendEl.innerHTML = pending.map(o => {
-        const dirCls = o.direction === 'LONG' ? 'green' : 'red';
-        return '<div class="stat-row">' +
-          '<span><strong>' + o.coin + '</strong> <span class="' + dirCls + '">' + o.direction + '</span> @ $' + fmt(o.limit_price) + '</span>' +
-          '<span class="muted" style="font-family:var(--mono);font-size:12px;">cycle ' + o.cycles_waiting + '/' + o.max_cycles + '</span>' +
-        '</div>';
-      }).join('');
-    } else {
-      pendEl.innerHTML = '<div class="empty-state">None active</div>';
-    }
 
     // Closed Trades
     const tradBody = document.getElementById('trades-body');
