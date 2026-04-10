@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import time
 import urllib.request
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,6 +23,7 @@ import backtest as backtest_module
 import hosted_state_sync as hosted_state_sync_module
 import main as main_module
 import market_map as market_map_module
+from indicators import orderbook_levels as orderbook_levels_module
 import trade_dataset as trade_dataset_module
 import trade_logger as trade_logger_module
 import trade_review as trade_review_module
@@ -1810,6 +1812,173 @@ def test_execution_quality_gate_blocks_thin_unstable_orderbooks() -> None:
     assert quality["blockers"], "the gate should explain what failed"
 
 
+def test_background_orderbook_feed_enriches_signal_with_persistence_history() -> None:
+    class FakeFeed:
+        def __init__(self, snapshots):
+            self._snapshots = snapshots
+
+        def get_recent_snapshots(self, _coin, *, max_age_seconds=45.0, limit=None):
+            items = list(self._snapshots)
+            if limit:
+                items = items[-limit:]
+            return items
+
+    def make_snapshot(ts_offset: float, ref_price: float, imbalance: float) -> orderbook_levels_module.OrderBookFeedSnapshot:
+        return orderbook_levels_module.OrderBookFeedSnapshot(
+            coin="BTC",
+            ts=time.time() - ts_offset,
+            valid=True,
+            ref_price=ref_price,
+            last_trade_price=ref_price,
+            price_decimals=2,
+            book={
+                "bids": [
+                    {"price": "99.90", "remaining_base_amount": "4"},
+                    {"price": "99.00", "remaining_base_amount": "25"},
+                    {"price": "98.50", "remaining_base_amount": "4"},
+                ],
+                "asks": [
+                    {"price": "100.10", "remaining_base_amount": "4"},
+                    {"price": "101.00", "remaining_base_amount": "10"},
+                    {"price": "101.50", "remaining_base_amount": "3"},
+                ],
+            },
+            bid_notional=3100.0,
+            ask_notional=1900.0,
+            best_bid=99.90,
+            best_ask=100.10,
+            spread_bps=20.0,
+            imbalance_ratio=imbalance,
+            strongest_bid_wall=99.0,
+            strongest_bid_wall_notional=2475.0,
+            strongest_ask_wall=101.0,
+            strongest_ask_wall_notional=1010.0,
+        )
+
+    snapshots = [
+        make_snapshot(6.0, 100.00, 0.12),
+        make_snapshot(3.0, 100.05, 0.18),
+        make_snapshot(1.0, 100.08, 0.24),
+    ]
+
+    original_feed = orderbook_levels_module._BACKGROUND_ORDERBOOK_FEED
+    original_daily_levels = orderbook_levels_module._daily_levels
+    try:
+        orderbook_levels_module._BACKGROUND_ORDERBOOK_FEED = FakeFeed(snapshots)
+        orderbook_levels_module._daily_levels = lambda *_args, **_kwargs: (
+            [(99.0, 0.85, "daily", "daily_swing_low")],
+            [(101.0, 0.80, "daily", "daily_swing_high")],
+            98.7,
+        )
+        signal = orderbook_levels_module.get_orderbook_levels(
+            "BTC",
+            current_price=100.08,
+            cache_ttl_seconds=0,
+        )
+        assert signal.valid is True
+        assert signal.feed_snapshot_count == 3, "feed-backed signal should expose history depth"
+        assert signal.support_wall_persistence >= 3, "repeated bid wall should persist across feed samples"
+        assert signal.imbalance_mean > 0.15, "history should smooth into a bullish mean imbalance"
+        assert signal.score > 55.0, "persistent supportive flow should raise the composite orderbook score"
+    finally:
+        orderbook_levels_module._BACKGROUND_ORDERBOOK_FEED = original_feed
+        orderbook_levels_module._daily_levels = original_daily_levels
+
+
+def test_background_orderbook_feed_detects_intracycle_breakout_between_agent_cycles() -> None:
+    class FakeFeed:
+        def __init__(self, snapshots):
+            self._snapshots = snapshots
+
+        def get_recent_snapshots(self, _coin, *, max_age_seconds=45.0, limit=None):
+            items = list(self._snapshots)
+            if limit:
+                items = items[-limit:]
+            return items
+
+    def make_snapshot(ts_offset: float, ref_price: float) -> orderbook_levels_module.OrderBookFeedSnapshot:
+        return orderbook_levels_module.OrderBookFeedSnapshot(
+            coin="BTC",
+            ts=time.time() - ts_offset,
+            valid=True,
+            ref_price=ref_price,
+            last_trade_price=ref_price,
+            price_decimals=2,
+            book={
+                "bids": [
+                    {"price": "100.10", "remaining_base_amount": "8"},
+                    {"price": "99.80", "remaining_base_amount": "5"},
+                ],
+                "asks": [
+                    {"price": "100.55", "remaining_base_amount": "5"},
+                    {"price": "101.20", "remaining_base_amount": "10"},
+                ],
+            },
+            bid_notional=3600.0,
+            ask_notional=2100.0,
+            best_bid=100.10,
+            best_ask=100.55,
+            spread_bps=44.9,
+            imbalance_ratio=0.20,
+            strongest_bid_wall=100.10,
+            strongest_bid_wall_notional=800.0,
+            strongest_ask_wall=101.20,
+            strongest_ask_wall_notional=1012.0,
+        )
+
+    snapshots = [
+        make_snapshot(8.0, 100.18),
+        make_snapshot(5.0, 100.28),
+        make_snapshot(2.0, 100.42),
+    ]
+
+    original_feed = orderbook_levels_module._BACKGROUND_ORDERBOOK_FEED
+    original_daily_levels = orderbook_levels_module._daily_levels
+    try:
+        orderbook_levels_module._BACKGROUND_ORDERBOOK_FEED = FakeFeed(snapshots)
+        orderbook_levels_module._daily_levels = lambda *_args, **_kwargs: (
+            [(98.5, 0.70, "daily", "daily_swing_low")],
+            [(100.0, 0.82, "daily", "daily_swing_high"), (101.5, 0.75, "daily", "20d_high")],
+            99.6,
+        )
+        signal = orderbook_levels_module.get_orderbook_levels(
+            "BTC",
+            current_price=100.42,
+            cache_ttl_seconds=0,
+            feed_breakout_samples=2,
+        )
+        assert signal.breakout_state == "PERSISTENT_BULLISH_BREAKOUT", "feed should detect a breakout persisting between agent cycles"
+        assert signal.intracycle_breakout_state == "PERSISTENT_BULLISH_BREAKOUT"
+        assert signal.favor_longs is True
+    finally:
+        orderbook_levels_module._BACKGROUND_ORDERBOOK_FEED = original_feed
+        orderbook_levels_module._daily_levels = original_daily_levels
+
+
+def test_agent_bootstraps_background_orderbook_feed() -> None:
+    agent = object.__new__(TradingAgent)
+    agent.cfg = build_config()
+    agent._analysis_coins = ["BTC", "ETH", "SP500"]
+
+    calls = []
+    original_configure = agent_module.configure_background_orderbook_feed
+    original_prime = agent_module.prime_background_orderbook_feed
+    original_start = agent_module.start_background_orderbook_feed
+    try:
+        agent_module.configure_background_orderbook_feed = lambda coins, **kwargs: calls.append(("configure", list(coins), kwargs))
+        agent_module.prime_background_orderbook_feed = lambda: calls.append(("prime",))
+        agent_module.start_background_orderbook_feed = lambda: calls.append(("start",))
+        agent._start_background_orderbook_feed()
+        assert calls[0][0] == "configure"
+        assert calls[0][1] == ["BTC", "ETH", "SP500"], "agent should warm the feed for the full analysis universe"
+        assert ("prime",) in calls
+        assert ("start",) in calls
+    finally:
+        agent_module.configure_background_orderbook_feed = original_configure
+        agent_module.prime_background_orderbook_feed = original_prime
+        agent_module.start_background_orderbook_feed = original_start
+
+
 def test_reentry_watch_inherits_dynamic_trade_plan() -> None:
     manager = OrderManager()
     manager.schedule_reentry(
@@ -1947,6 +2116,12 @@ def run_all() -> None:
     print("PASS fail-closed MTF safety")
     test_execution_quality_gate_blocks_thin_unstable_orderbooks()
     print("PASS execution-quality gate")
+    test_background_orderbook_feed_enriches_signal_with_persistence_history()
+    print("PASS background orderbook persistence history")
+    test_background_orderbook_feed_detects_intracycle_breakout_between_agent_cycles()
+    print("PASS background orderbook breakout detection")
+    test_agent_bootstraps_background_orderbook_feed()
+    print("PASS background orderbook feed bootstrap")
     test_reentry_watch_inherits_dynamic_trade_plan()
     print("PASS re-entry dynamic trade plan")
     test_trade_logger_normalizes_legacy_headerless_log()

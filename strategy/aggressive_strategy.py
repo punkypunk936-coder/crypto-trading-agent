@@ -75,6 +75,14 @@ class AggressiveStrategy:
     def _is_confirmed_bearish_breakdown(orderbook_signal) -> bool:
         return str(getattr(orderbook_signal, "breakout_state", "")).upper() == "CONFIRMED_BEARISH_BREAKDOWN"
 
+    @staticmethod
+    def _is_persistent_bullish_breakout(orderbook_signal) -> bool:
+        return str(getattr(orderbook_signal, "breakout_state", "")).upper() == "PERSISTENT_BULLISH_BREAKOUT"
+
+    @staticmethod
+    def _is_persistent_bearish_breakdown(orderbook_signal) -> bool:
+        return str(getattr(orderbook_signal, "breakout_state", "")).upper() == "PERSISTENT_BEARISH_BREAKDOWN"
+
     def _qualifies_support_defense_long(
         self,
         *,
@@ -90,7 +98,7 @@ class AggressiveStrategy:
             return False
 
         breakout_state = str(getattr(orderbook_signal, "breakout_state", "NONE") or "NONE").upper()
-        if breakout_state in {"CONFIRMED_BEARISH_BREAKDOWN", "PROBING_BEARISH_BREAKDOWN"}:
+        if breakout_state in {"CONFIRMED_BEARISH_BREAKDOWN", "PERSISTENT_BEARISH_BREAKDOWN", "PROBING_BEARISH_BREAKDOWN"}:
             return False
         if str(getattr(orderbook_signal, "level_interaction", "BETWEEN_LEVELS") or "BETWEEN_LEVELS").upper() == "RANGE_COMPRESSION":
             return False
@@ -131,7 +139,7 @@ class AggressiveStrategy:
 
         if not (
             getattr(orderbook_signal, "favor_longs", False)
-            or breakout_state in {"PROBING_BULLISH_BREAKOUT", "CONFIRMED_BULLISH_BREAKOUT"}
+            or breakout_state in {"PROBING_BULLISH_BREAKOUT", "PERSISTENT_BULLISH_BREAKOUT", "CONFIRMED_BULLISH_BREAKOUT"}
             or map_supportive
         ):
             return False
@@ -201,6 +209,11 @@ class AggressiveStrategy:
             if bullish else
             self._is_confirmed_bearish_breakdown(orderbook_signal)
         )
+        persistent_breakout = (
+            self._is_persistent_bullish_breakout(orderbook_signal)
+            if bullish else
+            self._is_persistent_bearish_breakdown(orderbook_signal)
+        )
         probing_breakout = breakout_state == (
             "PROBING_BULLISH_BREAKOUT" if bullish else "PROBING_BEARISH_BREAKDOWN"
         )
@@ -221,6 +234,9 @@ class AggressiveStrategy:
         if confirmed_breakout:
             alignment += 2.0
             reasons.append("daily breakout is already confirmed")
+        elif persistent_breakout:
+            alignment += 1.25
+            reasons.append("background orderbook feed shows the breakout holding between cycles")
         elif probing_breakout:
             if support_defense_long:
                 alignment += 0.5
@@ -243,7 +259,7 @@ class AggressiveStrategy:
             elif structure_trend == "DOWNTREND":
                 conflicts += 2.0
                 blockers.append("higher structure is still a downtrend")
-            elif structure_trend == "RANGING" and getattr(self.tcfg, "thesis_block_on_range_conditions", True) and not confirmed_breakout:
+            elif structure_trend == "RANGING" and getattr(self.tcfg, "thesis_block_on_range_conditions", True) and not (confirmed_breakout or persistent_breakout):
                 if support_defense_long:
                     alignment += 1.0
                     reasons.append("support-defense setup allows a range low reclaim before full breakout confirmation")
@@ -263,14 +279,14 @@ class AggressiveStrategy:
             elif structure_trend == "UPTREND":
                 conflicts += 2.0
                 blockers.append("higher structure is still an uptrend")
-            elif structure_trend == "RANGING" and getattr(self.tcfg, "thesis_block_on_range_conditions", True) and not confirmed_breakout:
+            elif structure_trend == "RANGING" and getattr(self.tcfg, "thesis_block_on_range_conditions", True) and not (confirmed_breakout or persistent_breakout):
                 blockers.append("higher structure is still ranging")
 
         if dominant_regime in {"TREND", "MOMENTUM", "BREAKOUT"}:
             alignment += 1.5
             reasons.append(f"{dominant_regime.lower()} regime supports follow-through")
         elif dominant_regime in {"ABSORPTION", "MIXED"}:
-            if getattr(self.tcfg, "thesis_block_on_range_conditions", True) and not confirmed_breakout:
+            if getattr(self.tcfg, "thesis_block_on_range_conditions", True) and not (confirmed_breakout or persistent_breakout):
                 blockers.append(f"{dominant_regime.lower()} regime is too indecisive for a fresh trade")
             else:
                 conflicts += 0.5
@@ -301,7 +317,7 @@ class AggressiveStrategy:
                 conflicts += 1.0
                 reasons.append("recent candles still lean the other way")
 
-            if indecision and not confirmed_breakout:
+            if indecision and not (confirmed_breakout or persistent_breakout):
                 blockers.append("recent candles are still indecisive")
 
         if news_signal and getattr(news_signal, "valid", False) and getattr(news_signal, "article_count", 0) > 0:
@@ -325,7 +341,7 @@ class AggressiveStrategy:
         if orderbook_signal and getattr(orderbook_signal, "valid", False):
             orderbook_score = float(getattr(orderbook_signal, "score", 50.0) or 50.0)
             if bullish:
-                if getattr(orderbook_signal, "block_longs", False) and not confirmed_breakout:
+                if getattr(orderbook_signal, "block_longs", False) and not (confirmed_breakout or persistent_breakout):
                     blockers.append("overhead supply/resistance is still active")
                 elif support_defense_long:
                     alignment += 1.5
@@ -337,7 +353,7 @@ class AggressiveStrategy:
                     conflicts += 1.0
                     reasons.append("orderbook still leans against the long")
             else:
-                if getattr(orderbook_signal, "block_shorts", False) and not confirmed_breakout:
+                if getattr(orderbook_signal, "block_shorts", False) and not (confirmed_breakout or persistent_breakout):
                     blockers.append("demand/support is still defending below price")
                 elif getattr(orderbook_signal, "favor_shorts", False) or orderbook_score <= 42.0:
                     alignment += 1.5
@@ -346,7 +362,17 @@ class AggressiveStrategy:
                     conflicts += 1.0
                     reasons.append("orderbook still leans against the short")
 
-            if level_interaction == "RANGE_COMPRESSION" and getattr(self.tcfg, "thesis_block_on_range_conditions", True) and not confirmed_breakout:
+            support_wall_persistence = int(getattr(orderbook_signal, "support_wall_persistence", 0) or 0)
+            resistance_wall_persistence = int(getattr(orderbook_signal, "resistance_wall_persistence", 0) or 0)
+            imbalance_mean = float(getattr(orderbook_signal, "imbalance_mean", getattr(orderbook_signal, "imbalance_ratio", 0.0)) or 0.0)
+            if bullish and support_wall_persistence >= 2 and imbalance_mean >= -0.03:
+                alignment += 0.75
+                reasons.append("bid wall persistence is absorbing sellers under price")
+            elif (not bullish) and resistance_wall_persistence >= 2 and imbalance_mean <= 0.03:
+                alignment += 0.75
+                reasons.append("ask wall persistence is absorbing buyers above price")
+
+            if level_interaction == "RANGE_COMPRESSION" and getattr(self.tcfg, "thesis_block_on_range_conditions", True) and not (confirmed_breakout or persistent_breakout):
                 blockers.append("price is compressed between nearby support and resistance")
 
         if market_map_signal and getattr(market_map_signal, "valid", False):
@@ -399,7 +425,7 @@ class AggressiveStrategy:
         elif support_defense_long and score_buffer >= 0.5:
             alignment += 0.75
             reasons.append("support-defense reclaim can trigger closer to the threshold")
-        elif not confirmed_breakout:
+        elif not (confirmed_breakout or persistent_breakout):
             blockers.append("score only barely crossed the trigger without enough thesis buffer")
 
         min_alignment = float(getattr(self.tcfg, "thesis_min_alignment_points", 4) or 4)
@@ -912,7 +938,10 @@ class AggressiveStrategy:
                 f"[{tech.coin}] OrderbookLevels: score={orderbook_score:.1f} "
                 f"interaction={getattr(orderbook_signal, 'level_interaction', 'BETWEEN_LEVELS')} "
                 f"breakout={getattr(orderbook_signal, 'breakout_state', 'NONE')} "
-                f"imbalance={imbalance:+.2f}"
+                f"imbalance={imbalance:+.2f} "
+                f"mean={float(getattr(orderbook_signal, 'imbalance_mean', imbalance) or imbalance):+.2f} "
+                f"walls={int(getattr(orderbook_signal, 'support_wall_persistence', 0) or 0)}/"
+                f"{int(getattr(orderbook_signal, 'resistance_wall_persistence', 0) or 0)}"
             )
 
         if market_map_signal and getattr(market_map_signal, "valid", False):
@@ -959,15 +988,17 @@ class AggressiveStrategy:
             override_score = float(getattr(self.tcfg, "orderbook_override_score", 82.0) or 82.0)
             short_override_score = max(0.0, 100.0 - override_score)
             breakout_state = str(getattr(orderbook_signal, "breakout_state", "")).upper()
-            confirmed_bullish_breakout = breakout_state == "CONFIRMED_BULLISH_BREAKOUT"
-            confirmed_bearish_breakdown = breakout_state == "CONFIRMED_BEARISH_BREAKDOWN"
+            confirmed_bullish_breakout = breakout_state in {"CONFIRMED_BULLISH_BREAKOUT", "PERSISTENT_BULLISH_BREAKOUT"}
+            confirmed_bearish_breakdown = breakout_state in {"CONFIRMED_BEARISH_BREAKDOWN", "PERSISTENT_BEARISH_BREAKDOWN"}
             bullish_breakout_pressure = breakout_state in {
                 "PROBING_BULLISH_BREAKOUT",
                 "CONFIRMED_BULLISH_BREAKOUT",
+                "PERSISTENT_BULLISH_BREAKOUT",
             }
             bearish_breakdown_pressure = breakout_state in {
                 "PROBING_BEARISH_BREAKDOWN",
                 "CONFIRMED_BEARISH_BREAKDOWN",
+                "PERSISTENT_BEARISH_BREAKDOWN",
             }
 
             if action == "LONG":

@@ -55,7 +55,13 @@ from indicators.chart_analyst import read_chart, ChartVerdict
 from indicators.mtf  import compute_mtf, MTFAnalysis
 from indicators.news import get_news_signal
 from indicators.candlestick_patterns import compute_candlestick_patterns
-from indicators.orderbook_levels import get_orderbook_levels
+from indicators.orderbook_levels import (
+    configure_background_orderbook_feed,
+    get_orderbook_levels,
+    prime_background_orderbook_feed,
+    start_background_orderbook_feed,
+    stop_background_orderbook_feed,
+)
 from indicators.trade_memory import trade_memory
 from indicators.funding_oi_cvd import get_funding_oi_cvd
 from strategy.aggressive_strategy import AggressiveStrategy
@@ -158,6 +164,7 @@ class TradingAgent:
                  f"{'YES' if any(e.supports_limit_orders() for e in self.exchanges) else 'NO (market fallback)'}")
         log.info("=" * 64)
         self._log_circuit_status()
+        self._start_background_orderbook_feed()
         self._running = True
         try:
             while self._running:
@@ -176,9 +183,39 @@ class TradingAgent:
             log.info("\nStopped by user (Ctrl+C)")
             self._save_checkpoint()
             self._print_final_summary()
+        finally:
+            self._stop_background_orderbook_feed()
 
     def stop(self):
         self._running = False
+
+    def _start_background_orderbook_feed(self) -> None:
+        if not (
+            getattr(self.cfg.trading, "use_orderbook_levels", True)
+            and getattr(self.cfg.trading, "orderbook_feed_enabled", True)
+        ):
+            return
+        configure_background_orderbook_feed(
+            list(self._analysis_coins),
+            depth_limit=getattr(self.cfg.trading, "orderbook_depth_limit", 120),
+            poll_interval_seconds=getattr(self.cfg.trading, "orderbook_feed_poll_seconds", 3.0),
+            history_size=getattr(self.cfg.trading, "orderbook_feed_history_size", 120),
+        )
+        try:
+            prime_background_orderbook_feed()
+        except Exception as exc:
+            log.debug("Orderbook feed prime skipped: %s", exc)
+        try:
+            start_background_orderbook_feed()
+        except Exception as exc:
+            log.warning("Failed to start background orderbook feed: %s", exc)
+
+    @staticmethod
+    def _stop_background_orderbook_feed() -> None:
+        try:
+            stop_background_orderbook_feed()
+        except Exception as exc:
+            log.debug("Orderbook feed stop skipped: %s", exc)
 
     # ── Recovery and reconciliation ──────────────────────────
 
@@ -582,6 +619,8 @@ class TradingAgent:
                     depth_limit=getattr(self.cfg.trading, "orderbook_depth_limit", 120),
                     daily_lookback=getattr(self.cfg.trading, "orderbook_daily_lookback", 120),
                     cache_ttl_seconds=getattr(self.cfg.trading, "orderbook_cache_ttl_seconds", 25),
+                    feed_max_age_seconds=getattr(self.cfg.trading, "orderbook_feed_max_snapshot_age_seconds", 45.0),
+                    feed_breakout_samples=getattr(self.cfg.trading, "orderbook_feed_breakout_samples", 2),
                     guard_distance_pct=getattr(self.cfg.trading, "orderbook_guard_distance_pct", 1.25),
                     reaction_distance_pct=getattr(self.cfg.trading, "orderbook_reaction_distance_pct", 0.45),
                 )
@@ -688,14 +727,22 @@ class TradingAgent:
             # Orderbook + key levels
             "orderbook_score": orderbook_signal.score if orderbook_signal and orderbook_signal.valid else 50.0,
             "orderbook_imbalance": orderbook_signal.imbalance_ratio if orderbook_signal and orderbook_signal.valid else 0.0,
+            "orderbook_imbalance_mean": orderbook_signal.imbalance_mean if orderbook_signal and orderbook_signal.valid else 0.0,
+            "orderbook_imbalance_trend": orderbook_signal.imbalance_trend if orderbook_signal and orderbook_signal.valid else 0.0,
+            "orderbook_imbalance_volatility": orderbook_signal.imbalance_volatility if orderbook_signal and orderbook_signal.valid else 0.0,
             "orderbook_interaction": orderbook_signal.level_interaction if orderbook_signal and orderbook_signal.valid else "BETWEEN_LEVELS",
             "orderbook_breakout_state": orderbook_signal.breakout_state if orderbook_signal and orderbook_signal.valid else "NONE",
+            "orderbook_intracycle_breakout_state": orderbook_signal.intracycle_breakout_state if orderbook_signal and orderbook_signal.valid else "NONE",
             "orderbook_support": orderbook_signal.nearest_support if orderbook_signal and orderbook_signal.valid else 0.0,
             "orderbook_support_distance_pct": orderbook_signal.nearest_support_distance_pct if orderbook_signal and orderbook_signal.valid else 0.0,
             "orderbook_resistance": orderbook_signal.nearest_resistance if orderbook_signal and orderbook_signal.valid else 0.0,
             "orderbook_resistance_distance_pct": orderbook_signal.nearest_resistance_distance_pct if orderbook_signal and orderbook_signal.valid else 0.0,
             "orderbook_support_strength": orderbook_signal.nearest_support_strength if orderbook_signal and orderbook_signal.valid else 0.0,
             "orderbook_resistance_strength": orderbook_signal.nearest_resistance_strength if orderbook_signal and orderbook_signal.valid else 0.0,
+            "orderbook_support_wall_persistence": orderbook_signal.support_wall_persistence if orderbook_signal and orderbook_signal.valid else 0,
+            "orderbook_resistance_wall_persistence": orderbook_signal.resistance_wall_persistence if orderbook_signal and orderbook_signal.valid else 0,
+            "orderbook_feed_age_seconds": orderbook_signal.feed_age_seconds if orderbook_signal and orderbook_signal.valid else 0.0,
+            "orderbook_feed_snapshot_count": orderbook_signal.feed_snapshot_count if orderbook_signal and orderbook_signal.valid else 0,
             "orderbook_favor_longs": orderbook_signal.favor_longs if orderbook_signal and orderbook_signal.valid else False,
             "orderbook_favor_shorts": orderbook_signal.favor_shorts if orderbook_signal and orderbook_signal.valid else False,
             "orderbook_block_longs": orderbook_signal.block_longs if orderbook_signal and orderbook_signal.valid else False,
@@ -1169,7 +1216,12 @@ class TradingAgent:
         min_persistence = int(getattr(self.cfg.trading, "min_orderbook_persistence_cycles", 2) or 2)
         breakout_state = str(getattr(orderbook_signal, "breakout_state", "NONE") or "NONE")
         level_interaction = str(getattr(orderbook_signal, "level_interaction", "BETWEEN_LEVELS") or "BETWEEN_LEVELS")
-        confirmed_break = breakout_state in {"CONFIRMED_BULLISH_BREAKOUT", "CONFIRMED_BEARISH_BREAKDOWN"}
+        confirmed_break = breakout_state in {
+            "CONFIRMED_BULLISH_BREAKOUT",
+            "CONFIRMED_BEARISH_BREAKDOWN",
+            "PERSISTENT_BULLISH_BREAKOUT",
+            "PERSISTENT_BEARISH_BREAKDOWN",
+        }
         direction_blocked = (
             direction == "LONG" and getattr(orderbook_signal, "block_longs", False)
         ) or (
@@ -1248,8 +1300,8 @@ class TradingAgent:
             (pos.direction == "SHORT" and structure_trend == "UPTREND")
         )
         breakout_against = (
-            (pos.direction == "LONG" and breakout_state == "CONFIRMED_BEARISH_BREAKDOWN") or
-            (pos.direction == "SHORT" and breakout_state == "CONFIRMED_BULLISH_BREAKOUT")
+            (pos.direction == "LONG" and breakout_state in {"CONFIRMED_BEARISH_BREAKDOWN", "PERSISTENT_BEARISH_BREAKDOWN"}) or
+            (pos.direction == "SHORT" and breakout_state in {"CONFIRMED_BULLISH_BREAKOUT", "PERSISTENT_BULLISH_BREAKOUT"})
         )
         mtf_against = (
             (pos.direction == "LONG" and mtf_bias == "BEARISH") or
@@ -1385,12 +1437,20 @@ class TradingAgent:
             "price_action_summary": sig.get("price_action_summary", trade_plan.get("price_action_summary", "")),
             "orderbook_score": sig.get("orderbook_score", 50.0),
             "orderbook_imbalance": sig.get("orderbook_imbalance", 0.0),
+            "orderbook_imbalance_mean": sig.get("orderbook_imbalance_mean", 0.0),
+            "orderbook_imbalance_trend": sig.get("orderbook_imbalance_trend", 0.0),
+            "orderbook_imbalance_volatility": sig.get("orderbook_imbalance_volatility", 0.0),
             "orderbook_interaction": sig.get("orderbook_interaction", "BETWEEN_LEVELS"),
             "orderbook_breakout_state": sig.get("orderbook_breakout_state", "NONE"),
+            "orderbook_intracycle_breakout_state": sig.get("orderbook_intracycle_breakout_state", "NONE"),
             "orderbook_support": sig.get("orderbook_support", 0.0),
             "orderbook_support_distance_pct": sig.get("orderbook_support_distance_pct", 0.0),
             "orderbook_resistance": sig.get("orderbook_resistance", 0.0),
             "orderbook_resistance_distance_pct": sig.get("orderbook_resistance_distance_pct", 0.0),
+            "orderbook_support_wall_persistence": sig.get("orderbook_support_wall_persistence", 0),
+            "orderbook_resistance_wall_persistence": sig.get("orderbook_resistance_wall_persistence", 0),
+            "orderbook_feed_age_seconds": sig.get("orderbook_feed_age_seconds", 0.0),
+            "orderbook_feed_snapshot_count": sig.get("orderbook_feed_snapshot_count", 0),
             "daily_breakout_level": sig.get("daily_breakout_level", 0.0),
             "daily_breakdown_level": sig.get("daily_breakdown_level", 0.0),
             "market_map_bias": sig.get("market_map_bias", "NEUTRAL"),

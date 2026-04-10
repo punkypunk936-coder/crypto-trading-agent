@@ -605,9 +605,9 @@ class TradeMemory:
         elif exit_reason == "stop_loss" and direction == "SHORT" and orderbook_interaction in {"AT_SUPPORT", "ABOVE_SUPPORT"}:
             add("SHORTED_INTO_DEMAND", "The short was opened too close to a defended demand/support zone.")
 
-        if direction == "SHORT" and orderbook_breakout == "CONFIRMED_BULLISH_BREAKOUT":
+        if direction == "SHORT" and orderbook_breakout in {"CONFIRMED_BULLISH_BREAKOUT", "PERSISTENT_BULLISH_BREAKOUT"}:
             add("FADED_CONFIRMED_BREAKOUT", "The short faded a confirmed bullish breakout through key resistance.")
-        elif direction == "LONG" and orderbook_breakout == "CONFIRMED_BEARISH_BREAKDOWN":
+        elif direction == "LONG" and orderbook_breakout in {"CONFIRMED_BEARISH_BREAKDOWN", "PERSISTENT_BEARISH_BREAKDOWN"}:
             add("FADED_CONFIRMED_BREAKDOWN", "The long faded a confirmed bearish breakdown through key support.")
 
         try:

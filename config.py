@@ -137,6 +137,11 @@ class TradingConfig:
     orderbook_depth_limit: int    = 120
     orderbook_daily_lookback: int = 120
     orderbook_cache_ttl_seconds: int = 25
+    orderbook_feed_enabled: bool = True
+    orderbook_feed_poll_seconds: float = 3.0
+    orderbook_feed_history_size: int = 120
+    orderbook_feed_max_snapshot_age_seconds: float = 45.0
+    orderbook_feed_breakout_samples: int = 2
     orderbook_guard_distance_pct: float = 1.25
     orderbook_reaction_distance_pct: float = 0.45
     orderbook_level_min_strength: float = 0.55
