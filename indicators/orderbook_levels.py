@@ -25,7 +25,11 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from data.market_data import fetch_candles
-from exchanges.lighter_client import COIN_TO_MARKET_ID, DEFAULT_LIGHTER_API_BASE_URL
+from exchanges.lighter_client import (
+    COIN_TO_MARKET_ID,
+    DEFAULT_LIGHTER_API_BASE_URL,
+    get_lighter_read_auth_headers,
+)
 from logger import get_logger
 
 log = get_logger("orderbook_levels")
@@ -284,7 +288,11 @@ async def _lighter_orderbook_orders(market_id: int, limit: int) -> Dict[str, Any
     )
     try:
         api = lighter.OrderApi(api_client)
-        payload = await api.order_book_orders(market_id=market_id, limit=limit)
+        auth_headers = await get_lighter_read_auth_headers(api_base_url=DEFAULT_LIGHTER_API_BASE_URL)
+        request_kwargs: Dict[str, Any] = {"market_id": market_id, "limit": limit}
+        if auth_headers:
+            request_kwargs["_headers"] = auth_headers
+        payload = await api.order_book_orders(**request_kwargs)
         return _safe_to_dict(payload)
     finally:
         await api_client.close()
@@ -299,7 +307,11 @@ async def _lighter_orderbook_details(market_id: int) -> Dict[str, Any]:
     )
     try:
         api = lighter.OrderApi(api_client)
-        payload = await api.order_book_details(market_id=market_id)
+        auth_headers = await get_lighter_read_auth_headers(api_base_url=DEFAULT_LIGHTER_API_BASE_URL)
+        request_kwargs: Dict[str, Any] = {"market_id": market_id}
+        if auth_headers:
+            request_kwargs["_headers"] = auth_headers
+        payload = await api.order_book_details(**request_kwargs)
         return _safe_to_dict(payload)
     finally:
         await api_client.close()

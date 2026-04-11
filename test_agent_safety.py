@@ -7,13 +7,15 @@ Run:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
+import sys
 import tempfile
 import time
 import urllib.request
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import pandas as pd
 
@@ -40,6 +42,7 @@ from dashboard import app as dashboard_module
 from dashboard.snapshot import build_dashboard_snapshot
 from exchanges.base import AccountState, BaseExchange, OrderResult, LimitOrderStatus
 from exchanges.dry_run import DryRunExchange
+from exchanges import lighter_client as lighter_client_module
 from risk.risk_manager import OrderRequest, OpenPosition
 from strategy.aggressive_strategy import AggressiveStrategy
 from strategy.order_manager import OrderManager
@@ -2254,6 +2257,135 @@ def test_agent_bootstraps_background_orderbook_feed() -> None:
         agent_module.start_background_orderbook_feed = original_start
 
 
+def test_lighter_read_auth_headers_gracefully_fallback_without_credentials() -> None:
+    original_env = {key: os.environ.get(key) for key in (
+        "LIGHTER_L1_PRIVATE_KEY",
+        "LIGHTER_PRIVATE_KEY",
+        "LIGHTER_API_PRIVATE_KEY",
+        "LIGHTER_ACCOUNT_INDEX",
+        "LIGHTER_API_KEY_INDEX",
+        "LIGHTER_API_BASE_URL",
+    )}
+    original_cache = dict(lighter_client_module._READ_AUTH_CACHE)
+    original_missing_logged = lighter_client_module._READ_AUTH_MISSING_LOGGED
+    try:
+        for key in original_env:
+            os.environ.pop(key, None)
+        lighter_client_module._READ_AUTH_CACHE.update(
+            {"token": "", "expires_at": 0.0, "account_index": None, "api_key_index": None, "api_base_url": ""}
+        )
+        lighter_client_module._READ_AUTH_MISSING_LOGGED = False
+        headers = asyncio.run(lighter_client_module.get_lighter_read_auth_headers())
+        assert headers == {}, "missing Lighter credentials should keep read auth optional"
+    finally:
+        for key, value in original_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        lighter_client_module._READ_AUTH_CACHE.clear()
+        lighter_client_module._READ_AUTH_CACHE.update(original_cache)
+        lighter_client_module._READ_AUTH_MISSING_LOGGED = original_missing_logged
+
+
+def test_market_data_attaches_lighter_auth_header_to_read_requests() -> None:
+    captured: dict = {}
+
+    class FakeResponse:
+        async def text(self) -> str:
+            return '{"trades":[{"price":"123.45"}]}'
+
+    class FakeApiClient:
+        def __init__(self, _config):
+            pass
+
+        async def close(self) -> None:
+            return None
+
+    class FakeOrderApi:
+        def __init__(self, _client):
+            pass
+
+        async def recent_trades_without_preload_content(self, **kwargs):
+            captured.update(kwargs)
+            return FakeResponse()
+
+    fake_lighter = ModuleType("lighter")
+    fake_lighter.Configuration = lambda **kwargs: SimpleNamespace(**kwargs)
+    fake_lighter.ApiClient = FakeApiClient
+    fake_lighter.OrderApi = FakeOrderApi
+
+    original_lighter = sys.modules.get("lighter")
+    original_auth = market_data_module.get_lighter_read_auth_headers
+    try:
+        sys.modules["lighter"] = fake_lighter
+
+        async def fake_auth_headers(**_kwargs):
+            return {"Authorization": "signed-test-token"}
+
+        market_data_module.get_lighter_read_auth_headers = fake_auth_headers
+        payload = market_data_module._run_async(
+            market_data_module._lighter_api_get(
+                "recent_trades_without_preload_content",
+                market_id=1,
+                limit=1,
+            )
+        )
+        assert payload["trades"][0]["price"] == "123.45"
+        assert captured.get("_headers", {}).get("Authorization") == "signed-test-token"
+    finally:
+        market_data_module.get_lighter_read_auth_headers = original_auth
+        if original_lighter is None:
+            sys.modules.pop("lighter", None)
+        else:
+            sys.modules["lighter"] = original_lighter
+
+
+def test_orderbook_reader_attaches_lighter_auth_header_to_read_requests() -> None:
+    captured: dict = {}
+
+    class FakeApiClient:
+        def __init__(self, _config):
+            pass
+
+        async def close(self) -> None:
+            return None
+
+    class FakeOrderApi:
+        def __init__(self, _client):
+            pass
+
+        async def order_book_orders(self, **kwargs):
+            captured.update(kwargs)
+            return {"orders": []}
+
+    fake_lighter = ModuleType("lighter")
+    fake_lighter.Configuration = lambda **kwargs: SimpleNamespace(**kwargs)
+    fake_lighter.ApiClient = FakeApiClient
+    fake_lighter.OrderApi = FakeOrderApi
+
+    original_lighter = sys.modules.get("lighter")
+    original_auth = orderbook_levels_module.get_lighter_read_auth_headers
+    try:
+        sys.modules["lighter"] = fake_lighter
+
+        async def fake_auth_headers(**_kwargs):
+            return {"Authorization": "signed-test-token"}
+
+        orderbook_levels_module.get_lighter_read_auth_headers = fake_auth_headers
+        payload = orderbook_levels_module._run_async(
+            orderbook_levels_module._lighter_orderbook_orders(1, 25)
+        )
+        assert payload == {"orders": []}
+        assert captured.get("_headers", {}).get("Authorization") == "signed-test-token"
+    finally:
+        orderbook_levels_module.get_lighter_read_auth_headers = original_auth
+        if original_lighter is None:
+            sys.modules.pop("lighter", None)
+        else:
+            sys.modules["lighter"] = original_lighter
+
+
 def test_reentry_watch_inherits_dynamic_trade_plan() -> None:
     manager = OrderManager()
     manager.schedule_reentry(
@@ -2738,6 +2870,12 @@ def run_all() -> None:
     print("PASS background orderbook breakout detection")
     test_agent_bootstraps_background_orderbook_feed()
     print("PASS background orderbook feed bootstrap")
+    test_lighter_read_auth_headers_gracefully_fallback_without_credentials()
+    print("PASS lighter read auth fallback")
+    test_market_data_attaches_lighter_auth_header_to_read_requests()
+    print("PASS lighter market data auth headers")
+    test_orderbook_reader_attaches_lighter_auth_header_to_read_requests()
+    print("PASS lighter orderbook auth headers")
     test_reentry_watch_inherits_dynamic_trade_plan()
     print("PASS re-entry dynamic trade plan")
     test_trade_logger_normalizes_legacy_headerless_log()

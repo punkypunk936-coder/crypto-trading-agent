@@ -22,7 +22,7 @@ import requests
 import pandas as pd
 from typing import Optional
 from logger import get_logger
-from exchanges.lighter_client import COIN_TO_MARKET_ID
+from exchanges.lighter_client import COIN_TO_MARKET_ID, get_lighter_read_auth_headers
 
 log = get_logger("market_data")
 
@@ -148,7 +148,13 @@ async def _lighter_api_get(method_name: str, **kwargs):
     try:
         api_name = "CandlestickApi" if method_name == "candles_without_preload_content" else "OrderApi"
         api = getattr(lighter, api_name)(api_client)
-        response = await getattr(api, method_name)(**kwargs)
+        request_kwargs = dict(kwargs)
+        auth_headers = await get_lighter_read_auth_headers(api_base_url=LIGHTER_API_BASE_URL)
+        if auth_headers:
+            merged_headers = dict(request_kwargs.get("_headers") or {})
+            merged_headers.update(auth_headers)
+            request_kwargs["_headers"] = merged_headers
+        response = await getattr(api, method_name)(**request_kwargs)
         return json.loads(await response.text())
     finally:
         await api_client.close()

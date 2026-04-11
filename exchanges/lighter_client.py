@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+import threading
 from typing import Any, Dict, List, Optional
 
 from logger import get_logger
@@ -46,6 +47,16 @@ MIN_ORDER_SIZE: Dict[str, float] = {
     "XAU": 0.003,
 }
 
+_READ_AUTH_LOCK = threading.RLock()
+_READ_AUTH_CACHE: Dict[str, Any] = {
+    "token": "",
+    "expires_at": 0.0,
+    "account_index": None,
+    "api_key_index": None,
+    "api_base_url": "",
+}
+_READ_AUTH_MISSING_LOGGED = False
+
 
 def _set_ca_env(cert_path: str) -> None:
     os.environ.setdefault("SSL_CERT_FILE", cert_path)
@@ -68,6 +79,141 @@ def derive_l1_address(l1_private_key: str) -> str:
     from eth_account import Account
 
     return Account.from_key(l1_private_key).address
+
+
+def _env_lighter_credentials() -> Dict[str, Any]:
+    account_index_raw = str(os.getenv("LIGHTER_ACCOUNT_INDEX", "") or "").strip()
+    api_key_index_raw = str(os.getenv("LIGHTER_API_KEY_INDEX", "1") or "1").strip()
+    try:
+        api_key_index = int(api_key_index_raw)
+    except Exception:
+        api_key_index = 1
+    return {
+        "l1_private_key": str(
+            os.getenv("LIGHTER_L1_PRIVATE_KEY", "") or os.getenv("LIGHTER_PRIVATE_KEY", "")
+        ).strip(),
+        "api_private_key": str(os.getenv("LIGHTER_API_PRIVATE_KEY", "") or "").strip(),
+        "account_index": int(account_index_raw) if account_index_raw else None,
+        "api_key_index": api_key_index,
+        "api_base_url": str(os.getenv("LIGHTER_API_BASE_URL", "") or DEFAULT_LIGHTER_API_BASE_URL).strip()
+        or DEFAULT_LIGHTER_API_BASE_URL,
+    }
+
+
+async def get_lighter_read_auth_headers(
+    *,
+    api_base_url: str = DEFAULT_LIGHTER_API_BASE_URL,
+    token_ttl_seconds: float = 480.0,
+) -> Dict[str, str]:
+    """
+    Build Authorization headers for read-only Lighter requests.
+
+    Lighter's rate-limit docs note that authenticated requests can bypass
+    IP-based throttling and adhere to L1-based limits instead. The live agent
+    uses many market-data reads, so we authenticate those calls whenever valid
+    Lighter API credentials are present in the environment.
+    """
+    global _READ_AUTH_MISSING_LOGGED
+
+    creds = _env_lighter_credentials()
+    effective_base_url = str(api_base_url or creds["api_base_url"] or DEFAULT_LIGHTER_API_BASE_URL).strip()
+    if not creds["api_private_key"]:
+        with _READ_AUTH_LOCK:
+            if not _READ_AUTH_MISSING_LOGGED:
+                log.warning(
+                    "Lighter read requests are anonymous because LIGHTER_API_PRIVATE_KEY is missing; "
+                    "read traffic will remain subject to IP-based rate limits."
+                )
+                _READ_AUTH_MISSING_LOGGED = True
+        return {}
+
+    if creds["account_index"] is None:
+        l1_private_key = creds["l1_private_key"]
+        if not l1_private_key:
+            with _READ_AUTH_LOCK:
+                if not _READ_AUTH_MISSING_LOGGED:
+                    log.warning(
+                        "Lighter read requests are anonymous because LIGHTER_ACCOUNT_INDEX and "
+                        "LIGHTER_L1_PRIVATE_KEY are missing; unable to mint auth tokens."
+                    )
+                    _READ_AUTH_MISSING_LOGGED = True
+            return {}
+        try:
+            import certifi
+
+            _set_ca_env(certifi.where())
+            accounts = await _async_account_api_call(
+                effective_base_url,
+                certifi.where(),
+                "accounts_by_l1_address",
+                l1_address=derive_l1_address(l1_private_key),
+            )
+            sub_accounts = list(getattr(accounts, "sub_accounts", []) or [])
+            if sub_accounts:
+                creds["account_index"] = int(getattr(sub_accounts[0], "index"))
+        except Exception as exc:
+            with _READ_AUTH_LOCK:
+                if not _READ_AUTH_MISSING_LOGGED:
+                    log.warning(
+                        "Lighter read requests are anonymous because account lookup failed: %s",
+                        exc,
+                    )
+                    _READ_AUTH_MISSING_LOGGED = True
+            return {}
+
+    cache_key_matches = (
+        _READ_AUTH_CACHE.get("token")
+        and _READ_AUTH_CACHE.get("expires_at", 0.0) > time.time() + 30.0
+        and _READ_AUTH_CACHE.get("account_index") == creds["account_index"]
+        and _READ_AUTH_CACHE.get("api_key_index") == creds["api_key_index"]
+        and _READ_AUTH_CACHE.get("api_base_url") == effective_base_url
+    )
+    if cache_key_matches:
+        return {"Authorization": str(_READ_AUTH_CACHE["token"])}
+
+    signer = None
+    try:
+        from lighter.signer_client import SignerClient
+
+        signer = SignerClient(
+            url=effective_base_url,
+            account_index=int(creds["account_index"]),
+            api_private_keys={int(creds["api_key_index"]): str(creds["api_private_key"])},
+        )
+        token, error = signer.create_auth_token_with_expiry(api_key_index=int(creds["api_key_index"]))
+        if error:
+            raise RuntimeError(error)
+        if not token:
+            raise RuntimeError("Lighter signer returned an empty auth token")
+
+        expires_at = time.time() + max(60.0, float(token_ttl_seconds or 480.0))
+        with _READ_AUTH_LOCK:
+            _READ_AUTH_CACHE.update(
+                {
+                    "token": str(token),
+                    "expires_at": expires_at,
+                    "account_index": int(creds["account_index"]),
+                    "api_key_index": int(creds["api_key_index"]),
+                    "api_base_url": effective_base_url,
+                }
+            )
+            _READ_AUTH_MISSING_LOGGED = False
+        return {"Authorization": str(token)}
+    except Exception as exc:
+        with _READ_AUTH_LOCK:
+            if not _READ_AUTH_MISSING_LOGGED:
+                log.warning(
+                    "Lighter read requests are anonymous because auth token generation failed: %s",
+                    exc,
+                )
+                _READ_AUTH_MISSING_LOGGED = True
+        return {}
+    finally:
+        if signer is not None:
+            try:
+                await signer.close()
+            except Exception:
+                pass
 
 
 async def _async_account_api_call(api_base_url: str, ssl_ca_cert: str, method_name: str, **kwargs):
