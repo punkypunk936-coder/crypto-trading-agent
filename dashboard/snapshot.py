@@ -47,6 +47,8 @@ def normalize_control(control: Any) -> dict:
             "requested_at": kill.get("requested_at"),
             "acknowledged_at": kill.get("acknowledged_at"),
         })
+    if not base["kill"]["active"]:
+        base["kill"]["acknowledged_at"] = None
     return base
 
 
@@ -462,7 +464,7 @@ def learning_summary(trades: Iterable[dict] | None) -> dict:
             "trade_id": trade.get("trade_id"),
             "coin": trade.get("coin"),
             "direction": trade.get("direction"),
-            "pnl_usd": trade.get("pnl_usd"),
+            "pnl_usd": round(_safe_float(trade.get("pnl_usd")), 2),
             "result": "WIN" if float(trade.get("pnl_usd") or 0.0) > 0 else "LOSS" if float(trade.get("pnl_usd") or 0.0) < 0 else "FLAT",
             "open_logic": trade.get("open_logic", ""),
             "close_logic": trade.get("close_logic", ""),
@@ -548,7 +550,7 @@ def review_summary(trades: Iterable[dict] | None, trade_reviews: dict) -> dict:
         "verdicts": verdicts,
         "thesis_quality": thesis_quality,
         "execution_quality": execution_quality,
-        "updated_at": (trade_reviews or {}).get("updated_at"),
+        "updated_at": (trade_reviews or {}).get("updated_at") if reviews else None,
     }
 
 

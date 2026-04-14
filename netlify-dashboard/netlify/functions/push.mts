@@ -22,14 +22,33 @@ export default async (req: Request, context: Context) => {
 
   const store = getStore({ name: "trading-state", consistency: "strong" });
 
-  await store.setJSON("current-state", data.state);
+  const snapshot =
+    data.snapshot && typeof data.snapshot === "object" && data.snapshot.state
+      ? data.snapshot
+      : {
+          state: data.state,
+          trades: Array.isArray(data.trades) ? data.trades : [],
+          control: data.control && typeof data.control === "object" ? data.control : {},
+          market_map: data.market_map && typeof data.market_map === "object" ? data.market_map : {},
+          trade_reviews:
+            data.trade_reviews && typeof data.trade_reviews === "object" ? data.trade_reviews : {},
+          server_time: new Date().toISOString().slice(0, 19).replace("T", " "),
+        };
 
-  if (data.trades && Array.isArray(data.trades)) {
+  await store.setJSON("dashboard-snapshot", snapshot);
+  await store.setJSON("current-state", snapshot.state || data.state);
+
+  if (Array.isArray(snapshot.trades)) {
+    await store.setJSON("trades", snapshot.trades);
+  } else if (data.trades && Array.isArray(data.trades)) {
     await store.setJSON("trades", data.trades);
   }
+  await store.setJSON("control", snapshot.control || data.control || {});
+  await store.setJSON("market-map", snapshot.market_map || data.market_map || {});
+  await store.setJSON("trade-reviews", snapshot.trade_reviews || data.trade_reviews || {});
 
   return new Response(
-    JSON.stringify({ ok: true, cycle: data.state.cycle_number || 0 }),
+    JSON.stringify({ ok: true, cycle: snapshot?.state?.cycle_number || data.state.cycle_number || 0 }),
     { headers: { "Content-Type": "application/json" } }
   );
 };

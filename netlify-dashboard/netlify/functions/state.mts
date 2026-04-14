@@ -4,6 +4,13 @@ import { getStore } from "@netlify/blobs";
 export default async (req: Request, context: Context) => {
   const store = getStore({ name: "trading-state", consistency: "strong" });
 
+  const snapshotBlob = await store.get("dashboard-snapshot", { type: "json" });
+  if (snapshotBlob && typeof snapshotBlob === "object" && (snapshotBlob as any).state) {
+    return new Response(JSON.stringify(snapshotBlob), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const stateBlob = await store.get("current-state", { type: "json" });
   const tradesBlob = await store.get("trades", { type: "json" });
 

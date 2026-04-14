@@ -22,6 +22,7 @@ function hasRichSnapshot(snapshot: any) {
     snapshot &&
     typeof snapshot === "object" &&
     snapshot.state &&
+    snapshot.action_board &&
     snapshot.market_map_summary &&
     snapshot.learning_summary &&
     snapshot.control &&

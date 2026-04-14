@@ -1719,6 +1719,41 @@ def test_dashboard_snapshot_includes_trade_logic_and_learning_summary() -> None:
     assert snapshot["learning_summary"]["latest"]["lesson"]
 
 
+def test_dashboard_snapshot_canonicalizes_inactive_control_and_empty_review_shape() -> None:
+    snapshot = build_dashboard_snapshot(
+        {
+            "status": "running",
+            "last_cycle": "2026-04-14 16:37:20",
+            "cycle_number": 3865,
+            "portfolio_usd": 9987.37,
+            "available_usd": 3994.95,
+            "positions": [],
+            "signals": {},
+            "pending_orders": [],
+            "sentiment": {},
+            "mode": "dry_run",
+        },
+        [
+            {
+                "trade_id": "57",
+                "coin": "TAO",
+                "direction": "LONG",
+                "pnl_usd": "3.29",
+                "exit_price": "100.0",
+            }
+        ],
+        control={"kill": {"active": False, "reason": "", "requested_at": None, "acknowledged_at": "2026-04-01 07:24:06"}},
+        market_map={"updated_at": "2026-04-14 16:37:20", "coins": {}},
+        trade_reviews={"updated_at": "2026-04-14 16:37:20", "reviews": {}},
+        trade_dataset_records=[],
+        server_timestamp="2026-04-14 16:37:20",
+    )
+
+    assert snapshot["control"]["kill"]["acknowledged_at"] is None
+    assert snapshot["review_summary"]["updated_at"] is None
+    assert snapshot["learning_summary"]["latest"]["pnl_usd"] == 3.29
+
+
 def test_dashboard_market_map_and_review_endpoints_roundtrip() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         temp = Path(tmpdir)
@@ -2934,6 +2969,8 @@ def run_all() -> None:
     print("PASS dashboard market-map snapshot")
     test_dashboard_snapshot_includes_trade_logic_and_learning_summary()
     print("PASS dashboard learning summary")
+    test_dashboard_snapshot_canonicalizes_inactive_control_and_empty_review_shape()
+    print("PASS dashboard canonical state shape")
     test_dashboard_market_map_and_review_endpoints_roundtrip()
     print("PASS dashboard market-map/review endpoints")
     test_hosted_state_sync_can_publish_snapshot_to_git_branch()
