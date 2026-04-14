@@ -29,37 +29,78 @@ function hasRichSnapshot(snapshot: any) {
   );
 }
 
+function snapshotCycle(snapshot: any) {
+  const cycle = Number(snapshot?.state?.cycle_number ?? snapshot?.cycle_number ?? 0);
+  return Number.isFinite(cycle) ? cycle : 0;
+}
+
+function snapshotStamp(snapshot: any) {
+  const raw = String(snapshot?.server_time || snapshot?.state?.last_cycle || "").trim();
+  if (!raw) {
+    return 0;
+  }
+  const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
+  const parsed = Date.parse(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function pickFreshestSnapshot(candidates: any[]) {
+  let winner: any = null;
+  let winnerRank: [number, number] = [-1, -1];
+  for (const candidate of candidates) {
+    if (!hasRichSnapshot(candidate)) {
+      continue;
+    }
+    const rank: [number, number] = [snapshotCycle(candidate), snapshotStamp(candidate)];
+    if (
+      rank[0] > winnerRank[0] ||
+      (rank[0] === winnerRank[0] && rank[1] > winnerRank[1])
+    ) {
+      winner = candidate;
+      winnerRank = rank;
+    }
+  }
+  return winner;
+}
+
+function pickFreshestThinFallback(candidates: any[]) {
+  let winner: any = null;
+  let winnerRank: [number, number] = [-1, -1];
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== "object" || !candidate.state) {
+      continue;
+    }
+    const rank: [number, number] = [snapshotCycle(candidate), snapshotStamp(candidate)];
+    if (
+      rank[0] > winnerRank[0] ||
+      (rank[0] === winnerRank[0] && rank[1] > winnerRank[1])
+    ) {
+      winner = candidate;
+      winnerRank = rank;
+    }
+  }
+  return winner;
+}
+
 export async function GET() {
   const cacheHeaders = { "Cache-Control": "public, s-maxage=15, stale-while-revalidate=45" };
-  let thinFallbackSnapshot: any = null;
   try {
-    let snapshot = null;
+    let blobSnapshot = null;
     try {
-      snapshot = await readJson(SNAPSHOT_PATH, null);
+      blobSnapshot = await readJson(SNAPSHOT_PATH, null);
     } catch {
-      snapshot = await readNetlifyStateFallback();
-      thinFallbackSnapshot = snapshot;
-      if (!hasRichSnapshot(snapshot)) {
-        snapshot = await readGitFallbackJson(SNAPSHOT_PATH, null);
-      }
-    }
-    if (hasRichSnapshot(snapshot)) {
-      return json(snapshot, { headers: cacheHeaders });
+      blobSnapshot = null;
     }
 
     const netlifySnapshot = await readNetlifyStateFallback();
-    if (hasRichSnapshot(netlifySnapshot)) {
-      return json(netlifySnapshot, { headers: cacheHeaders });
-    }
-    if (netlifySnapshot && typeof netlifySnapshot === "object" && netlifySnapshot.state) {
-      thinFallbackSnapshot = netlifySnapshot;
-    }
-
     const gitSnapshot = await readGitFallbackJson(SNAPSHOT_PATH, null);
-    if (hasRichSnapshot(gitSnapshot)) {
-      return json(gitSnapshot, { headers: cacheHeaders });
+
+    const freshestRichSnapshot = pickFreshestSnapshot([blobSnapshot, netlifySnapshot, gitSnapshot]);
+    if (freshestRichSnapshot) {
+      return json(freshestRichSnapshot, { headers: cacheHeaders });
     }
 
+    const thinFallbackSnapshot = pickFreshestThinFallback([blobSnapshot, netlifySnapshot, gitSnapshot]);
     if (thinFallbackSnapshot && typeof thinFallbackSnapshot === "object" && thinFallbackSnapshot.state) {
       return json(
         buildSnapshot(

@@ -79,6 +79,17 @@ def _git_ok(args: list[str], cwd: Path) -> bool:
     return proc.returncode == 0
 
 
+def _has_staged_dashboard_changes(repo_dir: Path) -> bool:
+    proc = subprocess.run(
+        ["git", "diff", "--cached", "--quiet", "--", "dashboard", "README.md"],
+        cwd=str(repo_dir),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return proc.returncode != 0
+
+
 def _wipe_worktree(repo_dir: Path) -> None:
     for entry in repo_dir.iterdir():
         if entry.name == ".git":
@@ -172,12 +183,14 @@ def publish_snapshot(
         _write_payload_files(repo_dir, snapshot, state, trades, control, market_map, trade_reviews)
         _run_git(["add", "dashboard", "README.md"], repo_dir)
 
-        status = _run_git(["status", "--porcelain"], repo_dir)
-        if status.strip():
+        if _has_staged_dashboard_changes(repo_dir):
             cycle = ((snapshot or {}).get("state") or {}).get("cycle_number", 0)
             stamp = (snapshot or {}).get("server_time") or "unknown-time"
             _run_git(["commit", "-m", f"sync dashboard snapshot cycle {cycle} @ {stamp}"], repo_dir)
-        _run_git(["push", "origin", f"HEAD:{branch}"], repo_dir)
+        # This branch is a generated dashboard mirror, not a collaborative branch.
+        # Force-pushing keeps the public fallback source aligned to the latest
+        # canonical local snapshot even if another stale mirror push landed first.
+        _run_git(["push", "--force", "origin", f"HEAD:{branch}"], repo_dir)
         head = _run_git(["rev-parse", "HEAD"], repo_dir)
         _run_git(["tag", "-f", public_tag, head], repo_dir)
         _run_git(["push", "--force", "origin", f"refs/tags/{public_tag}"], repo_dir)

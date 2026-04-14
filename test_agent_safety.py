@@ -1872,6 +1872,90 @@ def test_hosted_state_sync_can_publish_snapshot_to_git_branch() -> None:
                 os.environ["DASHBOARD_STATE_GIT_SYNC_ENABLED"] = original_enabled
 
 
+def test_hosted_state_sync_force_updates_generated_branch() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        temp = Path(tmpdir)
+        remote = temp / "origin.git"
+        subprocess_ok = __import__("subprocess")
+        subprocess_ok.run(["git", "init", "--bare", str(remote)], check=True, capture_output=True, text=True)
+
+        original_repo_dir = hosted_state_sync_module.DASHBOARD_STATE_SYNC_REPO
+        original_url = os.environ.get("DASHBOARD_STATE_GIT_URL")
+        original_branch = os.environ.get("DASHBOARD_STATE_GIT_BRANCH")
+        original_tag = os.environ.get("DASHBOARD_STATE_GIT_TAG")
+        original_enabled = os.environ.get("DASHBOARD_STATE_GIT_SYNC_ENABLED")
+        try:
+            hosted_state_sync_module.DASHBOARD_STATE_SYNC_REPO = temp / ".dashboard_state_sync"
+            os.environ["DASHBOARD_STATE_GIT_URL"] = str(remote)
+            os.environ["DASHBOARD_STATE_GIT_BRANCH"] = "codex/dashboard-state-force"
+            os.environ["DASHBOARD_STATE_GIT_TAG"] = "dashboard-state-force"
+            os.environ["DASHBOARD_STATE_GIT_SYNC_ENABLED"] = "1"
+
+            assert hosted_state_sync_module.publish_snapshot(
+                {"state": {"cycle_number": 100}, "server_time": "2026-04-14 16:00:00"},
+                state={"cycle_number": 100},
+                trades=[],
+                control={"kill": {"active": False, "reason": "", "requested_at": None, "acknowledged_at": None}},
+                market_map={},
+                trade_reviews={},
+            ) is True
+
+            external = temp / "external"
+            subprocess_ok.run(
+                ["git", "clone", "--depth", "1", "--branch", "codex/dashboard-state-force", str(remote), str(external)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess_ok.run(["git", "config", "user.name", "External Writer"], cwd=str(external), check=True, capture_output=True, text=True)
+            subprocess_ok.run(["git", "config", "user.email", "external@example.com"], cwd=str(external), check=True, capture_output=True, text=True)
+            injected = external / "dashboard" / "dashboard_snapshot.json"
+            payload = json.loads(injected.read_text())
+            payload["state"]["cycle_number"] = 999
+            payload["server_time"] = "2026-04-14 16:01:00"
+            injected.write_text(json.dumps(payload, indent=2) + "\n")
+            subprocess_ok.run(["git", "add", "dashboard/dashboard_snapshot.json"], cwd=str(external), check=True, capture_output=True, text=True)
+            subprocess_ok.run(["git", "commit", "-m", "external drift"], cwd=str(external), check=True, capture_output=True, text=True)
+            subprocess_ok.run(["git", "push", "origin", "HEAD:codex/dashboard-state-force"], cwd=str(external), check=True, capture_output=True, text=True)
+
+            assert hosted_state_sync_module.publish_snapshot(
+                {"state": {"cycle_number": 101}, "server_time": "2026-04-14 16:02:00"},
+                state={"cycle_number": 101},
+                trades=[],
+                control={"kill": {"active": False, "reason": "", "requested_at": None, "acknowledged_at": None}},
+                market_map={},
+                trade_reviews={},
+            ) is True
+
+            verify = temp / "verify"
+            subprocess_ok.run(
+                ["git", "clone", "--depth", "1", "--branch", "codex/dashboard-state-force", str(remote), str(verify)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            saved = json.loads((verify / "dashboard" / "dashboard_snapshot.json").read_text())
+            assert saved["state"]["cycle_number"] == 101
+        finally:
+            hosted_state_sync_module.DASHBOARD_STATE_SYNC_REPO = original_repo_dir
+            if original_url is None:
+                os.environ.pop("DASHBOARD_STATE_GIT_URL", None)
+            else:
+                os.environ["DASHBOARD_STATE_GIT_URL"] = original_url
+            if original_branch is None:
+                os.environ.pop("DASHBOARD_STATE_GIT_BRANCH", None)
+            else:
+                os.environ["DASHBOARD_STATE_GIT_BRANCH"] = original_branch
+            if original_tag is None:
+                os.environ.pop("DASHBOARD_STATE_GIT_TAG", None)
+            else:
+                os.environ["DASHBOARD_STATE_GIT_TAG"] = original_tag
+            if original_enabled is None:
+                os.environ.pop("DASHBOARD_STATE_GIT_SYNC_ENABLED", None)
+            else:
+                os.environ["DASHBOARD_STATE_GIT_SYNC_ENABLED"] = original_enabled
+
+
 def test_dashboard_remote_fallback_still_publishes_git_snapshot() -> None:
     cfg = build_config()
     original_state_json = agent_module.STATE_JSON
@@ -2854,6 +2938,8 @@ def run_all() -> None:
     print("PASS dashboard market-map/review endpoints")
     test_hosted_state_sync_can_publish_snapshot_to_git_branch()
     print("PASS hosted dashboard git fallback sync")
+    test_hosted_state_sync_force_updates_generated_branch()
+    print("PASS hosted dashboard git force sync")
     test_dashboard_remote_fallback_still_publishes_git_snapshot()
     print("PASS dashboard fallback publishes git snapshot")
     test_trade_memory_records_richer_loss_reasoning()
