@@ -79,6 +79,8 @@ def _coin_tags(coin: str) -> set[str]:
         tags.update({"INDEX", "MACRO", "RISK"})
     if coin in {"XAU"}:
         tags.update({"METAL", "MACRO", "DEFENSIVE"})
+    if coin in {"AAPL", "AMZN", "GOOGL", "META", "MSFT", "TSLA"}:
+        tags.update({"EQUITY", "MAG7", "RISK"})
     if coin in {"BRENT", "WTI", "CL"}:
         tags.update({"ENERGY", "MACRO"})
     return tags

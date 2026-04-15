@@ -55,8 +55,11 @@ GOOGLE_NEWS_RSS_URL = "https://news.google.com/rss/search"
 YAHOO_RSS_URL = "https://feeds.finance.yahoo.com/rss/2.0/headline"
 REQUEST_HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
 
-# Instruments routed to macro / commodity news instead of CryptoPanic.
-INDEX_INSTRUMENTS = {"SP500", "XAU", "BRENT", "WTI", "CL", "NDX", "DJI", "VIX"}
+# Instruments routed to macro / equity news instead of CryptoPanic.
+INDEX_INSTRUMENTS = {
+    "SP500", "XAU", "BRENT", "WTI", "CL", "NDX", "DJI", "VIX",
+    "AAPL", "AMZN", "GOOGL", "META", "MSFT", "TSLA",
+}
 
 # ── Macro / equity keyword weights ────────────────────────────────────────────
 # Used for SP500 and other index instruments
@@ -192,6 +195,12 @@ CRYPTO_NEWS_QUERIES: Dict[str, str] = {
 MACRO_NEWS_QUERIES: Dict[str, str] = {
     "SP500": "S&P 500 OR SPX OR US stocks OR Wall Street",
     "XAU": "gold OR XAU OR bullion OR treasury yields",
+    "AAPL": "Apple stock OR AAPL earnings OR iPhone demand",
+    "AMZN": "Amazon stock OR AMZN earnings OR AWS growth",
+    "GOOGL": "Alphabet stock OR GOOGL earnings OR Google ad revenue",
+    "META": "Meta stock OR META earnings OR ad revenue OR AI spend",
+    "MSFT": "Microsoft stock OR MSFT earnings OR Azure growth",
+    "TSLA": "Tesla stock OR TSLA deliveries OR EV demand",
     "BRENT": "Brent crude OR oil OR OPEC",
     "WTI": "WTI crude OR oil OR OPEC",
     "CL": "WTI crude OR oil OR OPEC",
@@ -293,6 +302,12 @@ def _fetch_macro_news(coin: str) -> NewsSignal:
     TICKER_MAP = {
         "SP500": "^GSPC",   # Hyperliquid S&P 500 perpetual → Yahoo Finance ^GSPC RSS
         "XAU":   "GC=F",
+        "AAPL":  "AAPL",
+        "AMZN":  "AMZN",
+        "GOOGL": "GOOGL",
+        "META":  "META",
+        "MSFT":  "MSFT",
+        "TSLA":  "TSLA",
         "BRENT": "BZ=F",
         "WTI":   "CL=F",
         "CL":    "CL=F",
@@ -406,6 +421,18 @@ def _score_macro_headline(title: str, coin: str = "") -> float:
     if coin.upper() in {"BRENT", "WTI", "CL"} and any(t in lower for t in ["brent", "wti", "crude", "opec", "oil"]):
         score *= 1.15
     if coin.upper() == "XAU" and any(t in lower for t in ["gold", "xau", "bullion", "comex", "treasury", "dollar"]):
+        score *= 1.15
+    if coin.upper() == "AAPL" and any(t in lower for t in ["apple", "aapl", "iphone", "app store", "services revenue"]):
+        score *= 1.15
+    if coin.upper() == "AMZN" and any(t in lower for t in ["amazon", "amzn", "aws", "prime", "e-commerce"]):
+        score *= 1.15
+    if coin.upper() == "GOOGL" and any(t in lower for t in ["alphabet", "google", "googl", "search ads", "youtube", "cloud"]):
+        score *= 1.15
+    if coin.upper() == "META" and any(t in lower for t in ["meta", "facebook", "instagram", "whatsapp", "reels"]):
+        score *= 1.15
+    if coin.upper() == "MSFT" and any(t in lower for t in ["microsoft", "msft", "azure", "copilot", "office"]):
+        score *= 1.15
+    if coin.upper() == "TSLA" and any(t in lower for t in ["tesla", "tsla", "deliveries", "ev", "autonomous", "robotaxi"]):
         score *= 1.15
     return max(-100, min(100, score))
 

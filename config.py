@@ -20,6 +20,9 @@ class ExchangeConfig:
     hl_private_key: str        = field(default_factory=lambda: os.getenv("HL_PRIVATE_KEY", ""))
     hl_account_address: str    = field(default_factory=lambda: os.getenv("HL_ACCOUNT_ADDRESS", ""))
     hl_use_mainnet: bool       = True          # set False for testnet
+    hl_spot_execution_enabled: bool = field(
+        default_factory=lambda: os.getenv("HL_SPOT_EXECUTION_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+    )
 
     # Lighter
     # LIGHTER_PRIVATE_KEY remains supported as a legacy alias for the L1 wallet key.
@@ -37,8 +40,8 @@ class ExchangeConfig:
     )
 
     # Enable / disable each exchange independently
-    use_hyperliquid: bool      = False
-    use_lighter: bool          = True    # Primary exchange — key in .env
+    use_hyperliquid: bool      = True
+    use_lighter: bool          = False
 
 
 # ─────────────────────────────────────────────────────────
@@ -49,13 +52,16 @@ class TradingConfig:
     # Coins / instruments the agent will trade
     # Baseline execution universe. Additional watchlist symbols that are
     # supported on the active venue are auto-promoted at startup.
-    coins: List[str]            = field(default_factory=lambda: ["BTC", "ETH", "SOL"])
+    coins: List[str]            = field(default_factory=lambda: [
+        "BTC", "ETH", "SOL", "HYPE", "TAO", "SP500", "XAU"
+    ])
 
     # Broader watchlist / learning universe.
     # These assets are analysed and shown in the dashboard even when they are
     # not tradable on the primary execution venue.
     analysis_coins: List[str]   = field(default_factory=lambda: [
-        "BTC", "ETH", "SOL", "HYPE", "SP500", "TAO", "XAU", "BRENT", "WTI"
+        "BTC", "ETH", "SOL", "HYPE", "TAO", "SP500", "XAU",
+        "AAPL", "AMZN", "GOOGL", "META", "MSFT", "TSLA",
     ])
 
     # ── Instrument type classification ───────────────────────────────────────
@@ -71,6 +77,12 @@ class TradingConfig:
         "TAO":   "crypto",
         "SP500": "index",
         "XAU":   "index",
+        "AAPL":  "equity",
+        "AMZN":  "equity",
+        "GOOGL": "equity",
+        "META":  "equity",
+        "MSFT":  "equity",
+        "TSLA":  "equity",
         "BRENT": "index",
         "WTI":   "index",
         "CL":    "index",
@@ -78,6 +90,7 @@ class TradingConfig:
 
     # Indexes need a longer minimum hold — they move slower than crypto
     index_min_hold_minutes: float = 360.0   # 6h for indexes (vs 4h for crypto)
+    equity_min_hold_minutes: float = 240.0  # 4h for spot equities
 
     # ── Aggressive strategy thresholds ──────────────────
     # RSI: go long when below / short when above

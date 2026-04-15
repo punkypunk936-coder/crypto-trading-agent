@@ -68,7 +68,11 @@ from indicators.orderbook_levels import (
 )
 from indicators.trade_memory import trade_memory
 from indicators.funding_oi_cvd import get_funding_oi_cvd
-from exchanges.lighter_client import COIN_TO_MARKET_ID
+from exchanges.hyperliquid_markets import (
+    hyperliquid_supports_shorts,
+    hyperliquid_instrument_type,
+    is_hyperliquid_supported,
+)
 from narrative import get_narrative_signal
 from strategy.aggressive_strategy import AggressiveStrategy
 from strategy.order_manager import OrderManager, PendingOrder, ReEntryWatch
@@ -157,7 +161,7 @@ class TradingAgent:
     def start(self):
         """Run the agent loop. Press Ctrl+C to stop."""
         log.info("=" * 64)
-        log.info(f"  Crypto Perps Agent  |  Mode: "
+        log.info(f"  Hyperliquid Trading Agent  |  Mode: "
                  f"{'DRY RUN 🟡' if self.cfg.is_dry_run else 'LIVE 🔴'}")
         log.info(f"  Trade coins: {self._tradable_coins}")
         log.info(f"  Watchlist : {self._analysis_coins}")
@@ -651,7 +655,10 @@ class TradingAgent:
             lookback=self.cfg.trading.lookback_periods,
         )
         if df is None:
-            log.warning(f"[{coin}] No candle data — skipping")
+            if is_hyperliquid_supported(coin):
+                log.warning(f"[{coin}] No recent Hyperliquid candle data — skipping")
+            else:
+                log.warning(f"[{coin}] No candle data — skipping")
             return
 
         analysis_df = df
@@ -733,7 +740,10 @@ class TradingAgent:
         )
 
         # Determine instrument type for this coin
-        instrument_type = self.cfg.trading.instrument_types.get(coin, "crypto")
+        instrument_type = self.cfg.trading.instrument_types.get(
+            coin,
+            hyperliquid_instrument_type(coin, "crypto"),
+        )
 
         # Funding Rate / OI / CVD — order-flow intelligence
         # Only computed for crypto perps (not indexes — no funding on SP500 Yahoo data)
@@ -1253,7 +1263,7 @@ class TradingAgent:
             return
 
         if coin not in self._tradable_coin_set:
-            log.info(f"[{coin}] Observation-only asset — signal tracked, no execution on the Lighter runtime")
+            log.info(f"[{coin}] Observation-only asset — signal tracked, no execution on the live venue")
             self._record_decision_snapshot(
                 coin,
                 portfolio_usd=portfolio_usd,
@@ -1269,6 +1279,23 @@ class TradingAgent:
                 coin,
                 portfolio_usd=portfolio_usd,
                 stage="loss_circuit_breaker",
+                signal=signal,
+                current_position=current_pos,
+                blocked=True,
+            )
+            return
+
+        if signal.action == "SHORT" and not current_pos and not hyperliquid_supports_shorts(coin):
+            reason = f"{coin} is running as a long-only Hyperliquid spot market — short entries are disabled"
+            log.info(f"[{coin}] 🛡️ {reason}")
+            signal.action = "FLAT"
+            signal.flat_reason = reason
+            signal.reason = reason
+            self._sync_signal_snapshot(coin, signal)
+            self._record_decision_snapshot(
+                coin,
+                portfolio_usd=portfolio_usd,
+                stage="long_only_short_block",
                 signal=signal,
                 current_position=current_pos,
                 blocked=True,
@@ -1308,6 +1335,8 @@ class TradingAgent:
                 # Indexes need longer hold — they move slower than crypto
                 if instrument_type == "index":
                     min_hold = self.cfg.trading.index_min_hold_minutes
+                elif instrument_type == "equity":
+                    min_hold = getattr(self.cfg.trading, "equity_min_hold_minutes", self.cfg.trading.min_hold_minutes)
                 else:
                     min_hold = self.cfg.trading.min_hold_minutes
                 if hold_minutes < min_hold:
@@ -1895,7 +1924,7 @@ class TradingAgent:
 
     @staticmethod
     def _supports_orderbook_context(coin: str) -> bool:
-        return str(coin or "").upper() in COIN_TO_MARKET_ID
+        return is_hyperliquid_supported(coin)
 
     def _check_narrative_gate(self, coin: str, signal, narrative_signal) -> bool:
         if not getattr(self.cfg.trading, "use_narrative_gate", True):

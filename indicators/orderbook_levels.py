@@ -15,7 +15,6 @@ answer so the agent avoids weak counter-level trades.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import math
 import threading
@@ -24,11 +23,12 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+import requests
+
 from data.market_data import fetch_candles
-from exchanges.lighter_client import (
-    COIN_TO_MARKET_ID,
-    DEFAULT_LIGHTER_API_BASE_URL,
-    get_lighter_read_auth_headers,
+from exchanges.hyperliquid_markets import (
+    is_hyperliquid_supported,
+    resolve_hyperliquid_symbol,
 )
 from logger import get_logger
 
@@ -127,7 +127,13 @@ class BackgroundOrderBookFeed:
         poll_interval_seconds: float = 3.0,
         history_size: int = 120,
     ) -> None:
-        filtered = sorted({str(symbol).upper() for symbol in symbols if str(symbol).upper() in COIN_TO_MARKET_ID})
+        filtered = sorted(
+            {
+                str(symbol).upper()
+                for symbol in symbols
+                if is_hyperliquid_supported(symbol)
+            }
+        )
         with self._lock:
             self._symbols = filtered
             self._depth_limit = max(20, min(int(depth_limit or 120), 250))
@@ -255,10 +261,6 @@ def stop_background_orderbook_feed() -> None:
     _BACKGROUND_ORDERBOOK_FEED.stop()
 
 
-def _run_async(coro):
-    return asyncio.run(coro)
-
-
 def _float(value: Any) -> float:
     try:
         return float(value or 0.0)
@@ -277,44 +279,6 @@ def _safe_to_dict(obj: Any) -> Dict[str, Any]:
         return json.loads(str(obj))
     except Exception:
         return {}
-
-
-async def _lighter_orderbook_orders(market_id: int, limit: int) -> Dict[str, Any]:
-    import certifi
-    import lighter
-
-    api_client = lighter.ApiClient(
-        lighter.Configuration(host=DEFAULT_LIGHTER_API_BASE_URL, ssl_ca_cert=certifi.where())
-    )
-    try:
-        api = lighter.OrderApi(api_client)
-        auth_headers = await get_lighter_read_auth_headers(api_base_url=DEFAULT_LIGHTER_API_BASE_URL)
-        request_kwargs: Dict[str, Any] = {"market_id": market_id, "limit": limit}
-        if auth_headers:
-            request_kwargs["_headers"] = auth_headers
-        payload = await api.order_book_orders(**request_kwargs)
-        return _safe_to_dict(payload)
-    finally:
-        await api_client.close()
-
-
-async def _lighter_orderbook_details(market_id: int) -> Dict[str, Any]:
-    import certifi
-    import lighter
-
-    api_client = lighter.ApiClient(
-        lighter.Configuration(host=DEFAULT_LIGHTER_API_BASE_URL, ssl_ca_cert=certifi.where())
-    )
-    try:
-        api = lighter.OrderApi(api_client)
-        auth_headers = await get_lighter_read_auth_headers(api_base_url=DEFAULT_LIGHTER_API_BASE_URL)
-        request_kwargs: Dict[str, Any] = {"market_id": market_id}
-        if auth_headers:
-            request_kwargs["_headers"] = auth_headers
-        payload = await api.order_book_details(**request_kwargs)
-        return _safe_to_dict(payload)
-    finally:
-        await api_client.close()
 
 
 def _round_step(price: float) -> float:
@@ -572,26 +536,71 @@ def _infer_ref_price(last_trade_price: float, best_bid: float, best_ask: float) 
     return best_bid or best_ask or 0.0
 
 
+def _price_decimals_from_book(levels: List[dict]) -> int:
+    decimals = 0
+    for item in levels:
+        px = str(item.get("px", "") or item.get("price", "") or "")
+        if "." not in px:
+            continue
+        frac = px.split(".", 1)[1].rstrip("0")
+        decimals = max(decimals, len(frac))
+    return max(1, decimals)
+
+
+def _normalise_hyperliquid_book(payload: Dict[str, Any], *, depth_limit: int) -> Dict[str, Any]:
+    levels = list(payload.get("levels", []) or [])
+    bids_raw = list(levels[0] if len(levels) >= 1 else [])[:max(1, depth_limit)]
+    asks_raw = list(levels[1] if len(levels) >= 2 else [])[:max(1, depth_limit)]
+
+    bids = [
+        {
+            "price": _float(item.get("px")),
+            "remaining_base_amount": _float(item.get("sz")),
+            "order_count": int(item.get("n", 0) or 0),
+        }
+        for item in bids_raw
+        if _float(item.get("px")) > 0 and _float(item.get("sz")) > 0
+    ]
+    asks = [
+        {
+            "price": _float(item.get("px")),
+            "remaining_base_amount": _float(item.get("sz")),
+            "order_count": int(item.get("n", 0) or 0),
+        }
+        for item in asks_raw
+        if _float(item.get("px")) > 0 and _float(item.get("sz")) > 0
+    ]
+    return {"bids": bids, "asks": asks}
+
+
 def _fetch_live_snapshot(coin: str, depth_limit: int) -> OrderBookFeedSnapshot:
     coin = coin.upper()
     snapshot = OrderBookFeedSnapshot(coin=coin, ts=time.time(), valid=False)
-    market_id = COIN_TO_MARKET_ID.get(coin)
-    if market_id is None:
-        snapshot.error = "No public orderbook venue configured for this symbol"
+    if not is_hyperliquid_supported(coin):
+        snapshot.error = "No Hyperliquid orderbook venue configured for this symbol"
         return snapshot
 
     try:
-        details = _run_async(_lighter_orderbook_details(market_id))
-        book = _run_async(_lighter_orderbook_orders(market_id, max(20, min(depth_limit, 250))))
+        venue_symbol = resolve_hyperliquid_symbol(coin)
+        resp = requests.post(
+            "https://api.hyperliquid.xyz/info",
+            json={"type": "l2Book", "coin": venue_symbol},
+            timeout=8,
+        )
+        resp.raise_for_status()
+        payload = resp.json()
     except Exception as exc:
         snapshot.error = str(exc)
         log.debug("[%s] Background orderbook fetch failed: %s", coin, exc)
         return snapshot
 
-    detail_rows = list(details.get("order_book_details", []) or [])
-    detail = detail_rows[0] if detail_rows else {}
-    last_trade_price = _float(detail.get("last_trade_price"))
-    price_decimals = int(detail.get("price_decimals", 1) or 1)
+    book = _normalise_hyperliquid_book(payload if isinstance(payload, dict) else {}, depth_limit=max(20, min(depth_limit, 250)))
+    if not book["bids"] and not book["asks"]:
+        snapshot.error = "Hyperliquid returned an empty L2 book"
+        return snapshot
+
+    last_trade_price = 0.0
+    price_decimals = _price_decimals_from_book(list(payload.get("levels", [[], []])[0]) + list(payload.get("levels", [[], []])[1]))
     bid_buckets, ask_buckets, bid_notional, ask_notional, best_bid, best_ask, spread_bps = _bucket_orderbook(
         book,
         last_trade_price,

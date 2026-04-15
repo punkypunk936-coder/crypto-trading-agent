@@ -1,18 +1,14 @@
 """
-data/market_data.py — Fetch OHLCV candle data from Hyperliquid's public API.
-No API key required for reading market data.
+data/market_data.py
+Hyperliquid-first market-data layer.
 
-HYPE token note
-───────────────
-HYPE is Hyperliquid's native token and trades on Hyperliquid itself.
-The API ticker is "HYPE" — same format as BTC/ETH/SOL.
-Hyperliquid's candleSnapshot API supports it directly.
+Active runtime behavior:
+  - supported venue symbols use Hyperliquid only
+  - unsupported macro instruments can still fall back to Yahoo Finance
 
-Index / macro instruments (SP500, XAU, BRENT, WTI etc.)
-───────────────────────────────
-When an instrument is supported on Lighter we use venue-native candles/orderbook
-data first. Yahoo Finance remains the fallback for macro / commodity context
-and for venues that do not expose the symbol directly.
+Legacy Lighter helpers remain below for historical tooling/tests, but the live
+agent path is now Hyperliquid-first and does not quietly fall back away from
+the venue for supported markets.
 """
 
 import asyncio
@@ -22,6 +18,11 @@ import requests
 import pandas as pd
 from typing import Optional
 from logger import get_logger
+from exchanges.hyperliquid_markets import (
+    get_hyperliquid_market_spec,
+    is_hyperliquid_supported,
+    resolve_hyperliquid_symbol,
+)
 from exchanges.lighter_client import COIN_TO_MARKET_ID, get_lighter_read_auth_headers
 
 log = get_logger("market_data")
@@ -35,6 +36,32 @@ _price_cache: dict = {}
 CACHE_TTL_SECONDS = 60   # re-fetch after 60 s
 STALE_CACHE_TTL_SECONDS = 1800
 STALE_PRICE_TTL_SECONDS = 900
+
+
+def _hyperliquid_max_candle_staleness_seconds(coin: str) -> int:
+    spec = get_hyperliquid_market_spec(coin)
+    market_type = str((spec or {}).get("market_type") or "").lower()
+    instrument_type = str((spec or {}).get("instrument_type") or "").lower()
+
+    if market_type == "spot" or instrument_type == "equity":
+        # Equity spot listings can gap between sessions, but if the venue has
+        # not printed a fresh hourly candle in ~2 days we should treat that
+        # market as inactive instead of backfilling from elsewhere.
+        return 48 * 3600
+    if instrument_type == "index":
+        return 12 * 3600
+    return 6 * 3600
+
+
+def _hyperliquid_frame_is_recent(coin: str, df: Optional[pd.DataFrame]) -> bool:
+    if df is None or df.empty or "timestamp" not in df.columns:
+        return False
+    try:
+        last_ts = pd.to_datetime(df["timestamp"].iloc[-1], utc=True)
+    except Exception:
+        return False
+    age_seconds = max(0.0, time.time() - (last_ts.value / 1_000_000_000))
+    return age_seconds <= _hyperliquid_max_candle_staleness_seconds(coin)
 
 
 def _cache_price(key: str, price: float) -> None:
@@ -98,27 +125,25 @@ def completed_candle_frame(df: Optional[pd.DataFrame], *, min_rows: int = 2) -> 
     return completed.reset_index(drop=True)
 
 
-# Hyperliquid uses these exact tickers — map any aliases
-TICKER_MAP = {
-    "HYPE": "HYPE",   # Hyperliquid native token — supported directly
-    "BTC":  "BTC",
-    "ETH":  "ETH",
-    "SOL":  "SOL",
-}
-
 LIGHTER_INTERVALS = {"1m", "5m", "15m", "1h", "4h", "12h", "1d"}
 
-# Index / macro instruments not served by Lighter.
-# Map our internal coin name → Yahoo Finance ticker for fallback OHLCV.
+# Yahoo fallbacks for instruments that are not routed to Hyperliquid directly.
 INDEX_YAHOO_MAP = {
-    "SP500": "^GSPC",   # S&P 500 — Trade[XYZ] on Hyperliquid
-    "XAU":   "GC=F",    # Gold futures
     "BRENT": "BZ=F",    # Brent crude futures
     "WTI":   "CL=F",    # WTI crude futures
     "CL":    "CL=F",    # Alias for WTI
     "NDX":   "^IXIC",
     "DJI":   "^DJI",
     "VIX":   "^VIX",
+}
+
+EQUITY_YAHOO_MAP = {
+    "AAPL": "AAPL",
+    "AMZN": "AMZN",
+    "GOOGL": "GOOGL",
+    "META": "META",
+    "MSFT": "MSFT",
+    "TSLA": "TSLA",
 }
 
 # Yahoo Finance interval map: our interval → yf period/interval params
@@ -267,8 +292,8 @@ def fetch_candles(
     """
     Fetch the last `lookback` OHLCV candles for `coin`.
 
-    For crypto coins: Hyperliquid candleSnapshot API.
-    For index coins (SP500 etc.): Yahoo Finance fallback — free, no API key.
+    Supported venue markets use Hyperliquid candleSnapshot only.
+    Unsupported macro instruments still fall back to Yahoo Finance.
 
     Returns a DataFrame with columns:
         timestamp, open, high, low, close, volume
@@ -276,78 +301,97 @@ def fetch_candles(
     """
     coin_upper = coin.upper()
 
-    # ── Lighter-supported crypto markets use Lighter public data ───────────
-    if coin_upper in COIN_TO_MARKET_ID:
-        lighter_df = _fetch_candles_lighter(coin_upper, interval, lookback)
-        if lighter_df is not None:
-            return lighter_df
+    # ── Hyperliquid-first venue data ───────────────────────────────────────
+    if is_hyperliquid_supported(coin_upper):
+        hl_coin = resolve_hyperliquid_symbol(coin_upper)
+        cache_key = f"{hl_coin}_{interval}"
+        now = time.time()
 
-    # ── Index instruments: route to Yahoo Finance ──────────────────────────
-    if coin_upper in INDEX_YAHOO_MAP:
-        return _fetch_candles_yahoo(coin_upper, interval, lookback)
+        if cache_key in _cache:
+            ts, df = _cache[cache_key]
+            if now - ts < CACHE_TTL_SECONDS:
+                log.debug(f"Cache hit for {hl_coin} {interval}")
+                return df
 
-    # ── Crypto: Hyperliquid candleSnapshot ─────────────────────────────────
-    hl_coin   = TICKER_MAP.get(coin_upper, coin_upper)
-    cache_key = f"{hl_coin}_{interval}"
-    now       = time.time()
+        end_ms = int(now * 1000)
+        interval_ms = _interval_to_ms(interval)
+        start_ms = end_ms - lookback * interval_ms
 
-    if cache_key in _cache:
-        ts, df = _cache[cache_key]
-        if now - ts < CACHE_TTL_SECONDS:
-            log.debug(f"Cache hit for {hl_coin} {interval}")
+        payload = {
+            "type": "candleSnapshot",
+            "req": {
+                "coin": hl_coin,
+                "interval": interval,
+                "startTime": start_ms,
+                "endTime": end_ms,
+            },
+        }
+
+        try:
+            resp = requests.post(HL_INFO_URL, json=payload, timeout=10)
+            resp.raise_for_status()
+            raw = resp.json()
+        except Exception as e:
+            log.error(f"Failed to fetch Hyperliquid candles for {coin_upper}/{hl_coin}: {e}")
+            stale = _get_stale_frame(cache_key)
+            if stale is not None:
+                log.info(f"[{coin_upper}] Reusing stale Hyperliquid candles while the live feed recovers")
+                return stale
+            raw = []
+
+        if raw:
+            rows = []
+            for c in raw:
+                rows.append({
+                    "timestamp": pd.to_datetime(int(c["t"]), unit="ms", utc=True),
+                    "open": float(c["o"]),
+                    "high": float(c["h"]),
+                    "low": float(c["l"]),
+                    "close": float(c["c"]),
+                    "volume": float(c["v"]),
+                    "trades": int(c.get("n", 0)),
+                })
+
+            df = pd.DataFrame(rows).sort_values("timestamp").reset_index(drop=True)
+            if not _hyperliquid_frame_is_recent(coin_upper, df):
+                log.warning(
+                    f"[{coin_upper}] Hyperliquid candle history for {hl_coin} is stale — "
+                    "skipping until the venue prints fresh candles"
+                )
+                stale = _get_stale_frame(cache_key)
+                if stale is not None and _hyperliquid_frame_is_recent(coin_upper, stale):
+                    log.info(f"[{coin_upper}] Reusing recent cached Hyperliquid candles while the venue recovers")
+                    return stale
+                return None
+            _cache_frame(cache_key, df, coin=coin_upper)
+            log.debug(f"Fetched {len(df)} Hyperliquid candles for {coin_upper}/{hl_coin} ({interval})")
             return df
 
-    end_ms      = int(now * 1000)
-    interval_ms = _interval_to_ms(interval)
-    start_ms    = end_ms - lookback * interval_ms
-
-    payload = {
-        "type": "candleSnapshot",
-        "req": {
-            "coin":      hl_coin,
-            "interval":  interval,
-            "startTime": start_ms,
-            "endTime":   end_ms,
-        }
-    }
-
-    try:
-        resp = requests.post(HL_INFO_URL, json=payload, timeout=10)
-        resp.raise_for_status()
-        raw  = resp.json()
-    except Exception as e:
-        log.error(f"Failed to fetch candles for {hl_coin}: {e}")
+        log.warning(f"[{coin_upper}] Hyperliquid returned no candle data for {hl_coin}")
+        stale = _get_stale_frame(cache_key)
+        if stale is not None and _hyperliquid_frame_is_recent(coin_upper, stale):
+            log.info(f"[{coin_upper}] Reusing recent cached Hyperliquid candles after empty venue response")
+            return stale
         return None
 
-    if not raw:
-        log.warning(f"No candle data returned for {hl_coin} — "
-                    f"{'HYPE trades on Hyperliquid; confirm ticker is correct' if hl_coin == 'HYPE' else 'check ticker'}")
-        return None
-
-    rows = []
-    for c in raw:
-        rows.append({
-            "timestamp": pd.to_datetime(int(c["t"]), unit="ms", utc=True),
-            "open":      float(c["o"]),
-            "high":      float(c["h"]),
-            "low":       float(c["l"]),
-            "close":     float(c["c"]),
-            "volume":    float(c["v"]),
-            "trades":    int(c.get("n", 0)),
-        })
-
-    df = pd.DataFrame(rows).sort_values("timestamp").reset_index(drop=True)
-    _cache_frame(cache_key, df, coin=coin_upper)
-    log.debug(f"Fetched {len(df)} candles for {hl_coin} ({interval})")
-    return df
+    # ── Unsupported macro instruments: route to Yahoo Finance ──────────────
+    if coin_upper in INDEX_YAHOO_MAP:
+        return _fetch_candles_yahoo(coin_upper, interval, lookback)
+    return None
 
 
-def _fetch_candles_yahoo(coin: str, interval: str, lookback: int) -> Optional[pd.DataFrame]:
+def _fetch_candles_yahoo(
+    coin: str,
+    interval: str,
+    lookback: int,
+    *,
+    override_ticker: str | None = None,
+) -> Optional[pd.DataFrame]:
     """
     Fetch OHLCV from Yahoo Finance for index instruments (SP500 etc.).
     Uses the public download endpoint — no API key required.
     """
-    yf_ticker = INDEX_YAHOO_MAP.get(coin, "^GSPC")
+    yf_ticker = override_ticker or INDEX_YAHOO_MAP.get(coin) or EQUITY_YAHOO_MAP.get(coin) or "^GSPC"
     cache_key = f"{coin}_{interval}_yf"
     now = time.time()
 
@@ -438,48 +482,40 @@ def _fetch_candles_yahoo(coin: str, interval: str, lookback: int) -> Optional[pd
 def get_current_price(coin: str) -> Optional[float]:
     """
     Get the latest price for a coin.
-    Index instruments (SP500 etc.) use Yahoo Finance; crypto uses Hyperliquid allMids.
+    Supported venue markets use Hyperliquid allMids.
+    Unsupported macro instruments still use Yahoo Finance.
     """
     coin_upper = coin.upper()
 
-    # ── Lighter-supported crypto markets use Lighter public data ───────────
-    if coin_upper in COIN_TO_MARKET_ID:
-        lighter_price = _get_current_price_lighter(coin_upper)
-        if lighter_price is not None:
-            return lighter_price
+    if is_hyperliquid_supported(coin_upper):
+        hl_coin = resolve_hyperliquid_symbol(coin_upper)
+        try:
+            resp = requests.post(HL_INFO_URL, json={"type": "allMids"}, timeout=5)
+            resp.raise_for_status()
+            mids = resp.json()
+            price = float(mids.get(hl_coin, 0) or 0.0)
+            if price > 0:
+                _cache_price(coin_upper, price)
+                return price
+            log.warning(f"Price for {coin_upper}/{hl_coin} came back 0 — venue returned no mid")
+        except Exception as e:
+            log.error(f"Failed to get Hyperliquid price for {coin_upper}/{hl_coin}: {e}")
 
-    # ── Index: Yahoo Finance latest close ─────────────────────────────────
-    if coin_upper in INDEX_YAHOO_MAP:
-        return _get_index_price_yahoo(coin_upper)
-
-    # ── Crypto: Hyperliquid allMids ────────────────────────────────────────
-    hl_coin = TICKER_MAP.get(coin_upper, coin_upper)
-    try:
-        resp  = requests.post(HL_INFO_URL, json={"type": "allMids"}, timeout=5)
-        resp.raise_for_status()
-        mids  = resp.json()
-        price = float(mids.get(hl_coin, 0))
-        if price <= 0:
-            log.warning(f"Price for {hl_coin} came back 0 — not listed or ticker wrong")
-            cached = _get_cached_price(coin_upper)
-            if cached is not None:
-                log.info(f"[{coin}] Reusing cached price after invalid Hyperliquid response")
-                return cached
-            return None
-        _cache_price(coin_upper, price)
-        return price
-    except Exception as e:
-        log.error(f"Failed to get price for {hl_coin}: {e}")
         cached = _get_cached_price(coin_upper)
         if cached is not None:
-            log.info(f"[{coin}] Reusing cached price while primary price feed recovers")
+            log.info(f"[{coin_upper}] Reusing cached Hyperliquid price while primary feed recovers")
             return cached
         return None
 
+    # ── Macro fallback: Yahoo Finance latest close ─────────────────────────
+    if coin_upper in INDEX_YAHOO_MAP:
+        return _get_index_price_yahoo(coin_upper)
+    return None
 
-def _get_index_price_yahoo(coin: str) -> Optional[float]:
+
+def _get_index_price_yahoo(coin: str, *, override_ticker: str | None = None) -> Optional[float]:
     """Fetch the latest price for an index instrument from Yahoo Finance."""
-    yf_ticker = INDEX_YAHOO_MAP.get(coin, "^GSPC")
+    yf_ticker = override_ticker or INDEX_YAHOO_MAP.get(coin) or EQUITY_YAHOO_MAP.get(coin) or "^GSPC"
     url = (
         f"https://query1.finance.yahoo.com/v8/finance/chart/{yf_ticker}"
         f"?interval=1m&range=1d&includePrePost=false"

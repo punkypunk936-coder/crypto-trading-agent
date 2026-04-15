@@ -22,11 +22,16 @@ class DryRunExchange(BaseExchange):
     name = "DryRun (Paper Trading)"
 
     def __init__(self, starting_balance_usd: float = 10_000.0,
-                 supported_symbols: Optional[List[str]] = None):
+                 supported_symbols: Optional[List[str]] = None,
+                 shortable_map: Optional[Dict[str, bool]] = None):
         self.balance     = starting_balance_usd
         self.positions: Dict[str, dict] = {}    # coin → {size, direction, entry_price…}
         self.order_count = 0
         self._supported_symbols = list(supported_symbols or ["BTC", "ETH", "SOL"])
+        self._shortable_map = {
+            str(symbol).upper(): bool(value)
+            for symbol, value in (shortable_map or {}).items()
+        }
         # Pending limit orders: order_id → {coin, direction, limit_price, size_coin, size_usd}
         self._pending_limits: Dict[str, dict] = {}
 
@@ -98,6 +103,8 @@ class DryRunExchange(BaseExchange):
                         limit_price: float) -> OrderResult:
         if coin not in self._supported_symbols:
             return OrderResult(success=False, error=f"{coin} is not supported in this dry-run venue")
+        if direction == "SHORT" and not self._shortable_map.get(coin.upper(), True):
+            return OrderResult(success=False, error=f"{coin} is long-only in this dry-run venue")
         self.order_count += 1
         oid = f"DRY-LMT-{self.order_count:04d}"
         size_usd = size_coin * limit_price
@@ -184,6 +191,8 @@ class DryRunExchange(BaseExchange):
     def _simulate_open(self, coin: str, direction: str, size_coin: float) -> OrderResult:
         if coin not in self._supported_symbols:
             return OrderResult(success=False, error=f"{coin} is not supported in this dry-run venue")
+        if direction == "SHORT" and not self._shortable_map.get(coin.upper(), True):
+            return OrderResult(success=False, error=f"{coin} is long-only in this dry-run venue")
         price = get_current_price(coin)
         if not price:
             return OrderResult(success=False, error=f"Could not get price for {coin}")

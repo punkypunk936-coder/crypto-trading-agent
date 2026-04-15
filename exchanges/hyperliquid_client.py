@@ -1,34 +1,45 @@
 """
 exchanges/hyperliquid_client.py
-Connector for Hyperliquid perpetuals DEX.
+Connector for Hyperliquid.
 
 Authentication: EVM private key (no centralised API key needed).
 SDK: hyperliquid-python-sdk (pip install hyperliquid-python-sdk)
 
-Hyperliquid markets use coin tickers directly (e.g. "BTC", "ETH", "SOL").
-All positions are USD-margined perpetuals.
+Execution semantics:
+  - perps are fully supported live
+  - spot equities are wired into paper-trading + analysis now
+  - live spot execution remains disabled by default until the agent has a
+    dedicated spot inventory/close path
 """
 
-import time
 from typing import Optional
 
-import requests
 from logger import get_logger
 from exchanges.base import BaseExchange, AccountState, OrderResult
+from exchanges.hyperliquid_markets import (
+    get_hyperliquid_market_spec,
+    get_hyperliquid_supported_coins,
+    hyperliquid_market_type,
+    resolve_hyperliquid_symbol,
+)
 
 log = get_logger("hyperliquid")
 
 
 class HyperliquidClient(BaseExchange):
     name = "Hyperliquid"
-    _SUPPORTED_CACHE: list[str] | None = None
-    _SUPPORTED_CACHE_TS: float = 0.0
-    _SUPPORTED_CACHE_TTL: float = 300.0
 
-    def __init__(self, private_key: str, account_address: str, mainnet: bool = True):
+    def __init__(
+        self,
+        private_key: str,
+        account_address: str,
+        mainnet: bool = True,
+        allow_spot_execution: bool = False,
+    ):
         self.private_key     = private_key
         self.account_address = account_address
         self.mainnet         = mainnet
+        self.allow_spot_execution = bool(allow_spot_execution)
         self._info           = None
         self._exchange       = None
         self._connected      = False
@@ -100,9 +111,13 @@ class HyperliquidClient(BaseExchange):
     def set_leverage(self, coin: str, leverage: int) -> bool:
         if not self._connected:
             return False
+        if hyperliquid_market_type(coin) != "perp":
+            log.debug("[%s] Spot market detected — leverage update skipped", coin)
+            return True
         try:
+            venue_symbol = resolve_hyperliquid_symbol(coin)
             result = self._exchange.update_leverage(
-                leverage=leverage, coin=coin, is_cross=True
+                leverage=leverage, coin=venue_symbol, is_cross=True
             )
             if result.get("status") == "ok":
                 log.info(f"[{coin}] Leverage set to {leverage}×")
@@ -129,9 +144,24 @@ class HyperliquidClient(BaseExchange):
                       size_coin: float, slippage: float) -> OrderResult:
         if not self._connected:
             return OrderResult(success=False, error="Not connected")
+        spec = get_hyperliquid_market_spec(coin)
+        if not spec:
+            return OrderResult(success=False, error=f"{coin} is not supported on Hyperliquid")
+        if spec.get("market_type") == "spot":
+            if not self.allow_spot_execution:
+                return OrderResult(
+                    success=False,
+                    error=f"{coin} spot execution is disabled in the live Hyperliquid client",
+                )
+            if not is_buy:
+                return OrderResult(
+                    success=False,
+                    error=f"{coin} is a long-only Hyperliquid spot market; short sells are blocked",
+                )
         try:
+            venue_symbol = str(spec.get("venue_symbol") or resolve_hyperliquid_symbol(coin)).upper()
             result = self._exchange.market_open(
-                coin     = coin,
+                name     = venue_symbol,
                 is_buy   = is_buy,
                 sz       = size_coin,
                 slippage = slippage,
@@ -165,8 +195,17 @@ class HyperliquidClient(BaseExchange):
     def close_position(self, coin: str) -> OrderResult:
         if not self._connected:
             return OrderResult(success=False, error="Not connected")
+        spec = get_hyperliquid_market_spec(coin)
+        if not spec:
+            return OrderResult(success=False, error=f"{coin} is not supported on Hyperliquid")
+        if spec.get("market_type") == "spot":
+            return OrderResult(
+                success=False,
+                error=f"{coin} spot close handling is not enabled in the live Hyperliquid client yet",
+            )
         try:
-            result = self._exchange.market_close(coin)
+            venue_symbol = str(spec.get("venue_symbol") or resolve_hyperliquid_symbol(coin)).upper()
+            result = self._exchange.market_close(venue_symbol)
             if result.get("status") == "ok":
                 log.info(f"[{coin}] Position closed successfully")
                 return OrderResult(success=True)
@@ -178,31 +217,11 @@ class HyperliquidClient(BaseExchange):
             return OrderResult(success=False, error=str(e))
 
     @classmethod
-    def supported_coins(cls):
-        now = time.time()
-        if cls._SUPPORTED_CACHE and (now - cls._SUPPORTED_CACHE_TS) < cls._SUPPORTED_CACHE_TTL:
-            return list(cls._SUPPORTED_CACHE)
+    def supported_coins_for_mode(cls, *, include_spot: bool = False) -> list[str]:
+        return get_hyperliquid_supported_coins(
+            include_spot=include_spot,
+            live_tradeable_only=not include_spot,
+        )
 
-        fallback = ["BTC", "ETH", "SOL", "HYPE", "TAO"]
-        try:
-            resp = requests.post("https://api.hyperliquid.xyz/info", json={"type": "meta"}, timeout=5)
-            resp.raise_for_status()
-            universe = resp.json().get("universe", []) or []
-            configured = {"BTC", "ETH", "SOL", "HYPE", "TAO", "SP500", "XAU"}
-            supported = sorted(
-                {
-                    str(item.get("name") or "").upper()
-                    for item in universe
-                    if str(item.get("name") or "").upper() in configured
-                }
-            )
-            if supported:
-                cls._SUPPORTED_CACHE = supported
-                cls._SUPPORTED_CACHE_TS = now
-                return list(supported)
-        except Exception as exc:
-            log.warning(f"Failed to refresh Hyperliquid supported coins from live meta: {exc}")
-
-        cls._SUPPORTED_CACHE = fallback
-        cls._SUPPORTED_CACHE_TS = now
-        return list(fallback)
+    def supported_coins(self) -> list[str]:
+        return self.supported_coins_for_mode(include_spot=self.allow_spot_execution)

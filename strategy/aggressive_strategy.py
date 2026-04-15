@@ -19,7 +19,7 @@ class TradeSignal:
     flat_reason: str = ""       # Why the agent chose FLAT (shown on dashboard)
     stop_loss_price: float = 0.0
     take_profit_price: float = 0.0
-    instrument_type: str = "crypto"  # "crypto" | "index"
+    instrument_type: str = "crypto"  # "crypto" | "index" | "equity"
     trade_plan: dict = field(default_factory=dict)
     thesis: dict = field(default_factory=dict)
     expectancy: dict = field(default_factory=dict)
@@ -1222,7 +1222,7 @@ class AggressiveStrategy:
         news_signal=None,          # NewsSignal from indicators/news.py
         candle_patterns=None,      # PatternSignal from indicators/candlestick_patterns.py
         memory_adjustment: float = 0.0,  # adjustment from TradeMemory
-        instrument_type: str = "crypto",  # "crypto" | "index"
+        instrument_type: str = "crypto",  # "crypto" | "index" | "equity"
         funding_oi_signal=None,    # FundingOISignal from indicators/funding_oi_cvd.py
         orderbook_signal=None,
         market_map_signal=None,
@@ -1319,14 +1319,16 @@ class AggressiveStrategy:
         # - Momentum/regime signals matter MORE → amplify them
         # - Short-term oscillators (RSI, BB) matter LESS → dampen them
         # - Require a sustained trend, not a single candle spike
-        if instrument_type == "index":
+        if instrument_type in {"index", "equity"}:
             # Dampen raw oscillator contribution slightly (pull toward neutral)
-            raw_score = 50.0 + (raw_score - 50.0) * 0.90
+            dampener = 0.90 if instrument_type == "index" else 0.94
+            raw_score = 50.0 + (raw_score - 50.0) * dampener
             # But boost regime/trend signal weight if it's strong
             if regimes and regimes.valid:
-                trend_contribution = (regimes.trend_score - 50.0) * 0.08
+                trend_weight = 0.08 if instrument_type == "index" else 0.06
+                trend_contribution = (regimes.trend_score - 50.0) * trend_weight
                 raw_score += trend_contribution
-            log.debug(f"[{tech.coin}] Index adjustment applied → {raw_score:.1f}")
+            log.debug(f"[{tech.coin}] {instrument_type.title()} adjustment applied → {raw_score:.1f}")
 
         # ── 7. Structure overrides (MSB / OB+FVG confluence) ───────────────
         msb = advanced.msb
@@ -1743,6 +1745,8 @@ class AggressiveStrategy:
             # Index-specific
             if instrument_type == "index":
                 flat_parts.append("Index: waiting for macro confirmation")
+            elif instrument_type == "equity":
+                flat_parts.append("Equity spot: waiting for reclaim / earnings-quality confirmation")
 
             if orderbook_guard_reason and orderbook_guard_reason not in flat_parts:
                 flat_parts.insert(0, orderbook_guard_reason)

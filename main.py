@@ -20,6 +20,10 @@ import checkpoint as checkpoint_module
 from config import config
 from logger import log
 from exchanges.hyperliquid_client import HyperliquidClient
+from exchanges.hyperliquid_markets import (
+    get_hyperliquid_supported_coins,
+    hyperliquid_supports_shorts,
+)
 from exchanges.lighter_client     import LighterClient, bootstrap_lighter_api
 from exchanges.dry_run            import DryRunExchange
 from agent import TradingAgent
@@ -38,7 +42,7 @@ from paths import (
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Crypto Trading Agent — Hyperliquid + Lighter",
+        description="Crypto Trading Agent — Hyperliquid-first",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -69,12 +73,21 @@ Examples:
     return parser.parse_args()
 
 
-def configured_supported_coins() -> list[str]:
+def configured_supported_coins(*, dry_run_mode: bool | None = None) -> list[str]:
     supported = set()
+    if config.exchange.use_hyperliquid:
+        include_spot = (
+            bool(dry_run_mode)
+            or bool(getattr(config.exchange, "hl_spot_execution_enabled", False))
+        )
+        supported.update(
+            get_hyperliquid_supported_coins(
+                include_spot=include_spot,
+                live_tradeable_only=not include_spot,
+            )
+        )
     if config.exchange.use_lighter:
         supported.update(LighterClient.supported_market_symbols())
-    if config.exchange.use_hyperliquid:
-        supported.update(HyperliquidClient("", "").supported_coins())
     return sorted(supported)
 
 
@@ -89,13 +102,19 @@ def _normalise_coin_list(values) -> list[str]:
     return out
 
 
-def enforce_trade_universe(exchanges: list | None = None) -> list[str]:
-    if exchanges:
+def enforce_trade_universe(
+    exchanges: list | None = None,
+    *,
+    supported_override: set[str] | list[str] | None = None,
+) -> list[str]:
+    if supported_override is not None:
+        supported = {str(coin).upper() for coin in supported_override if coin}
+    elif exchanges:
         supported = set()
         for ex in exchanges:
             supported.update(ex.supported_coins())
     else:
-        supported = set(configured_supported_coins())
+        supported = set(configured_supported_coins(dry_run_mode=config.trading.dry_run))
 
     if not supported:
         raise ValueError("No supported trading symbols are available for the configured venues")
@@ -136,13 +155,15 @@ def build_exchanges(args) -> list:
 
     dry_run = args.dry_run or config.trading.dry_run
     if dry_run:
-        supported_symbols = configured_supported_coins() or ["BTC", "ETH", "SOL"]
+        supported_symbols = configured_supported_coins(dry_run_mode=True) or ["BTC", "ETH", "SOL"]
+        shortable_map = {coin: hyperliquid_supports_shorts(coin) for coin in supported_symbols}
         config.trading.coins = [coin.upper() for coin in config.trading.coins]
-        enforce_trade_universe()
+        enforce_trade_universe(supported_override=set(supported_symbols))
         log.info("🟡  DRY RUN mode — using paper trading exchange")
         ex = DryRunExchange(
             starting_balance_usd=args.balance,
             supported_symbols=supported_symbols,
+            shortable_map=shortable_map,
         )
         ex.connect()
         exchanges.append(ex)
@@ -157,6 +178,7 @@ def build_exchanges(args) -> list:
             private_key     = config.exchange.hl_private_key,
             account_address = config.exchange.hl_account_address,
             mainnet         = config.exchange.hl_use_mainnet,
+            allow_spot_execution = getattr(config.exchange, "hl_spot_execution_enabled", False),
         )
         if hl.connect():
             exchanges.append(hl)
@@ -222,7 +244,12 @@ def run_preflight(args) -> int:
         fail(f"DATA_DIR is not writable ({DATA_DIR}): {exc}")
 
     try:
-        active = enforce_trade_universe()
+        preflight_dry_run = bool(getattr(args, "dry_run", False) or config.trading.dry_run)
+        active = enforce_trade_universe(
+            supported_override=set(
+                configured_supported_coins(dry_run_mode=preflight_dry_run)
+            )
+        )
         ok("Active trading symbols: " + ", ".join(active))
     except ValueError as exc:
         fail(str(exc))
@@ -245,11 +272,22 @@ def run_preflight(args) -> int:
     else:
         ok("Remote dashboard push not configured (local dashboard only)")
 
-    lighter_sdk = importlib.util.find_spec("lighter") is not None
-    if lighter_sdk:
-        ok("lighter-sdk import available")
+    if config.exchange.use_hyperliquid:
+        if importlib.util.find_spec("hyperliquid") is not None:
+            ok("hyperliquid-python-sdk import available")
+        else:
+            fail("hyperliquid-python-sdk is not installed")
     else:
-        fail("lighter-sdk is not installed")
+        ok("Hyperliquid venue disabled")
+
+    if config.exchange.use_lighter:
+        lighter_sdk = importlib.util.find_spec("lighter") is not None
+        if lighter_sdk:
+            ok("lighter-sdk import available")
+        else:
+            fail("lighter-sdk is not installed")
+    else:
+        ok("Lighter venue disabled")
 
     flask_installed = importlib.util.find_spec("flask") is not None
     if flask_installed:
@@ -347,39 +385,72 @@ def run_preflight(args) -> int:
     else:
         warn("Power status unavailable; local live-trading power guard could not be verified")
 
-    lighter_ready = all([
-        config.exchange.lighter_l1_private_key,
-        config.exchange.lighter_api_private_key,
-        config.exchange.lighter_account_index,
-    ])
-    if live_mode:
-        if not lighter_ready:
-            fail("Lighter live credentials are incomplete; run --lighter-bootstrap after creating/funding the account")
-        else:
-            try:
-                client = LighterClient(
-                    l1_private_key=config.exchange.lighter_l1_private_key,
-                    api_private_key=config.exchange.lighter_api_private_key,
-                    account_index=config.exchange.lighter_account_index,
-                    api_key_index=config.exchange.lighter_api_key_index,
-                    api_base_url=config.exchange.lighter_api_base_url,
-                    web3_url=config.exchange.lighter_web3_url,
-                )
-                if client.connect():
-                    state = client.get_account_state()
-                    if state:
-                        ok(f"Lighter live connectivity succeeded; equity ${state.total_equity_usd:,.2f}")
+    if config.exchange.use_hyperliquid:
+        hyperliquid_ready = all([
+            config.exchange.hl_private_key,
+            config.exchange.hl_account_address,
+        ])
+        if live_mode:
+            if not hyperliquid_ready:
+                fail("Hyperliquid live credentials are incomplete; add HL_PRIVATE_KEY and HL_ACCOUNT_ADDRESS")
+            else:
+                try:
+                    client = HyperliquidClient(
+                        private_key=config.exchange.hl_private_key,
+                        account_address=config.exchange.hl_account_address,
+                        mainnet=config.exchange.hl_use_mainnet,
+                        allow_spot_execution=getattr(config.exchange, "hl_spot_execution_enabled", False),
+                    )
+                    if client.connect():
+                        state = client.get_account_state()
+                        if state:
+                            ok(f"Hyperliquid live connectivity succeeded; equity ${state.total_equity_usd:,.2f}")
+                        else:
+                            fail("Hyperliquid connected but account state could not be read")
                     else:
-                        fail("Lighter connected but account state could not be read")
-                else:
-                    fail("Lighter live connectivity failed")
-            except Exception as exc:
-                fail(f"Lighter live connectivity failed: {exc}")
-    else:
-        if lighter_ready:
-            ok("Lighter live credentials are present")
+                        fail("Hyperliquid live connectivity failed")
+                except Exception as exc:
+                    fail(f"Hyperliquid live connectivity failed: {exc}")
         else:
-            warn("Lighter live credentials are incomplete; this is fine for dry-run, but live trading is blocked until bootstrap is completed")
+            if hyperliquid_ready:
+                ok("Hyperliquid live credentials are present")
+            else:
+                warn("Hyperliquid live credentials are incomplete; this is fine for dry-run, but live trading is blocked until they are added")
+
+    if config.exchange.use_lighter:
+        lighter_ready = all([
+            config.exchange.lighter_l1_private_key,
+            config.exchange.lighter_api_private_key,
+            config.exchange.lighter_account_index,
+        ])
+        if live_mode:
+            if not lighter_ready:
+                fail("Lighter live credentials are incomplete; run --lighter-bootstrap after creating/funding the account")
+            else:
+                try:
+                    client = LighterClient(
+                        l1_private_key=config.exchange.lighter_l1_private_key,
+                        api_private_key=config.exchange.lighter_api_private_key,
+                        account_index=config.exchange.lighter_account_index,
+                        api_key_index=config.exchange.lighter_api_key_index,
+                        api_base_url=config.exchange.lighter_api_base_url,
+                        web3_url=config.exchange.lighter_web3_url,
+                    )
+                    if client.connect():
+                        state = client.get_account_state()
+                        if state:
+                            ok(f"Lighter live connectivity succeeded; equity ${state.total_equity_usd:,.2f}")
+                        else:
+                            fail("Lighter connected but account state could not be read")
+                    else:
+                        fail("Lighter live connectivity failed")
+                except Exception as exc:
+                    fail(f"Lighter live connectivity failed: {exc}")
+        else:
+            if lighter_ready:
+                ok("Lighter live credentials are present")
+            else:
+                warn("Lighter live credentials are incomplete; this is fine for dry-run, but live trading is blocked until bootstrap is completed")
 
     print("")
     if failures:
@@ -494,7 +565,7 @@ def main():
     print("""
 ╔══════════════════════════════════════════════════════╗
 ║         🤖  CRYPTO TRADING AGENT  🤖                  ║
-║    Hyperliquid + Lighter  |  Aggressive Strategy      ║
+║     Hyperliquid-First  |  Aggressive Strategy         ║
 ╚══════════════════════════════════════════════════════╝
 """)
 

@@ -303,7 +303,7 @@ def test_supported_watchlist_assets_are_promoted_into_tradeable_universe() -> No
     main_module.config = cfg
     try:
         active = main_module.enforce_trade_universe()
-        assert active == ["BTC", "HYPE", "TAO"]
+        assert active == ["BTC", "HYPE", "SP500", "TAO"]
     finally:
         main_module.config = original_config
 
@@ -885,6 +885,93 @@ def test_market_data_reuses_stale_yahoo_candles_when_live_fetch_fails() -> None:
         assert float(df["close"].iloc[-1]) == 6820.0
     finally:
         market_data_module.requests.get = original_get
+        market_data_module._cache.clear()
+        market_data_module._cache.update(original_cache)
+
+
+def test_supported_hyperliquid_market_does_not_fallback_to_yahoo_when_venue_is_empty() -> None:
+    original_post = market_data_module.requests.post
+    original_get = market_data_module.requests.get
+    original_supported = market_data_module.is_hyperliquid_supported
+    original_resolve = market_data_module.resolve_hyperliquid_symbol
+    original_cache = dict(market_data_module._cache)
+
+    class _Resp:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._payload
+
+    try:
+        market_data_module.is_hyperliquid_supported = lambda _coin: True
+        market_data_module.resolve_hyperliquid_symbol = lambda _coin: "@289"
+        market_data_module.requests.post = lambda *args, **kwargs: _Resp([])
+
+        def boom(*args, **kwargs):
+            raise AssertionError("Yahoo fallback should not be used for supported Hyperliquid markets")
+
+        market_data_module.requests.get = boom
+        df = market_data_module.fetch_candles("MSFT", "1h", 50)
+        assert df is None, "supported Hyperliquid markets should return None when venue candles are empty"
+    finally:
+        market_data_module.requests.post = original_post
+        market_data_module.requests.get = original_get
+        market_data_module.is_hyperliquid_supported = original_supported
+        market_data_module.resolve_hyperliquid_symbol = original_resolve
+        market_data_module._cache.clear()
+        market_data_module._cache.update(original_cache)
+
+
+def test_stale_hyperliquid_candles_are_rejected_for_supported_market() -> None:
+    original_post = market_data_module.requests.post
+    original_get = market_data_module.requests.get
+    original_supported = market_data_module.is_hyperliquid_supported
+    original_resolve = market_data_module.resolve_hyperliquid_symbol
+    original_cache = dict(market_data_module._cache)
+
+    class _Resp:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._payload
+
+    stale_ts = int((time.time() - (72 * 3600)) * 1000)
+    payload = [
+        {
+            "t": stale_ts,
+            "o": "259.31",
+            "h": "260.00",
+            "l": "258.90",
+            "c": "259.88",
+            "v": "0.5",
+            "n": 2,
+        }
+    ]
+
+    try:
+        market_data_module.is_hyperliquid_supported = lambda _coin: True
+        market_data_module.resolve_hyperliquid_symbol = lambda _coin: "@268"
+        market_data_module.requests.post = lambda *args, **kwargs: _Resp(payload)
+
+        def boom(*args, **kwargs):
+            raise AssertionError("Yahoo fallback should stay disabled in Hyperliquid-only mode")
+
+        market_data_module.requests.get = boom
+        df = market_data_module.fetch_candles("AAPL", "1h", 50)
+        assert df is None, "stale Hyperliquid candles should be rejected instead of backfilled externally"
+    finally:
+        market_data_module.requests.post = original_post
+        market_data_module.requests.get = original_get
+        market_data_module.is_hyperliquid_supported = original_supported
+        market_data_module.resolve_hyperliquid_symbol = original_resolve
         market_data_module._cache.clear()
         market_data_module._cache.update(original_cache)
 
@@ -2473,49 +2560,60 @@ def test_market_data_attaches_lighter_auth_header_to_read_requests() -> None:
             sys.modules["lighter"] = original_lighter
 
 
-def test_orderbook_reader_attaches_lighter_auth_header_to_read_requests() -> None:
+def test_orderbook_reader_uses_hyperliquid_l2_snapshot() -> None:
     captured: dict = {}
 
-    class FakeApiClient:
-        def __init__(self, _config):
-            pass
-
-        async def close(self) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
             return None
 
-    class FakeOrderApi:
-        def __init__(self, _client):
-            pass
+        def json(self) -> dict:
+            return {
+                "coin": "@268",
+                "time": 1234567890,
+                "levels": [
+                    [{"px": "100.0", "sz": "2.5", "n": 1}],
+                    [{"px": "101.0", "sz": "3.0", "n": 2}],
+                ],
+            }
 
-        async def order_book_orders(self, **kwargs):
-            captured.update(kwargs)
-            return {"orders": []}
-
-    fake_lighter = ModuleType("lighter")
-    fake_lighter.Configuration = lambda **kwargs: SimpleNamespace(**kwargs)
-    fake_lighter.ApiClient = FakeApiClient
-    fake_lighter.OrderApi = FakeOrderApi
-
-    original_lighter = sys.modules.get("lighter")
-    original_auth = orderbook_levels_module.get_lighter_read_auth_headers
+    original_post = orderbook_levels_module.requests.post
+    original_supported = orderbook_levels_module.is_hyperliquid_supported
+    original_resolve = orderbook_levels_module.resolve_hyperliquid_symbol
     try:
-        sys.modules["lighter"] = fake_lighter
+        orderbook_levels_module.is_hyperliquid_supported = lambda _coin: True
+        orderbook_levels_module.resolve_hyperliquid_symbol = lambda _coin: "@268"
 
-        async def fake_auth_headers(**_kwargs):
-            return {"Authorization": "signed-test-token"}
+        def fake_post(url, json=None, timeout=0):
+            captured["url"] = url
+            captured["json"] = json
+            captured["timeout"] = timeout
+            return FakeResponse()
 
-        orderbook_levels_module.get_lighter_read_auth_headers = fake_auth_headers
-        payload = orderbook_levels_module._run_async(
-            orderbook_levels_module._lighter_orderbook_orders(1, 25)
-        )
-        assert payload == {"orders": []}
-        assert captured.get("_headers", {}).get("Authorization") == "signed-test-token"
+        orderbook_levels_module.requests.post = fake_post
+        snapshot = orderbook_levels_module._fetch_live_snapshot("AAPL", depth_limit=25)
+        assert snapshot.valid is True
+        assert snapshot.best_bid == 100.0
+        assert snapshot.best_ask == 101.0
+        assert snapshot.bid_notional == 250.0
+        assert snapshot.ask_notional == 303.0
+        assert captured["json"] == {"type": "l2Book", "coin": "@268"}
     finally:
-        orderbook_levels_module.get_lighter_read_auth_headers = original_auth
-        if original_lighter is None:
-            sys.modules.pop("lighter", None)
-        else:
-            sys.modules["lighter"] = original_lighter
+        orderbook_levels_module.requests.post = original_post
+        orderbook_levels_module.is_hyperliquid_supported = original_supported
+        orderbook_levels_module.resolve_hyperliquid_symbol = original_resolve
+
+
+def test_dry_run_blocks_short_on_long_only_spot_symbol() -> None:
+    ex = DryRunExchange(
+        starting_balance_usd=1000.0,
+        supported_symbols=["AAPL"],
+        shortable_map={"AAPL": False},
+    )
+    ex.connect()
+    result = ex.market_sell("AAPL", 1.0)
+    assert result.success is False
+    assert "long-only" in result.error.lower()
 
 
 def test_reentry_watch_inherits_dynamic_trade_plan() -> None:
@@ -3212,6 +3310,10 @@ def run_all() -> None:
     print("PASS crypto news fallback")
     test_market_data_reuses_stale_yahoo_candles_when_live_fetch_fails()
     print("PASS stale market data fallback")
+    test_supported_hyperliquid_market_does_not_fallback_to_yahoo_when_venue_is_empty()
+    print("PASS Hyperliquid-only candle path")
+    test_stale_hyperliquid_candles_are_rejected_for_supported_market()
+    print("PASS stale Hyperliquid candle rejection")
     test_thesis_gate_blocks_high_score_range_compression_setup()
     print("PASS thesis no-trade gate")
     test_expectancy_gate_rejects_thin_edge_setup()
@@ -3282,8 +3384,10 @@ def run_all() -> None:
     print("PASS lighter read auth fallback")
     test_market_data_attaches_lighter_auth_header_to_read_requests()
     print("PASS lighter market data auth headers")
-    test_orderbook_reader_attaches_lighter_auth_header_to_read_requests()
-    print("PASS lighter orderbook auth headers")
+    test_orderbook_reader_uses_hyperliquid_l2_snapshot()
+    print("PASS Hyperliquid orderbook reader")
+    test_dry_run_blocks_short_on_long_only_spot_symbol()
+    print("PASS long-only spot short block")
     test_reentry_watch_inherits_dynamic_trade_plan()
     print("PASS re-entry dynamic trade plan")
     test_trade_logger_normalizes_legacy_headerless_log()
