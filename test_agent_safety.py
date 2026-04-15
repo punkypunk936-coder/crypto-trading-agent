@@ -2947,7 +2947,7 @@ def test_precision_mode_allows_elite_breakout_long() -> None:
         action="LONG",
         confidence="HIGH",
         thesis={
-            "quality": "MEDIUM",
+            "quality": "HIGH",
             "confirmed_breakout": True,
             "persistent_breakout": False,
             "support_defense_long": False,
@@ -3156,6 +3156,31 @@ def test_precision_lab_collapses_repeated_rows_and_flags_toxic_families() -> Non
         precision_lab_module.fetch_candles = original_fetch
 
 
+def test_precision_entry_cadence_blocks_repeat_activity() -> None:
+    cfg = build_config()
+    cfg.trading.precision_mode_enabled = True
+    exchange = DryRunExchange(starting_balance_usd=1000.0)
+    exchange.connect()
+    live = TradingAgent(cfg, [exchange])
+    now = time.time()
+    live._precision_entry_history = [
+        {
+            "ts": now - 600,
+            "coin": "BTC",
+            "action": "LONG",
+            "family": "BTC:LONG:BREAKOUT_CONTINUATION",
+            "mode": "market",
+        }
+    ]
+    signal = SimpleNamespace(
+        action="LONG",
+        thesis={"archetype": "BREAKOUT_CONTINUATION"},
+    )
+    allowed, reason = live._check_precision_entry_cadence("BTC", signal)
+    assert allowed is False, "repeat coin activity should be blocked while precision cooldown is active"
+    assert "cooldown" in reason.lower()
+
+
 def run_all() -> None:
     test_checkpoint_recovery()
     print("PASS checkpoint recovery")
@@ -3277,6 +3302,8 @@ def run_all() -> None:
     print("PASS precision-mode elite breakout")
     test_precision_lab_collapses_repeated_rows_and_flags_toxic_families()
     print("PASS precision lab replay")
+    test_precision_entry_cadence_blocks_repeat_activity()
+    print("PASS precision cadence throttling")
 
 
 if __name__ == "__main__":

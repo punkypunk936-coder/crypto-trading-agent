@@ -23,6 +23,7 @@ Chart confirmation rule:
     - If chart disagrees (opposite direction) → definitely skip
 """
 
+import math
 import time
 import sys
 from pathlib import Path
@@ -145,7 +146,9 @@ class TradingAgent:
         # If conviction disappears for N cycles, position is stale → close it.
         # coin → consecutive flat cycle count
         self._flat_streak: Dict[str, int] = {}
+        self._precision_entry_history: List[dict] = []
 
+        self._bootstrap_precision_entry_history()
         self._attempt_recovery()
         self._reconcile_with_exchange()
 
@@ -222,6 +225,121 @@ class TradingAgent:
             stop_background_orderbook_feed()
         except Exception as exc:
             log.debug("Orderbook feed stop skipped: %s", exc)
+
+    def _bootstrap_precision_entry_history(self) -> None:
+        if not getattr(self.cfg.trading, "precision_mode_enabled", False):
+            return
+
+        history: List[dict] = []
+        try:
+            rows = decision_dataset.load_decisions(limit=1000)
+        except Exception as exc:
+            log.debug("Precision entry bootstrap skipped: %s", exc)
+            self._precision_entry_history = history
+            return
+
+        for row in rows:
+            stage = str(row.get("stage", "") or "").lower()
+            if stage not in {"market_entry_opened", "limit_entry_placed"}:
+                continue
+            if not (bool(row.get("executed", False)) or bool(row.get("pending_limit", False))):
+                continue
+            action = str(row.get("final_action", row.get("candidate_action", "")) or "").upper()
+            if action not in {"LONG", "SHORT"}:
+                continue
+            snap = dict(row.get("signal_snapshot") or {})
+            thesis = dict(snap.get("thesis") or {})
+            history.append({
+                "ts": float(row.get("recorded_at_ts", 0.0) or 0.0),
+                "coin": str(row.get("coin", "") or "").upper(),
+                "action": action,
+                "family": self._precision_family_key(
+                    str(row.get("coin", "") or "").upper(),
+                    action,
+                    str(thesis.get("archetype", snap.get("thesis_archetype", "UNKNOWN")) or "UNKNOWN").upper(),
+                ),
+                "mode": "limit" if bool(row.get("pending_limit", False)) else "market",
+            })
+        self._precision_entry_history = history[-250:]
+
+    @staticmethod
+    def _precision_family_key(coin: str, action: str, archetype: str) -> str:
+        return f"{str(coin or '').upper()}:{str(action or '').upper()}:{str(archetype or 'UNKNOWN').upper()}"
+
+    def _prune_precision_entry_history(self) -> None:
+        if not self._precision_entry_history:
+            return
+        cutoff = time.time() - (72 * 3600)
+        self._precision_entry_history = [
+            item for item in self._precision_entry_history
+            if float(item.get("ts", 0.0) or 0.0) >= cutoff
+        ][-250:]
+
+    def _record_precision_entry(self, coin: str, signal, *, mode: str) -> None:
+        if not getattr(self.cfg.trading, "precision_mode_enabled", False):
+            return
+        action = str(getattr(signal, "action", "") or "").upper()
+        if action not in {"LONG", "SHORT"}:
+            return
+        thesis = dict(getattr(signal, "thesis", {}) or {})
+        self._precision_entry_history.append({
+            "ts": time.time(),
+            "coin": str(coin or "").upper(),
+            "action": action,
+            "family": self._precision_family_key(
+                coin,
+                action,
+                str(thesis.get("archetype", "UNKNOWN") or "UNKNOWN").upper(),
+            ),
+            "mode": mode,
+        })
+        self._prune_precision_entry_history()
+
+    def _check_precision_entry_cadence(self, coin: str, signal) -> tuple[bool, str]:
+        if not getattr(self.cfg.trading, "precision_mode_enabled", False):
+            return True, ""
+        action = str(getattr(signal, "action", "") or "").upper()
+        if action not in {"LONG", "SHORT"}:
+            return True, ""
+
+        self._prune_precision_entry_history()
+        now = time.time()
+        coin_upper = str(coin or "").upper()
+        thesis = dict(getattr(signal, "thesis", {}) or {})
+        family = self._precision_family_key(
+            coin_upper,
+            action,
+            str(thesis.get("archetype", "UNKNOWN") or "UNKNOWN").upper(),
+        )
+
+        max_per_day = int(getattr(self.cfg.trading, "precision_max_new_entries_per_day", 2) or 2)
+        today = datetime.fromtimestamp(now).date()
+        entries_today = sum(
+            1 for item in self._precision_entry_history
+            if datetime.fromtimestamp(float(item.get("ts", 0.0) or 0.0)).date() == today
+        )
+        if entries_today >= max_per_day:
+            return False, f"precision mode already used {entries_today}/{max_per_day} new entries today"
+
+        same_coin_cooldown = int(getattr(self.cfg.trading, "precision_same_coin_cooldown_minutes", 360) or 360) * 60
+        recent_same_coin = [
+            item for item in self._precision_entry_history
+            if item.get("coin") == coin_upper and (now - float(item.get("ts", 0.0) or 0.0)) < same_coin_cooldown
+        ]
+        if recent_same_coin:
+            minutes_left = max(1, int(math.ceil((same_coin_cooldown - (now - float(recent_same_coin[-1].get("ts", 0.0) or 0.0))) / 60.0)))
+            return False, f"{coin_upper} is on a precision cooldown for another ~{minutes_left}m"
+
+        family_cooldown = int(getattr(self.cfg.trading, "precision_same_family_cooldown_minutes", 720) or 720) * 60
+        recent_same_family = [
+            item for item in self._precision_entry_history
+            if item.get("family") == family and (now - float(item.get("ts", 0.0) or 0.0)) < family_cooldown
+        ]
+        if recent_same_family:
+            minutes_left = max(1, int(math.ceil((family_cooldown - (now - float(recent_same_family[-1].get("ts", 0.0) or 0.0))) / 60.0)))
+            return False, f"{family.replace(':', ' ')} is cooling down for another ~{minutes_left}m"
+
+        return True, ""
 
     # ── Recovery and reconciliation ──────────────────────────
 
@@ -1296,6 +1414,21 @@ class TradingAgent:
                 )
                 self._signal_streak.pop(coin, None)  # reset after entry
 
+            cadence_allowed, cadence_reason = self._check_precision_entry_cadence(coin, signal)
+            if not cadence_allowed:
+                log.info(f"[{coin}] 🎯 Precision cadence block — {cadence_reason}")
+                signal.action = "FLAT"
+                signal.flat_reason = cadence_reason
+                signal.reason = cadence_reason
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="precision_cadence_block",
+                    signal=signal,
+                    blocked=True,
+                )
+                return
+
         # ── Pull RL stats to inform position sizing ────────────────────────
         # Risk-check & size the order (conviction + RL win-rate aware)
         order = self.risk.compute_order(
@@ -1379,6 +1512,8 @@ class TradingAgent:
                     f"[{coin}] 📋 Planned {plan_mode} entry @ ${limit_price:.2f} "
                     f"({execution_plan.get('reason', 'execution plan')})"
                 )
+                if placed:
+                    self._record_precision_entry(coin, signal, mode="limit")
                 self._record_decision_snapshot(
                     coin,
                     portfolio_usd=portfolio_usd,
@@ -1391,6 +1526,8 @@ class TradingAgent:
                 return
 
         executed = self._execute_order(coin, signal, order)
+        if executed:
+            self._record_precision_entry(coin, signal, mode="market")
         self._record_decision_snapshot(
             coin,
             portfolio_usd=portfolio_usd,
