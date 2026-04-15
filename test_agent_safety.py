@@ -29,6 +29,7 @@ import hosted_state_sync as hosted_state_sync_module
 import main as main_module
 import market_map as market_map_module
 import precision_lab as precision_lab_module
+import promotion_gate as promotion_gate_module
 from data import market_data as market_data_module
 from indicators import news as news_module
 from indicators import orderbook_levels as orderbook_levels_module
@@ -116,6 +117,8 @@ def build_config() -> Config:
     cfg.trading.use_narrative_gate = False
     cfg.trading.precision_mode_enabled = False
     cfg.trading.enforce_active_venue_markets = False
+    cfg.trading.live_promotion_gate_enabled = False
+    cfg.trading.require_notifications_for_live = False
     return cfg
 
 
@@ -1442,6 +1445,86 @@ def test_preflight_reports_missing_live_bootstrap() -> None:
         main_module.config = original_config
         main_module.fetch_candles = original_fetch
         main_module.get_current_price = original_price
+
+
+def test_live_config_validation_requires_notifications() -> None:
+    cfg = build_config()
+    cfg.trading.dry_run = False
+    cfg.trading.require_notifications_for_live = True
+    cfg.notifications.telegram_bot_token = ""
+    cfg.notifications.telegram_chat_id = ""
+    raised = False
+    try:
+        cfg.validate()
+    except ValueError as exc:
+        raised = "TELEGRAM_BOT_TOKEN" in str(exc)
+    assert raised, "live validation should require Telegram notifications when the guard is enabled"
+
+
+def test_live_promotion_gate_blocks_weak_metrics() -> None:
+    cfg = build_config()
+    cfg.trading.live_promotion_gate_enabled = True
+    cfg.trading.live_promotion_min_closed_trades = 4
+    cfg.trading.live_promotion_lookback_closed_trades = 4
+    cfg.trading.live_promotion_min_win_rate = 0.75
+    cfg.trading.live_promotion_min_avg_pnl_pct = 0.20
+    cfg.trading.live_promotion_min_profit_factor = 1.50
+    cfg.trading.live_promotion_min_precision_samples = 4
+    cfg.trading.live_promotion_min_precision_win_rate = 0.75
+
+    original_load = promotion_gate_module.trade_dataset.load_closed_trades
+    original_report = promotion_gate_module._ensure_precision_report
+    try:
+        promotion_gate_module.trade_dataset.load_closed_trades = lambda limit=None: [
+            {"outcome": "WIN", "pnl_pct": 0.10, "pnl_usd": 10.0},
+            {"outcome": "LOSS", "pnl_pct": -0.80, "pnl_usd": -80.0},
+            {"outcome": "WIN", "pnl_pct": 0.15, "pnl_usd": 15.0},
+            {"outcome": "LOSS", "pnl_pct": -0.30, "pnl_usd": -30.0},
+        ]
+        promotion_gate_module._ensure_precision_report = lambda *_args, **_kwargs: ({
+            "labeled_episodes": 4,
+            "overall_win_rate": 0.50,
+            "best_rules": [{"win_rate": 0.50, "samples": 4}],
+        }, Path("/tmp/precision_lab_report.json"))
+        gate = promotion_gate_module.evaluate_live_promotion(cfg, Path("/tmp"))
+        assert gate["passed"] is False
+        assert gate["blockers"], "weak metrics should block live promotion"
+    finally:
+        promotion_gate_module.trade_dataset.load_closed_trades = original_load
+        promotion_gate_module._ensure_precision_report = original_report
+
+
+def test_live_promotion_gate_passes_strong_metrics() -> None:
+    cfg = build_config()
+    cfg.trading.live_promotion_gate_enabled = True
+    cfg.trading.live_promotion_min_closed_trades = 4
+    cfg.trading.live_promotion_lookback_closed_trades = 4
+    cfg.trading.live_promotion_min_win_rate = 0.50
+    cfg.trading.live_promotion_min_avg_pnl_pct = 0.05
+    cfg.trading.live_promotion_min_profit_factor = 1.10
+    cfg.trading.live_promotion_min_precision_samples = 4
+    cfg.trading.live_promotion_min_precision_win_rate = 0.60
+
+    original_load = promotion_gate_module.trade_dataset.load_closed_trades
+    original_report = promotion_gate_module._ensure_precision_report
+    try:
+        promotion_gate_module.trade_dataset.load_closed_trades = lambda limit=None: [
+            {"outcome": "WIN", "pnl_pct": 0.60, "pnl_usd": 60.0},
+            {"outcome": "WIN", "pnl_pct": 0.40, "pnl_usd": 40.0},
+            {"outcome": "LOSS", "pnl_pct": -0.20, "pnl_usd": -20.0},
+            {"outcome": "WIN", "pnl_pct": 0.30, "pnl_usd": 30.0},
+        ]
+        promotion_gate_module._ensure_precision_report = lambda *_args, **_kwargs: ({
+            "labeled_episodes": 6,
+            "overall_win_rate": 0.67,
+            "best_rules": [{"win_rate": 0.75, "samples": 4}],
+        }, Path("/tmp/precision_lab_report.json"))
+        gate = promotion_gate_module.evaluate_live_promotion(cfg, Path("/tmp"))
+        assert gate["passed"] is True
+        assert gate["trade_metrics"]["win_rate"] >= 0.50
+    finally:
+        promotion_gate_module.trade_dataset.load_closed_trades = original_load
+        promotion_gate_module._ensure_precision_report = original_report
 
 
 def test_dashboard_kill_endpoint_sets_control_state() -> None:
@@ -3396,6 +3479,12 @@ def run_all() -> None:
     print("PASS close failure safety")
     test_preflight_reports_missing_live_bootstrap()
     print("PASS preflight live bootstrap check")
+    test_live_config_validation_requires_notifications()
+    print("PASS live notification validation")
+    test_live_promotion_gate_blocks_weak_metrics()
+    print("PASS live promotion gate block")
+    test_live_promotion_gate_passes_strong_metrics()
+    print("PASS live promotion gate pass")
     test_dashboard_kill_endpoint_sets_control_state()
     print("PASS dashboard kill endpoint")
     test_dashboard_state_prefers_canonical_snapshot()

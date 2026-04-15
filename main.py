@@ -19,6 +19,7 @@ import tempfile
 import checkpoint as checkpoint_module
 from config import config
 from logger import log
+from promotion_gate import evaluate_live_promotion
 from exchanges.hyperliquid_client import HyperliquidClient
 from exchanges.hyperliquid_markets import (
     get_hyperliquid_market_activity,
@@ -401,13 +402,17 @@ def run_preflight(args) -> int:
     else:
         warn("Power status unavailable; local live-trading power guard could not be verified")
 
+    if live_mode:
+        if config.trading.require_notifications_for_live and not config.notifications.enabled:
+            fail("Telegram alerts are required for live trading; set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID")
+        elif not config.notifications.enabled:
+            warn("Telegram alerts are not configured; live open/close notifications will be silent")
+
     if config.exchange.use_hyperliquid:
         hyperliquid_ready = all([
             config.exchange.hl_private_key,
             config.exchange.hl_account_address,
         ])
-        if live_mode and not config.notifications.enabled:
-            warn("Telegram alerts are not configured; live open/close notifications will be silent")
         if live_mode and getattr(config.exchange, "hl_spot_execution_enabled", False):
             warn("Hyperliquid spot execution is enabled; verify spot inventory/close handling before risking live capital")
         if live_mode:
@@ -471,6 +476,23 @@ def run_preflight(args) -> int:
                 ok("Lighter live credentials are present")
             else:
                 warn("Lighter live credentials are incomplete; this is fine for dry-run, but live trading is blocked until bootstrap is completed")
+
+    if live_mode and getattr(config.trading, "live_promotion_gate_enabled", False):
+        try:
+            gate = evaluate_live_promotion(config, DATA_DIR)
+            if gate["passed"]:
+                trade_metrics = gate.get("trade_metrics", {})
+                precision_metrics = gate.get("precision_metrics", {})
+                ok(
+                    "Live promotion gate passed: "
+                    f"{trade_metrics.get('closed_trades', 0)} closed trades, "
+                    f"{trade_metrics.get('win_rate', 0.0) * 100:.1f}% WR, "
+                    f"precision replay {precision_metrics.get('overall_win_rate', 0.0) * 100:.1f}%"
+                )
+            else:
+                fail("Live promotion gate blocked trading: " + "; ".join(gate.get("blockers", [])))
+        except Exception as exc:
+            fail(f"Live promotion gate evaluation failed: {exc}")
 
     print("")
     if failures:
@@ -608,6 +630,19 @@ def main():
         except ValueError as e:
             log.error(str(e))
             sys.exit(1)
+        if getattr(config.trading, "live_promotion_gate_enabled", False):
+            gate = evaluate_live_promotion(config, DATA_DIR)
+            if not gate["passed"]:
+                log.error("Live promotion gate blocked trading: " + "; ".join(gate.get("blockers", [])))
+                sys.exit(1)
+            trade_metrics = gate.get("trade_metrics", {})
+            precision_metrics = gate.get("precision_metrics", {})
+            log.info(
+                "Live promotion gate passed: "
+                f"{trade_metrics.get('closed_trades', 0)} trades, "
+                f"{trade_metrics.get('win_rate', 0.0) * 100:.1f}% WR, "
+                f"precision replay {precision_metrics.get('overall_win_rate', 0.0) * 100:.1f}%"
+            )
 
     # ── Launch agent ──────────────────────────────────────
     agent = TradingAgent(config, exchanges)

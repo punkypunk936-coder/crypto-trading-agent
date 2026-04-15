@@ -229,6 +229,20 @@ class TradingConfig:
     require_ac_power_for_live: bool = True
     minimum_battery_pct_for_live: int = 35
     stop_live_on_power_loss: bool = True
+    require_notifications_for_live: bool = True
+    live_promotion_gate_enabled: bool = True
+    live_promotion_lookback_closed_trades: int = 40
+    live_promotion_min_closed_trades: int = 20
+    live_promotion_min_win_rate: float = 0.58
+    live_promotion_min_avg_pnl_pct: float = 0.10
+    live_promotion_min_profit_factor: float = 1.15
+    live_promotion_min_precision_samples: int = 6
+    live_promotion_min_precision_win_rate: float = 0.60
+    live_promotion_report_max_age_hours: float = 12.0
+    live_promotion_precision_target_r: float = 0.25
+    live_promotion_precision_horizon_minutes: int = 720
+    live_promotion_precision_interval: str = "5m"
+    live_promotion_precision_dedupe_minutes: int = 30
 
     # ── Trade size limits ───────────────────────────────
     min_trade_usd: float         = 100.0   # Small-capital friendly minimum
@@ -432,6 +446,12 @@ class Config:
             errors.append("LIGHTER_ACCOUNT_INDEX is missing — run the Lighter bootstrap first")
         if self.exchange.use_lighter and not self.exchange.lighter_web3_url:
             errors.append("LIGHTER_WEB3_URL is missing — add it to your .env file")
+        if (
+            not self.trading.dry_run
+            and self.trading.require_notifications_for_live
+            and not self.notifications.enabled
+        ):
+            errors.append("TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are required for live trading")
         ind = self.indicators
         weight_sum = (ind.weight_rsi + ind.weight_macd + ind.weight_bb +
                       ind.weight_ema + ind.weight_sentiment +
