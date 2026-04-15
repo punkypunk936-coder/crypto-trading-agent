@@ -71,6 +71,7 @@ from indicators.funding_oi_cvd import get_funding_oi_cvd
 from exchanges.hyperliquid_markets import (
     hyperliquid_supports_shorts,
     hyperliquid_instrument_type,
+    hyperliquid_market_is_active,
     is_hyperliquid_supported,
 )
 from narrative import get_narrative_signal
@@ -208,8 +209,19 @@ class TradingAgent:
             and getattr(self.cfg.trading, "orderbook_feed_enabled", True)
         ):
             return
+        feed_coins = list(self._analysis_coins)
+        if getattr(self.cfg.trading, "enforce_active_venue_markets", True):
+            filtered = []
+            for coin in feed_coins:
+                if is_hyperliquid_supported(coin) and not hyperliquid_market_is_active(coin):
+                    continue
+                filtered.append(coin)
+            feed_coins = filtered
+        if not feed_coins:
+            log.info("No active venue-backed symbols available for the background orderbook feed")
+            return
         configure_background_orderbook_feed(
-            list(self._analysis_coins),
+            feed_coins,
             depth_limit=getattr(self.cfg.trading, "orderbook_depth_limit", 120),
             poll_interval_seconds=getattr(self.cfg.trading, "orderbook_feed_poll_seconds", 3.0),
             history_size=getattr(self.cfg.trading, "orderbook_feed_history_size", 120),
@@ -644,6 +656,14 @@ class TradingAgent:
     def _analyse_coin(self, coin: str, sentiment: dict, portfolio_usd: float):
         log.info(f"[{coin}] Analysing…")
         icfg = self.cfg.indicators
+
+        if (
+            getattr(self.cfg.trading, "enforce_active_venue_markets", True)
+            and is_hyperliquid_supported(coin)
+            and not hyperliquid_market_is_active(coin)
+        ):
+            log.info(f"[{coin}] Hyperliquid market is currently inactive — keeping it analysis-only")
+            return
 
         # Fetch OHLCV
         df = retry_with_backoff(
@@ -1525,7 +1545,7 @@ class TradingAgent:
                 return
             limit_price = float(execution_plan.get("limit_price", 0.0) or 0.0)
             if limit_price > 0:
-                placed = self._place_limit_order(
+                limit_result = self._place_limit_order(
                     coin,
                     signal.action,
                     limit_price,
@@ -1536,21 +1556,23 @@ class TradingAgent:
                     reason="initial_limit",
                     entry_context=self._build_entry_context(coin, signal, order, entry_type="initial_limit"),
                     trade_plan=dict(getattr(signal, "trade_plan", {}) or {}),
+                    maker_only=(plan_mode == "maker_limit"),
                 )
                 log.info(
                     f"[{coin}] 📋 Planned {plan_mode} entry @ ${limit_price:.2f} "
                     f"({execution_plan.get('reason', 'execution plan')})"
                 )
-                if placed:
+                if limit_result.get("success"):
                     self._record_precision_entry(coin, signal, mode="limit")
                 self._record_decision_snapshot(
                     coin,
                     portfolio_usd=portfolio_usd,
-                    stage="limit_entry_placed" if placed else "limit_entry_failed",
+                    stage="limit_entry_placed" if limit_result.get("pending") else ("limit_entry_opened" if limit_result.get("filled") else "limit_entry_failed"),
                     signal=signal,
                     current_position=current_pos,
-                    blocked=not placed,
-                    pending_limit=placed,
+                    executed=bool(limit_result.get("filled")),
+                    blocked=not bool(limit_result.get("success")),
+                    pending_limit=bool(limit_result.get("pending")),
                 )
                 return
 
@@ -1922,9 +1944,12 @@ class TradingAgent:
             )
         return quality
 
-    @staticmethod
-    def _supports_orderbook_context(coin: str) -> bool:
-        return is_hyperliquid_supported(coin)
+    def _supports_orderbook_context(self, coin: str) -> bool:
+        if not is_hyperliquid_supported(coin):
+            return False
+        if not getattr(self.cfg.trading, "enforce_active_venue_markets", True):
+            return True
+        return hyperliquid_market_is_active(coin)
 
     def _check_narrative_gate(self, coin: str, signal, narrative_signal) -> bool:
         if not getattr(self.cfg.trading, "use_narrative_gate", True):
@@ -2461,28 +2486,96 @@ class TradingAgent:
                            size_usd: float, sl: float, tp: float,
                            score: float, reason: str = "re_entry",
                            entry_context: Optional[dict] = None,
-                           trade_plan: Optional[dict] = None):
-        """Place a limit order on the first available exchange and register it."""
-        exchanges = self._eligible_exchanges(coin)
+                           trade_plan: Optional[dict] = None,
+                           maker_only: bool = False) -> dict:
+        """Place a limit order on the first eligible exchange and register or book any fill."""
+        exchanges = [ex for ex in self._eligible_exchanges(coin) if ex.supports_limit_orders()]
         if not exchanges:
             log.error(f"[{coin}] No exchange supports limit orders for this symbol")
-            return False
+            return {"success": False, "pending": False, "filled": False}
         for ex in exchanges:
             ex.set_leverage(coin, self.cfg.trading.leverage)
             size_coin = size_usd / limit_price if limit_price > 0 else 0
 
             if direction == "LONG":
-                result = ex.limit_buy(coin, size_coin, limit_price)
+                result = ex.limit_buy(coin, size_coin, limit_price, maker_only=maker_only)
             else:
-                result = ex.limit_sell(coin, size_coin, limit_price)
+                result = ex.limit_sell(coin, size_coin, limit_price, maker_only=maker_only)
 
             if result.success:
+                fill_price = float(result.filled_price or limit_price or 0.0)
+                filled_size_coin = max(0.0, float(result.filled_size or 0.0))
+                remaining_size_coin = max(0.0, size_coin - filled_size_coin)
+                remaining_size_usd = max(0.0, remaining_size_coin * limit_price)
+
+                if filled_size_coin > 0 and fill_price > 0:
+                    filled_order = OrderRequest(
+                        coin=coin,
+                        direction=direction,
+                        size_usd=filled_size_coin * fill_price,
+                        size_coin=filled_size_coin,
+                        price=fill_price,
+                        stop_loss=sl,
+                        take_profit=tp,
+                        leverage=self.cfg.trading.leverage,
+                        approved=True,
+                    )
+                    entry_payload = {
+                        "entry_context": (
+                            dict(entry_context or {})
+                            or self._build_entry_context(
+                                coin,
+                                type("PendingSignal", (), {
+                                    "action": direction,
+                                    "score": score,
+                                    "confidence": "MEDIUM",
+                                    "reason": reason,
+                                    "flat_reason": "",
+                                    "trade_plan": dict(trade_plan or {}),
+                                })(),
+                                filled_order,
+                                entry_type=reason,
+                            )
+                        )
+                    }
+                    if self.risk.has_position(coin) and self.risk.position_direction(coin) == direction:
+                        self.risk.record_scale_in_fill(filled_order, exchange=ex.name)
+                    else:
+                        self.risk.record_open(filled_order, exchange=ex.name, metadata=entry_payload)
+                        trade_logger.log_open(
+                            coin=coin,
+                            direction=direction,
+                            entry_price=fill_price,
+                            size_usd=filled_order.size_usd,
+                            stop_loss=sl,
+                            take_profit=tp,
+                            signal_score=score,
+                            leverage=self.cfg.trading.leverage,
+                        )
+                    self.notifier.trade_opened(
+                        coin=coin,
+                        direction=direction,
+                        price=fill_price,
+                        size_usd=filled_order.size_usd,
+                        sl=sl,
+                        tp=tp,
+                        score=score,
+                        exchange=ex.name,
+                    )
+                    log.info(
+                        f"[{coin}] ✅ Limit {direction} immediately filled on {ex.name}: "
+                        f"{filled_size_coin:.6f} @ ${fill_price:.2f}"
+                    )
+
+                if remaining_size_coin <= 1e-9 or not result.order_id:
+                    return {"success": True, "pending": False, "filled": filled_size_coin > 0}
+
                 pending = PendingOrder(
                     coin              = coin,
                     direction         = direction,
                     limit_price       = limit_price,
-                    size_coin         = size_coin,
-                    size_usd          = size_usd,
+                    size_coin         = remaining_size_coin,
+                    size_usd          = remaining_size_usd,
                     stop_loss         = sl,
                     take_profit       = tp,
                     signal_score      = score,
@@ -2526,10 +2619,10 @@ class TradingAgent:
                     f"[{coin}] 📋 Limit {direction} placed @ ${limit_price:.2f} "
                     f"SL=${sl:.2f} TP=${tp:.2f} (reason={reason})"
                 )
-                return True
+                return {"success": True, "pending": True, "filled": filled_size_coin > 0}
             else:
                 log.error(f"[{coin}] Limit order failed on {ex.name}: {result.error}")
-        return False
+        return {"success": False, "pending": False, "filled": False}
 
     # ── Order manager action handler ──────────────────────────
 
@@ -2654,21 +2747,24 @@ class TradingAgent:
                         "take_profit": round(pending.take_profit, 6),
                     })
                     entry_context["trade_plan"] = trade_plan
-                    self.risk.record_open(
-                        order,
-                        exchange=ex.name,
-                        metadata={"entry_context": entry_context},
-                    )
-                    trade_logger.log_open(
-                        coin         = coin,
-                        direction    = pending.direction,
-                        entry_price  = fill_price,
-                        size_usd     = pending.size_usd,
-                        stop_loss    = pending.stop_loss,
-                        take_profit  = pending.take_profit,
-                        signal_score = pending.signal_score,
-                        leverage     = self.cfg.trading.leverage,
-                    )
+                    if self.risk.has_position(coin) and self.risk.position_direction(coin) == pending.direction:
+                        self.risk.record_scale_in_fill(order, exchange=ex.name)
+                    else:
+                        self.risk.record_open(
+                            order,
+                            exchange=ex.name,
+                            metadata={"entry_context": entry_context},
+                        )
+                        trade_logger.log_open(
+                            coin         = coin,
+                            direction    = pending.direction,
+                            entry_price  = fill_price,
+                            size_usd     = pending.size_usd,
+                            stop_loss    = pending.stop_loss,
+                            take_profit  = pending.take_profit,
+                            signal_score = pending.signal_score,
+                            leverage     = self.cfg.trading.leverage,
+                        )
                 self.notifier.trade_opened(
                     coin     = coin,
                     direction= pending.direction,

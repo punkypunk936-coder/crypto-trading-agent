@@ -90,12 +90,12 @@ class DryRunExchange(BaseExchange):
     # ── Limit orders ──────────────────────────────────────
 
     def limit_buy(self, coin: str, size_coin: float,
-                  limit_price: float) -> OrderResult:
+                  limit_price: float, maker_only: bool = False) -> OrderResult:
         """Register a pending limit BUY; simulates fill when price ≤ limit_price."""
         return self._register_limit(coin, "LONG", size_coin, limit_price)
 
     def limit_sell(self, coin: str, size_coin: float,
-                   limit_price: float) -> OrderResult:
+                   limit_price: float, maker_only: bool = False) -> OrderResult:
         """Register a pending limit SELL; simulates fill when price ≥ limit_price."""
         return self._register_limit(coin, "SHORT", size_coin, limit_price)
 

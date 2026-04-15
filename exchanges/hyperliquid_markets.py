@@ -24,11 +24,14 @@ log = get_logger("hl_markets")
 
 HL_INFO_URL = "https://api.hyperliquid.xyz/info"
 CATALOG_CACHE_TTL_SECONDS = 300.0
+ACTIVITY_CACHE_TTL_SECONDS = 180.0
 
 _CATALOG_CACHE: Dict[str, Any] = {
     "ts": 0.0,
     "catalog": {},
 }
+
+_ACTIVITY_CACHE: Dict[str, Dict[str, Any]] = {}
 
 _PERP_MARKETS: Dict[str, Dict[str, Any]] = {
     "BTC": {
@@ -292,6 +295,90 @@ def get_hyperliquid_market_spec(coin: str) -> Optional[Dict[str, Any]]:
     return get_hyperliquid_market_catalog().get(coin_upper)
 
 
+def _activity_max_age_seconds(spec: Optional[Dict[str, Any]]) -> int:
+    market_type = str((spec or {}).get("market_type") or "").lower()
+    instrument_type = str((spec or {}).get("instrument_type") or "").lower()
+    if market_type == "spot" or instrument_type == "equity":
+        return 48 * 3600
+    if instrument_type == "index":
+        return 12 * 3600
+    return 6 * 3600
+
+
+def get_hyperliquid_market_activity(coin: str, *, force_refresh: bool = False) -> Dict[str, Any]:
+    coin_upper = str(coin or "").upper().strip()
+    spec = get_hyperliquid_market_spec(coin_upper)
+    if not spec:
+        return {
+            "coin": coin_upper,
+            "active": False,
+            "reason": "unsupported",
+            "last_candle_ts": 0,
+            "age_seconds": None,
+        }
+
+    cached = _ACTIVITY_CACHE.get(coin_upper)
+    now = time.time()
+    if (
+        not force_refresh
+        and cached
+        and (now - float(cached.get("checked_at", 0.0) or 0.0)) < ACTIVITY_CACHE_TTL_SECONDS
+    ):
+        return dict(cached)
+
+    venue_symbol = str(spec.get("venue_symbol") or coin_upper).upper()
+    start_ms = int((now - (120 * 3600)) * 1000)
+    end_ms = int(now * 1000)
+    activity = {
+        "coin": coin_upper,
+        "venue_symbol": venue_symbol,
+        "active": False,
+        "reason": "no_recent_candles",
+        "last_candle_ts": 0,
+        "age_seconds": None,
+        "checked_at": now,
+    }
+    try:
+        resp = requests.post(
+            HL_INFO_URL,
+            json={
+                "type": "candleSnapshot",
+                "req": {
+                    "coin": venue_symbol,
+                    "interval": "1h",
+                    "startTime": start_ms,
+                    "endTime": end_ms,
+                },
+            },
+            timeout=8,
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+    except Exception as exc:
+        activity["reason"] = f"activity_probe_failed:{type(exc).__name__}"
+        if cached:
+            return dict(cached)
+        _ACTIVITY_CACHE[coin_upper] = dict(activity)
+        return dict(activity)
+
+    candles = payload if isinstance(payload, list) else []
+    if candles:
+        try:
+            last_candle_ts = int(candles[-1].get("t", 0) or 0)
+        except Exception:
+            last_candle_ts = 0
+        if last_candle_ts > 0:
+            age_seconds = max(0.0, now - (last_candle_ts / 1000.0))
+            max_age_seconds = _activity_max_age_seconds(spec)
+            activity["last_candle_ts"] = last_candle_ts
+            activity["age_seconds"] = age_seconds
+            activity["active"] = age_seconds <= max_age_seconds
+            activity["reason"] = "fresh_candles" if activity["active"] else "stale_candles"
+
+    _ACTIVITY_CACHE[coin_upper] = dict(activity)
+    return dict(activity)
+
+
 def resolve_hyperliquid_symbol(coin: str) -> str:
     spec = get_hyperliquid_market_spec(coin)
     if spec:
@@ -301,6 +388,10 @@ def resolve_hyperliquid_symbol(coin: str) -> str:
 
 def is_hyperliquid_supported(coin: str) -> bool:
     return get_hyperliquid_market_spec(coin) is not None
+
+
+def hyperliquid_market_is_active(coin: str, *, force_refresh: bool = False) -> bool:
+    return bool(get_hyperliquid_market_activity(coin, force_refresh=force_refresh).get("active", False))
 
 
 def hyperliquid_supports_shorts(coin: str) -> bool:
@@ -332,12 +423,15 @@ def get_hyperliquid_supported_coins(
     *,
     include_spot: bool = True,
     live_tradeable_only: bool = False,
+    active_only: bool = False,
 ) -> List[str]:
     out: List[str] = []
     for coin, spec in get_hyperliquid_market_catalog().items():
         if spec.get("market_type") == "spot" and not include_spot:
             continue
         if live_tradeable_only and not spec.get("live_tradeable", False):
+            continue
+        if active_only and not hyperliquid_market_is_active(coin):
             continue
         out.append(coin)
     return _ordered_coins(out)

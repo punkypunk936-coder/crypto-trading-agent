@@ -43,6 +43,7 @@ from dashboard import app as dashboard_module
 from dashboard.snapshot import build_dashboard_snapshot
 from exchanges.base import AccountState, BaseExchange, OrderResult, LimitOrderStatus
 from exchanges.dry_run import DryRunExchange
+from exchanges import hyperliquid_client as hyperliquid_client_module
 from exchanges import lighter_client as lighter_client_module
 from risk.risk_manager import OrderRequest, OpenPosition
 from strategy.aggressive_strategy import AggressiveStrategy
@@ -114,6 +115,7 @@ def build_config() -> Config:
     cfg.trading.use_news = False
     cfg.trading.use_narrative_gate = False
     cfg.trading.precision_mode_enabled = False
+    cfg.trading.enforce_active_venue_markets = False
     return cfg
 
 
@@ -306,6 +308,28 @@ def test_supported_watchlist_assets_are_promoted_into_tradeable_universe() -> No
         assert active == ["BTC", "HYPE", "SP500", "TAO"]
     finally:
         main_module.config = original_config
+
+
+def test_inactive_hyperliquid_symbols_stay_out_of_tradeable_universe() -> None:
+    cfg = build_config()
+    cfg.exchange.use_lighter = False
+    cfg.exchange.use_hyperliquid = True
+    cfg.trading.enforce_active_venue_markets = True
+    cfg.trading.coins = ["BTC"]
+    cfg.trading.analysis_coins = ["BTC", "AMZN", "MSFT"]
+    original_config = main_module.config
+    original_supported = main_module.get_hyperliquid_supported_coins
+    main_module.config = cfg
+    try:
+        def fake_supported(*, include_spot=True, live_tradeable_only=False, active_only=False):
+            return ["BTC", "AMZN"] if active_only else ["BTC", "AMZN", "MSFT"]
+
+        main_module.get_hyperliquid_supported_coins = fake_supported
+        active = main_module.enforce_trade_universe()
+        assert active == ["BTC", "AMZN"]
+    finally:
+        main_module.config = original_config
+        main_module.get_hyperliquid_supported_coins = original_supported
 
 
 def test_lighter_promotes_growth_and_macro_symbols_into_tradeable_universe() -> None:
@@ -2616,6 +2640,42 @@ def test_dry_run_blocks_short_on_long_only_spot_symbol() -> None:
     assert "long-only" in result.error.lower()
 
 
+def test_hyperliquid_limit_order_returns_resting_order_id() -> None:
+    original_spec = hyperliquid_client_module.get_hyperliquid_market_spec
+    original_resolve = hyperliquid_client_module.resolve_hyperliquid_symbol
+    try:
+        hyperliquid_client_module.get_hyperliquid_market_spec = lambda _coin: {
+            "venue_symbol": "BTC",
+            "market_type": "perp",
+        }
+        hyperliquid_client_module.resolve_hyperliquid_symbol = lambda _coin: "BTC"
+
+        class FakeExchange:
+            def order(self, **kwargs):
+                assert kwargs["order_type"] == {"limit": {"tif": "Alo"}}
+                return {
+                    "status": "ok",
+                    "response": {
+                        "data": {
+                            "statuses": [
+                                {"resting": {"oid": 123456}}
+                            ]
+                        }
+                    },
+                }
+
+        client = hyperliquid_client_module.HyperliquidClient("pk", "0xabc")
+        client._connected = True
+        client._exchange = FakeExchange()
+
+        result = client.limit_buy("BTC", 1.25, 100.0, maker_only=True)
+        assert result.success is True
+        assert result.order_id == "123456"
+    finally:
+        hyperliquid_client_module.get_hyperliquid_market_spec = original_spec
+        hyperliquid_client_module.resolve_hyperliquid_symbol = original_resolve
+
+
 def test_reentry_watch_inherits_dynamic_trade_plan() -> None:
     manager = OrderManager()
     manager.schedule_reentry(
@@ -3292,6 +3352,8 @@ def run_all() -> None:
     print("PASS analysis watchlist separation")
     test_supported_watchlist_assets_are_promoted_into_tradeable_universe()
     print("PASS watchlist promotion")
+    test_inactive_hyperliquid_symbols_stay_out_of_tradeable_universe()
+    print("PASS active market filtering")
     test_lighter_promotes_growth_and_macro_symbols_into_tradeable_universe()
     print("PASS lighter universe expansion")
     test_dynamic_trade_plan_is_attached_to_signal()
@@ -3388,6 +3450,8 @@ def run_all() -> None:
     print("PASS Hyperliquid orderbook reader")
     test_dry_run_blocks_short_on_long_only_spot_symbol()
     print("PASS long-only spot short block")
+    test_hyperliquid_limit_order_returns_resting_order_id()
+    print("PASS Hyperliquid limit order support")
     test_reentry_watch_inherits_dynamic_trade_plan()
     print("PASS re-entry dynamic trade plan")
     test_trade_logger_normalizes_legacy_headerless_log()

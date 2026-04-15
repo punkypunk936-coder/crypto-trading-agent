@@ -241,6 +241,7 @@ class TradingConfig:
     # When enabled, any watchlist asset that the active venue can actually
     # execute is promoted into the live tradeable universe automatically.
     auto_promote_analysis_coins: bool = True
+    enforce_active_venue_markets: bool = True
 
     # ── Multi-timeframe analysis ─────────────────────────
     # Fetches 4H and 12H candles to determine the higher-timeframe trend.

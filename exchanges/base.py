@@ -68,7 +68,7 @@ class BaseExchange(ABC):
     # ── Limit order support (optional — subclasses that support it override) ──
 
     def limit_buy(self, coin: str, size_coin: float,
-                  limit_price: float) -> OrderResult:
+                  limit_price: float, maker_only: bool = False) -> OrderResult:
         """
         Place a limit BUY order.
         Default falls back to market_buy (safe for exchanges without limit support).
@@ -77,7 +77,7 @@ class BaseExchange(ABC):
         return self.market_buy(coin, size_coin)
 
     def limit_sell(self, coin: str, size_coin: float,
-                   limit_price: float) -> OrderResult:
+                   limit_price: float, maker_only: bool = False) -> OrderResult:
         """
         Place a limit SELL order.
         Default falls back to market_sell.

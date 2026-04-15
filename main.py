@@ -21,6 +21,7 @@ from config import config
 from logger import log
 from exchanges.hyperliquid_client import HyperliquidClient
 from exchanges.hyperliquid_markets import (
+    get_hyperliquid_market_activity,
     get_hyperliquid_supported_coins,
     hyperliquid_supports_shorts,
 )
@@ -80,10 +81,12 @@ def configured_supported_coins(*, dry_run_mode: bool | None = None) -> list[str]
             bool(dry_run_mode)
             or bool(getattr(config.exchange, "hl_spot_execution_enabled", False))
         )
+        active_only = bool(getattr(config.trading, "enforce_active_venue_markets", True))
         supported.update(
             get_hyperliquid_supported_coins(
                 include_spot=include_spot,
                 live_tradeable_only=not include_spot,
+                active_only=active_only,
             )
         )
     if config.exchange.use_lighter:
@@ -262,6 +265,19 @@ def run_preflight(args) -> int:
             analysis_coins.append(coin_upper)
     if analysis_coins:
         ok("Analysis/watchlist symbols: " + ", ".join(analysis_coins))
+    if config.exchange.use_hyperliquid and getattr(config.trading, "enforce_active_venue_markets", True):
+        inactive_analysis = []
+        for coin in analysis_coins:
+            activity = get_hyperliquid_market_activity(coin)
+            if activity.get("reason") == "unsupported":
+                continue
+            if not activity.get("active", False):
+                inactive_analysis.append(f"{coin} ({activity.get('reason', 'inactive')})")
+        if inactive_analysis:
+            warn(
+                "Inactive Hyperliquid markets will stay analysis-only until fresh venue activity returns: "
+                + ", ".join(inactive_analysis)
+            )
 
     if os.environ.get("DASHBOARD_URL", "") and not os.environ.get("DASHBOARD_TOKEN", ""):
         fail("DASHBOARD_URL is set but DASHBOARD_TOKEN is missing")
@@ -390,6 +406,10 @@ def run_preflight(args) -> int:
             config.exchange.hl_private_key,
             config.exchange.hl_account_address,
         ])
+        if live_mode and not config.notifications.enabled:
+            warn("Telegram alerts are not configured; live open/close notifications will be silent")
+        if live_mode and getattr(config.exchange, "hl_spot_execution_enabled", False):
+            warn("Hyperliquid spot execution is enabled; verify spot inventory/close handling before risking live capital")
         if live_mode:
             if not hyperliquid_ready:
                 fail("Hyperliquid live credentials are incomplete; add HL_PRIVATE_KEY and HL_ACCOUNT_ADDRESS")
