@@ -1514,6 +1514,17 @@ def test_local_dashboard_serves_hosted_bundle() -> None:
     assert served == hosted_bundle, "local dashboard root should serve the exact hosted UI bundle"
 
 
+def test_install_launchagent_preserves_learning_datasets() -> None:
+    script = Path("install_launchagent.sh").read_text(encoding="utf-8")
+    for filename in (
+        "decision_dataset.jsonl",
+        "feature_store.jsonl",
+        "trade_dataset.jsonl",
+        "precision_lab_report.json",
+    ):
+        assert f'--exclude "{filename}"' in script, f"runtime sync should preserve {filename}"
+
+
 def test_market_map_signal_respects_operator_daily_levels() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         original_path = market_map_module.DAILY_MARKET_MAP_JSON
@@ -3206,6 +3217,8 @@ def run_all() -> None:
     print("PASS hosted dashboard bundle sync")
     test_local_dashboard_serves_hosted_bundle()
     print("PASS local dashboard hosted bundle")
+    test_install_launchagent_preserves_learning_datasets()
+    print("PASS runtime sync learning preservation")
     test_market_map_signal_respects_operator_daily_levels()
     print("PASS daily market map signal")
     test_effective_market_map_auto_maps_tracked_assets()

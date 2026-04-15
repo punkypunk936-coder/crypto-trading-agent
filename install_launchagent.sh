@@ -63,6 +63,10 @@ rsync -a \
   --exclude "state.json" \
   --exclude "trades_log.csv" \
   --exclude "trade_memory.json" \
+  --exclude "decision_dataset.jsonl" \
+  --exclude "feature_store.jsonl" \
+  --exclude "trade_dataset.jsonl" \
+  --exclude "precision_lab_report.json" \
   --exclude "control.json" \
   --exclude "dashboard_snapshot.json" \
   --exclude "KILL" \
