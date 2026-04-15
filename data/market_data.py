@@ -38,7 +38,7 @@ STALE_CACHE_TTL_SECONDS = 1800
 STALE_PRICE_TTL_SECONDS = 900
 
 
-def _hyperliquid_max_candle_staleness_seconds(coin: str) -> int:
+def _hyperliquid_max_candle_staleness_seconds(coin: str, interval: str) -> int:
     spec = get_hyperliquid_market_spec(coin)
     market_type = str((spec or {}).get("market_type") or "").lower()
     instrument_type = str((spec or {}).get("instrument_type") or "").lower()
@@ -47,13 +47,17 @@ def _hyperliquid_max_candle_staleness_seconds(coin: str) -> int:
         # Equity spot listings can gap between sessions, but if the venue has
         # not printed a fresh hourly candle in ~2 days we should treat that
         # market as inactive instead of backfilling from elsewhere.
-        return 48 * 3600
-    if instrument_type == "index":
-        return 12 * 3600
-    return 6 * 3600
+        base = 48 * 3600
+    elif instrument_type == "index":
+        base = 12 * 3600
+    else:
+        base = 6 * 3600
+
+    interval_seconds = max(3600, _interval_to_seconds(interval))
+    return max(base, int(interval_seconds * 2.0) + 1800)
 
 
-def _hyperliquid_frame_is_recent(coin: str, df: Optional[pd.DataFrame]) -> bool:
+def _hyperliquid_frame_is_recent(coin: str, interval: str, df: Optional[pd.DataFrame]) -> bool:
     if df is None or df.empty or "timestamp" not in df.columns:
         return False
     try:
@@ -61,7 +65,7 @@ def _hyperliquid_frame_is_recent(coin: str, df: Optional[pd.DataFrame]) -> bool:
     except Exception:
         return False
     age_seconds = max(0.0, time.time() - (last_ts.value / 1_000_000_000))
-    return age_seconds <= _hyperliquid_max_candle_staleness_seconds(coin)
+    return age_seconds <= _hyperliquid_max_candle_staleness_seconds(coin, interval)
 
 
 def _cache_price(key: str, price: float) -> None:
@@ -353,13 +357,13 @@ def fetch_candles(
                 })
 
             df = pd.DataFrame(rows).sort_values("timestamp").reset_index(drop=True)
-            if not _hyperliquid_frame_is_recent(coin_upper, df):
+            if not _hyperliquid_frame_is_recent(coin_upper, interval, df):
                 log.warning(
                     f"[{coin_upper}] Hyperliquid candle history for {hl_coin} is stale — "
                     "skipping until the venue prints fresh candles"
                 )
                 stale = _get_stale_frame(cache_key)
-                if stale is not None and _hyperliquid_frame_is_recent(coin_upper, stale):
+                if stale is not None and _hyperliquid_frame_is_recent(coin_upper, interval, stale):
                     log.info(f"[{coin_upper}] Reusing recent cached Hyperliquid candles while the venue recovers")
                     return stale
                 return None
@@ -369,7 +373,7 @@ def fetch_candles(
 
         log.warning(f"[{coin_upper}] Hyperliquid returned no candle data for {hl_coin}")
         stale = _get_stale_frame(cache_key)
-        if stale is not None and _hyperliquid_frame_is_recent(coin_upper, stale):
+        if stale is not None and _hyperliquid_frame_is_recent(coin_upper, interval, stale):
             log.info(f"[{coin_upper}] Reusing recent cached Hyperliquid candles after empty venue response")
             return stale
         return None
