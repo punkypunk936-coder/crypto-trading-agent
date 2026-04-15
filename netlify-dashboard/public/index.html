@@ -781,6 +781,12 @@
     text-transform: uppercase;
     margin-bottom: 2px;
   }
+  .decision-group-sub {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.4;
+    margin-bottom: 10px;
+  }
   .decision-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -794,6 +800,10 @@
   }
   .decision-card-tradable {
     background: rgba(255,255,255,0.035);
+  }
+  .decision-card-watch {
+    background: rgba(91,140,255,0.06);
+    border-color: rgba(91,140,255,0.14);
   }
   .decision-card-long {
     border-color: rgba(0,230,138,0.26);
@@ -1318,10 +1328,18 @@ function renderMarketMapSummary(summary, marketMap) {
   html += '<div class="market-map-grid">';
   coins.forEach((coin) => {
     const entry = entries[coin];
+    const signal = ((((latestState || {}).signals || {})[coin]) || {});
+    const isTradable = String(signal.execution_mode || 'observation_only') === 'tradable';
+    const modeLabel = isTradable ? 'TRADEABLE NOW' : 'OBSERVATION ONLY';
+    const modeClass = isTradable ? 'signal-mode-tradable' : 'signal-mode-watch';
+    const modeNote = isTradable
+      ? 'Live-eligible on the active venue, but still needs a qualified thesis and clean execution.'
+      : 'Tracked only until the active venue promotes it.';
     if (!entry) {
       html += '<div class="map-card map-card-empty">'
-        + '<div class="map-card-top"><div class="map-coin">' + esc(coin) + '</div><span class="review-chip">AUTO PENDING</span></div>'
+        + '<div class="map-card-top"><div class="map-coin">' + esc(coin) + '</div><div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;"><span class="' + modeClass + '">' + esc(modeLabel) + '</span><span class="review-chip">AUTO PENDING</span></div></div>'
         + '<div class="map-notes">No structure map is available yet for this asset. Add a manual override if you want custom levels immediately.</div>'
+        + '<div class="map-zone"><strong>Execution:</strong> ' + esc(modeNote) + '</div>'
         + '<div class="map-card-actions"><button class="tool-btn" onclick="editMarketMap(' + JSON.stringify(coin) + ')">OVERRIDE</button></div>'
         + '</div>';
       return;
@@ -1343,7 +1361,7 @@ function renderMarketMapSummary(summary, marketMap) {
       setupLine = 'Bearish bias, but the exact short trigger is still forming.';
     }
     html += '<div class="map-card">'
-      + '<div class="map-card-top"><div class="map-coin">' + esc(coin) + '</div><div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;"><span class="review-chip">' + esc(source === 'AUTO' ? 'AUTO MAP' : 'MANUAL') + '</span><span class="' + biasClass(entry.bias) + '">' + esc(String(entry.bias || 'NEUTRAL')) + '</span></div></div>'
+      + '<div class="map-card-top"><div class="map-coin">' + esc(coin) + '</div><div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;"><span class="' + modeClass + '">' + esc(modeLabel) + '</span><span class="review-chip">' + esc(source === 'AUTO' ? 'AUTO MAP' : 'MANUAL') + '</span><span class="' + biasClass(entry.bias) + '">' + esc(String(entry.bias || 'NEUTRAL')) + '</span></div></div>'
       + '<div class="map-levels">'
         + '<div class="map-level-row"><span>Support</span><strong>' + esc(support ? fmt(support) : csvText(entry.supports)) + '</strong></div>'
         + '<div class="map-level-row"><span>Resistance</span><strong>' + esc(resistance ? fmt(resistance) : csvText(entry.resistances)) + '</strong></div>'
@@ -1351,6 +1369,7 @@ function renderMarketMapSummary(summary, marketMap) {
         + '<div class="map-level-row"><span>Risk below</span><strong>' + esc(shortTrigger ? fmt(shortTrigger) : '--') + '</strong></div>'
         + '<div class="map-level-row"><span>Playbook</span><strong>' + esc(String(entry.trade_mode || '--')) + '</strong></div>'
       + '</div>'
+      + '<div class="map-zone"><strong>Execution:</strong> ' + esc(modeNote) + '</div>'
       + '<div class="map-zone"><strong>Daily take:</strong> ' + esc(setupLine) + '</div>'
       + '<div class="map-zone"><strong>Demand:</strong> ' + esc(zoneText(entry.demand_zone)) + ' • <strong>Supply:</strong> ' + esc(zoneText(entry.supply_zone)) + '</div>'
       + '<div class="map-notes"><strong>Map:</strong> ' + esc(shortText(entry.summary || entry.notes || 'No coin-specific notes yet.', 180)) + '</div>'
@@ -1423,18 +1442,31 @@ function renderLatestLesson(summary) {
 function renderActionBoard(board) {
   const meta = document.getElementById('action-board-meta');
   const body = document.getElementById('signals-body');
-  const items = Array.isArray((board || {}).items) ? board.items.filter((item) => item && item.tradable) : [];
+  const allItems = Array.isArray((board || {}).items) ? board.items.filter((item) => item) : [];
+  const tradableItems = Array.isArray((board || {}).tradable_items) ? board.tradable_items.filter((item) => item) : allItems.filter((item) => item.tradable);
+  const observationItems = Array.isArray((board || {}).observation_items) ? board.observation_items.filter((item) => item) : allItems.filter((item) => !item.tradable);
+  const summary = (board || {}).summary || {};
   const lead = (board || {}).lead || null;
-  if (!items.length) {
+  if (!allItems.length) {
     meta.textContent = 'No tracked setup yet.';
     body.innerHTML = '<div class="empty-state">Waiting for the first clean setup...</div>';
     return;
   }
-  meta.textContent = lead
-    ? 'Best setup right now: ' + lead.coin + ' • ' + lead.label
-    : 'Watching ' + items.length + ' tradable assets.';
-  body.innerHTML = '<div class="decision-board"><div class="decision-grid">'
-    + items.map((item) => {
+  const tradableCount = Number(summary.tradable_count || tradableItems.length || 0);
+  const observationCount = Number(summary.observation_count || observationItems.length || 0);
+  const activeTradableCount = Number(summary.active_tradable_count || 0);
+  const metaBits = [
+    'Tradable ' + tradableCount,
+    'Observation-only ' + observationCount,
+  ];
+  if (activeTradableCount > 0) metaBits.push('Actionable ' + activeTradableCount);
+  if (lead) metaBits.push('Best setup: ' + lead.coin + ' • ' + lead.label);
+  meta.textContent = metaBits.join(' • ');
+
+  let html = '<div class="decision-board">';
+  if (tradableItems.length) {
+    html += '<div><div class="decision-group-title">Tradable Now</div><div class="decision-group-sub">These names are live-eligible on the active venue right now.</div><div class="decision-grid">'
+    + tradableItems.map((item) => {
       const status = String(item.status || 'NO_SETUP');
       const highlight = status.includes('LONG')
         ? 'decision-card decision-card-tradable decision-card-long'
@@ -1443,19 +1475,36 @@ function renderActionBoard(board) {
           : 'decision-card decision-card-tradable';
       return '<div class="' + highlight + '">'
         + '<div class="decision-top">'
-          + '<div><div class="decision-coin">' + esc(item.coin) + '</div><div class="decision-meta">' + esc(item.tradable ? 'TRADEABLE' : 'WATCHLIST') + '</div></div>'
+          + '<div><div class="decision-coin">' + esc(item.coin) + '</div><div class="decision-meta">' + esc(item.mode_label || 'TRADEABLE NOW') + '</div></div>'
           + '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">'
+            + '<span class="signal-mode-tradable">' + esc(item.mode_label || 'TRADEABLE NOW') + '</span>'
             + '<span class="review-chip">' + esc(String(item.label || 'No setup').toUpperCase()) + '</span>'
             + '<span class="' + biasClass(item.bias) + '">' + esc(String(item.bias || 'NEUTRAL')) + '</span>'
           + '</div>'
         + '</div>'
         + '<div class="decision-note"><strong>Now:</strong> ' + esc(shortText(item.headline || 'No clear edge right now.', 140)) + '</div>'
+        + '<div class="decision-note"><strong>Entry status:</strong> ' + esc(shortText(item.execution_note || item.mode_detail || 'Still waiting for final entry checks.', 150)) + '</div>'
         + '<div class="decision-note"><strong>Trigger:</strong> ' + esc(shortText(item.trigger || 'Wait for a cleaner setup.', 140)) + '</div>'
         + '<div class="decision-note"><strong>Risk:</strong> ' + esc(shortText(item.risk || item.map_summary || 'Stay patient until the map and order-flow align.', 140)) + '</div>'
         + (item.map_summary ? '<div class="decision-rl-note"><strong>Daily view:</strong> ' + esc(shortText(item.map_summary, 130)) + '</div>' : '')
       + '</div>';
     }).join('')
     + '</div></div>';
+  } else {
+    html += '<div class="empty-state">No live-eligible assets right now. The agent is watching for the next tradable setup.</div>';
+  }
+
+  if (observationItems.length) {
+    html += '<div><div class="decision-group-title">Observation Only</div><div class="decision-group-sub">These names are still being read carefully, but execution is blocked until the active venue supports them cleanly.</div><div class="watchlist-strip">'
+      + observationItems.map((item) => '<div class="watchlist-row">'
+        + '<div class="watchlist-coin">' + esc(item.coin) + '</div>'
+        + '<div><span class="signal-mode-watch">' + esc(item.mode_label || 'OBSERVATION ONLY') + '</span></div>'
+        + '<div class="watchlist-note"><strong>' + esc(item.label || 'Watch') + ':</strong> ' + esc(shortText(item.execution_note || item.headline || item.mode_detail || 'Tracked only right now.', 140)) + (item.trigger ? ' • ' + esc(shortText(item.trigger, 90)) : '') + '</div>'
+      + '</div>').join('')
+      + '</div></div>';
+  }
+  html += '</div>';
+  body.innerHTML = html;
 }
 
 async function postJson(path, payload) {
@@ -1697,7 +1746,7 @@ async function refresh() {
       countBadge.className = 'open-count open-count-flat';
       openCard.className = 'card';
       const leadEmpty = actionBoard.lead
-        ? '<div style="margin-top:8px;"><strong>Best watch:</strong> ' + esc(actionBoard.lead.coin + ' • ' + actionBoard.lead.label) + ' — ' + esc(shortText(actionBoard.lead.trigger || actionBoard.lead.headline || 'Waiting for a cleaner setup.', 110)) + '</div>'
+        ? '<div style="margin-top:8px;"><strong>Best setup:</strong> ' + esc(actionBoard.lead.coin + ' • ' + actionBoard.lead.label) + ' — ' + esc(shortText(actionBoard.lead.execution_note || actionBoard.lead.trigger || actionBoard.lead.headline || 'Waiting for a cleaner setup.', 130)) + '</div>'
         : '<div style="margin-top:8px;">The agent is flat and waiting for a clean, high-conviction setup.</div>';
       openBody.innerHTML =
         '<div class="empty-state">' +

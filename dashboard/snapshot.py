@@ -158,7 +158,8 @@ def _pick_level(values: Any, *, prefer: str = "min", fallback: Any = None) -> fl
 
 
 def _primary_reason(text: Any) -> str:
-    parts = [str(part).strip() for part in str(text or "").split("·")]
+    normalized = str(text or "").replace("|", "·")
+    parts = [str(part).strip() for part in normalized.split("·")]
     preferred = [
         part
         for part in parts
@@ -222,6 +223,7 @@ def action_board(state: dict, market_map: dict) -> dict:
         pos = positions_by_coin.get(coin)
         map_entry = dict(entries.get(coin) or {})
         tradable = (sig.get("execution_mode") or "observation_only") == "tradable" or pos is not None
+        execution_mode = "tradable" if tradable else str(sig.get("execution_mode") or "observation_only")
         bias = str(
             sig.get("market_map_bias")
             or map_entry.get("bias")
@@ -260,6 +262,8 @@ def action_board(state: dict, market_map: dict) -> dict:
         score = _safe_float(sig.get("score") or 50.0)
         action = str(sig.get("action") or "FLAT").upper()
 
+        execution_note = ""
+
         if pos:
             direction = str(pos.get("direction") or "").upper() or action
             status = f"OPEN_{direction or 'LONG'}"
@@ -272,16 +276,31 @@ def action_board(state: dict, market_map: dict) -> dict:
                 if stop > 0 and target > 0
                 else "Trade is already open."
             )
+            execution_note = "Position is already open and under active management."
         elif action == "LONG":
             status = "READY_LONG"
-            label = "Long ready"
-            headline = _primary_reason(sig.get("decision_reason") or current_logic) or "Long setup is ready."
-            trigger = f"Entry is live now around {(_safe_float(sig.get('live_price')) or _safe_float(sig.get('price'))):,.2f}"
+            label = "Long thesis live"
+            headline = _primary_reason(sig.get("decision_reason") or current_logic) or "Long thesis is live."
+            trigger = (
+                f"Watching entry around {(_safe_float(sig.get('live_price')) or _safe_float(sig.get('price'))):,.2f} "
+                "once final entry checks stay clean."
+            )
+            if tradable:
+                execution_note = "The thesis qualifies, but the bot still waits for confirmation, sizing, and clean fills before sending the order."
+            else:
+                execution_note = "The thesis qualifies, but this market is still observation-only on the active venue."
         elif action == "SHORT":
             status = "READY_SHORT"
-            label = "Short ready"
-            headline = _primary_reason(sig.get("decision_reason") or current_logic) or "Short setup is ready."
-            trigger = f"Entry is live now around {(_safe_float(sig.get('live_price')) or _safe_float(sig.get('price'))):,.2f}"
+            label = "Short thesis live"
+            headline = _primary_reason(sig.get("decision_reason") or current_logic) or "Short thesis is live."
+            trigger = (
+                f"Watching entry around {(_safe_float(sig.get('live_price')) or _safe_float(sig.get('price'))):,.2f} "
+                "once final entry checks stay clean."
+            )
+            if tradable:
+                execution_note = "The thesis qualifies, but the bot still waits for confirmation, sizing, and clean fills before sending the order."
+            else:
+                execution_note = "The thesis qualifies, but this market is still observation-only on the active venue."
         elif bias == "BULLISH" and bool(sig.get("market_map_block_longs")) and long_trigger:
             status = "WAIT_RECLAIM"
             label = "Wait for reclaim"
@@ -291,6 +310,7 @@ def action_board(state: dict, market_map: dict) -> dict:
                 else f"Daily bias is bullish, but {map_summary}."
             )
             trigger = f"Long only after a reclaim above {long_trigger:,.2f}"
+            execution_note = "The higher-timeframe view is constructive, but the reclaim still has to confirm before the bot can buy."
         elif bias == "BEARISH" and bool(sig.get("market_map_block_shorts")) and short_trigger:
             status = "WAIT_BREAKDOWN"
             label = "Wait for breakdown"
@@ -300,6 +320,7 @@ def action_board(state: dict, market_map: dict) -> dict:
                 else f"Daily bias is bearish, but {map_summary}."
             )
             trigger = f"Short only after a breakdown below {short_trigger:,.2f}"
+            execution_note = "The higher-timeframe view is bearish, but the breakdown still has to confirm before the bot can short."
         elif bias == "BULLISH":
             status = "WATCH_LONG"
             label = "Bullish watch"
@@ -313,6 +334,7 @@ def action_board(state: dict, market_map: dict) -> dict:
                 if long_trigger
                 else "Wait for cleaner long confirmation."
             )
+            execution_note = "The agent is reading this as bullish context only. It still needs a qualified live thesis before any order can go out."
         elif bias == "BEARISH":
             status = "WATCH_SHORT"
             label = "Bearish watch"
@@ -326,11 +348,13 @@ def action_board(state: dict, market_map: dict) -> dict:
                 if short_trigger
                 else "Wait for cleaner short confirmation."
             )
+            execution_note = "The agent is reading this as bearish context only. It still needs a qualified live thesis before any order can go out."
         else:
             status = "NO_SETUP"
             label = "No setup"
             headline = blocker or "No clean edge right now."
             trigger = "Wait for structure and order-flow to agree."
+            execution_note = "No trade is allowed right now because the thesis is still incomplete."
 
         if status in {"WATCH_LONG", "WAIT_RECLAIM", "READY_LONG", "OPEN_LONG"} and support:
             risk = f"Risk if it loses {support:,.2f}"
@@ -339,15 +363,26 @@ def action_board(state: dict, market_map: dict) -> dict:
         else:
             risk = map_summary or ""
 
+        if tradable:
+            mode_label = "TRADEABLE NOW"
+            mode_detail = "This market can execute on the active venue, but the bot still needs final entry checks to clear."
+        else:
+            mode_label = "OBSERVATION ONLY"
+            mode_detail = "The agent is tracking this market, but execution is blocked on the active venue right now."
+
         items.append(
             {
                 "coin": coin,
                 "tradable": tradable,
+                "execution_mode": execution_mode,
+                "mode_label": mode_label,
+                "mode_detail": mode_detail,
                 "bias": bias,
                 "status": status,
                 "label": label,
                 "headline": headline,
                 "trigger": trigger,
+                "execution_note": execution_note,
                 "risk": risk,
                 "map_summary": map_summary,
                 "confidence": confidence,
@@ -364,10 +399,22 @@ def action_board(state: dict, market_map: dict) -> dict:
             str(item.get("coin") or ""),
         )
     )
+    tradable_items = [item for item in items if item.get("tradable")]
+    observation_items = [item for item in items if not item.get("tradable")]
     return {
         "updated_at": state.get("last_cycle"),
         "lead": items[0] if items else None,
         "items": items,
+        "tradable_items": tradable_items,
+        "observation_items": observation_items,
+        "summary": {
+            "tradable_count": len(tradable_items),
+            "observation_count": len(observation_items),
+            "active_tradable_count": sum(
+                1 for item in tradable_items
+                if str(item.get("status") or "") in {"OPEN_LONG", "OPEN_SHORT", "READY_LONG", "READY_SHORT"}
+            ),
+        },
     }
 
 
