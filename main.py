@@ -414,7 +414,7 @@ def run_preflight(args) -> int:
             config.exchange.hl_account_address,
         ])
         if live_mode and getattr(config.exchange, "hl_spot_execution_enabled", False):
-            warn("Hyperliquid spot execution is enabled; verify spot inventory/close handling before risking live capital")
+            ok("Hyperliquid live spot execution enabled for active long-only equities")
         if live_mode:
             if not hyperliquid_ready:
                 fail("Hyperliquid live credentials are incomplete; add HL_PRIVATE_KEY and HL_ACCOUNT_ADDRESS")

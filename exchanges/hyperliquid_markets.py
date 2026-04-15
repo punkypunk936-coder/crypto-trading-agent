@@ -108,7 +108,7 @@ _SPOT_MARKETS: Dict[str, Dict[str, Any]] = {
         "instrument_type": "equity",
         "shortable": False,
         "paper_tradeable": True,
-        "live_tradeable": False,
+        "live_tradeable": True,
         "display_name": "Apple",
     },
     "AMZN": {
@@ -118,7 +118,7 @@ _SPOT_MARKETS: Dict[str, Dict[str, Any]] = {
         "instrument_type": "equity",
         "shortable": False,
         "paper_tradeable": True,
-        "live_tradeable": False,
+        "live_tradeable": True,
         "display_name": "Amazon",
     },
     "GOOGL": {
@@ -128,7 +128,7 @@ _SPOT_MARKETS: Dict[str, Dict[str, Any]] = {
         "instrument_type": "equity",
         "shortable": False,
         "paper_tradeable": True,
-        "live_tradeable": False,
+        "live_tradeable": True,
         "display_name": "Alphabet",
     },
     "META": {
@@ -138,7 +138,7 @@ _SPOT_MARKETS: Dict[str, Dict[str, Any]] = {
         "instrument_type": "equity",
         "shortable": False,
         "paper_tradeable": True,
-        "live_tradeable": False,
+        "live_tradeable": True,
         "display_name": "Meta",
     },
     "MSFT": {
@@ -148,7 +148,7 @@ _SPOT_MARKETS: Dict[str, Dict[str, Any]] = {
         "instrument_type": "equity",
         "shortable": False,
         "paper_tradeable": True,
-        "live_tradeable": False,
+        "live_tradeable": True,
         "display_name": "Microsoft",
     },
     "TSLA": {
@@ -158,7 +158,7 @@ _SPOT_MARKETS: Dict[str, Dict[str, Any]] = {
         "instrument_type": "equity",
         "shortable": False,
         "paper_tradeable": True,
-        "live_tradeable": False,
+        "live_tradeable": True,
         "display_name": "Tesla",
     },
 }

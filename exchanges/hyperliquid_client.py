@@ -7,9 +7,8 @@ SDK: hyperliquid-python-sdk (pip install hyperliquid-python-sdk)
 
 Execution semantics:
   - perps are fully supported live
-  - spot equities are wired into paper-trading + analysis now
-  - live spot execution remains disabled by default until the agent has a
-    dedicated spot inventory/close path
+  - spot equities are supported as an opt-in long-only live lane
+  - active-market gating still decides which live spot names are eligible
 """
 
 from typing import Any, Optional

@@ -335,6 +335,29 @@ def test_inactive_hyperliquid_symbols_stay_out_of_tradeable_universe() -> None:
         main_module.get_hyperliquid_supported_coins = original_supported
 
 
+def test_live_spot_opt_in_includes_active_equities_in_supported_universe() -> None:
+    cfg = build_config()
+    cfg.trading.dry_run = False
+    cfg.exchange.use_lighter = False
+    cfg.exchange.use_hyperliquid = True
+    cfg.exchange.hl_spot_execution_enabled = True
+    original_config = main_module.config
+    original_supported = main_module.get_hyperliquid_supported_coins
+    main_module.config = cfg
+    try:
+        def fake_supported(*, include_spot=True, live_tradeable_only=False, active_only=False):
+            assert include_spot is True
+            assert live_tradeable_only is False
+            return ["BTC", "AMZN", "META"]
+
+        main_module.get_hyperliquid_supported_coins = fake_supported
+        supported = main_module.configured_supported_coins(dry_run_mode=False)
+        assert supported == ["AMZN", "BTC", "META"]
+    finally:
+        main_module.config = original_config
+        main_module.get_hyperliquid_supported_coins = original_supported
+
+
 def test_lighter_promotes_growth_and_macro_symbols_into_tradeable_universe() -> None:
     cfg = build_config()
     cfg.exchange.use_lighter = True
@@ -3437,6 +3460,8 @@ def run_all() -> None:
     print("PASS watchlist promotion")
     test_inactive_hyperliquid_symbols_stay_out_of_tradeable_universe()
     print("PASS active market filtering")
+    test_live_spot_opt_in_includes_active_equities_in_supported_universe()
+    print("PASS live spot opt-in universe")
     test_lighter_promotes_growth_and_macro_symbols_into_tradeable_universe()
     print("PASS lighter universe expansion")
     test_dynamic_trade_plan_is_attached_to_signal()
