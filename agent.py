@@ -829,7 +829,13 @@ class TradingAgent:
             "execution_persistence_cycles": 0,
             "execution_mode":  "tradable" if coin in self._tradable_coin_set else "observation_only",
         }
-        self._apply_analog_context(coin, signal, current_pos)
+        self._apply_analog_context(
+            coin,
+            signal,
+            current_pos,
+            orderbook_signal=orderbook_signal,
+            market_map_signal=market_map_signal,
+        )
 
         mtf_allows_signal = True
         if self.cfg.trading.use_mtf and (current_pos or signal.action != "FLAT"):
@@ -1492,7 +1498,15 @@ class TradingAgent:
             "trade_plan": trade_plan,
         })
 
-    def _apply_analog_context(self, coin: str, signal, current_position: str | None):
+    def _apply_analog_context(
+        self,
+        coin: str,
+        signal,
+        current_position: str | None,
+        *,
+        orderbook_signal=None,
+        market_map_signal=None,
+    ):
         snap = dict(self._last_signals.get(coin, {}) or {})
         candidate_action = signal.action if signal.action in {"LONG", "SHORT"} else str(
             (getattr(signal, "thesis", {}) or {}).get("candidate_action", snap.get("thesis_candidate_action", "FLAT"))
@@ -1539,9 +1553,61 @@ class TradingAgent:
                 signal.action = "FLAT"
                 signal.flat_reason = flat_reason
                 signal.reason = flat_reason
+            else:
+                self._apply_precision_analog_guard(
+                    coin,
+                    signal,
+                    orderbook_signal=orderbook_signal,
+                    market_map_signal=market_map_signal,
+                )
 
         self._sync_signal_snapshot(coin, signal)
         return analog
+
+    def _apply_precision_analog_guard(self, coin: str, signal, *, orderbook_signal=None, market_map_signal=None) -> None:
+        if not getattr(self.cfg.trading, "precision_mode_enabled", False):
+            return
+        if signal.action not in {"LONG", "SHORT"}:
+            return
+
+        snap = dict(self._last_signals.get(coin, {}) or {})
+        sample_size = int(snap.get("analog_sample_size", 0) or 0)
+        reliability = float(snap.get("analog_reliability", 0.0) or 0.0)
+        win_rate = float(snap.get("analog_win_rate", 0.0) or 0.0)
+        hard_block = bool(snap.get("analog_hard_block", False))
+        adverse = bool(snap.get("analog_adverse", False))
+        summary = str(snap.get("analog_summary", "") or "").strip()
+
+        min_samples = int(getattr(self.cfg.trading, "precision_min_analog_samples", 3) or 3)
+        min_reliability = float(getattr(self.cfg.trading, "precision_min_analog_reliability", 0.50) or 0.50)
+        min_win_rate = float(getattr(self.cfg.trading, "precision_min_analog_win_rate", 0.60) or 0.60)
+
+        if hard_block:
+            reason = summary or "historical analogs hard-block the setup"
+        elif sample_size >= min_samples and reliability >= min_reliability and (adverse or win_rate < min_win_rate):
+            reason = summary or (
+                f"analog history only wins {win_rate * 100:.0f}% with "
+                f"{sample_size} close matches"
+            )
+        else:
+            allowed, precision_reason = self.strategy._passes_precision_mode(
+                coin=coin,
+                action=signal.action,
+                confidence=getattr(signal, "confidence", "LOW"),
+                thesis=getattr(signal, "thesis", {}) or {},
+                expectancy=getattr(signal, "expectancy", {}) or {},
+                trade_plan=getattr(signal, "trade_plan", {}) or {},
+                orderbook_signal=orderbook_signal,
+                market_map_signal=market_map_signal,
+            )
+            if allowed:
+                return
+            reason = precision_reason or "setup did not clear precision mode"
+
+        log.info(f"[{coin}] 🎯 Precision gate keeps {signal.action} flat: {reason}")
+        signal.action = "FLAT"
+        signal.flat_reason = reason
+        signal.reason = reason
 
     def _record_decision_snapshot(
         self,

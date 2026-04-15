@@ -275,6 +275,28 @@ class TradingConfig:
     analog_expected_r_adjustment_cap: float = 0.12
     analog_uncertainty_adjustment_cap: float = 0.08
 
+    # ── Precision mode: trade less, but only on elite setups ───────────────
+    # This layer exists to optimize top-trade precision, not activity.
+    precision_mode_enabled: bool = True
+    precision_min_confidence: str = "HIGH"
+    precision_min_thesis_quality: str = "MEDIUM"
+    precision_min_expectancy_probability: float = 0.90
+    precision_min_expected_r: float = 0.30
+    precision_max_uncertainty: float = 0.24
+    precision_min_risk_reward_ratio: float = 1.90
+    precision_require_confirmed_breakout: bool = True
+    precision_allow_support_defense_longs: bool = True
+    precision_require_market_map_alignment: bool = False
+    precision_min_long_orderbook_score: float = 68.0
+    precision_max_short_orderbook_score: float = 38.0
+    precision_min_analog_samples: int = 3
+    precision_min_analog_reliability: float = 0.50
+    precision_min_analog_win_rate: float = 0.60
+    precision_coin_direction_embargoes: List[str] = field(default_factory=lambda: [
+        "SP500:SHORT",
+        "TAO:LONG",
+    ])
+
     # ── Visual chart confirmation ────────────────────────
     # When enabled, borderline signals (score 38–62) are confirmed by
     # sending a chart screenshot to Claude's vision API before trading.

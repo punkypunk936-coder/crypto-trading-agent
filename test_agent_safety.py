@@ -28,6 +28,7 @@ import feature_store as feature_store_module
 import hosted_state_sync as hosted_state_sync_module
 import main as main_module
 import market_map as market_map_module
+import precision_lab as precision_lab_module
 from data import market_data as market_data_module
 from indicators import news as news_module
 from indicators import orderbook_levels as orderbook_levels_module
@@ -112,6 +113,7 @@ def build_config() -> Config:
     cfg.trading.min_trade_usd = 100.0
     cfg.trading.use_news = False
     cfg.trading.use_narrative_gate = False
+    cfg.trading.precision_mode_enabled = False
     return cfg
 
 
@@ -2898,6 +2900,251 @@ def test_agent_apply_analog_context_can_flatten_bad_setup() -> None:
     assert live._last_signals["BTC"]["analog_verdict"] == "HARD_BLOCK"
 
 
+def test_precision_mode_blocks_embargoed_coin_direction() -> None:
+    cfg = build_config()
+    cfg.trading.precision_mode_enabled = True
+    strategy = AggressiveStrategy(cfg.trading, cfg.indicators)
+    allowed, reason = strategy._passes_precision_mode(
+        coin="SP500",
+        action="SHORT",
+        confidence="HIGH",
+        thesis={
+            "quality": "HIGH",
+            "confirmed_breakout": True,
+            "persistent_breakout": False,
+            "support_defense_long": False,
+        },
+        expectancy={
+            "probability": 0.94,
+            "expected_r": 0.62,
+            "uncertainty": 0.18,
+        },
+        trade_plan={"risk_reward_ratio": 2.4},
+        orderbook_signal=SimpleNamespace(valid=True, score=24.0),
+        market_map_signal=SimpleNamespace(valid=True, favor_shorts=True),
+    )
+    assert allowed is False, "embargoed coin-direction families should never pass precision mode"
+    assert "embargoed" in reason
+
+
+def test_precision_mode_allows_elite_breakout_long() -> None:
+    cfg = build_config()
+    cfg.trading.precision_mode_enabled = True
+    strategy = AggressiveStrategy(cfg.trading, cfg.indicators)
+    allowed, reason = strategy._passes_precision_mode(
+        coin="BTC",
+        action="LONG",
+        confidence="HIGH",
+        thesis={
+            "quality": "MEDIUM",
+            "confirmed_breakout": True,
+            "persistent_breakout": False,
+            "support_defense_long": False,
+        },
+        expectancy={
+            "probability": 0.93,
+            "expected_r": 0.54,
+            "uncertainty": 0.18,
+        },
+        trade_plan={"risk_reward_ratio": 2.2},
+        orderbook_signal=SimpleNamespace(valid=True, score=74.0),
+        market_map_signal=SimpleNamespace(valid=True, favor_longs=True),
+    )
+    assert allowed is True, f"elite breakout long should pass precision mode, got: {reason}"
+
+
+def test_precision_lab_collapses_repeated_rows_and_flags_toxic_families() -> None:
+    now = time.time() - 7200
+    rows = [
+        {
+            "decision_id": "spx-1",
+            "coin": "SP500",
+            "recorded_at_ts": now,
+            "final_action": "SHORT",
+            "signal_snapshot": {
+                "planned_risk_pct": 1.0,
+                "planned_reward_pct": 2.5,
+                "planned_risk_reward_ratio": 2.5,
+                "expectancy_probability": 0.94,
+                "expectancy_uncertainty": 0.18,
+                "expectancy_score": 72.0,
+                "orderbook_score": 24.0,
+                "confidence": "HIGH",
+                "thesis_quality": "HIGH",
+                "orderbook_breakout_state": "confirmed_bearish_breakdown",
+                "orderbook_interaction": "at_resistance",
+                "dominant_regime": "momentum",
+                "instrument_type": "index",
+            },
+        },
+        {
+            "decision_id": "spx-dup",
+            "coin": "SP500",
+            "recorded_at_ts": now + 300,
+            "final_action": "SHORT",
+            "signal_snapshot": {
+                "planned_risk_pct": 1.0,
+                "planned_reward_pct": 2.5,
+                "planned_risk_reward_ratio": 2.5,
+                "expectancy_probability": 0.94,
+                "expectancy_uncertainty": 0.18,
+                "expectancy_score": 72.0,
+                "orderbook_score": 24.0,
+                "confidence": "HIGH",
+                "thesis_quality": "HIGH",
+                "orderbook_breakout_state": "confirmed_bearish_breakdown",
+                "orderbook_interaction": "at_resistance",
+                "dominant_regime": "momentum",
+                "instrument_type": "index",
+            },
+        },
+        {
+            "decision_id": "spx-2",
+            "coin": "SP500",
+            "recorded_at_ts": now + 2400,
+            "final_action": "SHORT",
+            "signal_snapshot": {
+                "planned_risk_pct": 1.0,
+                "planned_reward_pct": 2.5,
+                "planned_risk_reward_ratio": 2.5,
+                "expectancy_probability": 0.93,
+                "expectancy_uncertainty": 0.18,
+                "expectancy_score": 71.0,
+                "orderbook_score": 26.0,
+                "confidence": "HIGH",
+                "thesis_quality": "HIGH",
+                "orderbook_breakout_state": "confirmed_bearish_breakdown",
+                "orderbook_interaction": "at_resistance",
+                "dominant_regime": "momentum",
+                "instrument_type": "index",
+            },
+        },
+        {
+            "decision_id": "spx-3",
+            "coin": "SP500",
+            "recorded_at_ts": now + 4800,
+            "final_action": "SHORT",
+            "signal_snapshot": {
+                "planned_risk_pct": 1.0,
+                "planned_reward_pct": 2.5,
+                "planned_risk_reward_ratio": 2.5,
+                "expectancy_probability": 0.92,
+                "expectancy_uncertainty": 0.18,
+                "expectancy_score": 70.0,
+                "orderbook_score": 25.0,
+                "confidence": "HIGH",
+                "thesis_quality": "HIGH",
+                "orderbook_breakout_state": "confirmed_bearish_breakdown",
+                "orderbook_interaction": "at_resistance",
+                "dominant_regime": "momentum",
+                "instrument_type": "index",
+            },
+        },
+        {
+            "decision_id": "btc-1",
+            "coin": "BTC",
+            "recorded_at_ts": now + 6000,
+            "final_action": "LONG",
+            "signal_snapshot": {
+                "planned_risk_pct": 0.5,
+                "planned_reward_pct": 1.5,
+                "planned_risk_reward_ratio": 3.0,
+                "expectancy_probability": 0.95,
+                "expectancy_uncertainty": 0.14,
+                "expectancy_score": 78.0,
+                "orderbook_score": 76.0,
+                "confidence": "HIGH",
+                "thesis_quality": "MEDIUM",
+                "orderbook_breakout_state": "confirmed_bullish_breakout",
+                "orderbook_interaction": "at_support",
+                "dominant_regime": "breakout",
+                "instrument_type": "crypto",
+            },
+        },
+        {
+            "decision_id": "btc-dup",
+            "coin": "BTC",
+            "recorded_at_ts": now + 6180,
+            "final_action": "LONG",
+            "signal_snapshot": {
+                "planned_risk_pct": 0.5,
+                "planned_reward_pct": 1.5,
+                "planned_risk_reward_ratio": 3.0,
+                "expectancy_probability": 0.95,
+                "expectancy_uncertainty": 0.14,
+                "expectancy_score": 78.0,
+                "orderbook_score": 76.0,
+                "confidence": "HIGH",
+                "thesis_quality": "MEDIUM",
+                "orderbook_breakout_state": "confirmed_bullish_breakout",
+                "orderbook_interaction": "at_support",
+                "dominant_regime": "breakout",
+                "instrument_type": "crypto",
+            },
+        },
+    ]
+
+    original_fetch = precision_lab_module.fetch_candles
+    try:
+        def fake_fetch(coin: str, interval: str = "5m", lookback: int = 100):
+            timestamps = pd.to_datetime(
+                [
+                    now - 300,
+                    now,
+                    now + 300,
+                    now + 2400,
+                    now + 2700,
+                    now + 4800,
+                    now + 5100,
+                    now + 6000,
+                    now + 6300,
+                ],
+                unit="s",
+                utc=True,
+            )
+            if coin == "SP500":
+                return pd.DataFrame({
+                    "timestamp": timestamps,
+                    "open": [100.0] * len(timestamps),
+                    "high": [101.6] * len(timestamps),
+                    "low": [99.8] * len(timestamps),
+                    "close": [101.2] * len(timestamps),
+                    "volume": [1.0] * len(timestamps),
+                })
+            return pd.DataFrame({
+                "timestamp": timestamps,
+                "open": [100.0] * len(timestamps),
+                "high": [100.5] * len(timestamps),
+                "low": [99.85] * len(timestamps),
+                "close": [100.3] * len(timestamps),
+                "volume": [1.0] * len(timestamps),
+            })
+
+        precision_lab_module.fetch_candles = fake_fetch
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            data_dir = Path(tmpdir)
+            dataset_path = data_dir / "decision_dataset.jsonl"
+            dataset_path.write_text(
+                "\n".join(json.dumps(row) for row in rows) + "\n",
+                encoding="utf-8",
+            )
+            report = precision_lab_module.build_report(
+                data_dir=data_dir,
+                target_r=0.25,
+                horizon_minutes=180,
+                interval="5m",
+                dedupe_minutes=30,
+            )
+
+        assert report["episodes"] == 4, "repeated cycles should collapse into setup episodes"
+        assert report["labeled_episodes"] == 4
+        toxic = {item["family"] for item in report["toxic_families"]}
+        assert "SP500:SHORT" in toxic, "repeated losing setup family should be flagged as toxic"
+    finally:
+        precision_lab_module.fetch_candles = original_fetch
+
+
 def run_all() -> None:
     test_checkpoint_recovery()
     print("PASS checkpoint recovery")
@@ -3011,6 +3258,12 @@ def run_all() -> None:
     print("PASS historical analog engine")
     test_agent_apply_analog_context_can_flatten_bad_setup()
     print("PASS analog integration flattening")
+    test_precision_mode_blocks_embargoed_coin_direction()
+    print("PASS precision-mode embargo")
+    test_precision_mode_allows_elite_breakout_long()
+    print("PASS precision-mode elite breakout")
+    test_precision_lab_collapses_repeated_rows_and_flags_toxic_families()
+    print("PASS precision lab replay")
 
 
 if __name__ == "__main__":

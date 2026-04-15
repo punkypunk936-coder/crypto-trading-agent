@@ -33,6 +33,136 @@ class AggressiveStrategy:
         self.icfg = indicator_cfg
 
     @staticmethod
+    def _label_rank(value: str, ordering: Tuple[str, ...], default: int = 0) -> int:
+        text = str(value or "").strip().upper()
+        try:
+            return ordering.index(text)
+        except ValueError:
+            return default
+
+    def _coin_direction_embargoed(self, coin: str, action: str) -> bool:
+        key = f"{str(coin or '').upper()}:{str(action or '').upper()}"
+        entries = {
+            str(item or "").strip().upper()
+            for item in (getattr(self.tcfg, "precision_coin_direction_embargoes", []) or [])
+            if str(item or "").strip()
+        }
+        return key in entries
+
+    def _passes_precision_mode(
+        self,
+        *,
+        coin: str,
+        action: str,
+        confidence: str,
+        thesis: Dict | None = None,
+        expectancy: Dict | None = None,
+        trade_plan: Dict | None = None,
+        orderbook_signal=None,
+        market_map_signal=None,
+    ) -> tuple[bool, str]:
+        if not getattr(self.tcfg, "precision_mode_enabled", False):
+            return True, ""
+        if action not in {"LONG", "SHORT"}:
+            return True, ""
+
+        thesis = dict(thesis or {})
+        expectancy = dict(expectancy or {})
+        trade_plan = dict(trade_plan or {})
+        blockers: List[str] = []
+        bullish = action == "LONG"
+
+        if self._coin_direction_embargoed(coin, action):
+            blockers.append(f"{coin} {action} is embargoed until its recent edge improves")
+
+        confidence_rank = self._label_rank(confidence, ("LOW", "MEDIUM", "HIGH"))
+        min_confidence_rank = self._label_rank(
+            getattr(self.tcfg, "precision_min_confidence", "HIGH"),
+            ("LOW", "MEDIUM", "HIGH"),
+        )
+        if confidence_rank < min_confidence_rank:
+            blockers.append(
+                f"precision mode needs {str(getattr(self.tcfg, 'precision_min_confidence', 'HIGH')).lower()} confidence"
+            )
+
+        thesis_quality_rank = self._label_rank(
+            thesis.get("quality", "LOW"),
+            ("LOW", "MEDIUM", "HIGH"),
+        )
+        min_thesis_quality_rank = self._label_rank(
+            getattr(self.tcfg, "precision_min_thesis_quality", "MEDIUM"),
+            ("LOW", "MEDIUM", "HIGH"),
+        )
+        if thesis_quality_rank < min_thesis_quality_rank:
+            blockers.append("thesis quality is not strong enough for precision mode")
+
+        probability = float(expectancy.get("probability", 0.0) or 0.0)
+        min_probability = float(getattr(self.tcfg, "precision_min_expectancy_probability", 0.90) or 0.90)
+        if probability < min_probability:
+            blockers.append(f"estimated win probability {probability * 100:.0f}% is below precision minimum")
+
+        expected_r = float(expectancy.get("expected_r", 0.0) or 0.0)
+        min_expected_r = float(getattr(self.tcfg, "precision_min_expected_r", 0.30) or 0.30)
+        if expected_r < min_expected_r:
+            blockers.append(f"expected value {expected_r:+.2f}R is too thin for precision mode")
+
+        uncertainty = float(expectancy.get("uncertainty", 1.0) or 1.0)
+        max_uncertainty = float(getattr(self.tcfg, "precision_max_uncertainty", 0.24) or 0.24)
+        if uncertainty > max_uncertainty:
+            blockers.append(f"uncertainty {uncertainty * 100:.0f}% is above the precision cap")
+
+        rr = float(trade_plan.get("risk_reward_ratio", 0.0) or 0.0)
+        min_rr = float(getattr(self.tcfg, "precision_min_risk_reward_ratio", 1.90) or 1.90)
+        if rr <= 0 or rr < min_rr:
+            blockers.append(f"planned R:R {rr:.2f} is below the precision minimum")
+
+        confirmed_breakout = bool(thesis.get("confirmed_breakout", False))
+        persistent_breakout = bool(thesis.get("persistent_breakout", False))
+        support_defense_long = bool(thesis.get("support_defense_long", False))
+        if getattr(self.tcfg, "precision_require_confirmed_breakout", True):
+            has_precision_trigger = confirmed_breakout or persistent_breakout
+            if bullish and getattr(self.tcfg, "precision_allow_support_defense_longs", True):
+                has_precision_trigger = has_precision_trigger or support_defense_long
+            if not has_precision_trigger:
+                blockers.append("precision mode only permits confirmed breakout or reclaimed-support setups")
+
+        if orderbook_signal and getattr(orderbook_signal, "valid", False):
+            orderbook_score = float(getattr(orderbook_signal, "score", 50.0) or 50.0)
+            if bullish:
+                min_book = float(getattr(self.tcfg, "precision_min_long_orderbook_score", 68.0) or 68.0)
+                if orderbook_score < min_book and not support_defense_long:
+                    blockers.append(f"orderbook score {orderbook_score:.0f} is too weak for an elite long")
+            else:
+                max_book = float(getattr(self.tcfg, "precision_max_short_orderbook_score", 38.0) or 38.0)
+                if orderbook_score > max_book:
+                    blockers.append(f"orderbook score {orderbook_score:.0f} is too strong against the short")
+        else:
+            blockers.append("precision mode requires valid orderbook context")
+
+        if getattr(self.tcfg, "precision_require_market_map_alignment", False):
+            if not market_map_signal or not getattr(market_map_signal, "valid", False):
+                blockers.append("daily map alignment is missing")
+            elif bullish:
+                if not (
+                    getattr(market_map_signal, "favor_longs", False)
+                    or support_defense_long
+                    or confirmed_breakout
+                    or persistent_breakout
+                ):
+                    blockers.append("daily market map is not backing the long")
+            else:
+                if not (
+                    getattr(market_map_signal, "favor_shorts", False)
+                    or confirmed_breakout
+                    or persistent_breakout
+                ):
+                    blockers.append("daily market map is not backing the short")
+
+        if blockers:
+            return False, blockers[0]
+        return True, ""
+
+    @staticmethod
     def _bullish_candle_context(patterns) -> bool:
         names = set(getattr(patterns, "patterns", []) or [])
         return bool(names & {
@@ -211,6 +341,10 @@ class AggressiveStrategy:
             "state": "NO_TRADE",
             "permitted": False,
             "quality": "LOW",
+            "archetype": "NONE",
+            "support_defense_long": False,
+            "confirmed_breakout": False,
+            "persistent_breakout": False,
             "alignment_points": 0.0,
             "conflict_points": 0.0,
             "conviction_score": 50.0,
@@ -518,10 +652,20 @@ class AggressiveStrategy:
                 )
             state = "NO_TRADE"
 
+        archetype = "DIRECTIONAL_CONTINUATION"
+        if support_defense_long:
+            archetype = "SUPPORT_DEFENSE_LONG"
+        elif confirmed_breakout or persistent_breakout:
+            archetype = "BREAKOUT_CONTINUATION"
+
         thesis.update({
             "state": state,
             "permitted": permitted,
             "quality": quality,
+            "archetype": archetype,
+            "support_defense_long": bool(support_defense_long),
+            "confirmed_breakout": bool(confirmed_breakout),
+            "persistent_breakout": bool(persistent_breakout),
             "alignment_points": round(alignment, 2),
             "conflict_points": round(conflicts, 2),
             "conviction_score": round(conviction_score, 2),
@@ -1426,6 +1570,10 @@ class AggressiveStrategy:
             "state": "NO_TRADE",
             "permitted": action in ("LONG", "SHORT"),
             "quality": confidence,
+            "archetype": "NONE",
+            "support_defense_long": False,
+            "confirmed_breakout": False,
+            "persistent_breakout": False,
             "alignment_points": 0.0,
             "conflict_points": 0.0,
             "conviction_score": round(distance * 2.0, 2),
@@ -1513,13 +1661,35 @@ class AggressiveStrategy:
                 trade_plan = {}
                 execution_plan = {}
             else:
-                execution_plan = self._build_execution_plan(
+                precision_allowed, precision_reason = self._passes_precision_mode(
+                    coin=tech.coin,
                     action=candidate_action,
-                    entry_price=float(trade_plan.get("entry_price", tech.price) or tech.price),
-                    trade_plan=trade_plan,
+                    confidence=confidence,
+                    thesis=thesis,
                     expectancy=expectancy,
+                    trade_plan=trade_plan,
                     orderbook_signal=orderbook_signal,
+                    market_map_signal=market_map_signal,
                 )
+                if not precision_allowed:
+                    action = "FLAT"
+                    thesis_guard_reason = precision_reason
+                    sl_price = 0.0
+                    tp_price = 0.0
+                    trade_plan = {}
+                    execution_plan = {}
+                    thesis["precision_blocked"] = True
+                    thesis["precision_summary"] = precision_reason
+                else:
+                    thesis["precision_blocked"] = False
+                    thesis["precision_summary"] = ""
+                    execution_plan = self._build_execution_plan(
+                        action=candidate_action,
+                        entry_price=float(trade_plan.get("entry_price", tech.price) or tech.price),
+                        trade_plan=trade_plan,
+                        expectancy=expectancy,
+                        orderbook_signal=orderbook_signal,
+                    )
         elif candidate_action == "FLAT":
             thesis["permitted"] = False
             thesis["quality"] = "LOW"
