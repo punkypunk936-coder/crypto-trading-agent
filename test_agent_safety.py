@@ -1492,6 +1492,7 @@ def test_live_config_validation_requires_notifications() -> None:
 def test_live_promotion_gate_blocks_weak_metrics() -> None:
     cfg = build_config()
     cfg.trading.live_promotion_gate_enabled = True
+    cfg.trading.challenger_model_enabled = False
     cfg.trading.live_promotion_min_closed_trades = 4
     cfg.trading.live_promotion_lookback_closed_trades = 4
     cfg.trading.live_promotion_min_win_rate = 0.75
@@ -1525,6 +1526,7 @@ def test_live_promotion_gate_blocks_weak_metrics() -> None:
 def test_live_promotion_gate_passes_strong_metrics() -> None:
     cfg = build_config()
     cfg.trading.live_promotion_gate_enabled = True
+    cfg.trading.challenger_model_enabled = False
     cfg.trading.live_promotion_min_closed_trades = 4
     cfg.trading.live_promotion_lookback_closed_trades = 4
     cfg.trading.live_promotion_min_win_rate = 0.50
@@ -1552,6 +1554,66 @@ def test_live_promotion_gate_passes_strong_metrics() -> None:
         assert gate["trade_metrics"]["win_rate"] >= 0.50
     finally:
         promotion_gate_module.trade_dataset.load_closed_trades = original_load
+        promotion_gate_module._ensure_precision_report = original_report
+
+
+def test_trade_dataset_backfills_from_csv_history() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        data_dir = Path(tmpdir)
+        csv_path = data_dir / "trades_log.csv"
+        csv_path.write_text(
+            "\n".join([
+                ",".join(trade_logger_module.HEADERS),
+                "1,BTC,LONG,2026-04-01 02:03,2026-04-01 02:09,6.0,67788.0,67888.0,225.0,2,3.32,1.47,66000,69000,take_profit,71.0,WIN",
+                "2,ETH,SHORT,2026-04-01 04:00,2026-04-01 04:30,30.0,2000.0,2020.0,150.0,2,-1.50,-1.00,2100,1900,conviction_lost,33.0,LOSS",
+            ]),
+            encoding="utf-8",
+        )
+
+        rows = trade_dataset_module.load_closed_trades(data_dir=data_dir, backfill_from_csv=True)
+        assert len(rows) == 2
+        assert {row["coin"] for row in rows} == {"BTC", "ETH"}
+        assert (data_dir / "trade_dataset.jsonl").exists(), "backfill should create the structured dataset"
+
+
+def test_live_promotion_gate_uses_csv_backfill_history() -> None:
+    cfg = build_config()
+    cfg.trading.live_promotion_gate_enabled = True
+    cfg.trading.challenger_model_enabled = False
+    cfg.trading.live_promotion_min_closed_trades = 2
+    cfg.trading.live_promotion_lookback_closed_trades = 2
+    cfg.trading.live_promotion_min_win_rate = 0.50
+    cfg.trading.live_promotion_min_avg_pnl_pct = 0.05
+    cfg.trading.live_promotion_min_profit_factor = 1.05
+    cfg.trading.live_promotion_min_precision_samples = 2
+    cfg.trading.live_promotion_min_precision_win_rate = 0.50
+
+    original_resolve = promotion_gate_module.trade_dataset.resolve_richest_history_data_dir
+    original_report = promotion_gate_module._ensure_precision_report
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            data_dir = Path(tmpdir)
+            (data_dir / "trades_log.csv").write_text(
+                "\n".join([
+                    ",".join(trade_logger_module.HEADERS),
+                    "1,BTC,LONG,2026-04-01 02:03,2026-04-01 02:09,6.0,67788.0,67888.0,225.0,2,3.32,1.47,66000,69000,take_profit,71.0,WIN",
+                    "2,ETH,SHORT,2026-04-01 04:00,2026-04-01 04:30,30.0,2000.0,1990.0,150.0,2,0.75,0.50,2100,1900,take_profit,67.0,WIN",
+                ]),
+                encoding="utf-8",
+            )
+            promotion_gate_module.trade_dataset.resolve_richest_history_data_dir = lambda preferred=None: data_dir
+            promotion_gate_module._ensure_precision_report = lambda *_args, **_kwargs: ({
+                "labeled_episodes": 4,
+                "overall_win_rate": 0.75,
+                "best_rules": [{"win_rate": 0.75, "samples": 4}],
+            }, data_dir / "precision_lab_report.json")
+
+            gate = promotion_gate_module.evaluate_live_promotion(cfg, data_dir)
+            assert gate["passed"] is True
+            assert gate["trade_metrics"]["closed_trades"] == 2
+            assert gate["history_source"]["backfilled_trade_rows"] == 2
+    finally:
+        promotion_gate_module.trade_dataset.resolve_richest_history_data_dir = original_resolve
         promotion_gate_module._ensure_precision_report = original_report
 
 

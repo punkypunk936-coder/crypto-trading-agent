@@ -134,7 +134,8 @@ class HistoricalAnalogEngine:
         self._cache_rows: list[dict] = []
 
     def _load_trade_rows(self) -> list[dict]:
-        dataset_path = TRADE_DATASET_JSONL
+        history_dir = trade_dataset.resolve_richest_history_data_dir()
+        dataset_path = history_dir / TRADE_DATASET_JSONL.name
         try:
             mtime = dataset_path.stat().st_mtime if dataset_path.exists() else None
         except Exception:
@@ -142,7 +143,14 @@ class HistoricalAnalogEngine:
         if mtime == self._cache_mtime and self._cache_rows:
             return list(self._cache_rows)
 
-        rows = trade_dataset.load_closed_trades(limit=getattr(self.cfg, "analog_history_limit", 1500))
+        try:
+            rows = trade_dataset.load_closed_trades(
+                limit=getattr(self.cfg, "analog_history_limit", 1500),
+                data_dir=history_dir,
+                backfill_from_csv=True,
+            )
+        except TypeError:
+            rows = trade_dataset.load_closed_trades(limit=getattr(self.cfg, "analog_history_limit", 1500))
         feature_rows = [feature_store.build_closed_trade_feature_row(row) for row in rows if isinstance(row, dict)]
         self._cache_rows = feature_rows
         self._cache_mtime = mtime
