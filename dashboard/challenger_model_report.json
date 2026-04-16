@@ -1,13 +1,22 @@
 {
   "challenger": {
     "edge_vs_champion": 0.0,
-    "rule": {},
-    "samples": 0,
-    "win_rate": 0.0
+    "rule": {
+      "max_unc": 0.2,
+      "min_confidence": "MEDIUM",
+      "min_prob": 0.94,
+      "min_thesis_quality": "MEDIUM",
+      "require_breakout": true,
+      "samples": 10,
+      "win_rate": 0.1,
+      "wins": 1
+    },
+    "samples": 10,
+    "win_rate": 0.1
   },
   "champion": {
-    "labeled_episodes": 0,
-    "overall_win_rate": 0.0
+    "labeled_episodes": 10,
+    "overall_win_rate": 0.1
   },
   "data_dir": "/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime",
   "decision_review": {
@@ -31,9 +40,9 @@
     ],
     "missed_wins": 13
   },
-  "generated_at": 1776360968,
+  "generated_at": 1776364598,
   "promote": false,
-  "shadow_ready": false,
-  "status": "INSUFFICIENT_DATA",
-  "summary": "Need more labeled decisions before trusting a challenger (101/25)."
+  "shadow_ready": true,
+  "status": "CHAMPION_HOLDS",
+  "summary": "Current live logic still looks stronger than the best challenger preset."
 }
