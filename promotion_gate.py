@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+import challenger_model
 from logger import get_logger
 from paths import DATA_DIR
 import precision_lab
@@ -97,6 +98,13 @@ def evaluate_live_promotion(cfg, data_dir: Path | None = None) -> dict:
     precision_samples = int((precision_report or {}).get("labeled_episodes", 0) or 0)
     precision_wr = _safe_float((precision_report or {}).get("overall_win_rate"))
     best_rule = dict(((precision_report or {}).get("best_rules") or [{}])[0] or {})
+    challenger_report = {}
+    if getattr(cfg.trading, "challenger_model_enabled", True):
+        try:
+            challenger_report = challenger_model.build_and_save_report(cfg, data_dir=target_dir)
+        except Exception as exc:
+            log.warning("Challenger report refresh failed: %s", exc)
+            challenger_report = {}
 
     blockers: list[str] = []
     if total < min_closed:
@@ -131,6 +139,14 @@ def evaluate_live_promotion(cfg, data_dir: Path | None = None) -> dict:
             "labeled_episodes": precision_samples,
             "overall_win_rate": round(precision_wr, 4),
             "best_rule": best_rule,
+        },
+        "challenger_metrics": {
+            "status": challenger_report.get("status", ""),
+            "shadow_ready": bool(challenger_report.get("shadow_ready", False)),
+            "promote": bool(challenger_report.get("promote", False)),
+            "summary": challenger_report.get("summary", ""),
+            "champion_win_rate": _safe_float(((challenger_report.get("champion") or {}).get("overall_win_rate"))),
+            "challenger_win_rate": _safe_float(((challenger_report.get("challenger") or {}).get("win_rate"))),
         },
         "blockers": blockers,
     }

@@ -1466,30 +1466,30 @@ function renderActionBoard(board) {
   let html = '<div class="decision-board">';
   if (tradableItems.length) {
     html += '<div><div class="decision-group-title">Tradable Now</div><div class="decision-group-sub">These names are live-eligible on the active venue right now.</div><div class="decision-grid">'
-      + tradableItems.map((item) => {
-        const status = String(item.status || 'NO_SETUP');
-        const highlight = status.includes('LONG')
-          ? 'decision-card decision-card-tradable decision-card-long'
-          : status.includes('SHORT')
-            ? 'decision-card decision-card-tradable decision-card-short'
-            : 'decision-card decision-card-tradable';
-        return '<div class="' + highlight + '">'
-          + '<div class="decision-top">'
-            + '<div><div class="decision-coin">' + esc(item.coin) + '</div><div class="decision-meta">' + esc(item.mode_meta || 'Live-eligible') + '</div></div>'
-            + '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">'
-              + '<span class="signal-mode-tradable">' + esc(item.mode_badge || 'LIVE') + '</span>'
-              + '<span class="review-chip">' + esc(String(item.label || 'No setup').toUpperCase()) + '</span>'
-              + '<span class="' + biasClass(item.bias) + '">' + esc(String(item.bias || 'NEUTRAL')) + '</span>'
-            + '</div>'
+    + tradableItems.map((item) => {
+      const status = String(item.status || 'NO_SETUP');
+      const highlight = status.includes('LONG')
+        ? 'decision-card decision-card-tradable decision-card-long'
+        : status.includes('SHORT')
+          ? 'decision-card decision-card-tradable decision-card-short'
+          : 'decision-card decision-card-tradable';
+      return '<div class="' + highlight + '">'
+        + '<div class="decision-top">'
+          + '<div><div class="decision-coin">' + esc(item.coin) + '</div><div class="decision-meta">' + esc(item.mode_meta || 'Live-eligible') + '</div></div>'
+          + '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">'
+            + '<span class="signal-mode-tradable">' + esc(item.mode_badge || 'LIVE') + '</span>'
+            + '<span class="review-chip">' + esc(String(item.label || 'No setup').toUpperCase()) + '</span>'
+            + '<span class="' + biasClass(item.bias) + '">' + esc(String(item.bias || 'NEUTRAL')) + '</span>'
           + '</div>'
-          + '<div class="decision-note"><strong>Now:</strong> ' + esc(shortText(item.headline || 'No clear edge right now.', 140)) + '</div>'
-          + '<div class="decision-note"><strong>Entry status:</strong> ' + esc(shortText(item.execution_note || item.mode_detail || 'Still waiting for final entry checks.', 150)) + '</div>'
-          + '<div class="decision-note"><strong>Trigger:</strong> ' + esc(shortText(item.trigger || 'Wait for a cleaner setup.', 140)) + '</div>'
-          + '<div class="decision-note"><strong>Risk:</strong> ' + esc(shortText(item.risk || item.map_summary || 'Stay patient until the map and order-flow align.', 140)) + '</div>'
-          + (item.map_summary ? '<div class="decision-rl-note"><strong>Daily view:</strong> ' + esc(shortText(item.map_summary, 130)) + '</div>' : '')
-        + '</div>';
-      }).join('')
-      + '</div></div>';
+        + '</div>'
+        + '<div class="decision-note"><strong>Now:</strong> ' + esc(shortText(item.headline || 'No clear edge right now.', 140)) + '</div>'
+        + '<div class="decision-note"><strong>Entry status:</strong> ' + esc(shortText(item.execution_note || item.mode_detail || 'Still waiting for final entry checks.', 150)) + '</div>'
+        + '<div class="decision-note"><strong>Trigger:</strong> ' + esc(shortText(item.trigger || 'Wait for a cleaner setup.', 140)) + '</div>'
+        + '<div class="decision-note"><strong>Risk:</strong> ' + esc(shortText(item.risk || item.map_summary || 'Stay patient until the map and order-flow align.', 140)) + '</div>'
+        + (item.map_summary ? '<div class="decision-rl-note"><strong>Daily view:</strong> ' + esc(shortText(item.map_summary, 130)) + '</div>' : '')
+      + '</div>';
+    }).join('')
+    + '</div></div>';
   } else {
     html += '<div class="empty-state">No live-eligible assets right now. The agent is watching for the next tradable setup.</div>';
   }

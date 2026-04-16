@@ -22,12 +22,17 @@ import pandas as pd
 import checkpoint as checkpoint_module
 import agent as agent_module
 import analog_engine as analog_engine_module
+import asset_state_machine as asset_state_machine_module
 import backtest as backtest_module
+import challenger_model as challenger_model_module
+import data_reliability as data_reliability_module
 import decision_dataset as decision_dataset_module
+import decision_review_lab as decision_review_lab_module
 import feature_store as feature_store_module
 import hosted_state_sync as hosted_state_sync_module
 import main as main_module
 import market_map as market_map_module
+import portfolio_guard as portfolio_guard_module
 import precision_lab as precision_lab_module
 import promotion_gate as promotion_gate_module
 from data import market_data as market_data_module
@@ -1949,6 +1954,39 @@ def test_dashboard_snapshot_includes_trade_logic_and_learning_summary() -> None:
     assert snapshot["learning_summary"]["latest"]["lesson"]
 
 
+def test_dashboard_action_board_uses_asset_state_and_next_unblock_reason() -> None:
+    snapshot = build_dashboard_snapshot(
+        state={
+            "status": "online",
+            "last_cycle": "2026-04-16 10:30:00",
+            "cycle_number": 120,
+            "positions": [],
+            "signals": {
+                "GOOGL": {
+                    "action": "LONG",
+                    "score": 67.0,
+                    "confidence": "HIGH",
+                    "execution_mode": "tradable",
+                    "asset_state": "WAITING_CONFIRMATION",
+                    "asset_state_label": "Waiting confirmation",
+                    "next_unblock_reason": "Need 1 more confirming cycle before the entry is allowed.",
+                    "decision_reason": "Long thesis is live but still confirming.",
+                    "market_map_bias": "BULLISH",
+                    "live_price": 336.61,
+                }
+            },
+            "mode": "dry_run",
+            "config": {"coins": ["GOOGL"]},
+        },
+        trades=[],
+        server_timestamp="2026-04-16 10:31:00",
+    )
+    lead = snapshot["action_board"]["lead"]
+    assert lead["coin"] == "GOOGL"
+    assert lead["label"] == "Waiting confirmation"
+    assert "confirming cycle" in lead["execution_note"].lower()
+
+
 def test_dashboard_snapshot_canonicalizes_inactive_control_and_empty_review_shape() -> None:
     snapshot = build_dashboard_snapshot(
         {
@@ -2439,6 +2477,118 @@ def test_execution_quality_gate_blocks_thin_unstable_orderbooks() -> None:
     assert quality["blockers"], "the gate should explain what failed"
 
 
+def test_execution_quality_can_fall_back_to_passive_rescue_limit() -> None:
+    agent = object.__new__(TradingAgent)
+    agent.cfg = build_config()
+    agent._orderbook_history = {
+        "BTC": [{
+            "breakout_state": "CONFIRMED_BULLISH_BREAKOUT",
+            "level_interaction": "ABOVE_RESISTANCE",
+            "support": 99.0,
+            "resistance": 101.0,
+            "spread_bps": 20.0,
+            "bid_notional": 25000.0,
+            "ask_notional": 22000.0,
+        }]
+    }
+    order = OrderRequest(
+        coin="BTC",
+        direction="LONG",
+        size_usd=100.0,
+        size_coin=1.0,
+        price=100.0,
+        stop_loss=96.0,
+        take_profit=108.0,
+    )
+    orderbook_signal = SimpleNamespace(
+        valid=True,
+        spread_bps=20.0,
+        bid_notional=25000.0,
+        ask_notional=22000.0,
+        breakout_state="CONFIRMED_BULLISH_BREAKOUT",
+        level_interaction="ABOVE_RESISTANCE",
+        nearest_support=99.0,
+        nearest_resistance=101.0,
+        block_longs=False,
+        block_shorts=False,
+        best_bid=99.95,
+        best_ask=100.15,
+    )
+    quality = agent._assess_execution_quality("BTC", "LONG", order, orderbook_signal)
+    assert quality["permitted"] is False, "market sweep should still be blocked"
+    assert quality["prefer_passive_entry"] is True, "the bot should downgrade to a passive maker entry"
+    assert quality["passive_limit_price"] == 99.95
+
+
+def test_asset_state_machine_reports_confirmation_wait_clearly() -> None:
+    lifecycle = asset_state_machine_module.build_asset_state(
+        {
+            "action": "LONG",
+            "execution_mode": "tradable",
+            "streak_confirmation_remaining": 1,
+            "thesis_candidate_action": "LONG",
+        },
+        stage="signal_streak_wait",
+    )
+    assert lifecycle["state"] == "WAITING_CONFIRMATION"
+    assert "confirming cycle" in lifecycle["next_unblock_reason"]
+
+
+def test_data_reliability_blocks_stale_incoherent_setup() -> None:
+    cfg = build_config()
+    cfg.trading.use_news = True
+    reliability = data_reliability_module.assess_reliability(
+        cfg.trading,
+        {
+            "execution_mode": "tradable",
+            "instrument_type": "crypto",
+            "action": "LONG",
+            "using_closed_candles": False,
+            "analysis_price": 100.0,
+            "live_price": 101.5,
+            "market_map_available": False,
+            "news_articles": 0,
+            "orderbook_valid": False,
+            "orderbook_feed_snapshot_count": 0,
+        },
+    )
+    assert reliability["permitted"] is False
+    assert reliability["blockers"], "unreliable data should explicitly block the setup"
+
+
+def test_portfolio_guard_blocks_theme_stacking_and_trims_secondary_exposure() -> None:
+    cfg = build_config()
+    open_positions = [
+        OpenPosition("HYPE", "LONG", 100.0, 90.0, 0.9, 95.0, 108.0),
+        OpenPosition("TAO", "LONG", 100.0, 80.0, 0.8, 95.0, 108.0),
+    ]
+    blocked = portfolio_guard_module.assess_correlation(
+        cfg.trading,
+        coin="SOL",
+        direction="LONG",
+        instrument_type="crypto",
+        portfolio_usd=1000.0,
+        proposed_size_usd=100.0,
+        open_positions=open_positions,
+        pending_orders=[],
+    )
+    assert blocked["permitted"] is False
+    assert blocked["theme"] == "CRYPTO_HIGH_BETA"
+
+    trimmed = portfolio_guard_module.assess_correlation(
+        cfg.trading,
+        coin="GOOGL",
+        direction="LONG",
+        instrument_type="equity",
+        portfolio_usd=1000.0,
+        proposed_size_usd=100.0,
+        open_positions=[OpenPosition("META", "LONG", 100.0, 60.0, 0.6, 95.0, 108.0)],
+        pending_orders=[],
+    )
+    assert trimmed["permitted"] is True
+    assert trimmed["size_multiplier"] < 1.0
+
+
 def test_background_orderbook_feed_enriches_signal_with_persistence_history() -> None:
     class FakeFeed:
         def __init__(self, snapshots):
@@ -2913,6 +3063,130 @@ def test_decision_dataset_and_feature_store_capture_flat_decisions() -> None:
         finally:
             decision_dataset_module.DECISION_DATASET_JSONL = original_decision_path
             feature_store_module.FEATURE_STORE_JSONL = original_feature_path
+
+
+def test_feature_store_captures_asset_state_and_guard_features() -> None:
+    record = {
+        "cycle_number": 99,
+        "coin": "BTC",
+        "stage": "signal_streak_wait",
+        "candidate_action": "LONG",
+        "final_action": "FLAT",
+        "blocked": True,
+        "executed": False,
+        "pending_limit": False,
+        "signal_snapshot": {
+            "action": "FLAT",
+            "decision": "FLAT",
+            "score": 63.0,
+            "confidence": "HIGH",
+            "asset_state": "WAITING_CONFIRMATION",
+            "decision_stage": "signal_streak_wait",
+            "next_unblock_reason": "Need 1 more confirming cycle before entry.",
+            "data_reliability_score": 71.0,
+            "data_reliability_quality": "MEDIUM",
+            "data_reliability_summary": "microstructure history is still thin",
+            "data_reliability": {"permitted": True},
+            "portfolio_theme": "CRYPTO_BETA",
+            "portfolio_guard_summary": "CRYPTO_BETA already has a same-direction live idea; trimming size",
+            "portfolio_guard_size_multiplier": 0.65,
+            "portfolio_guard": {
+                "permitted": True,
+                "same_direction_exposure_pct": 11.4,
+                "total_theme_exposure_pct": 12.0,
+            },
+        },
+    }
+    row = feature_store_module.build_decision_feature_row(record)
+    assert row["features"]["asset_state"] == "waiting_confirmation"
+    assert row["features"]["decision_stage"] == "signal_streak_wait"
+    assert row["features"]["data_reliability_score"] == 71.0
+    assert row["features"]["portfolio_guard_size_multiplier"] == 0.65
+
+
+def test_decision_review_lab_flags_missed_winner() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        data_dir = Path(tmpdir)
+        (data_dir / "decision_dataset.jsonl").write_text(
+            json.dumps(
+                {
+                    "decision_id": "1",
+                    "coin": "BTC",
+                    "stage": "data_reliability_block",
+                    "candidate_action": "LONG",
+                    "final_action": "FLAT",
+                    "blocked": True,
+                    "executed": False,
+                    "pending_limit": False,
+                    "recorded_at_ts": time.time(),
+                    "signal_snapshot": {
+                        "planned_risk_pct": 1.2,
+                        "planned_reward_pct": 2.4,
+                        "planned_risk_reward_ratio": 2.0,
+                        "expectancy_probability": 0.62,
+                        "expectancy_uncertainty": 0.22,
+                        "expectancy_score": 68.0,
+                        "confidence": "HIGH",
+                        "thesis_quality": "HIGH",
+                        "orderbook_breakout_state": "CONFIRMED_BULLISH_BREAKOUT",
+                        "orderbook_interaction": "ABOVE_RESISTANCE",
+                        "dominant_regime": "TREND",
+                        "instrument_type": "crypto",
+                    },
+                }
+            ) + "\n",
+            encoding="utf-8",
+        )
+        original_label = decision_review_lab_module.precision_lab._label_episode
+        try:
+            decision_review_lab_module.precision_lab._label_episode = lambda row, **_kwargs: {**row, "outcome": 1}
+            report = decision_review_lab_module.build_report(
+                data_dir=data_dir,
+                target_r=0.25,
+                horizon_minutes=720,
+                interval="5m",
+                dedupe_minutes=30,
+            )
+            assert report["classifications"]["MISSED_WIN"] == 1
+        finally:
+            decision_review_lab_module.precision_lab._label_episode = original_label
+
+
+def test_challenger_model_reports_when_shadow_is_ready() -> None:
+    cfg = build_config()
+    cfg.trading.challenger_min_labeled_decisions = 4
+    cfg.trading.challenger_min_win_rate_edge = 0.05
+    with tempfile.TemporaryDirectory() as tmpdir:
+        data_dir = Path(tmpdir)
+        (data_dir / "precision_lab_report.json").write_text(
+            json.dumps(
+                {
+                    "overall_win_rate": 0.56,
+                    "labeled_episodes": 12,
+                    "best_rules": [{"win_rate": 0.68, "samples": 6}],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (data_dir / "decision_review_report.json").write_text(
+            json.dumps(
+                {
+                    "labeled_episodes": 8,
+                    "classifications": {
+                        "MISSED_WIN": 1,
+                        "CORRECT_PASS": 4,
+                        "GOOD_TRADE": 2,
+                        "BAD_TRADE": 1,
+                    },
+                    "missed_families": [{"family": "BTC:LONG", "misses": 1}],
+                }
+            ),
+            encoding="utf-8",
+        )
+        report = challenger_model_module.build_report(cfg, data_dir=data_dir)
+        assert report["shadow_ready"] is True
+        assert report["promote"] is True
+        assert report["status"] == "CHALLENGER_READY"
 
 
 def test_historical_analog_engine_blends_supportive_history() -> None:
@@ -3532,6 +3806,8 @@ def run_all() -> None:
     print("PASS dashboard market-map snapshot")
     test_dashboard_snapshot_includes_trade_logic_and_learning_summary()
     print("PASS dashboard learning summary")
+    test_dashboard_action_board_uses_asset_state_and_next_unblock_reason()
+    print("PASS dashboard asset-state action board")
     test_dashboard_snapshot_canonicalizes_inactive_control_and_empty_review_shape()
     print("PASS dashboard canonical state shape")
     test_dashboard_market_map_and_review_endpoints_roundtrip()
@@ -3550,6 +3826,14 @@ def run_all() -> None:
     print("PASS fail-closed MTF safety")
     test_execution_quality_gate_blocks_thin_unstable_orderbooks()
     print("PASS execution-quality gate")
+    test_execution_quality_can_fall_back_to_passive_rescue_limit()
+    print("PASS passive execution rescue")
+    test_asset_state_machine_reports_confirmation_wait_clearly()
+    print("PASS asset state machine")
+    test_data_reliability_blocks_stale_incoherent_setup()
+    print("PASS data reliability gate")
+    test_portfolio_guard_blocks_theme_stacking_and_trims_secondary_exposure()
+    print("PASS portfolio correlation guard")
     test_background_orderbook_feed_enriches_signal_with_persistence_history()
     print("PASS background orderbook persistence history")
     test_background_orderbook_feed_detects_intracycle_breakout_between_agent_cycles()
@@ -3574,6 +3858,12 @@ def run_all() -> None:
     print("PASS directional hard embargo")
     test_decision_dataset_and_feature_store_capture_flat_decisions()
     print("PASS decision dataset + feature store")
+    test_feature_store_captures_asset_state_and_guard_features()
+    print("PASS feature store state features")
+    test_decision_review_lab_flags_missed_winner()
+    print("PASS decision review lab")
+    test_challenger_model_reports_when_shadow_is_ready()
+    print("PASS challenger model")
     test_historical_analog_engine_blends_supportive_history()
     print("PASS historical analog engine")
     test_agent_apply_analog_context_can_flatten_bad_setup()

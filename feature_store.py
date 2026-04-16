@@ -84,6 +84,11 @@ NUMERIC_FEATURE_KEYS = (
     "analog_probability_adjustment",
     "analog_expected_r_adjustment",
     "analog_uncertainty_adjustment",
+    "data_reliability_score",
+    "data_reliability_price_gap_pct",
+    "portfolio_guard_size_multiplier",
+    "same_direction_exposure_pct",
+    "total_theme_exposure_pct",
 )
 
 BOOL_FEATURE_KEYS = (
@@ -103,6 +108,8 @@ BOOL_FEATURE_KEYS = (
     "analog_supportive",
     "analog_adverse",
     "analog_hard_block",
+    "data_reliability_permitted",
+    "portfolio_guard_permitted",
 )
 
 CATEGORICAL_FEATURE_KEYS = (
@@ -133,6 +140,10 @@ CATEGORICAL_FEATURE_KEYS = (
     "thesis_quality",
     "execution_mode",
     "analog_verdict",
+    "asset_state",
+    "decision_stage",
+    "data_reliability_quality",
+    "portfolio_theme",
 )
 
 TEXT_FEATURE_KEYS = (
@@ -146,6 +157,9 @@ TEXT_FEATURE_KEYS = (
     "market_map_notes",
     "narrative_summary",
     "analog_summary",
+    "next_unblock_reason",
+    "data_reliability_summary",
+    "portfolio_guard_summary",
 )
 
 
@@ -207,6 +221,10 @@ def build_signal_feature_map(signal_snapshot: Mapping[str, Any], extra: Mapping[
     features["rl_guard_reason_count"] = float(len(list(snap.get("rl_guard_reasons") or [])))
     features["operator_review_reason_count"] = float(len(list(snap.get("operator_review_reasons") or [])))
     features["analog_match_count"] = float(len(list(snap.get("analog_top_matches") or [])))
+    features["data_reliability_permitted"] = _safe_bool((snap.get("data_reliability") or {}).get("permitted", True))
+    features["portfolio_guard_permitted"] = _safe_bool((snap.get("portfolio_guard") or {}).get("permitted", True))
+    features["same_direction_exposure_pct"] = round(_safe_float((snap.get("portfolio_guard") or {}).get("same_direction_exposure_pct")), 6)
+    features["total_theme_exposure_pct"] = round(_safe_float((snap.get("portfolio_guard") or {}).get("total_theme_exposure_pct")), 6)
 
     for key, value in ctx.items():
         normalized = f"ctx_{_category(key)}"

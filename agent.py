@@ -29,9 +29,12 @@ import sys
 from pathlib import Path
 from typing import List, Optional, Dict
 from paths import (
+    CHALLENGER_MODEL_JSON,
     CONTROL_JSON,
+    DATA_DIR,
     DAILY_MARKET_MAP_JSON,
     DASHBOARD_SNAPSHOT_JSON,
+    DECISION_REVIEW_REPORT_JSON,
     KILL_FILE,
     STATE_JSON,
     TRADE_REVIEWS_JSON,
@@ -41,16 +44,21 @@ from datetime import datetime
 
 import os
 import analog_engine
+import challenger_model
 from config import Config
+import data_reliability
 import decision_dataset
+import decision_review_lab
 import feature_store
 from logger import get_logger
 from data.market_data import completed_candle_frame, fetch_candles, get_current_price
 import hosted_state_sync
 import market_map
+import portfolio_guard
 import trade_dataset
 import trade_logger
 import trade_review
+from asset_state_machine import build_asset_state
 from indicators.technical import compute_signals
 from indicators.advanced  import compute_advanced_signals
 from indicators.sentiment import get_fear_greed_score, sentiment_summary
@@ -134,6 +142,7 @@ class TradingAgent:
         }
         self._memory = trade_memory          # reinforcement learning module
         self._analog_engine = analog_engine.HistoricalAnalogEngine(cfg.trading)
+        self._last_learning_report_refresh_ts = 0.0
 
         # ── Signal streak: require N consecutive cycles before entering ──────
         # Prevents entering on the very first noisy crossing of a threshold.
@@ -356,6 +365,69 @@ class TradingAgent:
             return False, f"{family.replace(':', ' ')} is cooling down for another ~{minutes_left}m"
 
         return True, ""
+
+    def _refresh_asset_state(
+        self,
+        coin: str,
+        *,
+        stage: str = "",
+        current_position: str | None = None,
+        pending_limit: bool = False,
+    ) -> dict:
+        if coin not in self._last_signals:
+            return {}
+        snap = self._last_signals[coin]
+        lifecycle = build_asset_state(
+            snap,
+            stage=stage or str(snap.get("decision_stage") or "analysis"),
+            current_position=current_position if current_position is not None else (self.risk.position_direction(coin) or ""),
+            pending_limit=bool(pending_limit or self.order_mgr.has_pending(coin)),
+        )
+        snap.update({
+            "decision_stage": lifecycle.get("stage", stage or "analysis"),
+            "asset_state": lifecycle.get("state", "OBSERVING"),
+            "asset_state_label": lifecycle.get("label", "Observing"),
+            "next_unblock_reason": lifecycle.get("next_unblock_reason", ""),
+        })
+        return lifecycle
+
+    def _maybe_refresh_learning_reports(self) -> None:
+        if not (
+            getattr(self.cfg.trading, "decision_review_enabled", True)
+            or getattr(self.cfg.trading, "challenger_model_enabled", True)
+        ):
+            return
+
+        refresh_seconds = max(
+            1800.0,
+            float(getattr(self.cfg.trading, "challenger_refresh_hours", 6.0) or 6.0) * 3600.0,
+        )
+        now = time.time()
+        if self._last_learning_report_refresh_ts and (now - self._last_learning_report_refresh_ts) < refresh_seconds:
+            return
+
+        target_r = float(getattr(self.cfg.trading, "decision_review_target_r", 0.25) or 0.25)
+        horizon_minutes = int(getattr(self.cfg.trading, "decision_review_horizon_minutes", 720) or 720)
+        interval = str(getattr(self.cfg.trading, "decision_review_interval", "5m") or "5m")
+        dedupe_minutes = int(getattr(self.cfg.trading, "decision_review_dedupe_minutes", 30) or 30)
+
+        try:
+            if getattr(self.cfg.trading, "decision_review_enabled", True):
+                decision_review_lab.build_and_save_report(
+                    data_dir=DATA_DIR,
+                    target_r=target_r,
+                    horizon_minutes=horizon_minutes,
+                    interval=interval,
+                    dedupe_minutes=dedupe_minutes,
+                )
+            if getattr(self.cfg.trading, "challenger_model_enabled", True):
+                challenger_model.build_and_save_report(
+                    self.cfg,
+                    data_dir=DATA_DIR,
+                )
+            self._last_learning_report_refresh_ts = now
+        except Exception as exc:
+            log.debug("Learning report refresh skipped: %s", exc)
 
     # ── Recovery and reconciliation ──────────────────────────
 
@@ -636,6 +708,29 @@ class TradingAgent:
             # Skip if we already have a pending limit order for this coin
             if self.order_mgr.has_pending(coin):
                 log.info(f"[{coin}] Skipping analysis — limit order pending")
+                pending = self.order_mgr.pending_orders.get(coin)
+                if pending is not None:
+                    entry_context = dict(getattr(pending, "metadata", {}).get("entry_context", {}) or {})
+                    self._last_signals[coin] = {
+                        "action": str(getattr(pending, "direction", "FLAT") or "FLAT").upper(),
+                        "decision": str(getattr(pending, "direction", "FLAT") or "FLAT").upper(),
+                        "score": float(getattr(pending, "signal_score", 50.0) or 50.0),
+                        "confidence": str(entry_context.get("confidence") or "MEDIUM").upper(),
+                        "price": float(getattr(pending, "limit_price", 0.0) or 0.0),
+                        "analysis_price": float(getattr(pending, "limit_price", 0.0) or 0.0),
+                        "live_price": float(current_prices.get(coin) or getattr(pending, "limit_price", 0.0) or 0.0),
+                        "decision_reason": f"Resting {pending.direction} limit is waiting for a fill.",
+                        "reason": f"Resting {pending.direction} limit is waiting for a fill.",
+                        "flat_reason": "",
+                        "instrument_type": str(entry_context.get("instrument_type") or hyperliquid_instrument_type(coin) or "crypto"),
+                        "execution_mode": "tradable",
+                        "planned_stop_loss": float(getattr(pending, "stop_loss", 0.0) or 0.0),
+                        "planned_take_profit": float(getattr(pending, "take_profit", 0.0) or 0.0),
+                        "planned_risk_reward_ratio": float(entry_context.get("planned_risk_reward_ratio") or 0.0),
+                        "trade_plan": dict(entry_context.get("trade_plan") or getattr(pending, "metadata", {}).get("trade_plan", {}) or {}),
+                        "execution_quality_summary": "A qualifying passive entry is already resting on the book.",
+                    }
+                    self._refresh_asset_state(coin, stage="entry_limit_already_pending", pending_limit=True)
                 continue
             try:
                 self._analyse_coin(coin, sentiment, portfolio_usd)
@@ -645,6 +740,7 @@ class TradingAgent:
         # 8. Summary + write state.json for dashboard
         log.info("\n" + self.risk.summary(portfolio_usd))
         log.info(self.order_mgr.summary())
+        self._maybe_refresh_learning_reports()
         self._write_state(portfolio_usd, sentiment)
 
         # 8. Heartbeat notification every 6 cycles
@@ -976,7 +1072,21 @@ class TradingAgent:
             "estimated_slippage_bps": 0.0,
             "execution_persistence_cycles": 0,
             "execution_mode":  "tradable" if coin in self._tradable_coin_set else "observation_only",
+            "decision_stage": "analysis",
+            "streak_confirmation_remaining": 0,
+            "data_reliability": {},
+            "data_reliability_score": 0.0,
+            "data_reliability_quality": "UNKNOWN",
+            "data_reliability_summary": "",
+            "portfolio_guard": {},
+            "portfolio_theme": "",
+            "portfolio_guard_summary": "",
+            "portfolio_guard_size_multiplier": 1.0,
+            "asset_state": "OBSERVING",
+            "asset_state_label": "Observing",
+            "next_unblock_reason": "",
         }
+        self._refresh_asset_state(coin, stage="analysis", current_position=current_pos)
         self._apply_analog_context(
             coin,
             signal,
@@ -988,6 +1098,36 @@ class TradingAgent:
         mtf_allows_signal = True
         if self.cfg.trading.use_mtf and (current_pos or signal.action != "FLAT"):
             mtf_allows_signal = self._check_mtf_safe(coin, signal)
+
+        reliability = data_reliability.assess_reliability(self.cfg.trading, self._last_signals.get(coin, {}))
+        self._last_signals[coin]["data_reliability"] = reliability
+        self._last_signals[coin]["data_reliability_score"] = reliability.get("score", 0.0)
+        self._last_signals[coin]["data_reliability_quality"] = reliability.get("quality", "UNKNOWN")
+        self._last_signals[coin]["data_reliability_summary"] = reliability.get("summary", "")
+        self._last_signals[coin]["data_reliability_blockers"] = reliability.get("blockers", [])
+        self._last_signals[coin]["data_reliability_issues"] = reliability.get("issues", [])
+        self._last_signals[coin]["data_reliability_price_gap_pct"] = reliability.get("price_gap_pct", 0.0)
+        if (
+            getattr(self.cfg.trading, "data_reliability_enabled", True)
+            and not current_pos
+            and signal.action in {"LONG", "SHORT"}
+            and not bool(reliability.get("permitted", True))
+        ):
+            reason = str(reliability.get("summary", "") or "data quality is not reliable enough yet")
+            log.info(f"[{coin}] 🛰️ Data-reliability gate blocks {signal.action}: {reason}")
+            signal.action = "FLAT"
+            signal.flat_reason = reason
+            signal.reason = reason
+            self._sync_signal_snapshot(coin, signal)
+            self._record_decision_snapshot(
+                coin,
+                portfolio_usd=portfolio_usd,
+                stage="data_reliability_block",
+                signal=signal,
+                current_position=current_pos,
+                blocked=True,
+            )
+            return
 
         if current_pos:
             invalidation_reason = self._detect_position_invalidation(coin, current_pos, signal)
@@ -1444,6 +1584,7 @@ class TradingAgent:
 
             required_streak = self.cfg.trading.signal_streak_required
             if streak["count"] < required_streak:
+                self._last_signals[coin]["streak_confirmation_remaining"] = max(0, required_streak - streak["count"])
                 log.info(
                     f"[{coin}] 🔁 Signal streak: {signal.action} confirmed "
                     f"{streak['count']}/{required_streak} cycles — waiting for confirmation"
@@ -1461,6 +1602,7 @@ class TradingAgent:
                     f"[{coin}] ✅ Signal streak reached {streak['count']}/{required_streak} "
                     f"— proceeding with {signal.action} entry"
                 )
+                self._last_signals[coin]["streak_confirmation_remaining"] = 0
                 self._signal_streak.pop(coin, None)  # reset after entry
 
             cadence_allowed, cadence_reason = self._check_precision_entry_cadence(coin, signal)
@@ -1509,6 +1651,71 @@ class TradingAgent:
             )
             return
 
+        portfolio_theme_guard = portfolio_guard.assess_correlation(
+            self.cfg.trading,
+            coin=coin,
+            direction=signal.action,
+            instrument_type=str(self._last_signals.get(coin, {}).get("instrument_type", instrument_type) or instrument_type),
+            portfolio_usd=float(portfolio_usd or 0.0),
+            proposed_size_usd=float(getattr(order, "size_usd", 0.0) or 0.0),
+            open_positions=list(self.risk.positions.values()),
+            pending_orders=list(self.order_mgr.pending_orders.values()),
+        )
+        self._last_signals[coin]["portfolio_guard"] = portfolio_theme_guard
+        self._last_signals[coin]["portfolio_theme"] = portfolio_theme_guard.get("theme", "")
+        self._last_signals[coin]["portfolio_guard_summary"] = portfolio_theme_guard.get("summary", "")
+        self._last_signals[coin]["portfolio_guard_size_multiplier"] = portfolio_theme_guard.get("size_multiplier", 1.0)
+        self._last_signals[coin]["portfolio_guard_related_coins"] = portfolio_theme_guard.get("related_coins", [])
+        self._last_signals[coin]["portfolio_guard_blockers"] = portfolio_theme_guard.get("blockers", [])
+        self._last_signals[coin]["portfolio_guard_warnings"] = portfolio_theme_guard.get("warnings", [])
+
+        if getattr(self.cfg.trading, "portfolio_correlation_guard_enabled", True):
+            if not portfolio_theme_guard.get("permitted", True):
+                reason = str(portfolio_theme_guard.get("summary", "") or "portfolio concentration is already too high")
+                log.info(f"[{coin}] 🧺 Portfolio guard blocks entry: {reason}")
+                signal.action = "FLAT"
+                signal.flat_reason = reason
+                signal.reason = reason
+                self._sync_signal_snapshot(coin, signal)
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="portfolio_correlation_block",
+                    signal=signal,
+                    current_position=current_pos,
+                    blocked=True,
+                )
+                return
+
+            size_multiplier = float(portfolio_theme_guard.get("size_multiplier", 1.0) or 1.0)
+            if size_multiplier < 0.999:
+                original_size_usd = float(getattr(order, "size_usd", 0.0) or 0.0)
+                trimmed_size_usd = original_size_usd * size_multiplier
+                if trimmed_size_usd < float(self.cfg.trading.min_trade_usd or 0.0):
+                    reason = (
+                        f"{portfolio_theme_guard.get('theme', 'theme')} exposure trim would shrink the trade "
+                        f"below the ${self.cfg.trading.min_trade_usd:.0f} minimum"
+                    )
+                    log.info(f"[{coin}] 🧺 Portfolio trim keeps trade flat: {reason}")
+                    signal.action = "FLAT"
+                    signal.flat_reason = reason
+                    signal.reason = reason
+                    self._sync_signal_snapshot(coin, signal)
+                    self._record_decision_snapshot(
+                        coin,
+                        portfolio_usd=portfolio_usd,
+                        stage="portfolio_correlation_block",
+                        signal=signal,
+                        current_position=current_pos,
+                        blocked=True,
+                    )
+                    return
+                order.size_usd = trimmed_size_usd
+                order.size_coin = trimmed_size_usd / max(float(getattr(order, "price", signal.price) or signal.price), 1e-9)
+                self._last_signals[coin]["portfolio_guard_summary"] = (
+                    f"{portfolio_theme_guard.get('summary', '')} Size trimmed to ${trimmed_size_usd:.2f}."
+                ).strip()
+
         execution_quality = self._assess_execution_quality(coin, signal.action, order, orderbook_signal)
         self._last_signals[coin]["execution_quality"] = execution_quality
         self._last_signals[coin]["execution_quality_score"] = execution_quality.get("score", 0.0)
@@ -1517,6 +1724,46 @@ class TradingAgent:
         self._last_signals[coin]["execution_persistence_cycles"] = execution_quality.get("persistence_cycles", 0)
         self._sync_signal_snapshot(coin, signal)
         if not execution_quality.get("permitted", True):
+            if execution_quality.get("prefer_passive_entry", False):
+                if self.order_mgr.has_pending(coin):
+                    self._record_decision_snapshot(
+                        coin,
+                        portfolio_usd=portfolio_usd,
+                        stage="entry_limit_already_pending",
+                        signal=signal,
+                        current_position=current_pos,
+                        blocked=True,
+                        pending_limit=True,
+                    )
+                    return
+                passive_price = float(execution_quality.get("passive_limit_price", 0.0) or 0.0)
+                if passive_price > 0:
+                    limit_result = self._place_limit_order(
+                        coin,
+                        signal.action,
+                        passive_price,
+                        order.size_usd,
+                        order.stop_loss,
+                        order.take_profit,
+                        signal.score,
+                        reason="passive_rescue",
+                        entry_context=self._build_entry_context(coin, signal, order, entry_type="passive_rescue"),
+                        trade_plan=dict(getattr(signal, "trade_plan", {}) or {}),
+                        maker_only=True,
+                    )
+                    if limit_result.get("success"):
+                        self._record_precision_entry(coin, signal, mode="passive_limit")
+                    self._record_decision_snapshot(
+                        coin,
+                        portfolio_usd=portfolio_usd,
+                        stage="passive_rescue_limit_placed" if limit_result.get("success") else "execution_quality_block",
+                        signal=signal,
+                        current_position=current_pos,
+                        executed=bool(limit_result.get("filled")),
+                        blocked=not bool(limit_result.get("success")),
+                        pending_limit=bool(limit_result.get("pending")),
+                    )
+                    return
             log.info(f"[{coin}] ⚙️ Execution-quality gate blocked entry: {execution_quality.get('summary', '')}")
             self._record_decision_snapshot(
                 coin,
@@ -1685,6 +1932,7 @@ class TradingAgent:
             "execution_plan": execution_plan,
             "trade_plan": trade_plan,
         })
+        self._refresh_asset_state(coin, stage=str(snap.get("decision_stage") or "analysis"))
 
     def _apply_analog_context(
         self,
@@ -1822,6 +2070,13 @@ class TradingAgent:
             snap.setdefault("confidence", getattr(signal, "confidence", "LOW"))
         if not snap:
             return
+        snap["decision_stage"] = stage
+        lifecycle = self._refresh_asset_state(
+            coin,
+            stage=stage,
+            current_position=current_position,
+            pending_limit=pending_limit,
+        )
 
         record = {
             "cycle_number": self._cycle,
@@ -1837,6 +2092,8 @@ class TradingAgent:
             "executed": bool(executed),
             "blocked": bool(blocked),
             "pending_limit": bool(pending_limit),
+            "asset_state": lifecycle.get("state", snap.get("asset_state", "OBSERVING")),
+            "next_unblock_reason": snap.get("next_unblock_reason", ""),
             "portfolio_usd": round(float(portfolio_usd or 0.0), 2),
             "available_usd": round(float(self.risk.available_capital(float(portfolio_usd or 0.0))), 2),
             "signal_snapshot": snap,
@@ -1861,6 +2118,9 @@ class TradingAgent:
             "estimated_slippage_bps": 0.0,
             "depth_multiple": 0.0,
             "persistence_cycles": 0,
+            "prefer_passive_entry": False,
+            "passive_limit_price": 0.0,
+            "passive_summary": "",
         }
 
         if not getattr(self.cfg.trading, "require_execution_quality", True):
@@ -1932,6 +2192,46 @@ class TradingAgent:
             quality["permitted"] = False
             quality["score"] = max(0.0, 70.0 - 14.0 * len(quality["blockers"]))
             quality["summary"] = "; ".join(quality["blockers"][:3])
+            passive_rescue_enabled = bool(getattr(self.cfg.trading, "execution_passive_rescue_enabled", True))
+            rescue_only_execution_friction = (
+                passive_rescue_enabled
+                and not direction_blocked
+                and level_interaction != "RANGE_COMPRESSION"
+                and persistence_cycles >= max(1, min_persistence - 1)
+            )
+            rescue_spread = float(
+                getattr(self.cfg.trading, "execution_passive_rescue_max_spread_bps", 28.0) or 28.0
+            )
+            rescue_depth = float(
+                getattr(self.cfg.trading, "execution_passive_rescue_min_depth_multiple", 2.5) or 2.5
+            )
+            rescue_slippage = float(
+                getattr(self.cfg.trading, "execution_passive_rescue_max_slippage_bps", 85.0) or 85.0
+            )
+            execution_friction_only = all(
+                "spread too wide" in blocker
+                or "book depth too thin" in blocker
+                or "estimated slippage too high" in blocker
+                for blocker in quality["blockers"]
+            )
+            best_bid = float(getattr(orderbook_signal, "best_bid", 0.0) or 0.0)
+            best_ask = float(getattr(orderbook_signal, "best_ask", 0.0) or 0.0)
+            if (
+                rescue_only_execution_friction
+                and execution_friction_only
+                and spread_bps <= rescue_spread
+                and depth_multiple >= rescue_depth
+                and estimated_slippage_bps <= rescue_slippage
+                and ((direction == "LONG" and best_bid > 0) or (direction == "SHORT" and best_ask > 0))
+            ):
+                passive_limit_price = best_bid if direction == "LONG" else best_ask
+                quality["prefer_passive_entry"] = True
+                quality["passive_limit_price"] = round(passive_limit_price, 6)
+                quality["passive_summary"] = (
+                    f"market sweep is too loose, but a maker {direction.lower()} can rest near "
+                    f"${passive_limit_price:,.2f} while waiting for cleaner fills"
+                )
+                quality["summary"] = quality["passive_summary"]
         else:
             depth_bonus = min(15.0, max(0.0, (depth_multiple - min_depth_multiple) * 1.5))
             persistence_bonus = min(10.0, max(0, persistence_cycles - min_persistence) * 3.0)
@@ -2227,6 +2527,10 @@ class TradingAgent:
             "rl_win_rate": sig.get("rl_win_rate"),
             "rl_pattern_boost": sig.get("rl_pattern_boost", 0.0),
             "execution_mode": sig.get("execution_mode", "observation_only"),
+            "decision_stage": sig.get("decision_stage", "analysis"),
+            "asset_state": sig.get("asset_state", "OBSERVING"),
+            "asset_state_label": sig.get("asset_state_label", "Observing"),
+            "next_unblock_reason": sig.get("next_unblock_reason", ""),
             "planned_stop_loss": planned_stop,
             "planned_take_profit": planned_take_profit,
             "planned_risk_pct": sig.get("planned_risk_pct", trade_plan.get("risk_pct", 0.0)),
@@ -2266,6 +2570,14 @@ class TradingAgent:
             "narrative_event_importance": sig.get("narrative_event_importance", "NONE"),
             "narrative_minutes_to_event": sig.get("narrative_minutes_to_event"),
             "narrative_headline_bias": sig.get("narrative_headline_bias", "NEUTRAL"),
+            "data_reliability": sig.get("data_reliability", {}),
+            "data_reliability_score": sig.get("data_reliability_score", 0.0),
+            "data_reliability_quality": sig.get("data_reliability_quality", "UNKNOWN"),
+            "data_reliability_summary": sig.get("data_reliability_summary", ""),
+            "portfolio_guard": sig.get("portfolio_guard", {}),
+            "portfolio_theme": sig.get("portfolio_theme", ""),
+            "portfolio_guard_summary": sig.get("portfolio_guard_summary", ""),
+            "portfolio_guard_size_multiplier": sig.get("portfolio_guard_size_multiplier", 1.0),
             "operator_review_guard": sig.get("operator_review_guard", {}),
             "trade_plan": trade_plan,
             "thesis": sig.get("thesis", {}),
@@ -3285,6 +3597,18 @@ class TradingAgent:
             },
         )
         review_data = trade_review.load_reviews()
+        decision_review_data = {}
+        if DECISION_REVIEW_REPORT_JSON.exists():
+            try:
+                decision_review_data = json.loads(DECISION_REVIEW_REPORT_JSON.read_text())
+            except Exception as e:
+                log.debug(f"decision_review_report.json read failed: {e}")
+        challenger_report_data = {}
+        if CHALLENGER_MODEL_JSON.exists():
+            try:
+                challenger_report_data = json.loads(CHALLENGER_MODEL_JSON.read_text())
+            except Exception as e:
+                log.debug(f"challenger_model_report.json read failed: {e}")
 
         control_data = default_control()
         control_path = CONTROL_JSON
@@ -3301,6 +3625,8 @@ class TradingAgent:
             market_map=market_map_data,
             trade_reviews=review_data,
             trade_dataset_records=trade_dataset_records,
+            decision_review_report=decision_review_data,
+            challenger_report=challenger_report_data,
         )
         try:
             DASHBOARD_SNAPSHOT_JSON.write_text(json.dumps(snapshot, indent=2))
@@ -3323,6 +3649,8 @@ class TradingAgent:
                     "control": control_data,
                     "market_map": market_map_data,
                     "trade_reviews": review_data,
+                    "decision_review_report": decision_review_data,
+                    "challenger_report": challenger_report_data,
                 }).encode()
                 req = urllib.request.Request(
                     remote_url.rstrip("/") + "/api/push",
@@ -3409,6 +3737,8 @@ class TradingAgent:
                 control=control_data,
                 market_map=market_map_data,
                 trade_reviews=review_data,
+                decision_review_report=decision_review_data,
+                challenger_report=challenger_report_data,
             )
 
     def _print_final_summary(self):

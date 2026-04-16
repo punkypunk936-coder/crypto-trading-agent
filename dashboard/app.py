@@ -20,10 +20,12 @@ import trade_dataset
 import trade_logger
 import trade_review as trade_review_store
 from paths import (
+    CHALLENGER_MODEL_JSON,
     CODE_ROOT,
     CONTROL_JSON,
     DAILY_MARKET_MAP_JSON,
     DASHBOARD_SNAPSHOT_JSON,
+    DECISION_REVIEW_REPORT_JSON,
     KILL_FILE,
     STATE_JSON,
     TRADE_REVIEWS_JSON,
@@ -43,6 +45,8 @@ SNAPSHOT = DASHBOARD_SNAPSHOT_JSON
 KILL     = KILL_FILE
 MARKET_MAP = DAILY_MARKET_MAP_JSON
 REVIEWS = TRADE_REVIEWS_JSON
+DECISION_REVIEW = DECISION_REVIEW_REPORT_JSON
+CHALLENGER_REPORT = CHALLENGER_MODEL_JSON
 HOSTED_INDEX = CODE_ROOT / "netlify-dashboard" / "public" / "index.html"
 
 # Secret token for push endpoint (set DASHBOARD_TOKEN env var for security)
@@ -91,6 +95,24 @@ def _load_trade_reviews_local() -> dict:
         return trade_review_store.default_reviews()
 
 
+def _load_decision_review_local() -> dict:
+    if DECISION_REVIEW.exists():
+        try:
+            return json.loads(DECISION_REVIEW.read_text())
+        except Exception:
+            pass
+    return {}
+
+
+def _load_challenger_report_local() -> dict:
+    if CHALLENGER_REPORT.exists():
+        try:
+            return json.loads(CHALLENGER_REPORT.read_text())
+        except Exception:
+            pass
+    return {}
+
+
 def _load_control_local() -> dict:
     if CONTROL.exists():
         try:
@@ -127,7 +149,7 @@ def _snapshot_needs_refresh() -> bool:
         snapshot_mtime = SNAPSHOT.stat().st_mtime
     except Exception:
         return True
-    for path in (STATE, LOG, CONTROL, MARKET_MAP, REVIEWS):
+    for path in (STATE, LOG, CONTROL, MARKET_MAP, REVIEWS, DECISION_REVIEW, CHALLENGER_REPORT):
         try:
             if path.exists() and path.stat().st_mtime > snapshot_mtime:
                 return True
@@ -150,6 +172,8 @@ def _build_local_snapshot(server_timestamp: str | None = None) -> dict:
         market_map=effective_market_map,
         trade_reviews=_load_trade_reviews_local(),
         trade_dataset_records=_load_trade_dataset_local(),
+        decision_review_report=_load_decision_review_local(),
+        challenger_report=_load_challenger_report_local(),
         server_timestamp=server_timestamp,
     )
 
@@ -167,6 +191,8 @@ def _hydrate_snapshot_payload(data: dict, *, server_timestamp: str | None = None
         data.get("control"),
         data.get("market_map"),
         data.get("trade_reviews"),
+        decision_review_report=data.get("decision_review_report"),
+        challenger_report=data.get("challenger_report"),
         server_timestamp=server_timestamp,
     )
 

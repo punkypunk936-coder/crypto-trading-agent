@@ -328,6 +328,58 @@ class TradingConfig:
         "TAO:LONG",
     ])
 
+    # ── Asset state machine / next-unblock reasoning ───────────────────────
+    asset_state_machine_enabled: bool = True
+
+    # ── Data reliability guard ──────────────────────────────────────────────
+    data_reliability_enabled: bool = True
+    data_reliability_min_score: float = 58.0
+    data_reliability_max_live_analysis_gap_pct: float = 0.90
+    data_reliability_min_news_articles: int = 1
+    data_reliability_min_orderbook_snapshots: int = 3
+
+    # ── Portfolio correlation guard ─────────────────────────────────────────
+    portfolio_correlation_guard_enabled: bool = True
+    portfolio_theme_max_positions: int = 2
+    portfolio_theme_max_same_direction_exposure_pct: float = 0.18
+    portfolio_theme_warning_exposure_pct: float = 0.10
+    portfolio_correlation_soft_penalty: float = 0.65
+    portfolio_correlation_secondary_penalty: float = 0.82
+    portfolio_theme_map: dict = field(default_factory=lambda: {
+        "BTC": "CRYPTO_CORE",
+        "ETH": "CRYPTO_CORE",
+        "SOL": "CRYPTO_HIGH_BETA",
+        "HYPE": "CRYPTO_HIGH_BETA",
+        "TAO": "CRYPTO_HIGH_BETA",
+        "SP500": "US_MACRO_BETA",
+        "XAU": "DEFENSIVE_HARD_ASSET",
+        "BRENT": "ENERGY_COMPLEX",
+        "WTI": "ENERGY_COMPLEX",
+        "AAPL": "MEGA_CAP_TECH",
+        "AMZN": "MEGA_CAP_TECH",
+        "GOOGL": "MEGA_CAP_TECH",
+        "META": "MEGA_CAP_TECH",
+        "MSFT": "MEGA_CAP_TECH",
+        "TSLA": "MEGA_CAP_TECH",
+    })
+
+    # ── Smarter execution tactics ───────────────────────────────────────────
+    execution_passive_rescue_enabled: bool = True
+    execution_passive_rescue_max_spread_bps: float = 28.0
+    execution_passive_rescue_min_depth_multiple: float = 2.5
+    execution_passive_rescue_max_slippage_bps: float = 85.0
+
+    # ── Missed-trade review / champion-challenger scaffolding ──────────────
+    decision_review_enabled: bool = True
+    decision_review_target_r: float = 0.25
+    decision_review_horizon_minutes: int = 720
+    decision_review_interval: str = "5m"
+    decision_review_dedupe_minutes: int = 30
+    challenger_model_enabled: bool = True
+    challenger_min_labeled_decisions: int = 25
+    challenger_min_win_rate_edge: float = 0.04
+    challenger_refresh_hours: float = 6.0
+
     # ── Visual chart confirmation ────────────────────────
     # When enabled, borderline signals (score 38–62) are confirmed by
     # sending a chart screenshot to Claude's vision API before trading.

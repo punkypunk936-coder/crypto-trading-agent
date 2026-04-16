@@ -1,5 +1,7 @@
 import {
+  CHALLENGER_REPORT_PATH,
   CONTROL_PATH,
+  DECISION_REVIEW_PATH,
   MARKET_MAP_PATH,
   SNAPSHOT_PATH,
   STATE_PATH,
@@ -25,7 +27,16 @@ export async function POST(request: Request) {
   try {
     const snapshot = data.snapshot && typeof data.snapshot === "object" && data.snapshot.state
       ? data.snapshot
-      : buildSnapshot(data.state, data.trades || [], data.control, data.market_map, data.trade_reviews);
+      : buildSnapshot(
+          data.state,
+          data.trades || [],
+          data.control,
+          data.market_map,
+          data.trade_reviews,
+          undefined,
+          data.decision_review_report,
+          data.challenger_report,
+        );
 
     await writeJson(SNAPSHOT_PATH, snapshot);
     await writeJson(STATE_PATH, snapshot.state || data.state || {});
@@ -33,12 +44,23 @@ export async function POST(request: Request) {
     await writeJson(CONTROL_PATH, snapshot.control || data.control || {});
     await writeJson(MARKET_MAP_PATH, snapshot.market_map || data.market_map || {});
     await writeJson(TRADE_REVIEWS_PATH, snapshot.trade_reviews || data.trade_reviews || {});
+    await writeJson(DECISION_REVIEW_PATH, snapshot.decision_review_report || data.decision_review_report || {});
+    await writeJson(CHALLENGER_REPORT_PATH, snapshot.challenger_report || data.challenger_report || {});
 
     return json({ ok: true, cycle: snapshot?.state?.cycle_number || data?.state?.cycle_number || 0 });
   } catch (error) {
     const snapshot = data.snapshot && typeof data.snapshot === "object" && data.snapshot.state
       ? data.snapshot
-      : buildSnapshot(data.state, data.trades || [], data.control, data.market_map, data.trade_reviews);
+      : buildSnapshot(
+          data.state,
+          data.trades || [],
+          data.control,
+          data.market_map,
+          data.trade_reviews,
+          undefined,
+          data.decision_review_report,
+          data.challenger_report,
+        );
     const forwardPayload = {
       snapshot,
       state: snapshot?.state || data.state || {},
@@ -46,6 +68,8 @@ export async function POST(request: Request) {
       control: snapshot?.control || data.control || {},
       market_map: snapshot?.market_map || data.market_map || {},
       trade_reviews: snapshot?.trade_reviews || data.trade_reviews || {},
+      decision_review_report: snapshot?.decision_review_report || data.decision_review_report || {},
+      challenger_report: snapshot?.challenger_report || data.challenger_report || {},
     };
     const forwarded = await forwardNetlifyPush(forwardPayload, request.headers.get("X-Token") || "");
     if (forwarded.ok) {

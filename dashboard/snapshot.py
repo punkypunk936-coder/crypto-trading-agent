@@ -209,12 +209,22 @@ def action_board(state: dict, market_map: dict) -> dict:
     order = {
         "OPEN_LONG": 0,
         "OPEN_SHORT": 0,
+        "PENDING_ENTRY": 1,
+        "EXECUTABLE": 1,
+        "PASSIVE_ENTRY": 1,
         "READY_LONG": 1,
         "READY_SHORT": 1,
+        "WAITING_CONFIRMATION": 2,
         "WAIT_RECLAIM": 2,
         "WATCH_LONG": 2,
         "WAIT_BREAKDOWN": 2,
         "WATCH_SHORT": 2,
+        "PORTFOLIO_GUARD": 3,
+        "DATA_QUALITY_HOLD": 3,
+        "EXECUTION_BLOCKED": 3,
+        "RISK_BLOCKED": 3,
+        "COOLDOWN": 3,
+        "ARMED": 3,
         "NO_SETUP": 3,
     }
 
@@ -261,6 +271,21 @@ def action_board(state: dict, market_map: dict) -> dict:
         confidence = str(sig.get("confidence") or "LOW").upper()
         score = _safe_float(sig.get("score") or 50.0)
         action = str(sig.get("action") or "FLAT").upper()
+        asset_state = str(sig.get("asset_state") or "").upper()
+        asset_state_label = str(sig.get("asset_state_label") or "").strip()
+        next_unblock = str(sig.get("next_unblock_reason") or "").strip()
+        state_override = asset_state in {
+            "PENDING_ENTRY",
+            "WAITING_CONFIRMATION",
+            "PORTFOLIO_GUARD",
+            "RISK_BLOCKED",
+            "DATA_QUALITY_HOLD",
+            "PASSIVE_ENTRY",
+            "EXECUTION_BLOCKED",
+            "COOLDOWN",
+            "ARMED",
+            "OBSERVATION_ONLY",
+        }
 
         execution_note = ""
 
@@ -277,6 +302,35 @@ def action_board(state: dict, market_map: dict) -> dict:
                 else "Trade is already open."
             )
             execution_note = "Position is already open and under active management."
+        elif asset_state == "PENDING_ENTRY":
+            status = "PENDING_ENTRY"
+            label = asset_state_label or "Pending entry"
+            headline = next_unblock or "A resting limit order is already on the book."
+            anchor_price = _safe_float(sig.get("price") or sig.get("live_price"))
+            trigger = f"Working order around {anchor_price:,.2f}" if anchor_price > 0 else "Waiting for the resting limit order to resolve."
+            execution_note = next_unblock or "The order is already working. The next event is a fill, cancel, or expiry."
+        elif state_override or (asset_state == "EXECUTABLE" and action == "FLAT"):
+            status = asset_state or "ARMED"
+            label = asset_state_label or "Setup pending"
+            headline = _primary_reason(next_unblock or current_logic or blocker) or "The setup is still gated."
+            live_anchor = _safe_float(sig.get("live_price") or sig.get("price"))
+            if action == "LONG" and live_anchor > 0:
+                trigger = f"Long is tracking around {live_anchor:,.2f}"
+            elif action == "SHORT" and live_anchor > 0:
+                trigger = f"Short is tracking around {live_anchor:,.2f}"
+            elif long_trigger and bias == "BULLISH":
+                trigger = f"Best long trigger stays above {long_trigger:,.2f}"
+            elif short_trigger and bias == "BEARISH":
+                trigger = f"Best short trigger stays below {short_trigger:,.2f}"
+            else:
+                trigger = "Wait for the next unblock."
+            execution_note = (
+                next_unblock
+                or str(sig.get("portfolio_guard_summary") or "")
+                or str(sig.get("data_reliability_summary") or "")
+                or str(sig.get("execution_quality_summary") or "")
+                or "The setup is still waiting on one final unlock."
+            )
         elif action == "LONG":
             status = "READY_LONG"
             label = "Long thesis live"
@@ -384,6 +438,9 @@ def action_board(state: dict, market_map: dict) -> dict:
                 "mode_badge": mode_badge,
                 "mode_detail": mode_detail,
                 "bias": bias,
+                "asset_state": asset_state,
+                "asset_state_label": asset_state_label,
+                "next_unblock_reason": next_unblock,
                 "status": status,
                 "label": label,
                 "headline": headline,
@@ -750,6 +807,8 @@ def build_dashboard_snapshot(
     market_map: Any = None,
     trade_reviews: Any = None,
     trade_dataset_records: Iterable[dict] | None = None,
+    decision_review_report: Any = None,
+    challenger_report: Any = None,
     *,
     server_timestamp: str | None = None,
 ) -> dict:
@@ -769,6 +828,8 @@ def build_dashboard_snapshot(
         "trade_reviews": normalized_trade_reviews,
         "review_summary": review_summary(safe_trades, normalized_trade_reviews),
         "learning_summary": learning_summary(safe_trades),
+        "decision_review_report": dict(decision_review_report or {}),
+        "challenger_report": dict(challenger_report or {}),
         "runtime": runtime_status(shaped_state),
         "server_time": server_timestamp or server_time(),
     }

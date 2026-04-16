@@ -1,6 +1,8 @@
 import {
+  CHALLENGER_REPORT_PATH,
   MARKET_MAP_PATH,
   SNAPSHOT_PATH,
+  DECISION_REVIEW_PATH,
   CONTROL_PATH,
   STATE_PATH,
   TRADE_REVIEWS_PATH,
@@ -111,6 +113,8 @@ export async function GET() {
           marketMapFromState(thinFallbackSnapshot.state),
           thinFallbackSnapshot.trade_reviews || defaultTradeReviews(),
           thinFallbackSnapshot.server_time,
+          thinFallbackSnapshot.decision_review_report || {},
+          thinFallbackSnapshot.challenger_report || {},
         ),
         { headers: cacheHeaders },
       );
@@ -122,8 +126,10 @@ export async function GET() {
       [CONTROL_PATH, defaultControl()],
       [MARKET_MAP_PATH, defaultMarketMap()],
       [TRADE_REVIEWS_PATH, defaultTradeReviews()],
+      [DECISION_REVIEW_PATH, {}],
+      [CHALLENGER_REPORT_PATH, {}],
     ] as const;
-    const [state, trades, control, marketMap, tradeReviews] = await Promise.all(
+    const [state, trades, control, marketMap, tradeReviews, decisionReviewReport, challengerReport] = await Promise.all(
       loaders.map(async ([path, fallback]) => {
         try {
           return await readJson(path, fallback);
@@ -132,10 +138,13 @@ export async function GET() {
         }
       }),
     );
-    return json(buildSnapshot(state, trades, control, marketMap, tradeReviews), { headers: cacheHeaders });
+    return json(
+      buildSnapshot(state, trades, control, marketMap, tradeReviews, undefined, decisionReviewReport, challengerReport),
+      { headers: cacheHeaders },
+    );
   } catch (error) {
     return json(
-      buildSnapshot(defaultState(), [], defaultControl(), defaultMarketMap(), defaultTradeReviews()),
+      buildSnapshot(defaultState(), [], defaultControl(), defaultMarketMap(), defaultTradeReviews(), undefined, {}, {}),
       { status: 500, headers: cacheHeaders },
     );
   }
