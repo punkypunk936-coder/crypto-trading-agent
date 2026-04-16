@@ -1475,9 +1475,9 @@ function renderActionBoard(board) {
             : 'decision-card decision-card-tradable';
         return '<div class="' + highlight + '">'
           + '<div class="decision-top">'
-            + '<div><div class="decision-coin">' + esc(item.coin) + '</div><div class="decision-meta">' + esc(item.mode_label || 'TRADEABLE NOW') + '</div></div>'
+            + '<div><div class="decision-coin">' + esc(item.coin) + '</div><div class="decision-meta">' + esc(item.mode_meta || 'Live-eligible') + '</div></div>'
             + '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">'
-              + '<span class="signal-mode-tradable">' + esc(item.mode_label || 'TRADEABLE NOW') + '</span>'
+              + '<span class="signal-mode-tradable">' + esc(item.mode_badge || 'LIVE') + '</span>'
               + '<span class="review-chip">' + esc(String(item.label || 'No setup').toUpperCase()) + '</span>'
               + '<span class="' + biasClass(item.bias) + '">' + esc(String(item.bias || 'NEUTRAL')) + '</span>'
             + '</div>'
@@ -1498,7 +1498,7 @@ function renderActionBoard(board) {
     html += '<div><div class="decision-group-title">Observation Only</div><div class="decision-group-sub">These names are still being read carefully, but execution is blocked until the active venue supports them cleanly.</div><div class="watchlist-strip">'
       + observationItems.map((item) => '<div class="watchlist-row">'
         + '<div class="watchlist-coin">' + esc(item.coin) + '</div>'
-        + '<div><span class="signal-mode-watch">' + esc(item.mode_label || 'OBSERVATION ONLY') + '</span></div>'
+        + '<div><span class="signal-mode-watch">' + esc(item.mode_badge || 'WATCH') + '</span></div>'
         + '<div class="watchlist-note"><strong>' + esc(item.label || 'Watch') + ':</strong> ' + esc(shortText(item.execution_note || item.headline || item.mode_detail || 'Tracked only right now.', 140)) + (item.trigger ? ' • ' + esc(shortText(item.trigger, 90)) : '') + '</div>'
       + '</div>').join('')
       + '</div></div>';

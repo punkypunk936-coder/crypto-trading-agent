@@ -365,9 +365,13 @@ def action_board(state: dict, market_map: dict) -> dict:
 
         if tradable:
             mode_label = "TRADEABLE NOW"
+            mode_meta = "Live-eligible"
+            mode_badge = "LIVE"
             mode_detail = "This market can execute on the active venue, but the bot still needs final entry checks to clear."
         else:
             mode_label = "OBSERVATION ONLY"
+            mode_meta = "Observation-only"
+            mode_badge = "WATCH"
             mode_detail = "The agent is tracking this market, but execution is blocked on the active venue right now."
 
         items.append(
@@ -376,6 +380,8 @@ def action_board(state: dict, market_map: dict) -> dict:
                 "tradable": tradable,
                 "execution_mode": execution_mode,
                 "mode_label": mode_label,
+                "mode_meta": mode_meta,
+                "mode_badge": mode_badge,
                 "mode_detail": mode_detail,
                 "bias": bias,
                 "status": status,
