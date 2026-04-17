@@ -1397,6 +1397,152 @@ def test_order_sizing_scales_with_conviction_and_tempers_euphoria() -> None:
     assert supported_extreme.size_usd > cautious_extreme.size_usd, "weak RL history should dampen euphoric sizing"
 
 
+def test_immediate_limit_scale_in_updates_open_trade_record() -> None:
+    cfg = build_config()
+    cfg.trading.max_trade_usd = 300.0
+    cfg.trading.min_trade_usd = 25.0
+    original_manager = checkpoint_module.checkpoint_manager
+    original_agent_manager = agent_module.checkpoint_manager
+    original_update_open = trade_logger_module.update_open
+    original_log_open = trade_logger_module.log_open
+
+    class ImmediateLimitExchange(StubExchange):
+        def __init__(self):
+            super().__init__("limit-immediate", should_fill=True)
+
+        def limit_buy(self, coin: str, size_coin: float, limit_price: float, maker_only: bool = False) -> OrderResult:
+            return OrderResult(success=True, filled_price=limit_price, filled_size=size_coin)
+
+        def limit_sell(self, coin: str, size_coin: float, limit_price: float, maker_only: bool = False) -> OrderResult:
+            return OrderResult(success=True, filled_price=limit_price, filled_size=size_coin)
+
+        def supports_limit_orders(self) -> bool:
+            return True
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / "checkpoints.db"
+        temp_manager = checkpoint_module.CheckpointManager(db_path=str(db_path))
+        checkpoint_module.checkpoint_manager = temp_manager
+        agent_module.checkpoint_manager = temp_manager
+        try:
+            agent = TradingAgent(cfg, [ImmediateLimitExchange()])
+            agent.risk.restore_position(
+                OpenPosition(
+                    coin="BTC",
+                    direction="LONG",
+                    entry_price=100.0,
+                    size_usd=100.0,
+                    size_coin=1.0,
+                    stop_loss=90.0,
+                    take_profit=150.0,
+                )
+            )
+
+            called = {}
+            trade_logger_module.update_open = lambda coin, entry_price, size_usd, stop_loss, take_profit: called.update({
+                "coin": coin,
+                "entry_price": entry_price,
+                "size_usd": size_usd,
+                "stop_loss": stop_loss,
+                "take_profit": take_profit,
+            })
+            trade_logger_module.log_open = lambda **kwargs: called.setdefault("log_open_called", True)
+
+            result = agent._place_limit_order(
+                "BTC",
+                "LONG",
+                limit_price=110.0,
+                size_usd=50.0,
+                sl=98.0,
+                tp=140.0,
+                score=72.0,
+                reason="initial_limit",
+            )
+
+            assert result["success"] is True and result["filled"] is True and result["pending"] is False
+            assert called.get("coin") == "BTC", "scale-in fills should update the current open trade record"
+            assert float(called.get("size_usd", 0.0)) > 100.0
+            assert "log_open_called" not in called, "scale-in fills should not create a brand-new open trade row"
+        finally:
+            checkpoint_module.checkpoint_manager = original_manager
+            agent_module.checkpoint_manager = original_agent_manager
+            trade_logger_module.update_open = original_update_open
+            trade_logger_module.log_open = original_log_open
+
+
+def test_pending_limit_scale_in_updates_open_trade_record() -> None:
+    cfg = build_config()
+    cfg.trading.max_trade_usd = 300.0
+    cfg.trading.min_trade_usd = 25.0
+    original_manager = checkpoint_module.checkpoint_manager
+    original_agent_manager = agent_module.checkpoint_manager
+    original_update_open = trade_logger_module.update_open
+
+    class PendingLimitExchange(StubExchange):
+        def __init__(self):
+            super().__init__("limit-pending", should_fill=True)
+
+        def supports_limit_orders(self) -> bool:
+            return True
+
+        def get_order_status(self, coin: str, order_id: str) -> LimitOrderStatus:
+            return LimitOrderStatus(order_id=order_id, coin=coin, filled=True, filled_price=112.0, filled_size=0.5)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / "checkpoints.db"
+        temp_manager = checkpoint_module.CheckpointManager(db_path=str(db_path))
+        checkpoint_module.checkpoint_manager = temp_manager
+        agent_module.checkpoint_manager = temp_manager
+        try:
+            agent = TradingAgent(cfg, [PendingLimitExchange()])
+            agent.risk.restore_position(
+                OpenPosition(
+                    coin="BTC",
+                    direction="LONG",
+                    entry_price=100.0,
+                    size_usd=100.0,
+                    size_coin=1.0,
+                    stop_loss=90.0,
+                    take_profit=150.0,
+                )
+            )
+            agent.order_mgr.register_limit_order(
+                PendingOrder(
+                    coin="BTC",
+                    direction="LONG",
+                    limit_price=112.0,
+                    size_coin=0.5,
+                    size_usd=56.0,
+                    stop_loss=99.0,
+                    take_profit=145.0,
+                    signal_score=74.0,
+                    exchange="limit-pending",
+                    exchange_order_id="btc-scale-order",
+                    reason="initial_limit",
+                )
+            )
+
+            called = {}
+            trade_logger_module.update_open = lambda coin, entry_price, size_usd, stop_loss, take_profit: called.update({
+                "coin": coin,
+                "entry_price": entry_price,
+                "size_usd": size_usd,
+                "stop_loss": stop_loss,
+                "take_profit": take_profit,
+            })
+            agent._verify_position_on_exchange = lambda *_args, **_kwargs: True
+
+            agent._poll_pending_limits({"BTC": 112.0})
+
+            assert called.get("coin") == "BTC", "pending scale-in fills should refresh the open trade record"
+            assert float(called.get("size_usd", 0.0)) > 100.0
+            assert not agent.order_mgr.has_pending("BTC"), "filled pending scale-ins should clear from the pending book"
+        finally:
+            checkpoint_module.checkpoint_manager = original_manager
+            agent_module.checkpoint_manager = original_agent_manager
+            trade_logger_module.update_open = original_update_open
+
+
 def test_narrative_gate_blocks_event_risk_without_exceptional_expectancy() -> None:
     cfg = build_config()
     cfg.trading.use_narrative_gate = True
@@ -4061,6 +4207,10 @@ def run_all() -> None:
     print("PASS completed-candle conviction split")
     test_scale_in_does_not_mutate_before_fill()
     print("PASS scale-in accounting")
+    test_immediate_limit_scale_in_updates_open_trade_record()
+    print("PASS immediate limit scale-in logging")
+    test_pending_limit_scale_in_updates_open_trade_record()
+    print("PASS pending limit scale-in logging")
     test_order_sizing_scales_with_conviction_and_tempers_euphoria()
     print("PASS conviction sizing")
     test_narrative_gate_blocks_event_risk_without_exceptional_expectancy()

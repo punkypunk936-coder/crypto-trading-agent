@@ -2793,6 +2793,11 @@ class TradingAgent:
                         )
                     log.info(f"[{coin}] Position verified on {ex.name}")
 
+                total_size_usd = None
+                if order.is_scale_in:
+                    pos = self.risk.positions.get(coin)
+                    if pos:
+                        total_size_usd = pos.size_usd
                 self.notifier.trade_opened(
                     coin     = coin,
                     direction= signal.action,
@@ -2802,9 +2807,11 @@ class TradingAgent:
                     tp       = order.take_profit,
                     score    = signal.score,
                     exchange = ex.name,
+                    is_scale_in = bool(order.is_scale_in),
+                    total_size_usd = total_size_usd,
                 )
                 log.info(
-                    f"[{coin}] ✅ {signal.action} opened on {ex.name}: "
+                    f"[{coin}] ✅ {'scale-in added' if order.is_scale_in else signal.action + ' opened'} on {ex.name}: "
                     f"{order.size_coin:.6f} @ ${fill_price:.2f} "
                     f"| SL ${order.stop_loss:.2f} TP ${order.take_profit:.2f}"
                 )
@@ -2842,6 +2849,7 @@ class TradingAgent:
                 filled_size_coin = max(0.0, float(result.filled_size or 0.0))
                 remaining_size_coin = max(0.0, size_coin - filled_size_coin)
                 remaining_size_usd = max(0.0, remaining_size_coin * limit_price)
+                same_direction_position = self.risk.has_position(coin) and self.risk.position_direction(coin) == direction
 
                 if filled_size_coin > 0 and fill_price > 0:
                     filled_order = OrderRequest(
@@ -2873,8 +2881,17 @@ class TradingAgent:
                             )
                         )
                     }
-                    if self.risk.has_position(coin) and self.risk.position_direction(coin) == direction:
+                    if same_direction_position:
                         self.risk.record_scale_in_fill(filled_order, exchange=ex.name)
+                        pos = self.risk.positions.get(coin)
+                        if pos:
+                            trade_logger.update_open(
+                                coin=coin,
+                                entry_price=pos.entry_price,
+                                size_usd=pos.size_usd,
+                                stop_loss=pos.stop_loss,
+                                take_profit=pos.take_profit,
+                            )
                     else:
                         self.risk.record_open(filled_order, exchange=ex.name, metadata=entry_payload)
                         trade_logger.log_open(
@@ -2896,9 +2913,11 @@ class TradingAgent:
                         tp=tp,
                         score=score,
                         exchange=ex.name,
+                        is_scale_in=bool(same_direction_position),
+                        total_size_usd=(self.risk.positions.get(coin).size_usd if same_direction_position and self.risk.positions.get(coin) else None),
                     )
                     log.info(
-                        f"[{coin}] ✅ Limit {direction} immediately filled on {ex.name}: "
+                        f"[{coin}] ✅ Limit {'scale-in' if same_direction_position else direction} immediately filled on {ex.name}: "
                         f"{filled_size_coin:.6f} @ ${fill_price:.2f}"
                     )
 
@@ -3006,6 +3025,7 @@ class TradingAgent:
             ex = self._get_exchange_by_name(pending.exchange) or (self.exchanges[0] if self.exchanges else None)
             if not ex:
                 continue
+            had_same_direction_position = self.risk.has_position(coin) and self.risk.position_direction(coin) == pending.direction
             try:
                 circuit = self._exchange_circuits.get(ex.name)
                 if circuit:
@@ -3050,16 +3070,25 @@ class TradingAgent:
                 if recovered:
                     pos = self.risk.positions.get(coin)
                     if pos:
-                        trade_logger.restore_open(
-                            coin=coin,
-                            direction=pending.direction,
-                            entry_price=pos.entry_price,
-                            size_usd=pos.size_usd,
-                            stop_loss=pos.stop_loss,
-                            take_profit=pos.take_profit,
-                            leverage=self.cfg.trading.leverage,
-                            signal_score=pending.signal_score,
-                        )
+                        if had_same_direction_position:
+                            trade_logger.update_open(
+                                coin=coin,
+                                entry_price=pos.entry_price,
+                                size_usd=pos.size_usd,
+                                stop_loss=pos.stop_loss,
+                                take_profit=pos.take_profit,
+                            )
+                        else:
+                            trade_logger.restore_open(
+                                coin=coin,
+                                direction=pending.direction,
+                                entry_price=pos.entry_price,
+                                size_usd=pos.size_usd,
+                                stop_loss=pos.stop_loss,
+                                take_profit=pos.take_profit,
+                                leverage=self.cfg.trading.leverage,
+                                signal_score=pending.signal_score,
+                            )
                 else:
                     pending_signal = type("PendingSignal", (), {
                         "action": pending.direction,
@@ -3085,8 +3114,17 @@ class TradingAgent:
                         "take_profit": round(pending.take_profit, 6),
                     })
                     entry_context["trade_plan"] = trade_plan
-                    if self.risk.has_position(coin) and self.risk.position_direction(coin) == pending.direction:
+                    if had_same_direction_position:
                         self.risk.record_scale_in_fill(order, exchange=ex.name)
+                        pos = self.risk.positions.get(coin)
+                        if pos:
+                            trade_logger.update_open(
+                                coin=coin,
+                                entry_price=pos.entry_price,
+                                size_usd=pos.size_usd,
+                                stop_loss=pos.stop_loss,
+                                take_profit=pos.take_profit,
+                            )
                     else:
                         self.risk.record_open(
                             order,
@@ -3112,6 +3150,8 @@ class TradingAgent:
                     tp       = pending.take_profit,
                     score    = pending.signal_score,
                     exchange = ex.name,
+                    is_scale_in = bool(had_same_direction_position),
+                    total_size_usd=(self.risk.positions.get(coin).size_usd if had_same_direction_position and self.risk.positions.get(coin) else None),
                 )
                 self.order_mgr.mark_filled(coin, fill_price)
             elif status.cancelled:

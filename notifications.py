@@ -30,13 +30,16 @@ class TelegramNotifier:
 
     def trade_opened(self, coin: str, direction: str, price: float,
                      size_usd: float, sl: float, tp: float,
-                     score: float, exchange: str):
+                     score: float, exchange: str,
+                     is_scale_in: bool = False,
+                     total_size_usd: float | None = None):
         emoji = "🟢" if direction == "LONG" else "🔴"
         sl_pct = abs(price - sl) / price * 100 if price else 0.0
         tp_pct = abs(tp - price) / price * 100 if price else 0.0
         rr = tp_pct / sl_pct if sl_pct > 0 else 0.0
+        headline = f"{direction} scale-in added — {coin}" if is_scale_in else f"{direction} opened — {coin}"
         msg = (
-            f"{emoji} *{direction} opened — {coin}*\n"
+            f"{emoji} *{headline}*\n"
             f"Exchange: {exchange}\n"
             f"Entry:  ${price:,.2f}\n"
             f"Size:   ${size_usd:,.2f}\n"
@@ -45,6 +48,8 @@ class TelegramNotifier:
             f"R:R:    {rr:.2f}\n"
             f"Signal: {score:.1f}/100"
         )
+        if is_scale_in and total_size_usd and total_size_usd > 0:
+            msg += f"\nTotal position: ${total_size_usd:,.2f}"
         self.send(msg)
 
     def trade_closed(self, coin: str, direction: str, entry: float,
