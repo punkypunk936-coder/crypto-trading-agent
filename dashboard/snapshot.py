@@ -199,8 +199,14 @@ def action_board(state: dict, market_map: dict) -> dict:
     signals = dict((state or {}).get("signals") or {})
     positions = list((state or {}).get("positions") or [])
     positions_by_coin = {str(item.get("coin") or "").upper(): dict(item or {}) for item in positions}
+    config = dict((state or {}).get("config") or {})
+    dynamic_analysis = [
+        str(coin or "").upper()
+        for coin in (config.get("dynamic_analysis_coins") or [])
+        if str(coin or "").strip()
+    ]
     tracked = set()
-    tracked.update(str(coin or "").upper() for coin in ((state or {}).get("config") or {}).get("coins", []) or [])
+    tracked.update(str(coin or "").upper() for coin in config.get("coins", []) or [])
     tracked.update(str(coin or "").upper() for coin in signals.keys())
     tracked.update(str(coin or "").upper() for coin in positions_by_coin.keys())
 
@@ -464,6 +470,7 @@ def action_board(state: dict, market_map: dict) -> dict:
     )
     tradable_items = [item for item in items if item.get("tradable")]
     observation_items = [item for item in items if not item.get("tradable")]
+    pending_count = sum(1 for item in items if str(item.get("status") or "").upper() == "PENDING_ENTRY")
     return {
         "updated_at": state.get("last_cycle"),
         "lead": items[0] if items else None,
@@ -477,6 +484,10 @@ def action_board(state: dict, market_map: dict) -> dict:
                 1 for item in tradable_items
                 if str(item.get("status") or "") in {"OPEN_LONG", "OPEN_SHORT", "READY_LONG", "READY_SHORT"}
             ),
+            "pending_count": pending_count,
+            "scout_count": len(dynamic_analysis),
+            "scout_preview": dynamic_analysis[:8],
+            "scout_market_cap_min_usd": _safe_float(config.get("dynamic_market_cap_min_usd")),
         },
     }
 

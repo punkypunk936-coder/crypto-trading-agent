@@ -27,6 +27,7 @@ import math
 import time
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import List, Optional, Dict
 from paths import (
     CHALLENGER_MODEL_JSON,
@@ -120,8 +121,14 @@ class TradingAgent:
         self._orderbook_history: Dict[str, List[dict]] = {}
         self._tradable_coins = [coin.upper() for coin in cfg.trading.coins]
         self._tradable_coin_set = set(self._tradable_coins)
+        self._dynamic_analysis_coins = [
+            str(coin).upper()
+            for coin in (getattr(cfg.trading, "dynamic_analysis_coins", []) or [])
+            if coin
+        ]
         seen_analysis: List[str] = []
-        for coin in getattr(cfg.trading, "analysis_coins", []) or self._tradable_coins:
+        analysis_sources = list(getattr(cfg.trading, "analysis_coins", []) or []) + list(self._dynamic_analysis_coins)
+        for coin in analysis_sources or self._tradable_coins:
             coin_upper = coin.upper()
             if coin_upper not in seen_analysis:
                 seen_analysis.append(coin_upper)
@@ -218,7 +225,20 @@ class TradingAgent:
             and getattr(self.cfg.trading, "orderbook_feed_enabled", True)
         ):
             return
-        feed_coins = list(self._analysis_coins)
+        tradable_coin_set = set(getattr(self, "_tradable_coin_set", set(getattr(self, "_tradable_coins", []))))
+        dynamic_analysis_coins = [
+            str(coin).upper()
+            for coin in getattr(self, "_dynamic_analysis_coins", []) or []
+            if coin
+        ]
+        scout_limit = int(getattr(self.cfg.trading, "dynamic_market_cap_feed_limit", 16) or 16)
+        scout_feed = [coin for coin in dynamic_analysis_coins if coin not in tradable_coin_set][:scout_limit]
+        feed_coins = list(getattr(self, "_tradable_coins", []))
+        if not feed_coins:
+            feed_coins = list(getattr(self, "_analysis_coins", []))
+        for coin in scout_feed:
+            if coin not in feed_coins:
+                feed_coins.append(coin)
         if getattr(self.cfg.trading, "enforce_active_venue_markets", True):
             filtered = []
             for coin in feed_coins:
@@ -506,6 +526,7 @@ class TradingAgent:
                     exchange=order.get("exchange", ""),
                     exchange_order_id=order.get("exchange_order_id", ""),
                     cycles_waiting=int(order.get("cycles_waiting", 0) or 0),
+                    reprice_count=int(order.get("reprice_count", 0) or 0),
                     reason=order.get("reason", "re_entry"),
                     placed_at=float(order.get("placed_at", time.time()) or time.time()),
                     metadata=order.get("metadata", {}) or {},
@@ -697,6 +718,7 @@ class TradingAgent:
 
         # 5. Poll pending limit orders for fills
         self._poll_pending_limits(current_prices)
+        self._manage_pending_limits(current_prices, portfolio_usd)
 
         # 6. Tick trade memory cooldowns (once per cycle)
         self._memory.tick_cooldowns()
@@ -2799,7 +2821,8 @@ class TradingAgent:
                            score: float, reason: str = "re_entry",
                            entry_context: Optional[dict] = None,
                            trade_plan: Optional[dict] = None,
-                           maker_only: bool = False) -> dict:
+                           maker_only: bool = False,
+                           extra_metadata: Optional[dict] = None) -> dict:
         """Place a limit order on the first eligible exchange and register or book any fill."""
         exchanges = [ex for ex in self._eligible_exchanges(coin) if ex.supports_limit_orders()]
         if not exchanges:
@@ -2893,6 +2916,7 @@ class TradingAgent:
                     signal_score      = score,
                     exchange          = ex.name,
                     exchange_order_id = result.order_id,
+                    reprice_count     = int((extra_metadata or {}).get("reprice_count", 0) or 0),
                     reason            = reason,
                     metadata          = {
                         "entry_context": (
@@ -2926,6 +2950,8 @@ class TradingAgent:
                         )
                     },
                 )
+                if extra_metadata:
+                    pending.metadata.update(dict(extra_metadata or {}))
                 self.order_mgr.register_limit_order(pending)
                 log.info(
                     f"[{coin}] 📋 Limit {direction} placed @ ${limit_price:.2f} "
@@ -3091,6 +3117,268 @@ class TradingAgent:
             elif status.cancelled:
                 log.info(f"[{coin}] Limit order cancelled by exchange")
                 self.order_mgr.mark_cancelled(coin)
+
+    def _pending_entry_context(self, pending: PendingOrder) -> dict:
+        return dict((getattr(pending, "metadata", {}) or {}).get("entry_context", {}) or {})
+
+    def _build_pending_signal(self, pending: PendingOrder, *, live_price: float, reason: str) -> SimpleNamespace:
+        entry_context = self._pending_entry_context(pending)
+        trade_plan = dict(entry_context.get("trade_plan", {}) or {})
+        expectancy = dict(entry_context.get("expectancy", {}) or {})
+        thesis = dict(entry_context.get("thesis", {}) or {})
+        return SimpleNamespace(
+            action=str(pending.direction or "FLAT").upper(),
+            score=float(getattr(pending, "signal_score", 50.0) or 50.0),
+            confidence=str(entry_context.get("confidence") or "MEDIUM").upper(),
+            price=float(live_price or pending.limit_price or 0.0),
+            stop_loss_price=float(getattr(pending, "stop_loss", 0.0) or 0.0),
+            take_profit_price=float(getattr(pending, "take_profit", 0.0) or 0.0),
+            reason=reason,
+            flat_reason="",
+            trade_plan=trade_plan,
+            execution_plan={"mode": "market", "reason": reason},
+            expectancy=expectancy,
+            thesis=thesis,
+        )
+
+    def _cancel_pending_limit(self, pending: PendingOrder, reason: str) -> bool:
+        coin = str(pending.coin or "").upper()
+        ex = self._get_exchange_by_name(pending.exchange) or (self.exchanges[0] if self.exchanges else None)
+        if ex and pending.exchange_order_id:
+            try:
+                ex.cancel_order(coin, pending.exchange_order_id)
+            except Exception as exc:
+                log.warning(f"[{coin}] Pending cancel encountered an error: {exc}")
+        self.order_mgr.mark_cancelled(coin)
+        log.info(f"[{coin}] Pending limit cancelled: {reason}")
+        return True
+
+    def _reprice_pending_limit(
+        self,
+        pending: PendingOrder,
+        *,
+        new_price: float,
+        live_price: float,
+        reason: str,
+    ) -> bool:
+        coin = str(pending.coin or "").upper()
+        if new_price <= 0:
+            return False
+        entry_context = self._pending_entry_context(pending)
+        entry_context["reason"] = reason
+        if not self._cancel_pending_limit(pending, reason):
+            return False
+        result = self._place_limit_order(
+            coin,
+            pending.direction,
+            new_price,
+            pending.size_usd,
+            pending.stop_loss,
+            pending.take_profit,
+            pending.signal_score,
+            reason="reprice",
+            entry_context=entry_context,
+            trade_plan=dict(entry_context.get("trade_plan", {}) or {}),
+            maker_only=True,
+            extra_metadata={
+                "reprice_count": int(getattr(pending, "reprice_count", 0) or 0) + 1,
+                "prior_limit_price": float(getattr(pending, "limit_price", 0.0) or 0.0),
+                "pending_management_reason": reason,
+            },
+        )
+        if result.get("success"):
+            log.info(
+                f"[{coin}] Pending entry repriced from ${pending.limit_price:,.4f} to ${new_price:,.4f} "
+                f"after {pending.cycles_waiting} cycles"
+            )
+        return bool(result.get("success"))
+
+    def _escalate_pending_limit_to_market(
+        self,
+        pending: PendingOrder,
+        *,
+        live_price: float,
+        reason: str,
+        orderbook_signal=None,
+    ) -> bool:
+        coin = str(pending.coin or "").upper()
+        order = OrderRequest(
+            coin=coin,
+            direction=pending.direction,
+            size_usd=pending.size_usd,
+            size_coin=(pending.size_usd / max(float(live_price or pending.limit_price or 0.0), 1e-9)),
+            price=float(live_price or pending.limit_price or 0.0),
+            stop_loss=pending.stop_loss,
+            take_profit=pending.take_profit,
+            leverage=self.cfg.trading.leverage,
+            approved=True,
+        )
+        synthetic_signal = self._build_pending_signal(pending, live_price=live_price, reason=reason)
+        if orderbook_signal and getattr(orderbook_signal, "valid", False):
+            synthetic_signal.execution_plan = {
+                "mode": "market",
+                "reason": reason,
+                "entry_price": float(live_price or pending.limit_price or 0.0),
+            }
+        self._cancel_pending_limit(pending, reason)
+        executed = self._execute_order(coin, synthetic_signal, order)
+        if executed:
+            self._record_precision_entry(coin, synthetic_signal, mode="market_escalation")
+            log.info(f"[{coin}] Pending limit escalated to market: {reason}")
+        return bool(executed)
+
+    def _manage_pending_limits(self, current_prices: dict, portfolio_usd: float) -> None:
+        if not getattr(self.cfg.trading, "execution_pending_management_enabled", True):
+            return
+
+        for coin, pending in list(self.order_mgr.pending_orders.items()):
+            if self.risk.has_position(coin):
+                continue
+
+            live_price = float(current_prices.get(coin) or pending.limit_price or 0.0)
+            if live_price <= 0:
+                continue
+
+            orderbook_signal = None
+            if self._supports_orderbook_context(coin):
+                try:
+                    orderbook_signal = get_orderbook_levels(
+                        coin,
+                        current_price=live_price,
+                        depth_limit=getattr(self.cfg.trading, "orderbook_depth_limit", 120),
+                        daily_lookback=getattr(self.cfg.trading, "orderbook_daily_lookback", 120),
+                        cache_ttl_seconds=getattr(self.cfg.trading, "orderbook_cache_ttl_seconds", 25),
+                        guard_distance_pct=getattr(self.cfg.trading, "orderbook_guard_distance_pct", 1.25),
+                        reaction_distance_pct=getattr(self.cfg.trading, "orderbook_reaction_distance_pct", 0.45),
+                        feed_max_age_seconds=getattr(self.cfg.trading, "orderbook_feed_max_snapshot_age_seconds", 45.0),
+                        feed_breakout_samples=getattr(self.cfg.trading, "orderbook_feed_breakout_samples", 2),
+                    )
+                except Exception as exc:
+                    log.debug(f"[{coin}] Pending orderbook refresh skipped: {exc}")
+
+            if (
+                getattr(self.cfg.trading, "execution_pending_cancel_on_stop_breach", True)
+                and (
+                    (pending.direction == "LONG" and live_price <= pending.stop_loss)
+                    or (pending.direction == "SHORT" and live_price >= pending.stop_loss)
+                )
+            ):
+                self._cancel_pending_limit(pending, "setup invalidated before fill")
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="pending_limit_cancelled",
+                    signal=self._build_pending_signal(pending, live_price=live_price, reason="setup invalidated before fill"),
+                    blocked=True,
+                )
+                continue
+
+            breakout_state = str(getattr(orderbook_signal, "breakout_state", "NONE") or "NONE").upper()
+            opposite_breakout = (
+                pending.direction == "LONG"
+                and breakout_state in {"CONFIRMED_BEARISH_BREAKDOWN", "PERSISTENT_BEARISH_BREAKDOWN"}
+            ) or (
+                pending.direction == "SHORT"
+                and breakout_state in {"CONFIRMED_BULLISH_BREAKOUT", "PERSISTENT_BULLISH_BREAKOUT"}
+            )
+            if (
+                getattr(self.cfg.trading, "execution_pending_cancel_on_opposite_breakout", True)
+                and opposite_breakout
+            ):
+                self._cancel_pending_limit(pending, f"opposite orderbook breakout invalidated the setup ({breakout_state})")
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="pending_limit_cancelled",
+                    signal=self._build_pending_signal(pending, live_price=live_price, reason=f"opposite breakout {breakout_state}"),
+                    blocked=True,
+                )
+                continue
+
+            should_reprice = (
+                getattr(self.cfg.trading, "execution_pending_reprice_enabled", True)
+                and pending.reason in {"initial_limit", "passive_rescue", "reprice"}
+                and pending.cycles_waiting >= int(getattr(self.cfg.trading, "execution_pending_reprice_after_cycles", 2) or 2)
+                and int(getattr(pending, "reprice_count", 0) or 0) < int(getattr(self.cfg.trading, "execution_pending_max_reprices", 3) or 3)
+                and orderbook_signal
+                and getattr(orderbook_signal, "valid", False)
+            )
+            if should_reprice:
+                target_price = float(
+                    getattr(orderbook_signal, "best_bid", 0.0) if pending.direction == "LONG"
+                    else getattr(orderbook_signal, "best_ask", 0.0)
+                )
+                threshold_bps = float(getattr(self.cfg.trading, "execution_pending_reprice_threshold_bps", 8.0) or 8.0)
+                drift_bps = abs(target_price - pending.limit_price) / max(pending.limit_price, 1e-9) * 10_000.0 if target_price > 0 else 0.0
+                if target_price > 0 and drift_bps >= threshold_bps:
+                    if self._reprice_pending_limit(
+                        pending,
+                        new_price=target_price,
+                        live_price=live_price,
+                        reason=f"top of book drifted {drift_bps:.1f}bps while the thesis stayed intact",
+                    ):
+                        self._record_decision_snapshot(
+                            coin,
+                            portfolio_usd=portfolio_usd,
+                            stage="pending_limit_repriced",
+                            signal=self._build_pending_signal(pending, live_price=live_price, reason="pending order repriced"),
+                            pending_limit=True,
+                        )
+                        continue
+
+            should_escalate = (
+                getattr(self.cfg.trading, "execution_pending_market_escalation_enabled", True)
+                and pending.reason in {"initial_limit", "passive_rescue", "reprice"}
+                and pending.cycles_waiting >= int(getattr(self.cfg.trading, "execution_pending_market_escalation_after_cycles", 3) or 3)
+                and orderbook_signal
+                and getattr(orderbook_signal, "valid", False)
+            )
+            if should_escalate:
+                breakout_ok = breakout_state in {
+                    "CONFIRMED_BULLISH_BREAKOUT",
+                    "PERSISTENT_BULLISH_BREAKOUT",
+                    "CONFIRMED_BEARISH_BREAKDOWN",
+                    "PERSISTENT_BEARISH_BREAKDOWN",
+                }
+                if (
+                    not getattr(self.cfg.trading, "execution_pending_market_escalation_breakout_only", True)
+                    or breakout_ok
+                ):
+                    order = OrderRequest(
+                        coin=coin,
+                        direction=pending.direction,
+                        size_usd=pending.size_usd,
+                        size_coin=(pending.size_usd / max(live_price, 1e-9)),
+                        price=live_price,
+                        stop_loss=pending.stop_loss,
+                        take_profit=pending.take_profit,
+                        leverage=self.cfg.trading.leverage,
+                        approved=True,
+                    )
+                    execution_quality = self._assess_execution_quality(coin, pending.direction, order, orderbook_signal)
+                    if (
+                        execution_quality.get("permitted", False)
+                        and float(execution_quality.get("spread_bps", 999.0) or 999.0)
+                        <= float(getattr(self.cfg.trading, "execution_pending_market_escalation_max_spread_bps", 10.0) or 10.0)
+                        and float(execution_quality.get("estimated_slippage_bps", 999.0) or 999.0)
+                        <= float(getattr(self.cfg.trading, "execution_pending_market_escalation_max_slippage_bps", 16.0) or 16.0)
+                        and float(execution_quality.get("score", 0.0) or 0.0)
+                        >= float(getattr(self.cfg.trading, "execution_pending_market_escalation_min_quality_score", 72.0) or 72.0)
+                    ):
+                        if self._escalate_pending_limit_to_market(
+                            pending,
+                            live_price=live_price,
+                            reason="breakout is running away and fill quality is finally clean",
+                            orderbook_signal=orderbook_signal,
+                        ):
+                            self._record_decision_snapshot(
+                                coin,
+                                portfolio_usd=portfolio_usd,
+                                stage="pending_limit_market_escalation",
+                                signal=self._build_pending_signal(pending, live_price=live_price, reason="pending limit escalated to market"),
+                                executed=True,
+                            )
+                            continue
 
     # ── Exit handling ─────────────────────────────────────────
 
@@ -3495,6 +3783,8 @@ class TradingAgent:
                 "limit_price": o.limit_price,
                 "size_usd":    o.size_usd,
                 "cycles_waiting": o.cycles_waiting,
+                "reprice_count": getattr(o, "reprice_count", 0),
+                "reason": getattr(o, "reason", ""),
                 "max_cycles":  15,
             })
 
@@ -3561,6 +3851,10 @@ class TradingAgent:
                 "use_daily_market_map":  getattr(self.cfg.trading, "use_daily_market_map", True),
                 "coins":                 self._tradable_coins,
                 "analysis_coins":        self._analysis_coins,
+                "dynamic_analysis_coins": self._dynamic_analysis_coins,
+                "dynamic_market_cap_min_usd": float(
+                    getattr(self.cfg.trading, "dynamic_market_cap_min_usd", 1_000_000_000.0) or 1_000_000_000.0
+                ),
                 "instrument_types":      self.cfg.trading.instrument_types,
             },
         }

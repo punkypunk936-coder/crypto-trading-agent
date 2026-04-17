@@ -42,6 +42,7 @@ DAILY_MARKET_MAP_JSON = DATA_DIR / "daily_market_map.json"      # Operator-owned
 TRADE_REVIEWS_JSON = DATA_DIR / "trade_reviews.json"            # Operator review labels for closed trades
 MACRO_EVENTS_JSON = DATA_DIR / "macro_events.json"              # Optional macro event calendar for narrative gating
 DASHBOARD_STATE_SYNC_REPO = DATA_DIR / ".dashboard_state_sync"  # Local clone/worktree for hosted dashboard fallback sync
+MARKET_CAP_UNIVERSE_JSON = DATA_DIR / "market_cap_universe.json"  # Cached Hyperliquid scout universe from market-cap filter
 
 # ── Logs directory ────────────────────────────────────────────────────────────
 LOGS_DIR = DATA_DIR / "logs"

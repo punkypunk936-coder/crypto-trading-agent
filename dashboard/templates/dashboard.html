@@ -787,6 +787,12 @@
     line-height: 1.4;
     margin-bottom: 10px;
   }
+  .decision-group-footnote {
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.45;
+    margin: -2px 0 10px;
+  }
   .decision-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -800,6 +806,10 @@
   }
   .decision-card-tradable {
     background: rgba(255,255,255,0.035);
+  }
+  .decision-card-pending {
+    border-color: rgba(255,198,92,0.26);
+    box-shadow: 0 0 20px rgba(255,198,92,0.08);
   }
   .decision-card-watch {
     background: rgba(91,140,255,0.06);
@@ -1204,6 +1214,11 @@
 const fmt  = (n, dec=2) => n == null ? '--' : Number(n).toLocaleString('en-US', {minimumFractionDigits:dec, maximumFractionDigits:dec});
 const fmtP = (n) => n == null ? '--' : (n >= 0 ? '+' : '') + fmt(n) + '%';
 const fmtD = (n) => n == null ? '--' : (n >= 0 ? '+$' : '-$') + fmt(Math.abs(n));
+const fmtCompactUsd = (n) => {
+  const value = Number(n);
+  if (!Number.isFinite(value) || value <= 0) return '$1B';
+  return '$' + value.toLocaleString('en-US', { notation: 'compact', maximumFractionDigits: value >= 1_000_000_000 ? 0 : 1 });
+};
 const fmtSigned = (n, dec=1) => n == null ? '--' : (n >= 0 ? '+' : '') + fmt(n, dec);
 const cls  = (n) => n > 0 ? 'green' : n < 0 ? 'red' : 'muted';
 const esc  = (v) => String(v == null ? '' : v)
@@ -1455,29 +1470,40 @@ function renderActionBoard(board) {
   const tradableCount = Number(summary.tradable_count || tradableItems.length || 0);
   const observationCount = Number(summary.observation_count || observationItems.length || 0);
   const activeTradableCount = Number(summary.active_tradable_count || 0);
+  const pendingCount = Number(summary.pending_count || 0);
+  const scoutCount = Number(summary.scout_count || 0);
+  const scoutPreview = Array.isArray(summary.scout_preview) ? summary.scout_preview.filter((item) => item) : [];
+  const scoutThreshold = fmtCompactUsd(summary.scout_market_cap_min_usd || 1_000_000_000);
   const metaBits = [
     'Tradable ' + tradableCount,
     'Observation-only ' + observationCount,
   ];
   if (activeTradableCount > 0) metaBits.push('Actionable ' + activeTradableCount);
+  if (pendingCount > 0) metaBits.push('Working orders ' + pendingCount);
+  if (scoutCount > 0) metaBits.push('Scouting ' + scoutCount + ' above ' + scoutThreshold);
   if (lead) metaBits.push('Best setup: ' + lead.coin + ' • ' + lead.label);
   meta.textContent = metaBits.join(' • ');
 
   let html = '<div class="decision-board">';
   if (tradableItems.length) {
-    html += '<div><div class="decision-group-title">Tradable Now</div><div class="decision-group-sub">These names are live-eligible on the active venue right now.</div><div class="decision-grid">'
+    const tradableSub = pendingCount > 0
+      ? 'These names are live-eligible on the active venue right now. Some entries are already working passively while the bot waits for fills or a clean escalation.'
+      : 'These names are live-eligible on the active venue right now.';
+    html += '<div><div class="decision-group-title">Tradable Now</div><div class="decision-group-sub">' + esc(tradableSub) + '</div><div class="decision-grid">'
     + tradableItems.map((item) => {
       const status = String(item.status || 'NO_SETUP');
-      const highlight = status.includes('LONG')
+      const highlightBase = status.includes('LONG')
         ? 'decision-card decision-card-tradable decision-card-long'
         : status.includes('SHORT')
           ? 'decision-card decision-card-tradable decision-card-short'
           : 'decision-card decision-card-tradable';
+      const highlight = status === 'PENDING_ENTRY' ? highlightBase + ' decision-card-pending' : highlightBase;
       return '<div class="' + highlight + '">'
         + '<div class="decision-top">'
           + '<div><div class="decision-coin">' + esc(item.coin) + '</div><div class="decision-meta">' + esc(item.mode_meta || 'Live-eligible') + '</div></div>'
           + '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">'
             + '<span class="signal-mode-tradable">' + esc(item.mode_badge || 'LIVE') + '</span>'
+            + (status === 'PENDING_ENTRY' ? '<span class="review-chip">ORDER LIVE</span>' : '')
             + '<span class="review-chip">' + esc(String(item.label || 'No setup').toUpperCase()) + '</span>'
             + '<span class="' + biasClass(item.bias) + '">' + esc(String(item.bias || 'NEUTRAL')) + '</span>'
           + '</div>'
@@ -1494,14 +1520,22 @@ function renderActionBoard(board) {
     html += '<div class="empty-state">No live-eligible assets right now. The agent is watching for the next tradable setup.</div>';
   }
 
+  const scoutFootnote = scoutCount > 0
+    ? '<div class="decision-group-footnote">Large-cap scout lane: ' + scoutCount + ' Hyperliquid crypto names above ' + esc(scoutThreshold)
+      + (scoutPreview.length ? ' • ' + esc(scoutPreview.join(', ')) + (scoutCount > scoutPreview.length ? '…' : '') : '')
+      + '</div>'
+    : '';
+
   if (observationItems.length) {
-    html += '<div><div class="decision-group-title">Observation Only</div><div class="decision-group-sub">These names are still being read carefully, but execution is blocked until the active venue supports them cleanly.</div><div class="watchlist-strip">'
+    html += '<div><div class="decision-group-title">Observation Only</div><div class="decision-group-sub">These names are still being read carefully, but execution is blocked until the active venue supports them cleanly.</div>' + scoutFootnote + '<div class="watchlist-strip">'
       + observationItems.map((item) => '<div class="watchlist-row">'
         + '<div class="watchlist-coin">' + esc(item.coin) + '</div>'
         + '<div><span class="signal-mode-watch">' + esc(item.mode_badge || 'WATCH') + '</span></div>'
         + '<div class="watchlist-note"><strong>' + esc(item.label || 'Watch') + ':</strong> ' + esc(shortText(item.execution_note || item.headline || item.mode_detail || 'Tracked only right now.', 140)) + (item.trigger ? ' • ' + esc(shortText(item.trigger, 90)) : '') + '</div>'
       + '</div>').join('')
       + '</div></div>';
+  } else if (scoutCount > 0) {
+    html += '<div><div class="decision-group-title">Observation Only</div><div class="decision-group-sub">No blocked names need surfacing right now, but the broader scout lane is still watching the large-cap universe in the background.</div>' + scoutFootnote + '</div>';
   }
   html += '</div>';
   body.innerHTML = html;

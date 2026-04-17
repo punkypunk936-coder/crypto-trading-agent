@@ -32,6 +32,7 @@ import feature_store as feature_store_module
 import hosted_state_sync as hosted_state_sync_module
 import main as main_module
 import market_map as market_map_module
+import market_universe as market_universe_module
 import portfolio_guard as portfolio_guard_module
 import precision_lab as precision_lab_module
 import promotion_gate as promotion_gate_module
@@ -50,10 +51,11 @@ from dashboard.snapshot import build_dashboard_snapshot
 from exchanges.base import AccountState, BaseExchange, OrderResult, LimitOrderStatus
 from exchanges.dry_run import DryRunExchange
 from exchanges import hyperliquid_client as hyperliquid_client_module
+from exchanges import hyperliquid_markets as hyperliquid_markets_module
 from exchanges import lighter_client as lighter_client_module
 from risk.risk_manager import OrderRequest, OpenPosition
 from strategy.aggressive_strategy import AggressiveStrategy
-from strategy.order_manager import OrderManager
+from strategy.order_manager import OrderManager, PendingOrder
 
 
 class StubExchange(BaseExchange):
@@ -122,6 +124,7 @@ def build_config() -> Config:
     cfg.trading.use_narrative_gate = False
     cfg.trading.precision_mode_enabled = False
     cfg.trading.enforce_active_venue_markets = False
+    cfg.trading.dynamic_market_cap_watchlist_enabled = False
     cfg.trading.live_promotion_gate_enabled = False
     cfg.trading.require_notifications_for_live = False
     return cfg
@@ -327,17 +330,23 @@ def test_inactive_hyperliquid_symbols_stay_out_of_tradeable_universe() -> None:
     cfg.trading.analysis_coins = ["BTC", "AMZN", "MSFT"]
     original_config = main_module.config
     original_supported = main_module.get_hyperliquid_supported_coins
+    original_is_active = main_module.hyperliquid_market_is_active
     main_module.config = cfg
     try:
         def fake_supported(*, include_spot=True, live_tradeable_only=False, active_only=False):
-            return ["BTC", "AMZN"] if active_only else ["BTC", "AMZN", "MSFT"]
+            return ["BTC", "AMZN", "MSFT"]
+
+        def fake_is_active(coin: str, *, force_refresh: bool = False):
+            return str(coin).upper() in {"BTC", "AMZN"}
 
         main_module.get_hyperliquid_supported_coins = fake_supported
+        main_module.hyperliquid_market_is_active = fake_is_active
         active = main_module.enforce_trade_universe()
         assert active == ["BTC", "AMZN"]
     finally:
         main_module.config = original_config
         main_module.get_hyperliquid_supported_coins = original_supported
+        main_module.hyperliquid_market_is_active = original_is_active
 
 
 def test_live_spot_opt_in_includes_active_equities_in_supported_universe() -> None:
@@ -2049,6 +2058,42 @@ def test_dashboard_action_board_uses_asset_state_and_next_unblock_reason() -> No
     assert "confirming cycle" in lead["execution_note"].lower()
 
 
+def test_dashboard_action_board_surfaces_scout_universe_summary() -> None:
+    snapshot = build_dashboard_snapshot(
+        state={
+            "status": "online",
+            "last_cycle": "2026-04-17 09:40:00",
+            "cycle_number": 121,
+            "positions": [],
+            "signals": {
+                "BTC": {
+                    "action": "FLAT",
+                    "score": 52.0,
+                    "confidence": "LOW",
+                    "execution_mode": "tradable",
+                    "asset_state": "PENDING_ENTRY",
+                    "asset_state_label": "Working order",
+                    "next_unblock_reason": "Resting bid is live while the bot waits for a fill.",
+                    "decision_reason": "Passive breakout retest order is working.",
+                }
+            },
+            "mode": "dry_run",
+            "config": {
+                "coins": ["BTC"],
+                "analysis_coins": ["BTC", "DOGE", "AVAX", "LINK"],
+                "dynamic_analysis_coins": ["DOGE", "AVAX", "LINK"],
+                "dynamic_market_cap_min_usd": 1_000_000_000.0,
+            },
+        },
+        trades=[],
+        server_timestamp="2026-04-17 09:41:00",
+    )
+    summary = snapshot["action_board"]["summary"]
+    assert summary["pending_count"] == 1
+    assert summary["scout_count"] == 3
+    assert summary["scout_preview"] == ["DOGE", "AVAX", "LINK"]
+
+
 def test_dashboard_snapshot_canonicalizes_inactive_control_and_empty_review_shape() -> None:
     snapshot = build_dashboard_snapshot(
         {
@@ -2582,6 +2627,138 @@ def test_execution_quality_can_fall_back_to_passive_rescue_limit() -> None:
     assert quality["passive_limit_price"] == 99.95
 
 
+def test_pending_limit_can_reprice_when_book_drifts() -> None:
+    cfg = build_config()
+    ex = DryRunExchange(starting_balance_usd=1000.0)
+    ex.connect()
+    agent = TradingAgent(cfg, [ex])
+    agent._last_signals["BTC"] = {
+        "action": "LONG",
+        "decision": "LONG",
+        "score": 68.0,
+        "confidence": "HIGH",
+        "decision_reason": "resting buy",
+    }
+    pending = PendingOrder(
+        coin="BTC",
+        direction="LONG",
+        limit_price=99.0,
+        size_coin=1.0,
+        size_usd=99.0,
+        stop_loss=96.0,
+        take_profit=108.0,
+        signal_score=68.0,
+        exchange=ex.name,
+        exchange_order_id="abc",
+        cycles_waiting=3,
+        reason="initial_limit",
+        metadata={"entry_context": {"confidence": "HIGH", "instrument_type": "crypto", "trade_plan": {}}},
+    )
+    agent.order_mgr.pending_orders["BTC"] = pending
+
+    original_get_orderbook = agent_module.get_orderbook_levels
+    original_cancel = agent._cancel_pending_limit
+    original_place = agent._place_limit_order
+    original_record = agent._record_decision_snapshot
+    called: dict[str, object] = {}
+    try:
+        agent_module.get_orderbook_levels = lambda *args, **kwargs: SimpleNamespace(
+            valid=True,
+            best_bid=100.4,
+            best_ask=100.6,
+            breakout_state="NONE",
+            level_interaction="AT_SUPPORT",
+            block_longs=False,
+            block_shorts=False,
+        )
+        agent._cancel_pending_limit = lambda pending, reason: called.setdefault("cancel_reason", reason) or True
+
+        def _stub_place(*args, **kwargs):
+            called["repriced_to"] = args[2]
+            called["reprice_count"] = kwargs.get("extra_metadata", {}).get("reprice_count")
+            return {"success": True, "pending": True, "filled": False}
+
+        agent._place_limit_order = _stub_place
+        agent._record_decision_snapshot = lambda *args, **kwargs: None
+        agent._manage_pending_limits({"BTC": 100.5}, 1000.0)
+        assert round(float(called.get("repriced_to", 0.0)), 4) == 100.4
+        assert int(called.get("reprice_count", 0) or 0) == 1
+    finally:
+        agent_module.get_orderbook_levels = original_get_orderbook
+        agent._cancel_pending_limit = original_cancel
+        agent._place_limit_order = original_place
+        agent._record_decision_snapshot = original_record
+
+
+def test_pending_limit_can_escalate_to_market_on_clean_breakout() -> None:
+    cfg = build_config()
+    cfg.trading.execution_pending_reprice_enabled = False
+    ex = DryRunExchange(starting_balance_usd=1000.0)
+    ex.connect()
+    agent = TradingAgent(cfg, [ex])
+    agent._last_signals["BTC"] = {
+        "action": "LONG",
+        "decision": "LONG",
+        "score": 72.0,
+        "confidence": "HIGH",
+        "decision_reason": "breakout stalking",
+    }
+    pending = PendingOrder(
+        coin="BTC",
+        direction="LONG",
+        limit_price=99.0,
+        size_coin=1.0,
+        size_usd=99.0,
+        stop_loss=96.0,
+        take_profit=110.0,
+        signal_score=72.0,
+        exchange=ex.name,
+        exchange_order_id="abc",
+        cycles_waiting=4,
+        reason="initial_limit",
+        metadata={"entry_context": {"confidence": "HIGH", "instrument_type": "crypto", "trade_plan": {}}},
+    )
+    agent.order_mgr.pending_orders["BTC"] = pending
+
+    original_get_orderbook = agent_module.get_orderbook_levels
+    original_quality = agent._assess_execution_quality
+    original_escalate = agent._escalate_pending_limit_to_market
+    original_record = agent._record_decision_snapshot
+    called: dict[str, object] = {}
+    try:
+        agent_module.get_orderbook_levels = lambda *args, **kwargs: SimpleNamespace(
+            valid=True,
+            best_bid=100.9,
+            best_ask=101.0,
+            breakout_state="CONFIRMED_BULLISH_BREAKOUT",
+            level_interaction="ABOVE_BREAKOUT",
+            block_longs=False,
+            block_shorts=False,
+        )
+        agent._assess_execution_quality = lambda *args, **kwargs: {
+            "permitted": True,
+            "spread_bps": 4.0,
+            "estimated_slippage_bps": 6.0,
+            "score": 84.0,
+        }
+
+        def _stub_escalate(pending, *, live_price, reason, orderbook_signal=None):
+            called["live_price"] = live_price
+            called["reason"] = reason
+            return True
+
+        agent._escalate_pending_limit_to_market = _stub_escalate
+        agent._record_decision_snapshot = lambda *args, **kwargs: None
+        agent._manage_pending_limits({"BTC": 101.0}, 1000.0)
+        assert called["live_price"] == 101.0
+        assert "breakout is running away" in str(called["reason"])
+    finally:
+        agent_module.get_orderbook_levels = original_get_orderbook
+        agent._assess_execution_quality = original_quality
+        agent._escalate_pending_limit_to_market = original_escalate
+        agent._record_decision_snapshot = original_record
+
+
 def test_asset_state_machine_reports_confirmation_wait_clearly() -> None:
     lifecycle = asset_state_machine_module.build_asset_state(
         {
@@ -2992,6 +3169,60 @@ def test_hyperliquid_limit_order_returns_resting_order_id() -> None:
     finally:
         hyperliquid_client_module.get_hyperliquid_market_spec = original_spec
         hyperliquid_client_module.resolve_hyperliquid_symbol = original_resolve
+
+
+def test_hyperliquid_market_catalog_expands_unknown_live_perps() -> None:
+    original_perps = hyperliquid_markets_module._fetch_perp_names
+    original_spots = hyperliquid_markets_module._fetch_spot_pairs
+    original_cache = dict(hyperliquid_markets_module._CATALOG_CACHE)
+    try:
+        hyperliquid_markets_module._CATALOG_CACHE["ts"] = 0.0
+        hyperliquid_markets_module._CATALOG_CACHE["catalog"] = {}
+        hyperliquid_markets_module._fetch_perp_names = lambda: {"BTC", "XRP"}
+        hyperliquid_markets_module._fetch_spot_pairs = lambda: {}
+        catalog = hyperliquid_markets_module.get_hyperliquid_market_catalog(force_refresh=True)
+        assert "XRP" in catalog
+        assert catalog["XRP"]["market_type"] == "perp"
+        assert catalog["XRP"]["instrument_type"] == "crypto"
+        assert catalog["XRP"]["shortable"] is True
+    finally:
+        hyperliquid_markets_module._fetch_perp_names = original_perps
+        hyperliquid_markets_module._fetch_spot_pairs = original_spots
+        hyperliquid_markets_module._CATALOG_CACHE.clear()
+        hyperliquid_markets_module._CATALOG_CACHE.update(original_cache)
+
+
+def test_market_universe_filters_hyperliquid_large_caps_into_scout_watchlist() -> None:
+    original_fetch = market_universe_module._fetch_coingecko_market_caps
+    original_catalog = market_universe_module.get_hyperliquid_market_catalog
+    original_active = market_universe_module.hyperliquid_market_is_active
+    try:
+        market_universe_module._fetch_coingecko_market_caps = lambda pages: [
+            {"symbol": "btc", "name": "Bitcoin", "market_cap": 1_000_000_000_000, "market_cap_rank": 1, "price_change_percentage_24h": 2.0},
+            {"symbol": "xrp", "name": "XRP", "market_cap": 50_000_000_000, "market_cap_rank": 4, "price_change_percentage_24h": 3.0},
+            {"symbol": "doge", "name": "Dogecoin", "market_cap": 15_000_000_000, "market_cap_rank": 8, "price_change_percentage_24h": 1.0},
+            {"symbol": "abc", "name": "Abc", "market_cap": 500_000_000, "market_cap_rank": 999, "price_change_percentage_24h": 0.0},
+        ]
+        market_universe_module.get_hyperliquid_market_catalog = lambda force_refresh=False: {
+            "BTC": {"market_type": "perp", "instrument_type": "crypto", "venue_symbol": "BTC"},
+            "XRP": {"market_type": "perp", "instrument_type": "crypto", "venue_symbol": "XRP"},
+            "DOGE": {"market_type": "perp", "instrument_type": "crypto", "venue_symbol": "DOGE"},
+            "SP500": {"market_type": "perp", "instrument_type": "index", "venue_symbol": "SPX"},
+        }
+        market_universe_module.hyperliquid_market_is_active = lambda coin: coin != "DOGE"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            payload = market_universe_module.build_hyperliquid_market_cap_watchlist(
+                min_market_cap_usd=1_000_000_000.0,
+                active_only=True,
+                max_coins=10,
+                cache_path=Path(tmpdir) / "market_cap_universe.json",
+                force_refresh=True,
+            )
+        assert payload["coins"] == ["BTC", "XRP"]
+    finally:
+        market_universe_module._fetch_coingecko_market_caps = original_fetch
+        market_universe_module.get_hyperliquid_market_catalog = original_catalog
+        market_universe_module.hyperliquid_market_is_active = original_active
 
 
 def test_reentry_watch_inherits_dynamic_trade_plan() -> None:
@@ -3890,6 +4121,10 @@ def run_all() -> None:
     print("PASS execution-quality gate")
     test_execution_quality_can_fall_back_to_passive_rescue_limit()
     print("PASS passive execution rescue")
+    test_pending_limit_can_reprice_when_book_drifts()
+    print("PASS pending limit repricing")
+    test_pending_limit_can_escalate_to_market_on_clean_breakout()
+    print("PASS pending limit escalation")
     test_asset_state_machine_reports_confirmation_wait_clearly()
     print("PASS asset state machine")
     test_data_reliability_blocks_stale_incoherent_setup()
@@ -3912,6 +4147,10 @@ def run_all() -> None:
     print("PASS long-only spot short block")
     test_hyperliquid_limit_order_returns_resting_order_id()
     print("PASS Hyperliquid limit order support")
+    test_hyperliquid_market_catalog_expands_unknown_live_perps()
+    print("PASS Hyperliquid market catalog expansion")
+    test_market_universe_filters_hyperliquid_large_caps_into_scout_watchlist()
+    print("PASS market-cap scout universe")
     test_reentry_watch_inherits_dynamic_trade_plan()
     print("PASS re-entry dynamic trade plan")
     test_trade_logger_normalizes_legacy_headerless_log()

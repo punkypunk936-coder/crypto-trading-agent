@@ -181,6 +181,19 @@ class TradingConfig:
     execution_breakout_market_probability: float = 0.64
     execution_breakout_market_expectancy_score: float = 64.0
     execution_limit_timeout_cycles: int = 6
+    execution_pending_management_enabled: bool = True
+    execution_pending_cancel_on_stop_breach: bool = True
+    execution_pending_cancel_on_opposite_breakout: bool = True
+    execution_pending_reprice_enabled: bool = True
+    execution_pending_reprice_after_cycles: int = 2
+    execution_pending_reprice_threshold_bps: float = 8.0
+    execution_pending_max_reprices: int = 3
+    execution_pending_market_escalation_enabled: bool = True
+    execution_pending_market_escalation_after_cycles: int = 3
+    execution_pending_market_escalation_breakout_only: bool = True
+    execution_pending_market_escalation_max_spread_bps: float = 10.0
+    execution_pending_market_escalation_max_slippage_bps: float = 16.0
+    execution_pending_market_escalation_min_quality_score: float = 72.0
 
     # ── Timing ──────────────────────────────────────────
     check_interval_seconds: int  = 120    # Run cycle every 2 minutes
@@ -256,6 +269,15 @@ class TradingConfig:
     # execute is promoted into the live tradeable universe automatically.
     auto_promote_analysis_coins: bool = True
     enforce_active_venue_markets: bool = True
+    dynamic_analysis_coins: List[str] = field(default_factory=list)
+    dynamic_analysis_auto_promote: bool = False
+    dynamic_market_cap_watchlist_enabled: bool = True
+    dynamic_market_cap_min_usd: float = 1_000_000_000.0
+    dynamic_market_cap_pages: int = 3
+    dynamic_market_cap_cache_hours: float = 6.0
+    dynamic_market_cap_active_only: bool = True
+    dynamic_market_cap_max_coins: int = 60
+    dynamic_market_cap_feed_limit: int = 16
 
     # ── Multi-timeframe analysis ─────────────────────────
     # Fetches 4H and 12H candles to determine the higher-timeframe trend.

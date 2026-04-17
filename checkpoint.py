@@ -218,6 +218,7 @@ class CheckpointManager:
                     'exchange': getattr(order, 'exchange', ''),
                     'exchange_order_id': getattr(order, 'exchange_order_id', ''),
                     'cycles_waiting': getattr(order, 'cycles_waiting', 0),
+                    'reprice_count': getattr(order, 'reprice_count', 0),
                     'max_cycles': getattr(order, 'max_cycles', 15),
                     'reason': getattr(order, 'reason', ''),
                     'placed_at': getattr(order, 'placed_at', time.time()),

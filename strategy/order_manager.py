@@ -70,6 +70,7 @@ class PendingOrder:
     exchange_order_id: Optional[str] = None   # filled by exchange after placement
     state: OrderState = OrderState.PENDING
     cycles_waiting: int = 0
+    reprice_count: int = 0
     placed_at: float = field(default_factory=time.time)
     reason: str = "re_entry"   # "re_entry" | "initial_limit" | etc.
     metadata: dict = field(default_factory=dict)

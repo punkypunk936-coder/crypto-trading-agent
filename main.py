@@ -24,12 +24,14 @@ from exchanges.hyperliquid_client import HyperliquidClient
 from exchanges.hyperliquid_markets import (
     get_hyperliquid_market_activity,
     get_hyperliquid_supported_coins,
+    hyperliquid_market_is_active,
     hyperliquid_supports_shorts,
 )
 from exchanges.lighter_client     import LighterClient, bootstrap_lighter_api
 from exchanges.dry_run            import DryRunExchange
 from agent import TradingAgent
 from data.market_data import fetch_candles, get_current_price
+from market_universe import build_hyperliquid_market_cap_watchlist
 from runtime_power import get_power_status
 from paths import (
     CHECKPOINTS_DB,
@@ -82,12 +84,13 @@ def configured_supported_coins(*, dry_run_mode: bool | None = None) -> list[str]
             bool(dry_run_mode)
             or bool(getattr(config.exchange, "hl_spot_execution_enabled", False))
         )
-        active_only = bool(getattr(config.trading, "enforce_active_venue_markets", True))
         supported.update(
             get_hyperliquid_supported_coins(
                 include_spot=include_spot,
                 live_tradeable_only=not include_spot,
-                active_only=active_only,
+                # Discover the broad venue universe here; activity is checked
+                # later only for the symbols we actually care about.
+                active_only=False,
             )
         )
     if config.exchange.use_lighter:
@@ -104,6 +107,40 @@ def _normalise_coin_list(values) -> list[str]:
             seen.add(coin_upper)
             out.append(coin_upper)
     return out
+
+
+def apply_dynamic_analysis_universe() -> list[str]:
+    previous_dynamic = {str(coin).upper() for coin in getattr(config.trading, "dynamic_analysis_coins", []) or []}
+    base_analysis = [
+        coin for coin in _normalise_coin_list(getattr(config.trading, "analysis_coins", []) or [])
+        if coin not in previous_dynamic
+    ]
+    dynamic_analysis: list[str] = []
+    if config.exchange.use_hyperliquid and getattr(config.trading, "dynamic_market_cap_watchlist_enabled", False):
+        payload = build_hyperliquid_market_cap_watchlist(
+            min_market_cap_usd=float(getattr(config.trading, "dynamic_market_cap_min_usd", 1_000_000_000.0) or 1_000_000_000.0),
+            pages=int(getattr(config.trading, "dynamic_market_cap_pages", 3) or 3),
+            cache_hours=float(getattr(config.trading, "dynamic_market_cap_cache_hours", 6.0) or 6.0),
+            active_only=bool(getattr(config.trading, "dynamic_market_cap_active_only", True)),
+            max_coins=int(getattr(config.trading, "dynamic_market_cap_max_coins", 60) or 60),
+        )
+        dynamic_analysis = _normalise_coin_list(payload.get("coins", []) or [])
+        if dynamic_analysis:
+            log.info(
+                "Expanded Hyperliquid scout universe (>$%s market cap): %s",
+                f"{int(float(getattr(config.trading, 'dynamic_market_cap_min_usd', 1_000_000_000.0))):,}",
+                ", ".join(dynamic_analysis),
+            )
+        for coin in dynamic_analysis:
+            config.trading.instrument_types.setdefault(coin, "crypto")
+
+    config.trading.dynamic_analysis_coins = dynamic_analysis
+    merged = list(base_analysis)
+    for coin in dynamic_analysis:
+        if coin not in merged:
+            merged.append(coin)
+    config.trading.analysis_coins = merged
+    return dynamic_analysis
 
 
 def enforce_trade_universe(
@@ -123,6 +160,15 @@ def enforce_trade_universe(
     if not supported:
         raise ValueError("No supported trading symbols are available for the configured venues")
 
+    enforce_active = bool(getattr(config.trading, "enforce_active_venue_markets", True))
+
+    def _is_active_for_execution(coin: str) -> bool:
+        if not enforce_active:
+            return True
+        if config.exchange.use_hyperliquid and coin in supported:
+            return hyperliquid_market_is_active(coin)
+        return True
+
     active = _normalise_coin_list(config.trading.coins)
     unsupported = sorted(set(active) - supported)
     if unsupported:
@@ -130,32 +176,45 @@ def enforce_trade_universe(
             "Configured symbols are not tradable on the active venue(s): "
             + ", ".join(unsupported)
         )
+    inactive_configured = [coin for coin in active if coin in supported and not _is_active_for_execution(coin)]
+    if inactive_configured:
+        log.info(
+            "Configured symbols stay observation-only until the venue prints fresh activity: "
+            + ", ".join(inactive_configured)
+        )
 
     promoted = []
     if getattr(config.trading, "auto_promote_analysis_coins", False):
         analysis = _normalise_coin_list(getattr(config.trading, "analysis_coins", []) or [])
+        if not getattr(config.trading, "dynamic_analysis_auto_promote", False):
+            dynamic_set = {str(coin).upper() for coin in getattr(config.trading, "dynamic_analysis_coins", []) or []}
+            analysis = [coin for coin in analysis if coin not in dynamic_set]
         for coin in analysis:
-            if coin in supported and coin not in active:
+            if coin in supported and coin not in active and _is_active_for_execution(coin):
                 promoted.append(coin)
         if promoted:
             log.info(
                 "Promoting watchlist symbols into the tradeable universe on active venue(s): "
                 + ", ".join(promoted)
             )
-        deferred = [coin for coin in analysis if coin not in supported and coin not in active]
+        deferred = [
+            coin for coin in analysis
+            if coin not in active and (coin not in supported or not _is_active_for_execution(coin))
+        ]
         if deferred:
             log.info(
-                "Keeping watchlist symbols in observation mode until a connected venue supports them: "
+                "Keeping watchlist symbols in observation mode until a connected venue supports them and prints fresh activity: "
                 + ", ".join(deferred)
             )
 
-    config.trading.coins = [coin for coin in active if coin in supported] + promoted
+    config.trading.coins = [coin for coin in active if coin in supported and _is_active_for_execution(coin)] + promoted
     return config.trading.coins
 
 
 def build_exchanges(args) -> list:
     """Construct and connect exchange clients based on config and args."""
     exchanges = []
+    apply_dynamic_analysis_universe()
 
     dry_run = args.dry_run or config.trading.dry_run
     if dry_run:
@@ -218,6 +277,7 @@ def build_exchanges(args) -> list:
 def run_preflight(args) -> int:
     failures: list[str] = []
     warnings: list[str] = []
+    apply_dynamic_analysis_universe()
     infos: list[str] = []
 
     def ok(message: str):

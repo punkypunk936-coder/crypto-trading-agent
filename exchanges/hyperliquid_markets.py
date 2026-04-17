@@ -261,13 +261,27 @@ def get_hyperliquid_market_catalog(*, force_refresh: bool = False) -> Dict[str, 
     if perp_names is None or spot_pairs is None:
         catalog = _catalog_from_fallback()
     else:
-        for coin, spec in _PERP_MARKETS.items():
-            venue_symbol = str(spec["venue_symbol"]).upper()
-            if venue_symbol not in perp_names:
+        manual_perp_by_venue = {
+            str(spec.get("venue_symbol") or coin).upper(): (coin, spec)
+            for coin, spec in _PERP_MARKETS.items()
+        }
+        for venue_symbol in sorted(perp_names):
+            manual_coin, manual = manual_perp_by_venue.get(venue_symbol, (None, None))
+            if manual_coin and manual:
+                catalog[manual_coin] = {
+                    "coin": manual_coin,
+                    **manual,
+                }
                 continue
-            catalog[coin] = {
-                "coin": coin,
-                **spec,
+            catalog[venue_symbol] = {
+                "coin": venue_symbol,
+                "venue_symbol": venue_symbol,
+                "market_type": "perp",
+                "instrument_type": "crypto",
+                "shortable": True,
+                "paper_tradeable": True,
+                "live_tradeable": True,
+                "display_name": venue_symbol,
             }
 
         for coin, spec in _SPOT_MARKETS.items():
