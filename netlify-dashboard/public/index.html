@@ -274,14 +274,40 @@
   }
   .market-map-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 14px;
+    gap: 12px;
   }
   .map-card {
     border: 1px solid var(--border);
     border-radius: 12px;
-    padding: 14px;
     background: rgba(255,255,255,0.02);
+    overflow: hidden;
+  }
+  .map-card summary,
+  .decision-box summary {
+    list-style: none;
+    cursor: pointer;
+  }
+  .map-card summary::-webkit-details-marker,
+  .decision-box summary::-webkit-details-marker {
+    display: none;
+  }
+  .map-card-summary,
+  .decision-summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 14px;
+  }
+  .map-card-body,
+  .decision-body {
+    padding: 0 14px 14px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+  }
+  .map-card-body {
+    display: grid;
+    gap: 10px;
+    padding-top: 12px;
   }
   .map-card-top {
     display: flex;
@@ -327,6 +353,83 @@
     font-size: 12px;
     color: var(--text-secondary);
     line-height: 1.45;
+  }
+  .map-summary-main,
+  .decision-summary-main {
+    min-width: 0;
+    flex: 1;
+  }
+  .map-summary-side,
+  .decision-summary-side {
+    min-width: 148px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+    gap: 10px;
+    text-align: right;
+  }
+  .token-line {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .token-subline {
+    margin-top: 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .token-preview {
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-family: var(--mono);
+    line-height: 1.4;
+  }
+  .token-chevron {
+    color: var(--muted);
+    font-size: 12px;
+    font-family: var(--mono);
+    transition: transform 0.2s ease;
+  }
+  .map-card[open] .token-chevron,
+  .decision-box[open] .token-chevron {
+    transform: rotate(180deg);
+  }
+  .map-card[data-tradable="true"] {
+    border-color: rgba(0,230,138,0.18);
+  }
+  .map-card[data-tradable="false"] {
+    border-color: rgba(91,140,255,0.16);
+  }
+  .token-stack {
+    display: grid;
+    gap: 10px;
+  }
+  .token-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 8px;
+  }
+  .token-detail {
+    border: 1px solid rgba(255,255,255,0.05);
+    background: rgba(255,255,255,0.02);
+    border-radius: 10px;
+    padding: 10px;
+  }
+  .token-detail-label {
+    display: block;
+    color: var(--muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    margin-bottom: 4px;
+  }
+  .token-detail-value {
+    color: var(--text);
+    font-size: 12px;
+    line-height: 1.45;
+    font-family: var(--mono);
   }
   .review-summary-grid {
     display: grid;
@@ -793,16 +896,10 @@
     line-height: 1.45;
     margin: -2px 0 10px;
   }
-  .decision-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 12px;
-  }
   .decision-card {
     border: 1px solid rgba(255,255,255,0.06);
     background: rgba(255,255,255,0.025);
     border-radius: 14px;
-    padding: 14px;
   }
   .decision-card-tradable {
     background: rgba(255,255,255,0.035);
@@ -822,13 +919,6 @@
   .decision-card-short {
     border-color: rgba(255,77,106,0.26);
     box-shadow: 0 0 20px rgba(255,77,106,0.08);
-  }
-  .decision-top {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 10px;
-    margin-bottom: 10px;
   }
   .decision-coin {
     font-size: 13px;
@@ -880,28 +970,6 @@
     color: var(--text-secondary);
     font-size: 11px;
     line-height: 1.45;
-  }
-  .watchlist-strip {
-    display: grid;
-    gap: 8px;
-  }
-  .watchlist-row {
-    display: grid;
-    grid-template-columns: 90px 90px 1fr;
-    gap: 12px;
-    align-items: center;
-    border: 1px solid rgba(255,255,255,0.05);
-    background: rgba(255,255,255,0.02);
-    border-radius: 12px;
-    padding: 10px 12px;
-  }
-  .watchlist-coin {
-    font-weight: 700;
-  }
-  .watchlist-note {
-    color: var(--text-secondary);
-    font-size: 12px;
-    line-height: 1.35;
   }
   .bar-track {
     width: 100%;
@@ -1061,8 +1129,17 @@
     .status-hero { flex-direction: column; }
     .status-chips { justify-content: flex-start; }
     .signal-grid { grid-template-columns: 1fr; }
-    .decision-grid { grid-template-columns: 1fr; }
-    .watchlist-row { grid-template-columns: 1fr; gap: 6px; }
+    .map-card-summary,
+    .decision-summary {
+      flex-direction: column;
+    }
+    .map-summary-side,
+    .decision-summary-side {
+      width: 100%;
+      min-width: 0;
+      justify-content: space-between;
+      text-align: left;
+    }
   }
   @media (max-width: 380px) {
     .grid-4 { grid-template-columns: 1fr; }
@@ -1350,13 +1427,26 @@ function renderMarketMapSummary(summary, marketMap) {
     const modeNote = isTradable
       ? 'Live-eligible on the active venue, but still needs a qualified thesis and clean execution.'
       : 'Tracked only until the active venue promotes it.';
+    const signalAction = String(signal.action || 'FLAT').toUpperCase();
+    const signalState = String(signal.asset_state || '').toUpperCase();
+    const shouldOpen = isTradable && (signalAction !== 'FLAT' || signalState === 'PENDING_ENTRY');
     if (!entry) {
-      html += '<div class="map-card map-card-empty">'
-        + '<div class="map-card-top"><div class="map-coin">' + esc(coin) + '</div><div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;"><span class="' + modeClass + '">' + esc(modeLabel) + '</span><span class="review-chip">AUTO PENDING</span></div></div>'
-        + '<div class="map-notes">No structure map is available yet for this asset. Add a manual override if you want custom levels immediately.</div>'
-        + '<div class="map-zone"><strong>Execution:</strong> ' + esc(modeNote) + '</div>'
-        + '<div class="map-card-actions"><button class="tool-btn" onclick="editMarketMap(' + JSON.stringify(coin) + ')">OVERRIDE</button></div>'
-        + '</div>';
+      html += '<details class="map-card map-card-empty" data-tradable="' + (isTradable ? 'true' : 'false') + '"' + (shouldOpen ? ' open' : '') + '>'
+        + '<summary class="map-card-summary">'
+          + '<div class="map-summary-main">'
+            + '<div class="token-line"><div class="map-coin">' + esc(coin) + '</div><span class="' + modeClass + '">' + esc(modeLabel) + '</span><span class="review-chip">AUTO PENDING</span></div>'
+            + '<div class="token-subline">No structure map is available yet for this asset. Add a manual override if you want custom levels immediately.</div>'
+          + '</div>'
+          + '<div class="map-summary-side"><div class="token-preview">' + esc(modeNote) + '</div><span class="token-chevron">⌄</span></div>'
+        + '</summary>'
+        + '<div class="map-card-body">'
+          + '<div class="token-detail-grid">'
+            + '<div class="token-detail"><span class="token-detail-label">Execution</span><div class="token-detail-value">' + esc(modeNote) + '</div></div>'
+            + '<div class="token-detail"><span class="token-detail-label">Map status</span><div class="token-detail-value">Waiting for a stronger daily structure map.</div></div>'
+          + '</div>'
+          + '<div class="map-card-actions"><button class="tool-btn" onclick="editMarketMap(' + JSON.stringify(coin) + ')">OVERRIDE</button></div>'
+        + '</div>'
+        + '</details>';
       return;
     }
     const source = String(entry.source || (entry.auto_generated ? 'AUTO' : 'MANUAL')).toUpperCase();
@@ -1375,24 +1465,37 @@ function renderMarketMapSummary(summary, marketMap) {
     } else if (mapBias === 'BEARISH') {
       setupLine = 'Bearish bias, but the exact short trigger is still forming.';
     }
-    html += '<div class="map-card">'
-      + '<div class="map-card-top"><div class="map-coin">' + esc(coin) + '</div><div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;"><span class="' + modeClass + '">' + esc(modeLabel) + '</span><span class="review-chip">' + esc(source === 'AUTO' ? 'AUTO MAP' : 'MANUAL') + '</span><span class="' + biasClass(entry.bias) + '">' + esc(String(entry.bias || 'NEUTRAL')) + '</span></div></div>'
-      + '<div class="map-levels">'
-        + '<div class="map-level-row"><span>Support</span><strong>' + esc(support ? fmt(support) : csvText(entry.supports)) + '</strong></div>'
-        + '<div class="map-level-row"><span>Resistance</span><strong>' + esc(resistance ? fmt(resistance) : csvText(entry.resistances)) + '</strong></div>'
-        + '<div class="map-level-row"><span>Long trigger</span><strong>' + esc(longTrigger ? fmt(longTrigger) : '--') + '</strong></div>'
-        + '<div class="map-level-row"><span>Risk below</span><strong>' + esc(shortTrigger ? fmt(shortTrigger) : '--') + '</strong></div>'
-        + '<div class="map-level-row"><span>Playbook</span><strong>' + esc(String(entry.trade_mode || '--')) + '</strong></div>'
+    const preview = mapBias === 'BULLISH'
+      ? 'Long above ' + (longTrigger ? fmt(longTrigger) : '--')
+      : mapBias === 'BEARISH'
+        ? 'Short below ' + (shortTrigger ? fmt(shortTrigger) : '--')
+        : 'No directional edge';
+    html += '<details class="map-card" data-tradable="' + (isTradable ? 'true' : 'false') + '"' + (shouldOpen ? ' open' : '') + '>'
+      + '<summary class="map-card-summary">'
+        + '<div class="map-summary-main">'
+          + '<div class="token-line"><div class="map-coin">' + esc(coin) + '</div><span class="' + modeClass + '">' + esc(modeLabel) + '</span><span class="review-chip">' + esc(source === 'AUTO' ? 'AUTO MAP' : 'MANUAL') + '</span><span class="' + biasClass(entry.bias) + '">' + esc(String(entry.bias || 'NEUTRAL')) + '</span></div>'
+          + '<div class="token-subline">' + esc(shortText(setupLine, 150)) + '</div>'
+        + '</div>'
+        + '<div class="map-summary-side"><div class="token-preview">' + esc(preview) + '<br>' + esc('Risk below ' + (shortTrigger ? fmt(shortTrigger) : '--')) + '</div><span class="token-chevron">⌄</span></div>'
+      + '</summary>'
+      + '<div class="map-card-body">'
+        + '<div class="token-detail-grid">'
+          + '<div class="token-detail"><span class="token-detail-label">Support</span><div class="token-detail-value">' + esc(support ? fmt(support) : csvText(entry.supports)) + '</div></div>'
+          + '<div class="token-detail"><span class="token-detail-label">Resistance</span><div class="token-detail-value">' + esc(resistance ? fmt(resistance) : csvText(entry.resistances)) + '</div></div>'
+          + '<div class="token-detail"><span class="token-detail-label">Long trigger</span><div class="token-detail-value">' + esc(longTrigger ? fmt(longTrigger) : '--') + '</div></div>'
+          + '<div class="token-detail"><span class="token-detail-label">Risk below</span><div class="token-detail-value">' + esc(shortTrigger ? fmt(shortTrigger) : '--') + '</div></div>'
+          + '<div class="token-detail"><span class="token-detail-label">Playbook</span><div class="token-detail-value">' + esc(String(entry.trade_mode || '--')) + '</div></div>'
+          + '<div class="token-detail"><span class="token-detail-label">Execution</span><div class="token-detail-value">' + esc(modeNote) + '</div></div>'
+        + '</div>'
+        + '<div class="map-zone"><strong>Daily take:</strong> ' + esc(setupLine) + '</div>'
+        + '<div class="map-zone"><strong>Demand:</strong> ' + esc(zoneText(entry.demand_zone)) + ' • <strong>Supply:</strong> ' + esc(zoneText(entry.supply_zone)) + '</div>'
+        + '<div class="map-notes"><strong>Map:</strong> ' + esc(shortText(entry.summary || entry.notes || 'No coin-specific notes yet.', 180)) + '</div>'
+        + '<div class="map-card-actions">'
+          + '<button class="tool-btn" onclick="editMarketMap(' + JSON.stringify(coin) + ')">' + (source === 'AUTO' ? 'OVERRIDE' : 'EDIT') + '</button>'
+          + (source === 'AUTO' ? '' : '<button class="tool-btn" onclick="deleteMarketMap(' + JSON.stringify(coin) + ')">DELETE</button>')
+        + '</div>'
       + '</div>'
-      + '<div class="map-zone"><strong>Execution:</strong> ' + esc(modeNote) + '</div>'
-      + '<div class="map-zone"><strong>Daily take:</strong> ' + esc(setupLine) + '</div>'
-      + '<div class="map-zone"><strong>Demand:</strong> ' + esc(zoneText(entry.demand_zone)) + ' • <strong>Supply:</strong> ' + esc(zoneText(entry.supply_zone)) + '</div>'
-      + '<div class="map-notes"><strong>Map:</strong> ' + esc(shortText(entry.summary || entry.notes || 'No coin-specific notes yet.', 180)) + '</div>'
-      + '<div class="map-card-actions">'
-        + '<button class="tool-btn" onclick="editMarketMap(' + JSON.stringify(coin) + ')">' + (source === 'AUTO' ? 'OVERRIDE' : 'EDIT') + '</button>'
-        + (source === 'AUTO' ? '' : '<button class="tool-btn" onclick="deleteMarketMap(' + JSON.stringify(coin) + ')">DELETE</button>')
-      + '</div>'
-      + '</div>';
+      + '</details>';
   });
   html += '</div>';
   body.innerHTML = html;
@@ -1489,7 +1592,7 @@ function renderActionBoard(board) {
     const tradableSub = pendingCount > 0
       ? 'These names are live-eligible on the active venue right now. Some entries are already working passively while the bot waits for fills or a clean escalation.'
       : 'These names are live-eligible on the active venue right now.';
-    html += '<div><div class="decision-group-title">Tradable Now</div><div class="decision-group-sub">' + esc(tradableSub) + '</div><div class="decision-grid">'
+    html += '<div><div class="decision-group-title">Tradable Now</div><div class="decision-group-sub">' + esc(tradableSub) + '</div><div class="token-stack">'
     + tradableItems.map((item) => {
       const status = String(item.status || 'NO_SETUP');
       const highlightBase = status.includes('LONG')
@@ -1498,22 +1601,25 @@ function renderActionBoard(board) {
           ? 'decision-card decision-card-tradable decision-card-short'
           : 'decision-card decision-card-tradable';
       const highlight = status === 'PENDING_ENTRY' ? highlightBase + ' decision-card-pending' : highlightBase;
-      return '<div class="' + highlight + '">'
-        + '<div class="decision-top">'
-          + '<div><div class="decision-coin">' + esc(item.coin) + '</div><div class="decision-meta">' + esc(item.mode_meta || 'Live-eligible') + '</div></div>'
-          + '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">'
-            + '<span class="signal-mode-tradable">' + esc(item.mode_badge || 'LIVE') + '</span>'
-            + (status === 'PENDING_ENTRY' ? '<span class="review-chip">ORDER LIVE</span>' : '')
-            + '<span class="review-chip">' + esc(String(item.label || 'No setup').toUpperCase()) + '</span>'
-            + '<span class="' + biasClass(item.bias) + '">' + esc(String(item.bias || 'NEUTRAL')) + '</span>'
+      const shouldOpen = status === 'PENDING_ENTRY' || status === 'OPEN_LONG' || status === 'OPEN_SHORT' || status === 'READY_LONG';
+      return '<details class="' + highlight + ' decision-box"' + (shouldOpen ? ' open' : '') + '>'
+        + '<summary class="decision-summary">'
+          + '<div class="decision-summary-main">'
+            + '<div class="token-line"><div class="decision-coin">' + esc(item.coin) + '</div><span class="signal-mode-tradable">' + esc(item.mode_badge || 'LIVE') + '</span>' + (status === 'PENDING_ENTRY' ? '<span class="review-chip">ORDER LIVE</span>' : '') + '<span class="review-chip">' + esc(String(item.label || 'No setup').toUpperCase()) + '</span><span class="' + biasClass(item.bias) + '">' + esc(String(item.bias || 'NEUTRAL')) + '</span></div>'
+            + '<div class="token-subline">' + esc(shortText(item.headline || 'No clear edge right now.', 150)) + '</div>'
           + '</div>'
+          + '<div class="decision-summary-side"><div class="token-preview">' + esc(shortText(item.trigger || 'Wait for a cleaner setup.', 90)) + '</div><span class="token-chevron">⌄</span></div>'
+        + '</summary>'
+        + '<div class="decision-body">'
+          + '<div class="token-detail-grid">'
+            + '<div class="token-detail"><span class="token-detail-label">Entry status</span><div class="token-detail-value">' + esc(shortText(item.execution_note || item.mode_detail || 'Still waiting for final entry checks.', 150)) + '</div></div>'
+            + '<div class="token-detail"><span class="token-detail-label">Trigger</span><div class="token-detail-value">' + esc(shortText(item.trigger || 'Wait for a cleaner setup.', 120)) + '</div></div>'
+            + '<div class="token-detail"><span class="token-detail-label">Risk</span><div class="token-detail-value">' + esc(shortText(item.risk || item.map_summary || 'Stay patient until the map and order-flow align.', 120)) + '</div></div>'
+            + '<div class="token-detail"><span class="token-detail-label">Execution lane</span><div class="token-detail-value">' + esc(item.mode_meta || 'Live-eligible') + '</div></div>'
+          + '</div>'
+          + (item.map_summary ? '<div class="decision-rl-note"><strong>Daily view:</strong> ' + esc(shortText(item.map_summary, 130)) + '</div>' : '')
         + '</div>'
-        + '<div class="decision-note"><strong>Now:</strong> ' + esc(shortText(item.headline || 'No clear edge right now.', 140)) + '</div>'
-        + '<div class="decision-note"><strong>Entry status:</strong> ' + esc(shortText(item.execution_note || item.mode_detail || 'Still waiting for final entry checks.', 150)) + '</div>'
-        + '<div class="decision-note"><strong>Trigger:</strong> ' + esc(shortText(item.trigger || 'Wait for a cleaner setup.', 140)) + '</div>'
-        + '<div class="decision-note"><strong>Risk:</strong> ' + esc(shortText(item.risk || item.map_summary || 'Stay patient until the map and order-flow align.', 140)) + '</div>'
-        + (item.map_summary ? '<div class="decision-rl-note"><strong>Daily view:</strong> ' + esc(shortText(item.map_summary, 130)) + '</div>' : '')
-      + '</div>';
+      + '</details>';
     }).join('')
     + '</div></div>';
   } else {
@@ -1527,12 +1633,23 @@ function renderActionBoard(board) {
     : '';
 
   if (observationItems.length) {
-    html += '<div><div class="decision-group-title">Observation Only</div><div class="decision-group-sub">These names are still being read carefully, but execution is blocked until the active venue supports them cleanly.</div>' + scoutFootnote + '<div class="watchlist-strip">'
-      + observationItems.map((item) => '<div class="watchlist-row">'
-        + '<div class="watchlist-coin">' + esc(item.coin) + '</div>'
-        + '<div><span class="signal-mode-watch">' + esc(item.mode_badge || 'WATCH') + '</span></div>'
-        + '<div class="watchlist-note"><strong>' + esc(item.label || 'Watch') + ':</strong> ' + esc(shortText(item.execution_note || item.headline || item.mode_detail || 'Tracked only right now.', 140)) + (item.trigger ? ' • ' + esc(shortText(item.trigger, 90)) : '') + '</div>'
-      + '</div>').join('')
+    html += '<div><div class="decision-group-title">Observation Only</div><div class="decision-group-sub">These names are still being read carefully, but execution is blocked until the active venue supports them cleanly.</div>' + scoutFootnote + '<div class="token-stack">'
+      + observationItems.map((item, index) => '<details class="decision-card decision-card-watch decision-box"' + (index === 0 ? ' open' : '') + '>'
+        + '<summary class="decision-summary">'
+          + '<div class="decision-summary-main">'
+            + '<div class="token-line"><div class="decision-coin">' + esc(item.coin) + '</div><span class="signal-mode-watch">' + esc(item.mode_badge || 'WATCH') + '</span><span class="review-chip">' + esc(String(item.label || 'Watch').toUpperCase()) + '</span></div>'
+            + '<div class="token-subline">' + esc(shortText(item.execution_note || item.headline || item.mode_detail || 'Tracked only right now.', 150)) + '</div>'
+          + '</div>'
+          + '<div class="decision-summary-side"><div class="token-preview">' + esc(shortText(item.trigger || item.mode_meta || 'Observation only', 90)) + '</div><span class="token-chevron">⌄</span></div>'
+        + '</summary>'
+        + '<div class="decision-body">'
+          + '<div class="token-detail-grid">'
+            + '<div class="token-detail"><span class="token-detail-label">Why not live</span><div class="token-detail-value">' + esc(shortText(item.mode_detail || 'Execution is blocked on the active venue right now.', 140)) + '</div></div>'
+            + '<div class="token-detail"><span class="token-detail-label">Current read</span><div class="token-detail-value">' + esc(shortText(item.execution_note || item.headline || 'Still being observed carefully.', 140)) + '</div></div>'
+            + '<div class="token-detail"><span class="token-detail-label">Next trigger</span><div class="token-detail-value">' + esc(shortText(item.trigger || 'Wait for venue and thesis alignment.', 120)) + '</div></div>'
+          + '</div>'
+        + '</div>'
+      + '</details>').join('')
       + '</div></div>';
   } else if (scoutCount > 0) {
     html += '<div><div class="decision-group-title">Observation Only</div><div class="decision-group-sub">No blocked names need surfacing right now, but the broader scout lane is still watching the large-cap universe in the background.</div>' + scoutFootnote + '</div>';
