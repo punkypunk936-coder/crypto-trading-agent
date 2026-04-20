@@ -498,6 +498,51 @@
     gap: 8px;
     margin-top: 10px;
   }
+  .volume-shell {
+    display: grid;
+    gap: 12px;
+  }
+  .volume-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+  }
+  .volume-status {
+    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.025);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+  }
+  .volume-status.error {
+    color: #ffb8c2;
+    border-color: rgba(255,77,106,0.24);
+    background: rgba(255,77,106,0.08);
+  }
+  .volume-status.ok {
+    color: #bfead6;
+    border-color: rgba(0,230,138,0.2);
+    background: rgba(0,230,138,0.07);
+  }
+  .volume-kpis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 8px;
+  }
+  .volume-table-wrap {
+    overflow-x: auto;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px;
+    background: rgba(255,255,255,0.02);
+  }
+  .volume-footer {
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.5;
+  }
   .review-summary-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -1314,6 +1359,31 @@
   </div>
 </div>
 
+<!-- Trade.xyz Volume Checker -->
+<div class="full-width">
+  <div class="card">
+    <div class="card-label">📊 Trade.xyz Volume</div>
+    <div class="card-sub">Paste a wallet and the dashboard will check Hyperliquid fills against the live <span style="font-family:var(--mono);">dex=xyz</span> market universe.</div>
+    <div class="volume-shell">
+      <div class="volume-actions">
+        <input
+          id="tradexyz-wallet-input"
+          class="search-input"
+          type="text"
+          placeholder="0x..."
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button class="tool-btn" id="tradexyz-check-btn" onclick="lookupTradexyzVolume()">CHECK VOLUME</button>
+      </div>
+      <div id="tradexyz-status" class="volume-status">Volume checks run against Hyperliquid’s native fill history and then filter down to the current Trade.xyz market set.</div>
+      <div id="tradexyz-result" class="search-result">
+        <div class="search-result-empty">No wallet checked yet. Once you paste an address, the dashboard will show total Trade.xyz volume, fill count, and top traded markets.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Action Board -->
 <div class="full-width">
   <div class="card">
@@ -1463,6 +1533,7 @@ let latestReviewStore = { reviews: {} };
 let latestReviewSummary = {};
 let latestLearningSummary = {};
 let currentTickerSearchQuery = '';
+let tradexyzLookupBusy = false;
 
 function toggleTrades() {
   const wrap = document.getElementById('trades-wrap');
@@ -1709,6 +1780,104 @@ function renderTickerSearch(value) {
 
 function handleTickerSearch(value) {
   renderTickerSearch(value);
+}
+
+function formatUsd(value) {
+  const number = Number(value || 0);
+  if (!Number.isFinite(number)) return '$0.00';
+  if (Math.abs(number) >= 1_000_000) return '$' + number.toLocaleString('en-US', { notation: 'compact', maximumFractionDigits: 2 });
+  return '$' + fmt(number);
+}
+
+function setTradexyzStatus(message, tone='info') {
+  const node = document.getElementById('tradexyz-status');
+  if (!node) return;
+  node.className = 'volume-status' + (tone === 'error' ? ' error' : tone === 'ok' ? ' ok' : '');
+  node.textContent = message;
+}
+
+function renderTradexyzVolume(payload) {
+  const result = document.getElementById('tradexyz-result');
+  if (!result) return;
+  const summary = payload.summary || {};
+  const coverage = payload.coverage || {};
+  const markets = Array.isArray(payload.markets) ? payload.markets : [];
+  const topMarkets = markets.slice(0, 10);
+  const requestBits = [
+    String(coverage.request_count || 0) + ' request' + (Number(coverage.request_count || 0) === 1 ? '' : 's'),
+  ];
+  if (coverage.split_count) requestBits.push(String(coverage.split_count) + ' split windows');
+  if (coverage.possible_truncation) requestBits.push('possible truncation');
+
+  let html = '<div class="search-title">' + esc(payload.wallet || '') + ' • Trade.xyz volume snapshot</div>'
+    + '<div class="search-summary">This rollup uses Hyperliquid fills from ' + esc(String(coverage.start_time || '--')) + ' to ' + esc(String(coverage.end_time || '--')) + ' and filters them to the live Trade.xyz market universe.</div>'
+    + '<div class="volume-kpis">'
+      + '<div class="token-detail"><span class="token-detail-label">Total volume</span><div class="token-detail-value">' + esc(formatUsd(summary.total_volume_usd || 0)) + '</div></div>'
+      + '<div class="token-detail"><span class="token-detail-label">Matched fills</span><div class="token-detail-value">' + esc(String(summary.fill_count || 0)) + '</div></div>'
+      + '<div class="token-detail"><span class="token-detail-label">Markets traded</span><div class="token-detail-value">' + esc(String(summary.market_count || 0)) + '</div></div>'
+      + '<div class="token-detail"><span class="token-detail-label">Buy / sell volume</span><div class="token-detail-value">' + esc(formatUsd(summary.buy_volume_usd || 0) + ' / ' + formatUsd(summary.sell_volume_usd || 0)) + '</div></div>'
+    + '</div>'
+    + '<div class="search-grid">'
+      + '<div class="token-detail"><span class="token-detail-label">First fill</span><div class="token-detail-value">' + esc(String(summary.first_fill_at || 'No fills found')) + '</div></div>'
+      + '<div class="token-detail"><span class="token-detail-label">Last fill</span><div class="token-detail-value">' + esc(String(summary.last_fill_at || '—')) + '</div></div>'
+      + '<div class="token-detail"><span class="token-detail-label">Tracked xyz markets</span><div class="token-detail-value">' + esc(String(summary.tracked_markets || 0)) + '</div></div>'
+      + '<div class="token-detail"><span class="token-detail-label">Scanner activity</span><div class="token-detail-value">' + esc(requestBits.join(' • ')) + '</div></div>'
+    + '</div>';
+
+  if (topMarkets.length) {
+    html += '<div class="volume-table-wrap"><table><thead><tr><th>Market</th><th>Volume</th><th>Fills</th><th>Buy Volume</th><th>Sell Volume</th><th>Last Fill</th></tr></thead><tbody>'
+      + topMarkets.map((market) => '<tr>'
+        + '<td>' + esc(String(market.coin || '')) + '</td>'
+        + '<td>' + esc(formatUsd(market.volume_usd || 0)) + '</td>'
+        + '<td>' + esc(String(market.fills || 0)) + '</td>'
+        + '<td>' + esc(formatUsd(market.buy_volume_usd || 0)) + '</td>'
+        + '<td>' + esc(formatUsd(market.sell_volume_usd || 0)) + '</td>'
+        + '<td>' + esc(String(market.last_fill_at || '—')) + '</td>'
+        + '</tr>').join('')
+      + '</tbody></table></div>';
+  } else {
+    html += '<div class="search-result-empty" style="margin-top:12px;">No Trade.xyz fills were found for this wallet in the scanned history.</div>';
+  }
+
+  html += '<div class="volume-footer">Checked at ' + esc(String(payload.checked_at || '--')) + ' • DEX ' + esc(String(payload.dex || 'xyz').toUpperCase()) + '</div>';
+  result.innerHTML = html;
+}
+
+async function lookupTradexyzVolume() {
+  if (tradexyzLookupBusy) return;
+  const input = document.getElementById('tradexyz-wallet-input');
+  const button = document.getElementById('tradexyz-check-btn');
+  const result = document.getElementById('tradexyz-result');
+  const wallet = String((input && input.value) || '').trim();
+  if (!wallet) {
+    setTradexyzStatus('Paste a wallet address first.', 'error');
+    return;
+  }
+
+  tradexyzLookupBusy = true;
+  if (button) button.textContent = 'CHECKING...';
+  setTradexyzStatus('Checking Hyperliquid fill history and matching it against the live Trade.xyz universe...', 'info');
+  if (result) {
+    result.innerHTML = '<div class="search-result-empty">Working through Hyperliquid history now. Busy wallets can take a few extra seconds because the scanner splits crowded windows automatically.</div>';
+  }
+
+  try {
+    const response = await fetch('/api/tradexyz-volume?wallet=' + encodeURIComponent(wallet));
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error || 'Trade.xyz volume lookup failed.');
+    }
+    renderTradexyzVolume(payload);
+    setTradexyzStatus('Volume loaded successfully.', 'ok');
+  } catch (error) {
+    setTradexyzStatus(error instanceof Error ? error.message : 'Trade.xyz volume lookup failed.', 'error');
+    if (result) {
+      result.innerHTML = '<div class="search-result-empty">The lookup did not complete. Check the wallet address and try again.</div>';
+    }
+  } finally {
+    tradexyzLookupBusy = false;
+    if (button) button.textContent = 'CHECK VOLUME';
+  }
 }
 
 function renderMarketMapSummary(summary, marketMap) {
@@ -2325,6 +2494,16 @@ function handleKill() {
     btn.disabled = false;
     killConfirm = false;
     setTimeout(() => { btn.textContent = '⚠️ KILL SWITCH'; btn.className = 'kill-btn'; }, 3000);
+  });
+}
+
+const tradexyzWalletInput = document.getElementById('tradexyz-wallet-input');
+if (tradexyzWalletInput) {
+  tradexyzWalletInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      lookupTradexyzVolume();
+    }
   });
 }
 
