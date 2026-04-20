@@ -7,6 +7,7 @@ import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
+from re import findall
 from typing import Any
 
 
@@ -47,6 +48,22 @@ def _safe_float(value: Any) -> float:
     return number if math.isfinite(number) else 0.0
 
 
+def _extract_addresses(payload: Any) -> set[str]:
+    matches: set[str] = set()
+    if isinstance(payload, str):
+        for address in findall(r"0x[a-fA-F0-9]{40}", payload):
+            matches.add(address.lower())
+        return matches
+    if isinstance(payload, dict):
+        for value in payload.values():
+            matches.update(_extract_addresses(value))
+        return matches
+    if isinstance(payload, (list, tuple, set)):
+        for value in payload:
+            matches.update(_extract_addresses(value))
+    return matches
+
+
 def _validate_wallet(wallet: str) -> str:
     text = str(wallet or "").strip()
     if len(text) != 42 or not text.startswith("0x"):
@@ -74,6 +91,60 @@ def _post_info(payload: dict[str, Any]) -> Any:
         raise RuntimeError(f"Hyperliquid request failed ({exc.code}): {detail or exc.reason}") from exc
     except urllib.error.URLError as exc:
         raise RuntimeError(f"Hyperliquid request failed: {exc.reason}") from exc
+
+
+def inspect_wallet_identity(wallet: str) -> dict[str, Any]:
+    safe_wallet = _validate_wallet(wallet)
+    role_payload = _post_info({"type": "userRole", "user": safe_wallet}) or {}
+    role = str((role_payload or {}).get("role") or "user").strip() or "user"
+    role_data = dict((role_payload or {}).get("data") or {})
+    abstraction_mode = _post_info({"type": "userAbstraction", "user": safe_wallet})
+    dex_abstraction = _post_info({"type": "userDexAbstraction", "user": safe_wallet})
+    sub_accounts = _post_info({"type": "subAccounts", "user": safe_wallet}) or []
+    linked_addresses = set()
+    linked_addresses.update(_extract_addresses(role_data))
+    linked_addresses.update(_extract_addresses(dex_abstraction))
+    linked_addresses.update(_extract_addresses(sub_accounts))
+    linked_addresses.discard(safe_wallet)
+
+    notes: list[str] = []
+    role_lower = role.lower()
+    if role_lower == "agent":
+        linked_user = str(role_data.get("user") or "").strip().lower()
+        raise ValueError(
+            "This address is a Hyperliquid agent/API wallet. Use the actual user or sub-account address instead"
+            + (f" (linked user: {linked_user})" if linked_user else ".")
+        )
+    if role_lower == "subaccount":
+        master = str(role_data.get("master") or "").strip().lower()
+        notes.append(
+            "This address is a Hyperliquid sub-account. The checker stays pinned to this exact sub-account and does not intentionally roll up the master."
+            + (f" Master: {master}." if master else "")
+        )
+    else:
+        notes.append("This lookup is strict to the exact address you entered. It does not intentionally merge linked users, sub-accounts, or agents.")
+    abstraction_text = str(abstraction_mode or "default").strip()
+    if abstraction_text and abstraction_text.lower() != "default":
+        notes.append(
+            f"Hyperliquid reports this address in {abstraction_text} abstraction mode. Linked abstraction addresses can surface the same Trade.xyz history at the protocol layer."
+        )
+    if dex_abstraction not in (None, {}, [], "", "default"):
+        notes.append(
+            "A Hyperliquid dex-abstraction link exists for this address. If two linked addresses show the same Trade.xyz activity, that linkage is coming from Hyperliquid rather than from this checker."
+        )
+    if linked_addresses:
+        notes.append("Linked Hyperliquid addresses detected: " + ", ".join(sorted(linked_addresses)) + ".")
+    return {
+        "requested_address": safe_wallet,
+        "queried_address": safe_wallet,
+        "query_scope": "strict_address",
+        "role": role,
+        "role_details": role_data,
+        "abstraction_mode": abstraction_text or "default",
+        "dex_abstraction": dex_abstraction,
+        "linked_addresses": sorted(linked_addresses),
+        "notes": notes,
+    }
 
 
 def load_tradexyz_universe() -> list[dict[str, Any]]:
@@ -186,9 +257,11 @@ def summarize_tradexyz_fills(
     *,
     universe: list[dict[str, Any]] | None = None,
     coverage: dict[str, Any] | None = None,
+    identity: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     universe = list(universe or [])
     coverage = dict(coverage or {})
+    identity = dict(identity or {})
     markets: dict[str, dict[str, Any]] = {}
     total_volume = 0.0
     buy_volume = 0.0
@@ -273,6 +346,7 @@ def summarize_tradexyz_fills(
         "wallet": wallet,
         "dex": TRADEXYZ_DEX,
         "checked_at": datetime.now(timezone.utc).isoformat(),
+        "identity": identity,
         "summary": {
             "total_volume_usd": round(total_volume, 2),
             "buy_volume_usd": round(buy_volume, 2),
@@ -296,7 +370,8 @@ def fetch_tradexyz_volume(
     start_time_ms: int = DEFAULT_START_MS,
     end_time_ms: int | None = None,
 ) -> dict[str, Any]:
-    safe_wallet = _validate_wallet(wallet)
+    identity = inspect_wallet_identity(wallet)
+    safe_wallet = identity["queried_address"]
     universe = load_tradexyz_universe()
     xyz_markets = {
         str(item.get("name") or "").strip()
@@ -314,4 +389,5 @@ def fetch_tradexyz_volume(
         fills,
         universe=universe,
         coverage=coverage,
+        identity=identity,
     )

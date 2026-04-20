@@ -283,8 +283,12 @@
 
         <div class="meta-grid">
           <div class="meta-card">
-            <strong>Wallet</strong>
+            <strong>Requested Address</strong>
             <span id="meta-wallet" class="mono">—</span>
+          </div>
+          <div class="meta-card">
+            <strong>Identity</strong>
+            <span id="meta-identity">—</span>
           </div>
           <div class="meta-card">
             <strong>Coverage</strong>
@@ -365,12 +369,15 @@
     function renderResult(payload) {
       const summary = payload.summary || {};
       const coverage = payload.coverage || {};
+      const identity = payload.identity || {};
       document.getElementById("results").classList.add("show");
       document.getElementById("kpi-volume").textContent = fmtUsd(summary.total_volume_usd || 0);
       document.getElementById("kpi-fills").textContent = String(summary.fill_count || 0);
       document.getElementById("kpi-markets").textContent = String(summary.market_count || 0);
       document.getElementById("kpi-flow").textContent = fmtUsd(summary.buy_volume_usd || 0) + " / " + fmtUsd(summary.sell_volume_usd || 0);
-      document.getElementById("meta-wallet").textContent = payload.wallet || "—";
+      document.getElementById("meta-wallet").textContent = identity.requested_address || payload.wallet || "—";
+      document.getElementById("meta-identity").textContent =
+        String(identity.role || "user") + " • " + String(identity.query_scope || "strict_address");
       document.getElementById("meta-coverage").textContent = (coverage.start_time || "—") + " → " + (coverage.end_time || "—");
       document.getElementById("meta-requests").textContent =
         String(coverage.request_count || 0) + " requests"
@@ -380,10 +387,16 @@
         (summary.first_fill_at || "no fills found") + " → " + (summary.last_fill_at || "—");
 
       renderMarkets(payload.markets || []);
+      const notes = Array.isArray(identity.notes) ? identity.notes.filter(Boolean).join(" ") : "";
+      const linked = Array.isArray(identity.linked_addresses) && identity.linked_addresses.length
+        ? " Linked addresses: " + identity.linked_addresses.join(", ") + "."
+        : "";
       document.getElementById("footer-note").textContent =
         "Tracked Trade.xyz markets right now: "
         + String(summary.tracked_markets || 0)
-        + ". This page filters by the current Hyperliquid dex=xyz universe and scans from 2024-01-01 UTC onward.";
+        + ". This page filters by the current Hyperliquid dex=xyz universe and scans from 2024-01-01 UTC onward. "
+        + notes
+        + linked;
     }
 
     async function lookupVolume() {

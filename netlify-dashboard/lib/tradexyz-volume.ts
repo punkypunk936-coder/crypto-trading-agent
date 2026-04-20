@@ -16,6 +16,32 @@ function safeFloat(value: unknown) {
   return Number.isFinite(number) ? number : 0;
 }
 
+function extractAddresses(payload: unknown): Set<string> {
+  const matches = new Set<string>();
+  if (typeof payload === "string") {
+    for (const address of payload.match(/0x[a-fA-F0-9]{40}/g) || []) {
+      matches.add(address.toLowerCase());
+    }
+    return matches;
+  }
+  if (Array.isArray(payload)) {
+    for (const value of payload) {
+      for (const address of extractAddresses(value)) {
+        matches.add(address);
+      }
+    }
+    return matches;
+  }
+  if (payload && typeof payload === "object") {
+    for (const value of Object.values(payload)) {
+      for (const address of extractAddresses(value)) {
+        matches.add(address);
+      }
+    }
+  }
+  return matches;
+}
+
 function isoFromMs(timestampMs: number | null | undefined) {
   if (!timestampMs || !Number.isFinite(timestampMs)) {
     return null;
@@ -58,6 +84,67 @@ export async function loadTradexyzUniverse() {
   const data = await postInfo({ type: "meta", dex: TRADEXYZ_DEX });
   const universe = Array.isArray(data?.universe) ? data.universe : [];
   return universe.filter((item: any) => item && typeof item === "object");
+}
+
+export async function inspectWalletIdentity(wallet: string) {
+  const safeWallet = validateWallet(wallet);
+  const [rolePayload, abstractionMode, dexAbstraction, subAccounts] = await Promise.all([
+    postInfo({ type: "userRole", user: safeWallet }),
+    postInfo({ type: "userAbstraction", user: safeWallet }),
+    postInfo({ type: "userDexAbstraction", user: safeWallet }),
+    postInfo({ type: "subAccounts", user: safeWallet }),
+  ]);
+
+  const role = String((rolePayload as any)?.role || "user").trim() || "user";
+  const roleDetails = ((rolePayload as any)?.data && typeof (rolePayload as any).data === "object")
+    ? (rolePayload as any).data
+    : {};
+  const linkedAddresses = new Set<string>();
+  for (const address of extractAddresses(roleDetails)) linkedAddresses.add(address);
+  for (const address of extractAddresses(dexAbstraction)) linkedAddresses.add(address);
+  for (const address of extractAddresses(subAccounts)) linkedAddresses.add(address);
+  linkedAddresses.delete(safeWallet);
+
+  const notes: string[] = [];
+  if (role.toLowerCase() === "agent") {
+    const linkedUser = String((roleDetails as any)?.user || "").trim().toLowerCase();
+    throw new Error(
+      "This address is a Hyperliquid agent/API wallet. Use the actual user or sub-account address instead"
+      + (linkedUser ? ` (linked user: ${linkedUser})` : "."),
+    );
+  }
+  if (role.toLowerCase() === "subaccount") {
+    const master = String((roleDetails as any)?.master || "").trim().toLowerCase();
+    notes.push(
+      "This address is a Hyperliquid sub-account. The checker stays pinned to this exact sub-account and does not intentionally roll up the master."
+      + (master ? ` Master: ${master}.` : ""),
+    );
+  } else {
+    notes.push("This lookup is strict to the exact address you entered. It does not intentionally merge linked users, sub-accounts, or agents.");
+  }
+
+  const abstractionText = String(abstractionMode || "default").trim() || "default";
+  if (abstractionText.toLowerCase() !== "default") {
+    notes.push(`Hyperliquid reports this address in ${abstractionText} abstraction mode. Linked abstraction addresses can surface the same Trade.xyz history at the protocol layer.`);
+  }
+  if (!(dexAbstraction == null || dexAbstraction === "" || dexAbstraction === "default" || (typeof dexAbstraction === "object" && Object.keys(dexAbstraction as Record<string, unknown>).length === 0))) {
+    notes.push("A Hyperliquid dex-abstraction link exists for this address. If two linked addresses show the same Trade.xyz activity, that linkage is coming from Hyperliquid rather than from this checker.");
+  }
+  if (linkedAddresses.size) {
+    notes.push(`Linked Hyperliquid addresses detected: ${[...linkedAddresses].sort().join(", ")}.`);
+  }
+
+  return {
+    requested_address: safeWallet,
+    queried_address: safeWallet,
+    query_scope: "strict_address",
+    role,
+    role_details: roleDetails,
+    abstraction_mode: abstractionText,
+    dex_abstraction: dexAbstraction,
+    linked_addresses: [...linkedAddresses].sort(),
+    notes,
+  };
 }
 
 async function fetchUserFillsWindow(wallet: string, startTimeMs: number, endTimeMs: number) {
@@ -165,6 +252,7 @@ export function summarizeTradexyzFills(
   fills: any[],
   universe: any[],
   coverage: Record<string, unknown>,
+  identity: Record<string, unknown> = {},
 ) {
   const markets = new Map<string, any>();
   let totalVolume = 0;
@@ -238,6 +326,7 @@ export function summarizeTradexyzFills(
     wallet,
     dex: TRADEXYZ_DEX,
     checked_at: new Date().toISOString(),
+    identity,
     summary: {
       total_volume_usd: Math.round(totalVolume * 100) / 100,
       buy_volume_usd: Math.round(buyVolume * 100) / 100,
@@ -258,7 +347,8 @@ export function summarizeTradexyzFills(
 }
 
 export async function fetchTradexyzVolume(wallet: string) {
-  const safeWallet = validateWallet(wallet);
+  const identity = await inspectWalletIdentity(wallet);
+  const safeWallet = String(identity.queried_address || validateWallet(wallet));
   const universe = await loadTradexyzUniverse();
   const xyzMarkets = new Set<string>(
     universe
@@ -266,5 +356,5 @@ export async function fetchTradexyzVolume(wallet: string) {
       .filter((item: string) => Boolean(item)),
   );
   const { fills, coverage } = await collectTradexyzFills(safeWallet, xyzMarkets);
-  return summarizeTradexyzFills(safeWallet, fills, universe, coverage);
+  return summarizeTradexyzFills(safeWallet, fills, universe, coverage, identity);
 }

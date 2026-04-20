@@ -1801,6 +1801,7 @@ function renderTradexyzVolume(payload) {
   if (!result) return;
   const summary = payload.summary || {};
   const coverage = payload.coverage || {};
+  const identity = payload.identity || {};
   const markets = Array.isArray(payload.markets) ? payload.markets : [];
   const topMarkets = markets.slice(0, 10);
   const requestBits = [
@@ -1823,6 +1824,21 @@ function renderTradexyzVolume(payload) {
       + '<div class="token-detail"><span class="token-detail-label">Tracked xyz markets</span><div class="token-detail-value">' + esc(String(summary.tracked_markets || 0)) + '</div></div>'
       + '<div class="token-detail"><span class="token-detail-label">Scanner activity</span><div class="token-detail-value">' + esc(requestBits.join(' • ')) + '</div></div>'
     + '</div>';
+
+  html += '<div class="search-grid" style="margin-top:8px;">'
+    + '<div class="token-detail"><span class="token-detail-label">Requested address</span><div class="token-detail-value">' + esc(String(identity.requested_address || payload.wallet || '—')) + '</div></div>'
+    + '<div class="token-detail"><span class="token-detail-label">Query scope</span><div class="token-detail-value">' + esc(humanizeKey(String(identity.query_scope || 'strict_address'))) + '</div></div>'
+    + '<div class="token-detail"><span class="token-detail-label">Hyperliquid role</span><div class="token-detail-value">' + esc(humanizeKey(String(identity.role || 'user'))) + '</div></div>'
+    + '<div class="token-detail"><span class="token-detail-label">Abstraction mode</span><div class="token-detail-value">' + esc(String(identity.abstraction_mode || 'default')) + '</div></div>'
+    + '</div>';
+
+  const identityNotes = Array.isArray(identity.notes) ? identity.notes.filter((item) => item) : [];
+  if (identityNotes.length) {
+    html += '<div class="search-summary"><strong>Identity notes:</strong> ' + esc(identityNotes.join(' ')) + '</div>';
+  }
+  if (Array.isArray(identity.linked_addresses) && identity.linked_addresses.length) {
+    html += '<div class="search-summary"><strong>Linked addresses:</strong> ' + esc(identity.linked_addresses.join(', ')) + '</div>';
+  }
 
   if (topMarkets.length) {
     html += '<div class="volume-table-wrap"><table><thead><tr><th>Market</th><th>Volume</th><th>Fills</th><th>Buy Volume</th><th>Sell Volume</th><th>Last Fill</th></tr></thead><tbody>'

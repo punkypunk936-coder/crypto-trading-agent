@@ -4170,6 +4170,7 @@ def test_tradexyz_volume_summary_rolls_up_wallet_activity() -> None:
         fills,
         universe=[{"name": "xyz:GOOGL"}, {"name": "xyz:AMD"}],
         coverage={"request_count": 3, "start_time": "2024-01-01T00:00:00+00:00", "end_time": "2024-02-01T00:00:00+00:00"},
+        identity={"role": "subAccount", "query_scope": "strict_address", "notes": ["strict"]},
     )
 
     assert summary["summary"]["total_volume_usd"] == 755.0
@@ -4179,6 +4180,56 @@ def test_tradexyz_volume_summary_rolls_up_wallet_activity() -> None:
     assert summary["summary"]["sell_volume_usd"] == 105.0
     assert summary["markets"][0]["coin"] == "xyz:AMD"
     assert summary["markets"][0]["volume_usd"] == 450.0
+    assert summary["identity"]["role"] == "subAccount"
+
+
+def test_tradexyz_identity_inspection_rejects_agent_wallets() -> None:
+    original_post = tradexyz_volume_module._post_info
+    try:
+        def fake_post(payload):
+            if payload["type"] == "userRole":
+                return {"role": "agent", "data": {"user": "0x2222222222222222222222222222222222222222"}}
+            if payload["type"] == "userAbstraction":
+                return "default"
+            if payload["type"] == "userDexAbstraction":
+                return None
+            if payload["type"] == "subAccounts":
+                return None
+            raise AssertionError(f"unexpected payload: {payload}")
+
+        tradexyz_volume_module._post_info = fake_post
+        try:
+            tradexyz_volume_module.inspect_wallet_identity("0x1111111111111111111111111111111111111111")
+            raise AssertionError("agent wallets should be rejected")
+        except ValueError as exc:
+            assert "agent/api wallet" in str(exc).lower()
+    finally:
+        tradexyz_volume_module._post_info = original_post
+
+
+def test_tradexyz_identity_inspection_keeps_strict_subaccount_scope() -> None:
+    original_post = tradexyz_volume_module._post_info
+    try:
+        def fake_post(payload):
+            if payload["type"] == "userRole":
+                return {"role": "subAccount", "data": {"master": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}
+            if payload["type"] == "userAbstraction":
+                return "dexAbstraction"
+            if payload["type"] == "userDexAbstraction":
+                return {"linkedUser": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+            if payload["type"] == "subAccounts":
+                return [{"subAccountUser": "0xcccccccccccccccccccccccccccccccccccccccc"}]
+            raise AssertionError(f"unexpected payload: {payload}")
+
+        tradexyz_volume_module._post_info = fake_post
+        identity = tradexyz_volume_module.inspect_wallet_identity("0x1111111111111111111111111111111111111111")
+        assert identity["query_scope"] == "strict_address"
+        assert identity["role"] == "subAccount"
+        assert "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" in json.dumps(identity)
+        assert any("does not intentionally roll up the master" in note for note in identity["notes"])
+        assert any("dex-abstraction" in note.lower() for note in identity["notes"])
+    finally:
+        tradexyz_volume_module._post_info = original_post
 
 
 def test_dashboard_tradexyz_volume_endpoint_returns_checker_payload() -> None:
@@ -4186,6 +4237,7 @@ def test_dashboard_tradexyz_volume_endpoint_returns_checker_payload() -> None:
     try:
         dashboard_module.tradexyz_volume.fetch_tradexyz_volume = lambda wallet: {
             "wallet": wallet,
+            "identity": {"role": "user", "query_scope": "strict_address", "notes": []},
             "summary": {"total_volume_usd": 1234.56, "fill_count": 5, "market_count": 2, "tracked_markets": 10},
             "coverage": {"request_count": 4, "start_time": "2024-01-01T00:00:00+00:00", "end_time": "2024-02-01T00:00:00+00:00"},
             "markets": [{"coin": "xyz:GOOGL", "volume_usd": 1000.0, "fills": 3}],
@@ -4199,6 +4251,7 @@ def test_dashboard_tradexyz_volume_endpoint_returns_checker_payload() -> None:
         assert payload["ok"] is True
         assert payload["summary"]["total_volume_usd"] == 1234.56
         assert payload["markets"][0]["coin"] == "xyz:GOOGL"
+        assert payload["identity"]["query_scope"] == "strict_address"
     finally:
         dashboard_module.tradexyz_volume.fetch_tradexyz_volume = original_fetch
 
@@ -4374,6 +4427,10 @@ def run_all() -> None:
     print("PASS precision cadence throttling")
     test_tradexyz_volume_summary_rolls_up_wallet_activity()
     print("PASS Trade.xyz volume summary")
+    test_tradexyz_identity_inspection_rejects_agent_wallets()
+    print("PASS Trade.xyz agent wallet rejection")
+    test_tradexyz_identity_inspection_keeps_strict_subaccount_scope()
+    print("PASS Trade.xyz strict sub-account identity")
     test_dashboard_tradexyz_volume_endpoint_returns_checker_payload()
     print("PASS Trade.xyz volume endpoint")
 
