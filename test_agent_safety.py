@@ -42,6 +42,7 @@ from indicators import orderbook_levels as orderbook_levels_module
 import trade_dataset as trade_dataset_module
 import trade_logger as trade_logger_module
 import trade_review as trade_review_module
+import tradexyz_volume as tradexyz_volume_module
 from indicators import trade_memory as trade_memory_module
 from agent import TradingAgent
 from config import Config
@@ -4158,6 +4159,50 @@ def test_precision_entry_cadence_blocks_repeat_activity() -> None:
     assert "cooldown" in reason.lower()
 
 
+def test_tradexyz_volume_summary_rolls_up_wallet_activity() -> None:
+    fills = [
+        {"coin": "xyz:GOOGL", "px": "100", "sz": "2", "side": "B", "time": 1_710_000_000_000},
+        {"coin": "xyz:GOOGL", "px": "105", "sz": "1", "side": "A", "time": 1_710_100_000_000},
+        {"coin": "xyz:AMD", "px": "150", "sz": "3", "side": "B", "time": 1_710_200_000_000},
+    ]
+    summary = tradexyz_volume_module.summarize_tradexyz_fills(
+        "0x1111111111111111111111111111111111111111",
+        fills,
+        universe=[{"name": "xyz:GOOGL"}, {"name": "xyz:AMD"}],
+        coverage={"request_count": 3, "start_time": "2024-01-01T00:00:00+00:00", "end_time": "2024-02-01T00:00:00+00:00"},
+    )
+
+    assert summary["summary"]["total_volume_usd"] == 755.0
+    assert summary["summary"]["market_count"] == 2
+    assert summary["summary"]["fill_count"] == 3
+    assert summary["summary"]["buy_volume_usd"] == 650.0
+    assert summary["summary"]["sell_volume_usd"] == 105.0
+    assert summary["markets"][0]["coin"] == "xyz:AMD"
+    assert summary["markets"][0]["volume_usd"] == 450.0
+
+
+def test_dashboard_tradexyz_volume_endpoint_returns_checker_payload() -> None:
+    original_fetch = dashboard_module.tradexyz_volume.fetch_tradexyz_volume
+    try:
+        dashboard_module.tradexyz_volume.fetch_tradexyz_volume = lambda wallet: {
+            "wallet": wallet,
+            "summary": {"total_volume_usd": 1234.56, "fill_count": 5, "market_count": 2, "tracked_markets": 10},
+            "coverage": {"request_count": 4, "start_time": "2024-01-01T00:00:00+00:00", "end_time": "2024-02-01T00:00:00+00:00"},
+            "markets": [{"coin": "xyz:GOOGL", "volume_usd": 1000.0, "fills": 3}],
+            "checked_at": "2026-04-20T00:00:00+00:00",
+            "dex": "xyz",
+        }
+        client = dashboard_module.app.test_client()
+        response = client.get("/api/tradexyz-volume?wallet=0x1111111111111111111111111111111111111111")
+        payload = response.get_json()
+        assert response.status_code == 200
+        assert payload["ok"] is True
+        assert payload["summary"]["total_volume_usd"] == 1234.56
+        assert payload["markets"][0]["coin"] == "xyz:GOOGL"
+    finally:
+        dashboard_module.tradexyz_volume.fetch_tradexyz_volume = original_fetch
+
+
 def run_all() -> None:
     test_checkpoint_recovery()
     print("PASS checkpoint recovery")
@@ -4327,6 +4372,10 @@ def run_all() -> None:
     print("PASS precision lab replay")
     test_precision_entry_cadence_blocks_repeat_activity()
     print("PASS precision cadence throttling")
+    test_tradexyz_volume_summary_rolls_up_wallet_activity()
+    print("PASS Trade.xyz volume summary")
+    test_dashboard_tradexyz_volume_endpoint_returns_checker_payload()
+    print("PASS Trade.xyz volume endpoint")
 
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@ import market_map as market_map_store
 import trade_dataset
 import trade_logger
 import trade_review as trade_review_store
+import tradexyz_volume
 from paths import (
     CHALLENGER_MODEL_JSON,
     CODE_ROOT,
@@ -218,6 +219,11 @@ def index():
     return render_template("dashboard.html")
 
 
+@app.route("/tradexyz-volume")
+def tradexyz_volume_page():
+    return render_template("tradexyz_volume.html")
+
+
 @app.route("/api/state")
 def api_state():
     # If a remote snapshot has been pushed, serve that exact payload.
@@ -230,6 +236,20 @@ def api_state():
         snapshot = _build_local_snapshot()
         _save_snapshot_local(snapshot)
     return jsonify(snapshot)
+
+
+@app.route("/api/tradexyz-volume")
+def api_tradexyz_volume():
+    wallet = str(request.args.get("wallet", "")).strip()
+    if not wallet:
+        return jsonify({"ok": False, "error": "Missing wallet address."}), 400
+    try:
+        payload = tradexyz_volume.fetch_tradexyz_volume(wallet)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 502
+    return jsonify({"ok": True, **payload})
 
 
 @app.route("/api/push", methods=["POST"])

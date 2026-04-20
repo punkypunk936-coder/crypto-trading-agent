@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trade.xyz Volume Checker</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #121a30;
+      --panel-2: #17213c;
+      --border: rgba(255,255,255,0.08);
+      --text: #f5f7fb;
+      --muted: #98a2bf;
+      --blue: #6ea8ff;
+      --green: #43d08a;
+      --red: #ff6b7d;
+      --shadow: 0 24px 60px rgba(0,0,0,0.35);
+      --mono: "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+      --sans: "Inter", "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--sans);
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(110,168,255,0.16), transparent 32%),
+        radial-gradient(circle at top right, rgba(67,208,138,0.12), transparent 28%),
+        linear-gradient(180deg, #09101d 0%, #0b1020 42%, #0a0f1c 100%);
+    }
+    .page {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 48px 20px 64px;
+    }
+    .hero {
+      display: grid;
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+    .eyebrow {
+      color: var(--blue);
+      font-size: 12px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(30px, 4vw, 50px);
+      line-height: 1.04;
+      letter-spacing: -0.04em;
+    }
+    .hero p {
+      margin: 0;
+      max-width: 760px;
+      color: var(--muted);
+      line-height: 1.7;
+      font-size: 15px;
+    }
+    .panel {
+      background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+      padding: 22px;
+    }
+    .lookup {
+      display: grid;
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+    .lookup-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+    }
+    input {
+      width: 100%;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+      border-radius: 14px;
+      padding: 15px 16px;
+      font-size: 14px;
+      font-family: var(--mono);
+      outline: none;
+    }
+    input:focus {
+      border-color: rgba(110,168,255,0.55);
+      box-shadow: 0 0 0 3px rgba(110,168,255,0.14);
+    }
+    button {
+      border: 0;
+      border-radius: 14px;
+      padding: 0 18px;
+      min-height: 50px;
+      background: linear-gradient(135deg, #6ea8ff, #4c86f4);
+      color: #08101f;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+    }
+    button:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+    .subnote {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .message {
+      display: none;
+      border-radius: 14px;
+      padding: 12px 14px;
+      font-size: 13px;
+      line-height: 1.6;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.04);
+    }
+    .message.error {
+      display: block;
+      border-color: rgba(255,107,125,0.26);
+      background: rgba(255,107,125,0.10);
+      color: #ffd9df;
+    }
+    .message.info {
+      display: block;
+      border-color: rgba(110,168,255,0.24);
+      background: rgba(110,168,255,0.10);
+      color: #dce9ff;
+    }
+    .results {
+      display: none;
+      gap: 18px;
+      margin-top: 22px;
+    }
+    .results.show {
+      display: grid;
+    }
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+    }
+    .kpi {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px;
+      background: rgba(255,255,255,0.03);
+    }
+    .kpi-label {
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-bottom: 8px;
+    }
+    .kpi-value {
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+    }
+    .meta-card {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px;
+      background: rgba(255,255,255,0.03);
+    }
+    .meta-card strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .meta-card span {
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.6;
+      word-break: break-word;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 6px;
+      font-size: 13px;
+    }
+    th, td {
+      padding: 12px 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-weight: 700;
+    }
+    .mono { font-family: var(--mono); }
+    .muted { color: var(--muted); }
+    .footer-note {
+      margin-top: 16px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.7;
+    }
+    @media (max-width: 720px) {
+      .lookup-row {
+        grid-template-columns: 1fr;
+      }
+      button {
+        width: 100%;
+      }
+      .page {
+        padding-top: 28px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div class="eyebrow">Trade.xyz Volume Checker</div>
+      <h1>Check any wallet’s Trade.xyz volume in one shot.</h1>
+      <p>
+        Paste an EVM wallet and this page will query Hyperliquid’s native fill history,
+        filter it down to the current <span class="mono">dex=xyz</span> market universe,
+        and show the matched notional volume plus the top equity-perp markets traded.
+      </p>
+    </section>
+
+    <section class="panel">
+      <div class="lookup">
+        <div class="lookup-row">
+          <input
+            id="wallet-input"
+            type="text"
+            placeholder="0x..."
+            spellcheck="false"
+            autocomplete="off"
+          />
+          <button id="lookup-btn" onclick="lookupVolume()">Check volume</button>
+        </div>
+        <div class="subnote">
+          Volume is calculated as <span class="mono">sum(abs(price × size))</span> across matched Trade.xyz fills.
+          The scanner walks Hyperliquid history in windows and automatically splits crowded periods so the reading stays reliable.
+        </div>
+      </div>
+
+      <div id="message" class="message info">Paste a wallet address to begin.</div>
+
+      <div id="results" class="results">
+        <div class="kpis">
+          <div class="kpi">
+            <div class="kpi-label">Total Volume</div>
+            <div class="kpi-value" id="kpi-volume">$0</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Matched Fills</div>
+            <div class="kpi-value" id="kpi-fills">0</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Markets Traded</div>
+            <div class="kpi-value" id="kpi-markets">0</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Buy / Sell Volume</div>
+            <div class="kpi-value" id="kpi-flow">$0 / $0</div>
+          </div>
+        </div>
+
+        <div class="meta-grid">
+          <div class="meta-card">
+            <strong>Wallet</strong>
+            <span id="meta-wallet" class="mono">—</span>
+          </div>
+          <div class="meta-card">
+            <strong>Coverage</strong>
+            <span id="meta-coverage">—</span>
+          </div>
+          <div class="meta-card">
+            <strong>Window Scan</strong>
+            <span id="meta-requests">—</span>
+          </div>
+          <div class="meta-card">
+            <strong>First / Last Fill</strong>
+            <span id="meta-time-range">—</span>
+          </div>
+        </div>
+
+        <div class="panel" style="padding:16px;">
+          <div class="eyebrow" style="font-size:11px; letter-spacing:0.12em;">Per Market Breakdown</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Market</th>
+                <th>Volume</th>
+                <th>Fills</th>
+                <th>Buy Volume</th>
+                <th>Sell Volume</th>
+                <th>Last Fill</th>
+              </tr>
+            </thead>
+            <tbody id="markets-body">
+              <tr><td colspan="6" class="muted">Run a lookup to see the matched Trade.xyz markets.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="footer-note" id="footer-note"></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const fmtUsd = (value) => {
+      const number = Number(value || 0);
+      if (!Number.isFinite(number)) return "$0";
+      return "$" + number.toLocaleString("en-US", { maximumFractionDigits: 2 });
+    };
+
+    const esc = (value) => String(value == null ? "" : value)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
+
+    function setMessage(text, mode = "info") {
+      const node = document.getElementById("message");
+      node.className = "message " + mode;
+      node.textContent = text;
+    }
+
+    function renderMarkets(markets) {
+      const body = document.getElementById("markets-body");
+      if (!Array.isArray(markets) || !markets.length) {
+        body.innerHTML = '<tr><td colspan="6" class="muted">No Trade.xyz fills were found for this wallet in the scanned history.</td></tr>';
+        return;
+      }
+      body.innerHTML = markets.slice(0, 20).map((market) => (
+        "<tr>"
+          + "<td class=\"mono\">" + esc(market.coin || "") + "</td>"
+          + "<td>" + esc(fmtUsd(market.volume_usd || 0)) + "</td>"
+          + "<td>" + esc(String(market.fills || 0)) + "</td>"
+          + "<td>" + esc(fmtUsd(market.buy_volume_usd || 0)) + "</td>"
+          + "<td>" + esc(fmtUsd(market.sell_volume_usd || 0)) + "</td>"
+          + "<td>" + esc(String(market.last_fill_at || "—")) + "</td>"
+        + "</tr>"
+      )).join("");
+    }
+
+    function renderResult(payload) {
+      const summary = payload.summary || {};
+      const coverage = payload.coverage || {};
+      document.getElementById("results").classList.add("show");
+      document.getElementById("kpi-volume").textContent = fmtUsd(summary.total_volume_usd || 0);
+      document.getElementById("kpi-fills").textContent = String(summary.fill_count || 0);
+      document.getElementById("kpi-markets").textContent = String(summary.market_count || 0);
+      document.getElementById("kpi-flow").textContent = fmtUsd(summary.buy_volume_usd || 0) + " / " + fmtUsd(summary.sell_volume_usd || 0);
+      document.getElementById("meta-wallet").textContent = payload.wallet || "—";
+      document.getElementById("meta-coverage").textContent = (coverage.start_time || "—") + " → " + (coverage.end_time || "—");
+      document.getElementById("meta-requests").textContent =
+        String(coverage.request_count || 0) + " requests"
+        + (coverage.split_count ? " • " + coverage.split_count + " split windows" : "")
+        + (coverage.possible_truncation ? " • possible truncation" : "");
+      document.getElementById("meta-time-range").textContent =
+        (summary.first_fill_at || "no fills found") + " → " + (summary.last_fill_at || "—");
+
+      renderMarkets(payload.markets || []);
+      document.getElementById("footer-note").textContent =
+        "Tracked Trade.xyz markets right now: "
+        + String(summary.tracked_markets || 0)
+        + ". This page filters by the current Hyperliquid dex=xyz universe and scans from 2024-01-01 UTC onward.";
+    }
+
+    async function lookupVolume() {
+      const input = document.getElementById("wallet-input");
+      const button = document.getElementById("lookup-btn");
+      const wallet = String(input.value || "").trim();
+      if (!wallet) {
+        setMessage("Paste a wallet address first.", "error");
+        return;
+      }
+
+      const url = new URL(window.location.href);
+      url.searchParams.set("wallet", wallet);
+      window.history.replaceState({}, "", url.toString());
+
+      button.disabled = true;
+      button.textContent = "Checking...";
+      setMessage("Looking up Hyperliquid fills and matching them against the Trade.xyz universe...", "info");
+      document.getElementById("results").classList.remove("show");
+
+      try {
+        const response = await fetch("/api/tradexyz-volume?wallet=" + encodeURIComponent(wallet));
+        const payload = await response.json();
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.error || "Volume lookup failed.");
+        }
+        renderResult(payload);
+        setMessage("Volume loaded successfully.", "info");
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : "Volume lookup failed.", "error");
+      } finally {
+        button.disabled = false;
+        button.textContent = "Check volume";
+      }
+    }
+
+    document.getElementById("wallet-input").addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        lookupVolume();
+      }
+    });
+
+    const presetWallet = new URLSearchParams(window.location.search).get("wallet");
+    if (presetWallet) {
+      document.getElementById("wallet-input").value = presetWallet;
+      lookupVolume();
+    }
+  </script>
+</body>
+</html>
