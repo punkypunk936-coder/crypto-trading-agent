@@ -2,16 +2,44 @@
   "classifications": {
     "CORRECT_PASS": 109,
     "GOOD_TRADE": 1,
-    "MISSED_WIN": 100
+    "MISSED_WIN": 102
   },
   "data_dir": "/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime",
-  "decision_rows": 354,
-  "episodes": 257,
-  "generated_at": 1776763603,
+  "decision_rows": 417,
+  "episodes": 320,
+  "generated_at": 1776787425,
   "horizon_minutes": 720,
   "interval": "5m",
-  "labeled_episodes": 210,
+  "labeled_episodes": 212,
   "recent_missed_moves": [
+    {
+      "action": "LONG",
+      "breakout": "confirmed_bullish_breakout",
+      "coin": "NEAR",
+      "interaction": "at_support",
+      "probability": 0.95,
+      "recorded_at": "2026-04-21 18:24:08",
+      "regime": "breakout",
+      "risk_reward_ratio": 2.49,
+      "score": 100.0,
+      "stage": "data_reliability_block",
+      "summary": "price moved too far since the conviction snapshot",
+      "ts": 1776776048.484473
+    },
+    {
+      "action": "SHORT",
+      "breakout": "confirmed_bearish_breakdown",
+      "coin": "XRP",
+      "interaction": "below_resistance",
+      "probability": 0.876,
+      "recorded_at": "2026-04-21 15:55:36",
+      "regime": "breakout",
+      "risk_reward_ratio": 2.19,
+      "score": 96.0,
+      "stage": "flat_no_trade",
+      "summary": "5 analogs \u2022 win 0% \u2022 avg pnl -0.15% \u2022 avg R +0.00 \u2022 reliability 0.65",
+      "ts": 1776767136.0495858
+    },
     {
       "action": "SHORT",
       "breakout": "confirmed_bearish_breakdown",
@@ -123,41 +151,13 @@
       "stage": "observation_only",
       "summary": "Thesis high: strong support defense is holding beneath price; daily breakout is already confirmed; breakout regime supports follow-through",
       "ts": 1776607377.185718
-    },
-    {
-      "action": "LONG",
-      "breakout": "confirmed_bullish_breakout",
-      "coin": "XLM",
-      "interaction": "at_support",
-      "probability": 0.95,
-      "recorded_at": "2026-04-19 18:32:57",
-      "regime": "breakout",
-      "risk_reward_ratio": 3.13,
-      "score": 100.0,
-      "stage": "observation_only",
-      "summary": "Thesis high: strong support defense is holding beneath price; daily breakout is already confirmed; breakout regime supports follow-through",
-      "ts": 1776603777.42693
-    },
-    {
-      "action": "LONG",
-      "breakout": "confirmed_bullish_breakout",
-      "coin": "AMZN",
-      "interaction": "at_support",
-      "probability": 0.95,
-      "recorded_at": "2026-04-19 17:32:58",
-      "regime": "trend",
-      "risk_reward_ratio": 2.2,
-      "score": 100.0,
-      "stage": "data_reliability_block",
-      "summary": "price moved too far since the conviction snapshot",
-      "ts": 1776600178.0285718
     }
   ],
   "summary": {
     "bad_trade_count": 0,
     "correct_pass_count": 109,
     "good_trade_count": 1,
-    "missed_win_count": 100
+    "missed_win_count": 102
   },
   "target_r": 0.25,
   "top_blockers": [
@@ -167,7 +167,7 @@
     },
     {
       "blocker": "price moved too far since the conviction snapshot",
-      "misses": 16
+      "misses": 17
     },
     {
       "blocker": "Thesis high: strong support defense is holding beneath price; daily breakout is already confirmed; breakout regime supports follow-through",
@@ -182,15 +182,15 @@
       "misses": 3
     },
     {
+      "blocker": "5 analogs \u2022 win 0% \u2022 avg pnl -0.15% \u2022 avg R +0.00 \u2022 reliability 0.65",
+      "misses": 3
+    },
+    {
       "blocker": "Thesis high: strong support defense is holding beneath price; daily breakout is already confirmed; momentum regime supports follow-through",
       "misses": 2
     },
     {
       "blocker": "5 analogs \u2022 win 0% \u2022 avg pnl -0.15% \u2022 avg R +0.00 \u2022 reliability 0.64",
-      "misses": 2
-    },
-    {
-      "blocker": "5 analogs \u2022 win 0% \u2022 avg pnl -0.15% \u2022 avg R +0.00 \u2022 reliability 0.65",
       "misses": 2
     }
   ],
@@ -216,16 +216,16 @@
       "misses": 5
     },
     {
+      "coin": "XRP",
+      "misses": 4
+    },
+    {
+      "coin": "NEAR",
+      "misses": 4
+    },
+    {
       "coin": "LTC",
       "misses": 4
-    },
-    {
-      "coin": "XLM",
-      "misses": 4
-    },
-    {
-      "coin": "XRP",
-      "misses": 3
     }
   ],
   "top_missed_families": [
@@ -250,16 +250,16 @@
       "misses": 4
     },
     {
+      "family": "NEAR:LONG",
+      "misses": 4
+    },
+    {
       "family": "LTC:LONG",
       "misses": 4
     },
     {
       "family": "XLM:LONG",
       "misses": 4
-    },
-    {
-      "family": "UNI:SHORT",
-      "misses": 3
     }
   ],
   "top_missed_stages": [
@@ -276,11 +276,11 @@
       "stage": "observation_only"
     },
     {
-      "misses": 16,
+      "misses": 17,
       "stage": "data_reliability_block"
     },
     {
-      "misses": 12,
+      "misses": 13,
       "stage": "flat_no_trade"
     },
     {
