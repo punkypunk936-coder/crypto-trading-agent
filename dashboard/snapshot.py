@@ -157,6 +157,52 @@ def _pick_level(values: Any, *, prefer: str = "min", fallback: Any = None) -> fl
     return min(numbers) if prefer == "min" else max(numbers)
 
 
+def _instrument_type_for_coin(coin: str, signal: dict | None, config: dict | None) -> str:
+    signal = dict(signal or {})
+    config = dict(config or {})
+    signal_type = str(signal.get("instrument_type") or "").strip().lower()
+    if signal_type:
+        return signal_type
+    instrument_types = dict(config.get("instrument_types") or {})
+    return str(instrument_types.get(str(coin or "").upper(), "crypto") or "crypto").strip().lower()
+
+
+def _asset_bucket(instrument_type: str) -> str:
+    normalized = str(instrument_type or "crypto").strip().lower()
+    return "coin" if normalized == "crypto" else "equity"
+
+
+def _group_action_items(items: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    groups: dict[str, dict[str, Any]] = {}
+    labels = {
+        "coin": "Coins",
+        "equity": "Equity Perps",
+    }
+    for bucket in ("coin", "equity"):
+        bucket_items = [item for item in items if str(item.get("asset_bucket") or "") == bucket]
+        tradable_items = [item for item in bucket_items if item.get("tradable")]
+        observation_items = [item for item in bucket_items if not item.get("tradable")]
+        groups[bucket] = {
+            "key": bucket,
+            "label": labels[bucket],
+            "items": bucket_items,
+            "tradable_items": tradable_items,
+            "observation_items": observation_items,
+            "count": len(bucket_items),
+            "tradable_count": len(tradable_items),
+            "observation_count": len(observation_items),
+            "active_count": sum(
+                1 for item in tradable_items
+                if str(item.get("status") or "") in {"OPEN_LONG", "OPEN_SHORT", "READY_LONG", "READY_SHORT"}
+            ),
+            "pending_count": sum(
+                1 for item in bucket_items
+                if str(item.get("status") or "").upper() == "PENDING_ENTRY"
+            ),
+        }
+    return groups
+
+
 def _primary_reason(text: Any) -> str:
     normalized = str(text or "").replace("|", "·")
     parts = [str(part).strip() for part in normalized.split("·")]
@@ -249,6 +295,8 @@ def action_board(state: dict, market_map: dict) -> dict:
             or map_entry.get("bias")
             or "NEUTRAL"
         ).upper()
+        instrument_type = _instrument_type_for_coin(coin, sig, config)
+        asset_bucket = _asset_bucket(instrument_type)
         support = _pick_level(
             map_entry.get("supports"),
             prefer="max",
@@ -480,6 +528,8 @@ def action_board(state: dict, market_map: dict) -> dict:
                 "mode_badge": mode_badge,
                 "mode_detail": mode_detail,
                 "bias": bias,
+                "instrument_type": instrument_type,
+                "asset_bucket": asset_bucket,
                 "asset_state": asset_state,
                 "asset_state_label": asset_state_label,
                 "next_unblock_reason": next_unblock,
@@ -507,12 +557,14 @@ def action_board(state: dict, market_map: dict) -> dict:
     tradable_items = [item for item in items if item.get("tradable")]
     observation_items = [item for item in items if not item.get("tradable")]
     pending_count = sum(1 for item in items if str(item.get("status") or "").upper() == "PENDING_ENTRY")
+    groups = _group_action_items(items)
     return {
         "updated_at": state.get("last_cycle"),
         "lead": items[0] if items else None,
         "items": items,
         "tradable_items": tradable_items,
         "observation_items": observation_items,
+        "groups": groups,
         "summary": {
             "tradable_count": len(tradable_items),
             "observation_count": len(observation_items),
@@ -524,6 +576,16 @@ def action_board(state: dict, market_map: dict) -> dict:
             "scout_count": len(dynamic_analysis),
             "scout_preview": dynamic_analysis[:8],
             "scout_market_cap_min_usd": _safe_float(config.get("dynamic_market_cap_min_usd")),
+            "bucket_counts": {
+                bucket: {
+                    "count": data.get("count", 0),
+                    "tradable_count": data.get("tradable_count", 0),
+                    "observation_count": data.get("observation_count", 0),
+                    "active_count": data.get("active_count", 0),
+                    "pending_count": data.get("pending_count", 0),
+                }
+                for bucket, data in groups.items()
+            },
         },
     }
 

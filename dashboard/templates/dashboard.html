@@ -274,7 +274,81 @@
   }
   .market-map-grid {
     display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: 12px;
+  }
+  .asset-switcher {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .asset-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.03);
+    color: var(--text-secondary);
+    border-radius: 999px;
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 700;
+    font-family: var(--mono);
+    letter-spacing: 0.45px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .asset-tab:hover {
+    border-color: rgba(255,255,255,0.14);
+    color: var(--text);
+    background: rgba(255,255,255,0.05);
+  }
+  .asset-tab.active {
+    border-color: rgba(91,140,255,0.28);
+    color: var(--blue);
+    background: rgba(91,140,255,0.12);
+    box-shadow: 0 0 0 1px rgba(91,140,255,0.08) inset;
+  }
+  .asset-tab-count {
+    color: var(--muted);
+  }
+  .asset-tab.active .asset-tab-count {
+    color: rgba(91,140,255,0.88);
+  }
+  .asset-bucket-note {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+    margin-bottom: 12px;
+  }
+  .asset-section-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 10px;
+  }
+  .asset-section-stack {
+    display: grid;
+    gap: 14px;
+  }
+  .asset-section-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .asset-section-title {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text);
+  }
+  .asset-section-sub {
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.45;
   }
   .map-card {
     border: 1px solid var(--border);
@@ -1252,6 +1326,10 @@
       justify-content: space-between;
       text-align: left;
     }
+    .asset-section-grid,
+    .market-map-grid {
+      grid-template-columns: 1fr;
+    }
   }
   @media (max-width: 380px) {
     .grid-4 { grid-template-columns: 1fr; }
@@ -1528,12 +1606,15 @@ let latestControl = null;
 let latestState = null;
 let latestTrades = [];
 let latestMarketMap = { coins: {} };
+let latestMarketMapSummary = {};
 let latestActionBoard = { items: [], summary: {}, lead: null };
 let latestReviewStore = { reviews: {} };
 let latestReviewSummary = {};
 let latestLearningSummary = {};
 let currentTickerSearchQuery = '';
 let tradexyzLookupBusy = false;
+let actionBoardBucket = 'coin';
+let marketMapBucket = 'coin';
 
 function toggleTrades() {
   const wrap = document.getElementById('trades-wrap');
@@ -1564,6 +1645,73 @@ function trackedCoins() {
     });
   });
   return Array.from(coins).sort();
+}
+
+function instrumentTypeForCoin(coin) {
+  const ticker = String(coin || '').trim().toUpperCase();
+  const signal = ((((latestState || {}).signals || {})[ticker]) || {});
+  const signalType = String(signal.instrument_type || '').trim().toLowerCase();
+  if (signalType) return signalType;
+  const configTypes = (((latestState || {}).config || {}).instrument_types || {});
+  return String(configTypes[ticker] || 'crypto').trim().toLowerCase();
+}
+
+function assetBucketForType(type) {
+  const normalized = String(type || 'crypto').trim().toLowerCase();
+  return normalized === 'crypto' ? 'coin' : 'equity';
+}
+
+function assetBucketForCoin(coin) {
+  return assetBucketForType(instrumentTypeForCoin(coin));
+}
+
+function bucketLabel(bucket) {
+  if (bucket === 'equity') return 'Equity Perps';
+  return 'Coins';
+}
+
+function bucketDescription(bucket) {
+  if (bucket === 'equity') return 'Hyperliquid equity, index, and metal-linked setups in one quieter lane.';
+  return 'Crypto coins and token perps only.';
+}
+
+function emptyBucketGroups() {
+  return {
+    coin: { key: 'coin', label: bucketLabel('coin'), items: [], tradable_items: [], observation_items: [], count: 0, tradable_count: 0, observation_count: 0, active_count: 0, pending_count: 0 },
+    equity: { key: 'equity', label: bucketLabel('equity'), items: [], tradable_items: [], observation_items: [], count: 0, tradable_count: 0, observation_count: 0, active_count: 0, pending_count: 0 },
+  };
+}
+
+function chooseBucket(current, groups) {
+  const order = ['coin', 'equity'];
+  if (groups && groups[current] && Number(groups[current].count || 0) > 0) return current;
+  return order.find((key) => groups && groups[key] && Number(groups[key].count || 0) > 0) || 'coin';
+}
+
+function renderBucketTabs(current, groups, clickHandler) {
+  const order = ['coin', 'equity'];
+  const available = order.filter((key) => groups && groups[key] && Number(groups[key].count || 0) > 0);
+  if (available.length <= 1) return '';
+  return '<div class="asset-switcher">'
+    + available.map((key) => {
+      const group = groups[key] || {};
+      const active = key === current;
+      return '<button class="asset-tab' + (active ? ' active' : '') + '" onclick="' + clickHandler + '(' + JSON.stringify(key) + ')">'
+        + esc(bucketLabel(key))
+        + '<span class="asset-tab-count">' + esc(String(group.count || 0)) + '</span>'
+      + '</button>';
+    }).join('')
+    + '</div>';
+}
+
+function setActionBoardBucket(bucket) {
+  actionBoardBucket = String(bucket || 'coin');
+  renderActionBoard(latestActionBoard || {});
+}
+
+function setMarketMapBucket(bucket) {
+  marketMapBucket = String(bucket || 'coin');
+  renderMarketMapSummary(latestMarketMapSummary || {}, latestMarketMap || { coins: {} });
 }
 
 function humanizeKey(value) {
@@ -1859,6 +2007,52 @@ function renderTradexyzVolume(payload) {
   result.innerHTML = html;
 }
 
+function normalizeActionGroups(board) {
+  const groups = emptyBucketGroups();
+  const items = Array.isArray((board || {}).items) ? board.items.filter((item) => item && item.coin) : [];
+  items.forEach((item) => {
+    const bucket = item.asset_bucket || assetBucketForCoin(item.coin);
+    if (!groups[bucket]) return;
+    groups[bucket].items.push(item);
+    if (item.tradable) groups[bucket].tradable_items.push(item);
+    else groups[bucket].observation_items.push(item);
+    groups[bucket].count += 1;
+    if (item.tradable) groups[bucket].tradable_count += 1;
+    else groups[bucket].observation_count += 1;
+    const status = String(item.status || '').toUpperCase();
+    if (item.tradable && ['OPEN_LONG', 'OPEN_SHORT', 'READY_LONG', 'READY_SHORT'].includes(status)) {
+      groups[bucket].active_count += 1;
+    }
+    if (status === 'PENDING_ENTRY') groups[bucket].pending_count += 1;
+  });
+  return groups;
+}
+
+function groupTrackedCoinsByBucket(coins) {
+  const groups = emptyBucketGroups();
+  (coins || []).forEach((coin) => {
+    const ticker = String(coin || '').trim().toUpperCase();
+    if (!ticker) return;
+    const bucket = assetBucketForCoin(ticker);
+    if (!groups[bucket]) return;
+    groups[bucket].items.push(ticker);
+    groups[bucket].count += 1;
+  });
+  return groups;
+}
+
+function sortCoinsForBucket(coins) {
+  return Array.from(coins || []).sort((a, b) => {
+    const sigA = ((((latestState || {}).signals || {})[a]) || {});
+    const sigB = ((((latestState || {}).signals || {})[b]) || {});
+    const tradableA = String(sigA.execution_mode || 'observation_only') === 'tradable' ? 1 : 0;
+    const tradableB = String(sigB.execution_mode || 'observation_only') === 'tradable' ? 1 : 0;
+    const scoreA = Math.abs(Number(sigA.score || 50) - 50);
+    const scoreB = Math.abs(Number(sigB.score || 50) - 50);
+    return (tradableB - tradableA) || (scoreB - scoreA) || String(a).localeCompare(String(b));
+  });
+}
+
 async function lookupTradexyzVolume() {
   if (tradexyzLookupBusy) return;
   const input = document.getElementById('tradexyz-wallet-input');
@@ -1898,12 +2092,20 @@ async function lookupTradexyzVolume() {
 
 function renderMarketMapSummary(summary, marketMap) {
   const meta = document.getElementById('market-map-meta');
-  meta.textContent = 'Higher-timeframe bias and key levels only. A bullish view is not a live long by itself. Updated ' + stampText(summary.updated_at || (marketMap || {}).updated_at);
-
   const body = document.getElementById('market-map-body');
   const coins = trackedCoins();
   const entries = (marketMap || {}).coins || {};
   const globalNotes = String((marketMap || {}).global_notes || '').trim();
+  const groups = groupTrackedCoinsByBucket(coins);
+  marketMapBucket = chooseBucket(marketMapBucket, groups);
+  const selected = groups[marketMapBucket] || groups.coin;
+  const metaBits = ['Higher-timeframe bias only'];
+  ['coin', 'equity'].forEach((bucket) => {
+    const group = groups[bucket];
+    if (group && group.count > 0) metaBits.push(bucketLabel(bucket) + ' ' + group.count);
+  });
+  metaBits.push('Updated ' + stampText(summary.updated_at || (marketMap || {}).updated_at));
+  meta.textContent = metaBits.join(' • ');
 
   if (!coins.length && !Object.keys(entries).length) {
     body.innerHTML = '<div class="empty-state"><div class="empty-icon">🗺️</div>No daily market map yet. Add BTC / ETH / SOL key levels so the agent can anchor its thesis to your higher-timeframe view.</div>';
@@ -1915,12 +2117,21 @@ function renderMarketMapSummary(summary, marketMap) {
     html += '<div class="map-global-notes"><strong>Global notes:</strong> ' + esc(globalNotes) + '</div>';
   }
 
+  html += renderBucketTabs(marketMapBucket, groups, 'setMarketMapBucket');
+  html += '<div class="asset-bucket-note">' + esc(bucketDescription(marketMapBucket)) + '</div>';
+
+  const selectedCoins = sortCoinsForBucket(selected.items || []);
+  if (!selectedCoins.length) {
+    body.innerHTML = html + '<div class="empty-state">No assets are being tracked in this lane yet.</div>';
+    return;
+  }
+
   html += '<div class="market-map-grid">';
-  coins.forEach((coin) => {
+  selectedCoins.forEach((coin) => {
     const entry = entries[coin];
     const signal = ((((latestState || {}).signals || {})[coin]) || {});
     const isTradable = String(signal.execution_mode || 'observation_only') === 'tradable';
-    const modeLabel = isTradable ? 'TRADEABLE NOW' : 'OBSERVATION ONLY';
+    const modeLabel = isTradable ? 'LIVE' : 'WATCH';
     const modeClass = isTradable ? 'signal-mode-tradable' : 'signal-mode-watch';
     const modeNote = isTradable
       ? 'Live-eligible on the active venue, but still needs a qualified thesis and clean execution.'
@@ -2059,8 +2270,7 @@ function renderActionBoard(board) {
   const meta = document.getElementById('action-board-meta');
   const body = document.getElementById('signals-body');
   const allItems = Array.isArray((board || {}).items) ? board.items.filter((item) => item) : [];
-  const tradableItems = Array.isArray((board || {}).tradable_items) ? board.tradable_items.filter((item) => item) : allItems.filter((item) => item.tradable);
-  const observationItems = Array.isArray((board || {}).observation_items) ? board.observation_items.filter((item) => item) : allItems.filter((item) => !item.tradable);
+  const groups = normalizeActionGroups(board);
   const summary = (board || {}).summary || {};
   const lead = (board || {}).lead || null;
   if (!allItems.length) {
@@ -2068,29 +2278,36 @@ function renderActionBoard(board) {
     body.innerHTML = '<div class="empty-state">Waiting for the first clean setup...</div>';
     return;
   }
-  const tradableCount = Number(summary.tradable_count || tradableItems.length || 0);
-  const observationCount = Number(summary.observation_count || observationItems.length || 0);
-  const activeTradableCount = Number(summary.active_tradable_count || 0);
-  const pendingCount = Number(summary.pending_count || 0);
+  actionBoardBucket = chooseBucket(actionBoardBucket, groups);
+  const selected = groups[actionBoardBucket] || groups.coin;
+  const tradableItems = selected.tradable_items || [];
+  const observationItems = selected.observation_items || [];
+  const tradableCount = Number(selected.tradable_count || tradableItems.length || 0);
+  const observationCount = Number(selected.observation_count || observationItems.length || 0);
+  const activeTradableCount = Number(selected.active_count || 0);
+  const pendingCount = Number(selected.pending_count || 0);
   const scoutCount = Number(summary.scout_count || 0);
   const scoutPreview = Array.isArray(summary.scout_preview) ? summary.scout_preview.filter((item) => item) : [];
   const scoutThreshold = fmtCompactUsd(summary.scout_market_cap_min_usd || 1_000_000_000);
   const metaBits = [
-    'Tradable ' + tradableCount,
-    'Observation-only ' + observationCount,
+    bucketLabel(actionBoardBucket),
+    'Live ' + tradableCount,
+    'Watch ' + observationCount,
   ];
   if (activeTradableCount > 0) metaBits.push('Actionable ' + activeTradableCount);
   if (pendingCount > 0) metaBits.push('Working orders ' + pendingCount);
-  if (scoutCount > 0) metaBits.push('Scouting ' + scoutCount + ' above ' + scoutThreshold);
+  if (actionBoardBucket === 'coin' && scoutCount > 0) metaBits.push('Scouting ' + scoutCount + ' above ' + scoutThreshold);
   if (lead) metaBits.push('Best setup: ' + lead.coin + ' • ' + lead.label);
   meta.textContent = metaBits.join(' • ');
 
-  let html = '<div class="decision-board">';
+  let html = renderBucketTabs(actionBoardBucket, groups, 'setActionBoardBucket');
+  html += '<div class="asset-bucket-note">' + esc(bucketDescription(actionBoardBucket)) + '</div>';
+  html += '<div class="decision-board asset-section-stack">';
   if (tradableItems.length) {
     const tradableSub = pendingCount > 0
       ? 'These names are live-eligible on the active venue right now. Some entries are already working passively while the bot waits for fills or a clean escalation.'
       : 'These names are live-eligible on the active venue right now.';
-    html += '<div><div class="decision-group-title">Tradable Now</div><div class="decision-group-sub">' + esc(tradableSub) + '</div><div class="token-stack">'
+    html += '<div><div class="asset-section-header"><div class="asset-section-title">Tradable Now</div><div class="asset-section-sub">' + esc(tradableSub) + '</div></div><div class="asset-section-grid">'
     + tradableItems.map((item) => {
       const status = String(item.status || 'NO_SETUP');
       const highlightBase = status.includes('LONG')
@@ -2121,17 +2338,17 @@ function renderActionBoard(board) {
     }).join('')
     + '</div></div>';
   } else {
-    html += '<div class="empty-state">No live-eligible assets right now. The agent is watching for the next tradable setup.</div>';
+    html += '<div class="empty-state">No live-eligible assets are active in this lane right now.</div>';
   }
 
-  const scoutFootnote = scoutCount > 0
+  const scoutFootnote = actionBoardBucket === 'coin' && scoutCount > 0
     ? '<div class="decision-group-footnote">Large-cap scout lane: ' + scoutCount + ' Hyperliquid crypto names above ' + esc(scoutThreshold)
       + (scoutPreview.length ? ' • ' + esc(scoutPreview.join(', ')) + (scoutCount > scoutPreview.length ? '…' : '') : '')
       + '</div>'
     : '';
 
   if (observationItems.length) {
-    html += '<div><div class="decision-group-title">Observation Only</div><div class="decision-group-sub">These names are still being read carefully, but execution is blocked until the active venue supports them cleanly.</div>' + scoutFootnote + '<div class="token-stack">'
+    html += '<div><div class="asset-section-header"><div class="asset-section-title">Observation Only</div><div class="asset-section-sub">These names are still being read carefully, but execution is blocked until the active venue supports them cleanly.</div></div>' + scoutFootnote + '<div class="asset-section-grid">'
       + observationItems.map((item, index) => '<details class="decision-card decision-card-watch decision-box"' + (index === 0 ? ' open' : '') + '>'
         + '<summary class="decision-summary">'
           + '<div class="decision-summary-main">'
@@ -2149,8 +2366,8 @@ function renderActionBoard(board) {
         + '</div>'
       + '</details>').join('')
       + '</div></div>';
-  } else if (scoutCount > 0) {
-    html += '<div><div class="decision-group-title">Observation Only</div><div class="decision-group-sub">No blocked names need surfacing right now, but the broader scout lane is still watching the large-cap universe in the background.</div>' + scoutFootnote + '</div>';
+  } else if (actionBoardBucket === 'coin' && scoutCount > 0) {
+    html += '<div><div class="asset-section-header"><div class="asset-section-title">Observation Only</div><div class="asset-section-sub">No blocked names need surfacing right now, but the broader scout lane is still watching the large-cap universe in the background.</div></div>' + scoutFootnote + '</div>';
   }
   html += '</div>';
   body.innerHTML = html;
@@ -2299,6 +2516,7 @@ async function refresh() {
     latestState = s || {};
     latestTrades = Array.isArray(tr) ? tr : [];
     latestMarketMap = data.market_map || { coins: {} };
+    latestMarketMapSummary = data.market_map_summary || {};
     latestReviewStore = data.trade_reviews || { reviews: {} };
     latestReviewSummary = data.review_summary || {};
     latestLearningSummary = data.learning_summary || {};
