@@ -395,6 +395,15 @@ class TradingConfig:
     execution_passive_rescue_max_spread_bps: float = 28.0
     execution_passive_rescue_min_depth_multiple: float = 2.5
     execution_passive_rescue_max_slippage_bps: float = 85.0
+    execution_coach_enabled: bool = True
+    execution_coach_aggressive_max_stretch_bps: float = 10.0
+    execution_coach_passive_hold_distance_bps: float = 18.0
+    execution_coach_max_chase_bps: float = 32.0
+    execution_coach_skip_stretch_bps: float = 48.0
+    execution_coach_min_quality_score: float = 74.0
+    execution_coach_min_breakout_probability: float = 0.66
+    execution_coach_min_breakout_expectancy_score: float = 66.0
+    execution_coach_reprice_passive_orders: bool = True
 
     # ── Missed-trade review / champion-challenger scaffolding ──────────────
     decision_review_enabled: bool = True
@@ -429,6 +438,12 @@ class TradingConfig:
         "READY_LONG",
         "READY_SHORT",
     ])
+    playbook_distiller_enabled: bool = True
+    playbook_distiller_refresh_hours: float = 24.0
+    playbook_distiller_lookback_days: int = 28
+    playbook_distiller_min_samples: int = 3
+    playbook_distiller_min_win_rate: float = 0.55
+    playbook_distiller_max_losing_win_rate: float = 0.45
 
     # ── Visual chart confirmation ────────────────────────
     # When enabled, borderline signals (score 38–62) are confirmed by

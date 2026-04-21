@@ -41,6 +41,7 @@ from paths import (
     KILL_FILE,
     LLM_REFEREE_REPORT_JSON,
     MISSED_MOVE_REPORT_JSON,
+    PLAYBOOK_DISTILLER_REPORT_JSON,
     STATE_JSON,
     TRADE_REVIEWS_JSON,
     TRADES_CSV,
@@ -55,6 +56,7 @@ from config import Config
 import data_reliability
 import decision_dataset
 import decision_review_lab
+import execution_coach
 import feature_store
 import llm_referee
 from logger import get_logger
@@ -62,6 +64,7 @@ from data.market_data import completed_candle_frame, fetch_candles, get_current_
 import hosted_state_sync
 import market_map
 import missed_move_lab
+import playbook_distiller
 import portfolio_guard
 import trade_dataset
 import trade_logger
@@ -505,6 +508,7 @@ class TradingAgent:
             getattr(self.cfg.trading, "decision_review_enabled", True)
             or getattr(self.cfg.trading, "challenger_model_enabled", True)
             or getattr(self.cfg.trading, "missed_move_lab_enabled", True)
+            or getattr(self.cfg.trading, "playbook_distiller_enabled", True)
         ):
             return
 
@@ -540,6 +544,11 @@ class TradingAgent:
                 )
             if getattr(self.cfg.trading, "challenger_model_enabled", True):
                 challenger_model.build_and_save_report(
+                    self.cfg,
+                    data_dir=DATA_DIR,
+                )
+            if getattr(self.cfg.trading, "playbook_distiller_enabled", True):
+                playbook_distiller.build_and_save_report(
                     self.cfg,
                     data_dir=DATA_DIR,
                 )
@@ -1197,6 +1206,12 @@ class TradingAgent:
             "execution_quality": {},
             "execution_quality_score": 0.0,
             "execution_quality_summary": "",
+            "execution_coach": {},
+            "execution_coach_used": False,
+            "execution_coach_verdict": "",
+            "execution_coach_summary": "",
+            "execution_coach_urgency_score": 0.0,
+            "execution_coach_stretch_bps": 0.0,
             "estimated_slippage_bps": 0.0,
             "execution_persistence_cycles": 0,
             "execution_mode":  "tradable" if coin in self._tradable_coin_set else "observation_only",
@@ -1865,53 +1880,36 @@ class TradingAgent:
         self._last_signals[coin]["execution_quality_summary"] = execution_quality.get("summary", "")
         self._last_signals[coin]["estimated_slippage_bps"] = execution_quality.get("estimated_slippage_bps", 0.0)
         self._last_signals[coin]["execution_persistence_cycles"] = execution_quality.get("persistence_cycles", 0)
+        coached_execution = execution_coach.decide_execution(
+            self.cfg.trading,
+            coin=coin,
+            signal_snapshot=self._last_signals.get(coin, {}),
+            order=order,
+            execution_quality=execution_quality,
+            orderbook_signal=orderbook_signal,
+        )
+        self._last_signals[coin]["execution_coach"] = coached_execution
+        self._last_signals[coin]["execution_coach_used"] = bool(coached_execution.get("enabled", False))
+        self._last_signals[coin]["execution_coach_verdict"] = coached_execution.get("verdict", "")
+        self._last_signals[coin]["execution_coach_summary"] = coached_execution.get("summary", "")
+        self._last_signals[coin]["execution_coach_urgency_score"] = coached_execution.get("urgency_score", 0.0)
+        self._last_signals[coin]["execution_coach_stretch_bps"] = coached_execution.get("stretch_bps", 0.0)
+        coached_plan = dict(coached_execution.get("execution_plan") or {})
+        if coached_plan:
+            signal.execution_plan = coached_plan
+            self._last_signals[coin]["execution_plan"] = coached_plan
         self._sync_signal_snapshot(coin, signal)
-        if not execution_quality.get("permitted", True):
-            if execution_quality.get("prefer_passive_entry", False):
-                if self.order_mgr.has_pending(coin):
-                    self._record_decision_snapshot(
-                        coin,
-                        portfolio_usd=portfolio_usd,
-                        stage="entry_limit_already_pending",
-                        signal=signal,
-                        current_position=current_pos,
-                        blocked=True,
-                        pending_limit=True,
-                    )
-                    return
-                passive_price = float(execution_quality.get("passive_limit_price", 0.0) or 0.0)
-                if passive_price > 0:
-                    limit_result = self._place_limit_order(
-                        coin,
-                        signal.action,
-                        passive_price,
-                        order.size_usd,
-                        order.stop_loss,
-                        order.take_profit,
-                        signal.score,
-                        reason="passive_rescue",
-                        entry_context=self._build_entry_context(coin, signal, order, entry_type="passive_rescue"),
-                        trade_plan=dict(getattr(signal, "trade_plan", {}) or {}),
-                        maker_only=True,
-                    )
-                    if limit_result.get("success"):
-                        self._record_precision_entry(coin, signal, mode="passive_limit")
-                    self._record_decision_snapshot(
-                        coin,
-                        portfolio_usd=portfolio_usd,
-                        stage="passive_rescue_limit_placed" if limit_result.get("success") else "execution_quality_block",
-                        signal=signal,
-                        current_position=current_pos,
-                        executed=bool(limit_result.get("filled")),
-                        blocked=not bool(limit_result.get("success")),
-                        pending_limit=bool(limit_result.get("pending")),
-                    )
-                    return
-            log.info(f"[{coin}] ⚙️ Execution-quality gate blocked entry: {execution_quality.get('summary', '')}")
+        if str(coached_execution.get("verdict") or "").upper() == "SKIP":
+            reason = str(coached_execution.get("summary") or execution_quality.get("summary") or "execution coach skipped the entry").strip()
+            log.info(f"[{coin}] 🎯 Execution coach keeps entry flat: {reason}")
+            signal.action = "FLAT"
+            signal.flat_reason = reason
+            signal.reason = reason
+            self._sync_signal_snapshot(coin, signal)
             self._record_decision_snapshot(
                 coin,
                 portfolio_usd=portfolio_usd,
-                stage="execution_quality_block",
+                stage="execution_coach_skip",
                 signal=signal,
                 current_position=current_pos,
                 blocked=True,
@@ -2734,6 +2732,12 @@ class TradingAgent:
             "execution_quality": sig.get("execution_quality", {}),
             "execution_quality_score": sig.get("execution_quality_score", 0.0),
             "execution_quality_summary": sig.get("execution_quality_summary", ""),
+            "execution_coach": sig.get("execution_coach", {}),
+            "execution_coach_used": sig.get("execution_coach_used", False),
+            "execution_coach_verdict": sig.get("execution_coach_verdict", ""),
+            "execution_coach_summary": sig.get("execution_coach_summary", ""),
+            "execution_coach_urgency_score": sig.get("execution_coach_urgency_score", 0.0),
+            "execution_coach_stretch_bps": sig.get("execution_coach_stretch_bps", 0.0),
             "estimated_slippage_bps": sig.get("estimated_slippage_bps", 0.0),
             "execution_persistence_cycles": sig.get("execution_persistence_cycles", 0),
             "conviction_tier": getattr(order, "conviction_tier", ""),
@@ -4071,6 +4075,12 @@ class TradingAgent:
                 challenger_report_data = json.loads(CHALLENGER_MODEL_JSON.read_text())
             except Exception as e:
                 log.debug(f"challenger_model_report.json read failed: {e}")
+        playbook_distiller_report_data = {}
+        if PLAYBOOK_DISTILLER_REPORT_JSON.exists():
+            try:
+                playbook_distiller_report_data = json.loads(PLAYBOOK_DISTILLER_REPORT_JSON.read_text())
+            except Exception as e:
+                log.debug(f"playbook_distiller_report.json read failed: {e}")
         llm_referee_report_data = self._llm_referee.default_report()
         if LLM_REFEREE_REPORT_JSON.exists():
             try:
@@ -4086,6 +4096,7 @@ class TradingAgent:
                     market_map=market_map_data,
                     missed_move_report=missed_move_report_data,
                     llm_referee_report=llm_referee_report_data,
+                    playbook_distiller_report=playbook_distiller_report_data,
                 )
         except Exception as e:
             log.debug(f"asset_dossiers.json write failed: {e}")
@@ -4115,6 +4126,7 @@ class TradingAgent:
             missed_move_report=missed_move_report_data,
             asset_dossiers=asset_dossier_data,
             llm_referee_report=llm_referee_report_data,
+            playbook_distiller_report=playbook_distiller_report_data,
         )
         try:
             DASHBOARD_SNAPSHOT_JSON.write_text(json.dumps(snapshot, indent=2))
@@ -4142,6 +4154,7 @@ class TradingAgent:
                     "missed_move_report": missed_move_report_data,
                     "asset_dossiers": asset_dossier_data,
                     "llm_referee_report": llm_referee_report_data,
+                    "playbook_distiller_report": playbook_distiller_report_data,
                 }).encode()
                 req = urllib.request.Request(
                     remote_url.rstrip("/") + "/api/push",
@@ -4233,6 +4246,7 @@ class TradingAgent:
                 missed_move_report=missed_move_report_data,
                 asset_dossiers=asset_dossier_data,
                 llm_referee_report=llm_referee_report_data,
+                playbook_distiller_report=playbook_distiller_report_data,
             )
 
     def _print_final_summary(self):

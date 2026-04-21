@@ -72,6 +72,8 @@ NUMERIC_FEATURE_KEYS = (
     "expectancy_uncertainty",
     "expectancy_score",
     "execution_quality_score",
+    "execution_coach_urgency_score",
+    "execution_coach_stretch_bps",
     "estimated_slippage_bps",
     "execution_persistence_cycles",
     "analog_sample_size",
@@ -113,6 +115,7 @@ BOOL_FEATURE_KEYS = (
     "portfolio_guard_permitted",
     "llm_referee_used",
     "llm_referee_blocked",
+    "execution_coach_used",
 )
 
 CATEGORICAL_FEATURE_KEYS = (
@@ -142,6 +145,7 @@ CATEGORICAL_FEATURE_KEYS = (
     "thesis_state",
     "thesis_quality",
     "execution_mode",
+    "execution_coach_verdict",
     "analog_verdict",
     "asset_state",
     "decision_stage",
@@ -158,6 +162,7 @@ TEXT_FEATURE_KEYS = (
     "thesis_summary",
     "expectancy_summary",
     "execution_quality_summary",
+    "execution_coach_summary",
     "market_map_summary",
     "market_map_notes",
     "narrative_summary",

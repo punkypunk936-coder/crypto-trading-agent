@@ -94,7 +94,7 @@ def build_asset_state(
             reliability.get("summary") or snap.get("decision_reason") or snap.get("flat_reason"),
             "The supporting data is not reliable enough to trade right now.",
         )
-    elif stage_key == "execution_quality_block" or (action in {"LONG", "SHORT"} and execution_quality and not bool(execution_quality.get("permitted", True))):
+    elif stage_key in {"execution_quality_block", "execution_coach_skip"} or (action in {"LONG", "SHORT"} and execution_quality and not bool(execution_quality.get("permitted", True))):
         if bool(execution_quality.get("prefer_passive_entry", False)):
             state = "PASSIVE_ENTRY"
             label = "Passive entry"
@@ -106,7 +106,7 @@ def build_asset_state(
             state = "EXECUTION_BLOCKED"
             label = "Execution blocked"
             next_unblock = _safe_str(
-                execution_quality.get("summary"),
+                snap.get("execution_coach_summary") or execution_quality.get("summary"),
                 "Execution quality still needs cleaner spread, depth, or slippage.",
             )
     elif action in {"LONG", "SHORT"} and bool(snap.get("thesis_permitted", False)):

@@ -46,6 +46,7 @@ MARKET_CAP_UNIVERSE_JSON = DATA_DIR / "market_cap_universe.json"  # Cached Hyper
 ASSET_DOSSIERS_JSON = DATA_DIR / "asset_dossiers.json"          # Living per-asset trading dossiers
 MISSED_MOVE_REPORT_JSON = DATA_DIR / "missed_move_report.json"  # Rich review of obvious winners the bot skipped
 LLM_REFEREE_REPORT_JSON = DATA_DIR / "llm_referee_report.json"  # Latest structured LLM referee verdicts
+PLAYBOOK_DISTILLER_REPORT_JSON = DATA_DIR / "playbook_distiller_report.json"  # Rolling rewrite of what is working by asset/regime
 
 # ── Logs directory ────────────────────────────────────────────────────────────
 LOGS_DIR = DATA_DIR / "logs"

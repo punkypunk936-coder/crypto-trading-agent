@@ -31,6 +31,7 @@ from paths import (
     KILL_FILE,
     LLM_REFEREE_REPORT_JSON,
     MISSED_MOVE_REPORT_JSON,
+    PLAYBOOK_DISTILLER_REPORT_JSON,
     STATE_JSON,
     TRADE_REVIEWS_JSON,
     TRADES_CSV,
@@ -54,6 +55,7 @@ CHALLENGER_REPORT = CHALLENGER_MODEL_JSON
 MISSED_MOVE_REPORT = MISSED_MOVE_REPORT_JSON
 ASSET_DOSSIERS = ASSET_DOSSIERS_JSON
 LLM_REFEREE_REPORT = LLM_REFEREE_REPORT_JSON
+PLAYBOOK_DISTILLER_REPORT = PLAYBOOK_DISTILLER_REPORT_JSON
 HOSTED_INDEX = CODE_ROOT / "netlify-dashboard" / "public" / "index.html"
 
 # Secret token for push endpoint (set DASHBOARD_TOKEN env var for security)
@@ -147,6 +149,15 @@ def _load_llm_referee_report_local() -> dict:
     return {}
 
 
+def _load_playbook_distiller_report_local() -> dict:
+    if PLAYBOOK_DISTILLER_REPORT.exists():
+        try:
+            return json.loads(PLAYBOOK_DISTILLER_REPORT.read_text())
+        except Exception:
+            pass
+    return {}
+
+
 def _load_control_local() -> dict:
     if CONTROL.exists():
         try:
@@ -183,7 +194,7 @@ def _snapshot_needs_refresh() -> bool:
         snapshot_mtime = SNAPSHOT.stat().st_mtime
     except Exception:
         return True
-    for path in (STATE, LOG, CONTROL, MARKET_MAP, REVIEWS, DECISION_REVIEW, CHALLENGER_REPORT, MISSED_MOVE_REPORT, ASSET_DOSSIERS, LLM_REFEREE_REPORT):
+    for path in (STATE, LOG, CONTROL, MARKET_MAP, REVIEWS, DECISION_REVIEW, CHALLENGER_REPORT, MISSED_MOVE_REPORT, ASSET_DOSSIERS, LLM_REFEREE_REPORT, PLAYBOOK_DISTILLER_REPORT):
         try:
             if path.exists() and path.stat().st_mtime > snapshot_mtime:
                 return True
@@ -211,6 +222,7 @@ def _build_local_snapshot(server_timestamp: str | None = None) -> dict:
         missed_move_report=_load_missed_move_report_local(),
         asset_dossiers=_load_asset_dossiers_local(),
         llm_referee_report=_load_llm_referee_report_local(),
+        playbook_distiller_report=_load_playbook_distiller_report_local(),
         server_timestamp=server_timestamp,
     )
 
@@ -233,6 +245,7 @@ def _hydrate_snapshot_payload(data: dict, *, server_timestamp: str | None = None
         missed_move_report=data.get("missed_move_report"),
         asset_dossiers=data.get("asset_dossiers"),
         llm_referee_report=data.get("llm_referee_report"),
+        playbook_distiller_report=data.get("playbook_distiller_report"),
         server_timestamp=server_timestamp,
     )
 

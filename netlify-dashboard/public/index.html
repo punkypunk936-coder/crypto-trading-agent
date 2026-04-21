@@ -1643,6 +1643,7 @@ let latestLearningSummary = {};
 let latestAssetDossiers = { assets: {}, summary: {} };
 let latestMissedMoveReport = { summary: {} };
 let latestLLMRefereeReport = { verdicts: {} };
+let latestPlaybookDistillerReport = { summary: {}, assets: {} };
 let currentTickerSearchQuery = '';
 let tradexyzLookupBusy = false;
 let actionBoardBucket = 'coin';
@@ -2278,9 +2279,11 @@ function renderLearningSummary(summary, trades) {
   const meta = document.getElementById('review-meta');
   const missedCount = Number((((latestMissedMoveReport || {}).summary || {}).missed_win_count) || 0);
   const dossierCount = Number((latestAssetDossiers || {}).count || 0);
+  const distilledFamilies = Number((((latestPlaybookDistillerReport || {}).summary || {}).working_family_count) || 0);
   meta.textContent = 'Lessons ' + (summary.count || 0)
     + ' • missed winners ' + missedCount
-    + ' • dossiers ' + dossierCount;
+    + ' • dossiers ' + dossierCount
+    + ' • playbooks ' + distilledFamilies;
 
   const body = document.getElementById('review-body');
   const lessons = (summary.recent_lessons || []).slice(0, 5);
@@ -2290,11 +2293,13 @@ function renderLearningSummary(summary, trades) {
   const refereeVerdicts = Object.entries(((latestLLMRefereeReport || {}).verdicts || {}))
     .slice(0, 4)
     .map(([coin, verdict]) => ({ coin, verdict: verdict || {} }));
+  const workingFamilies = (((latestPlaybookDistillerReport || {}).summary || {}).top_working_families || []).slice(0, 3);
+  const failingFamilies = (((latestPlaybookDistillerReport || {}).summary || {}).top_failing_families || []).slice(0, 3);
   let html = '<div class="review-stack"><div class="review-summary-grid">'
     + '<div class="review-summary-box"><div class="card-label">Closed Trades</div><div class="review-count">' + esc(String(summary.count || 0)) + '</div><div class="review-count-sub">recent lessons absorbed</div></div>'
     + '<div class="review-summary-box"><div class="card-label">Winning Lessons</div><div class="review-count green">' + esc(String(summary.wins || 0)) + '</div><div class="review-count-sub">setups that paid</div></div>'
     + '<div class="review-summary-box"><div class="card-label">Losing Lessons</div><div class="review-count red">' + esc(String(summary.losses || 0)) + '</div><div class="review-count-sub">mistakes now tracked</div></div>'
-    + '<div class="review-summary-box"><div class="card-label">Research Brain</div><div class="review-notes">Dossiers, referee calls, and missed-move pressure now sit behind the same calm dashboard instead of living in separate tools.</div></div>'
+    + '<div class="review-summary-box"><div class="card-label">Research Brain</div><div class="review-notes">Dossiers, referee calls, missed-move pressure, and the distilled playbook now sit behind the same calm dashboard instead of living in separate tools.</div></div>'
     + '</div>';
 
   html += '<div class="review-summary-grid">'
@@ -2305,8 +2310,22 @@ function renderLearningSummary(summary, trades) {
     + '<div class="review-summary-box"><div class="card-label">Missed-Move Lab</div><div class="review-notes">' + (missedFamilies.length
       ? esc(missedFamilies.map((item) => item.family + ' ' + item.misses).join(' • '))
       : 'No obvious skipped winners are labeled yet.') + '</div></div>'
-    + '<div class="review-summary-box"><div class="card-label">North Star</div><div class="review-notes">Trade less, but know the asset better. The new stack is built to sharpen context, not force activity.</div></div>'
+    + '<div class="review-summary-box"><div class="card-label">Playbook Distiller</div><div class="review-notes">' + (workingFamilies.length
+      ? esc(workingFamilies.map((item) => item.coin + ' ' + item.direction + ' ' + item.regime + ' ' + Math.round((Number(item.win_rate || 0)) * 100) + '%').join(' • '))
+      : 'The weekly rewrite is still waiting for enough closed-trade history.') + '</div></div>'
     + '</div>';
+
+  if (workingFamilies.length || failingFamilies.length) {
+    html += '<div class="review-summary-box">'
+      + '<div class="card-label-row"><div class="card-label">Weekly Rewrite</div><div class="muted">' + esc(String(((latestPlaybookDistillerReport || {}).lookback_days || 28)) + 'd view') + '</div></div>'
+      + '<div class="review-notes"><strong>Lean into:</strong> ' + esc(workingFamilies.length
+        ? workingFamilies.map((item) => item.coin + ' ' + item.direction + ' in ' + item.regime).join(' • ')
+        : 'Nothing has earned a strong push yet.') + '</div>'
+      + '<div class="review-notes"><strong>Stay away from:</strong> ' + esc(failingFamilies.length
+        ? failingFamilies.map((item) => item.coin + ' ' + item.direction + ' in ' + item.regime).join(' • ')
+        : 'No clearly toxic family is standing out right now.') + '</div>'
+      + '</div>';
+  }
 
   if (latest) {
     html += '<div class="review-summary-box">'
@@ -2605,6 +2624,7 @@ async function refresh() {
     latestAssetDossiers = data.asset_dossiers || { assets: {}, summary: {} };
     latestMissedMoveReport = data.missed_move_report || { summary: {} };
     latestLLMRefereeReport = data.llm_referee_report || { verdicts: {} };
+    latestPlaybookDistillerReport = data.playbook_distiller_report || { summary: {}, assets: {} };
     const actionBoard = data.action_board || { items: [], lead: null };
     latestActionBoard = actionBoard;
 

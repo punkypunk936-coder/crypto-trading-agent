@@ -500,6 +500,11 @@ def action_board(state: dict, market_map: dict) -> dict:
             trigger = "Wait for structure and order-flow to agree."
             execution_note = "No trade is allowed right now because the thesis is still incomplete."
 
+        coach_verdict = str(sig.get("execution_coach_verdict") or "").upper()
+        coach_summary = str(sig.get("execution_coach_summary") or "").strip()
+        if coach_summary and status in {"READY_LONG", "READY_SHORT", "PASSIVE_ENTRY", "EXECUTION_BLOCKED"}:
+            execution_note = coach_summary
+
         if status in {"WATCH_LONG", "WAIT_RECLAIM", "READY_LONG", "OPEN_LONG"} and support:
             risk = f"Risk if it loses {support:,.2f}"
         elif status in {"WATCH_SHORT", "WAIT_BREAKDOWN", "READY_SHORT", "OPEN_SHORT"} and resistance:
@@ -546,6 +551,8 @@ def action_board(state: dict, market_map: dict) -> dict:
                 "llm_referee": dict(sig.get("llm_referee") or {}),
                 "llm_referee_summary": str(sig.get("llm_referee_summary") or ""),
                 "llm_referee_why_now": str(sig.get("llm_referee_why_now") or ""),
+                "execution_coach_verdict": coach_verdict,
+                "execution_coach_summary": coach_summary,
             }
         )
 
@@ -924,6 +931,7 @@ def build_dashboard_snapshot(
     missed_move_report: Any = None,
     asset_dossiers: Any = None,
     llm_referee_report: Any = None,
+    playbook_distiller_report: Any = None,
     *,
     server_timestamp: str | None = None,
 ) -> dict:
@@ -948,6 +956,7 @@ def build_dashboard_snapshot(
         "missed_move_report": dict(missed_move_report or {}),
         "asset_dossiers": dict(asset_dossiers or {}),
         "llm_referee_report": dict(llm_referee_report or {}),
+        "playbook_distiller_report": dict(playbook_distiller_report or {}),
         "runtime": runtime_status(shaped_state),
         "server_time": server_timestamp or server_time(),
     }

@@ -29,6 +29,7 @@ import challenger_model as challenger_model_module
 import data_reliability as data_reliability_module
 import decision_dataset as decision_dataset_module
 import decision_review_lab as decision_review_lab_module
+import execution_coach as execution_coach_module
 import feature_store as feature_store_module
 import hosted_state_sync as hosted_state_sync_module
 import llm_referee as llm_referee_module
@@ -37,6 +38,7 @@ import market_map as market_map_module
 import market_universe as market_universe_module
 import missed_move_lab as missed_move_lab_module
 import portfolio_guard as portfolio_guard_module
+import playbook_distiller as playbook_distiller_module
 import precision_lab as precision_lab_module
 import promotion_gate as promotion_gate_module
 from data import market_data as market_data_module
@@ -2090,6 +2092,7 @@ def test_install_launchagent_preserves_learning_datasets() -> None:
         "feature_store.jsonl",
         "trade_dataset.jsonl",
         "precision_lab_report.json",
+        "playbook_distiller_report.json",
     ):
         assert f'--exclude "{filename}"' in script, f"runtime sync should preserve {filename}"
 
@@ -4707,6 +4710,127 @@ def test_dashboard_tradexyz_volume_endpoint_returns_checker_payload() -> None:
         dashboard_module.tradexyz_volume.fetch_tradexyz_volume = original_fetch
 
 
+def test_execution_coach_prefers_passive_retest_entry() -> None:
+    cfg = build_config()
+    quality = {"permitted": True, "score": 82.0, "summary": "spread 3.2bps, depth 18.0x"}
+    signal_snapshot = {
+        "action": "LONG",
+        "price": 100.06,
+        "live_price": 100.06,
+        "execution_plan": {
+            "mode": "limit",
+            "entry_price": 100.0,
+            "limit_price": 100.0,
+            "reason": "buying the defended retest near support",
+        },
+        "expectancy": {"probability": 0.68, "score": 71.0},
+        "trade_plan": {"risk_reward_ratio": 2.4},
+        "thesis": {"support_defense_long": True},
+    }
+    order = SimpleNamespace(price=100.0)
+    coached = execution_coach_module.decide_execution(
+        cfg.trading,
+        coin="BTC",
+        signal_snapshot=signal_snapshot,
+        order=order,
+        execution_quality=quality,
+    )
+    assert coached["verdict"] == "PASSIVE"
+    assert coached["execution_plan"]["mode"] in {"limit", "maker_limit"}
+
+
+def test_execution_coach_skips_stretched_nonurgent_entry() -> None:
+    cfg = build_config()
+    quality = {"permitted": True, "score": 78.0, "summary": "spread 5.0bps, depth 12.0x"}
+    signal_snapshot = {
+        "action": "LONG",
+        "price": 101.2,
+        "live_price": 101.2,
+        "execution_plan": {
+            "mode": "market",
+            "entry_price": 100.0,
+            "reason": "default aggressive entry",
+        },
+        "expectancy": {"probability": 0.59, "score": 61.0},
+        "trade_plan": {"risk_reward_ratio": 2.0},
+        "thesis": {},
+        "orderbook_breakout_state": "NONE",
+    }
+    order = SimpleNamespace(price=101.2)
+    coached = execution_coach_module.decide_execution(
+        cfg.trading,
+        coin="BTC",
+        signal_snapshot=signal_snapshot,
+        order=order,
+        execution_quality=quality,
+    )
+    assert coached["verdict"] == "SKIP"
+    assert "stretched" in coached["summary"].lower()
+
+
+def test_playbook_distiller_rewrites_best_and_worst_families() -> None:
+    cfg = build_config()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        data_dir = Path(tmpdir)
+        now = time.time()
+
+        def append_trade(*, direction: str, regime: str, pnl_pct: float, idx: int) -> None:
+            trade_dataset_module.append_closed_trade(
+                {
+                    "trade_id": idx + 1,
+                    "coin": "BTC",
+                    "direction": direction,
+                    "opened_at_ts": now - 3600 * (idx + 2),
+                    "closed_at_ts": now - 1800 * idx,
+                    "hold_minutes": 120.0,
+                    "entry_price": 100.0,
+                    "exit_price": 100.0 * (1 + pnl_pct / 100.0),
+                    "size_usd": 100.0,
+                    "size_coin": 1.0,
+                    "pnl_usd": round(pnl_pct, 4),
+                    "pnl_pct": pnl_pct,
+                    "exit_reason": "test",
+                    "outcome": "WIN" if pnl_pct > 0 else "LOSS",
+                    "signal_score": 70.0,
+                    "entry_context": {
+                        "instrument_type": "crypto",
+                        "dominant_regime": regime,
+                        "execution_coach_verdict": "PASSIVE" if direction == "LONG" else "CHASE",
+                        "execution_plan": {"mode": "limit" if direction == "LONG" else "market"},
+                        "reason": f"{direction} {regime}",
+                    },
+                    "trade_plan": {"risk_reward_ratio": 2.2},
+                    "plan_outcome": {"captured_r_multiple": 1.4},
+                },
+                data_dir=data_dir,
+            )
+
+        append_trade(direction="LONG", regime="TREND", pnl_pct=4.2, idx=0)
+        append_trade(direction="LONG", regime="TREND", pnl_pct=3.8, idx=1)
+        append_trade(direction="LONG", regime="TREND", pnl_pct=2.9, idx=2)
+        append_trade(direction="SHORT", regime="RANGING", pnl_pct=-2.1, idx=3)
+        append_trade(direction="SHORT", regime="RANGING", pnl_pct=-1.7, idx=4)
+        append_trade(direction="SHORT", regime="RANGING", pnl_pct=-3.0, idx=5)
+
+        report = playbook_distiller_module.build_report(cfg, data_dir=data_dir)
+        asset = report["assets"]["BTC"]
+        assert asset["best_family"]["direction"] == "LONG"
+        assert asset["best_family"]["regime"] == "TREND"
+        assert asset["avoid_family"]["direction"] == "SHORT"
+        assert asset["avoid_family"]["regime"] == "RANGING"
+        assert "Lean into BTC LONG" in asset["playbook"]
+
+
+def test_dashboard_snapshot_includes_playbook_distiller_report() -> None:
+    snapshot = build_dashboard_snapshot(
+        {"signals": {}, "positions": [], "config": {}, "cycle_number": 1},
+        [],
+        playbook_distiller_report={"summary": {"working_family_count": 2}, "assets": {"BTC": {"playbook": "Test"}}},
+    )
+    assert snapshot["playbook_distiller_report"]["summary"]["working_family_count"] == 2
+    assert snapshot["playbook_distiller_report"]["assets"]["BTC"]["playbook"] == "Test"
+
+
 def run_all() -> None:
     test_checkpoint_recovery()
     print("PASS checkpoint recovery")
@@ -4876,6 +5000,14 @@ def run_all() -> None:
     print("PASS challenger model")
     test_asset_dossier_builds_focus_assets_and_referee_context()
     print("PASS asset dossier")
+    test_execution_coach_prefers_passive_retest_entry()
+    print("PASS execution coach passive retest")
+    test_execution_coach_skips_stretched_nonurgent_entry()
+    print("PASS execution coach stretched skip")
+    test_playbook_distiller_rewrites_best_and_worst_families()
+    print("PASS playbook distiller")
+    test_dashboard_snapshot_includes_playbook_distiller_report()
+    print("PASS dashboard playbook distiller snapshot")
     test_llm_referee_returns_disabled_without_api_key()
     print("PASS LLM referee disabled fallback")
     test_llm_referee_parses_structured_openai_verdict()

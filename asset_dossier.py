@@ -104,7 +104,16 @@ def _missed_by_coin(missed_move_report: dict | None) -> dict[str, dict]:
     return by_coin
 
 
-def _playbook(entry: dict, signal: dict, instrument_type: str) -> str:
+def _playbook_distiller_asset(playbook_distiller_report: dict | None, coin: str) -> dict:
+    report = dict(playbook_distiller_report or {})
+    return dict((report.get("assets") or {}).get(str(coin or "").upper()) or {})
+
+
+def _playbook(entry: dict, signal: dict, instrument_type: str, distilled_asset: dict | None = None) -> str:
+    distilled_asset = dict(distilled_asset or {})
+    distilled = _safe_str(distilled_asset.get("playbook"))
+    if distilled:
+        return distilled
     manual = _safe_str(entry.get("trade_mode"))
     if manual:
         return manual
@@ -125,6 +134,7 @@ def build_report(
     market_map: dict | None,
     missed_move_report: dict | None = None,
     llm_referee_report: dict | None = None,
+    playbook_distiller_report: dict | None = None,
 ) -> dict:
     safe_state = dict(state or {})
     signals = dict(safe_state.get("signals") or {})
@@ -168,6 +178,7 @@ def build_report(
         latest_trade = latest_trades.get(coin, {})
         missed_coin = dict(missed.get(coin) or {})
         llm = dict(llm_verdicts.get(coin) or {})
+        distilled_asset = _playbook_distiller_asset(playbook_distiller_report, coin)
         live_price = _safe_float(sig.get("live_price") or sig.get("price"))
         score = round(_safe_float(sig.get("score") or 50.0), 1)
         probability = round(_safe_float(sig.get("expectancy_probability") or 0.50), 4)
@@ -217,7 +228,7 @@ def build_report(
                 "current_read": now_view,
                 "next_unblock": next_unblock,
                 "invalidation": invalidation,
-                "playbook": _playbook(entry, sig, instrument_type),
+                "playbook": _playbook(entry, sig, instrument_type, distilled_asset),
                 "narrative": _safe_str(sig.get("narrative_summary")) or "No special narrative risk flagged.",
                 "analog": _safe_str(sig.get("analog_summary")) or "No strong analog edge recorded yet.",
                 "recent_lesson": _safe_str(latest_trade.get("agent_lesson")) or "No symbol-specific lesson recorded yet.",
@@ -227,6 +238,7 @@ def build_report(
                 "miss_count": int(missed_coin.get("misses") or 0),
                 "latest": dict(missed_coin.get("latest") or {}),
             },
+            "playbook_distiller": distilled_asset,
             "llm_referee": llm,
         }
 
@@ -263,6 +275,7 @@ def build_and_save_report(
     market_map: dict | None,
     missed_move_report: dict | None = None,
     llm_referee_report: dict | None = None,
+    playbook_distiller_report: dict | None = None,
 ) -> dict:
     report = build_report(
         state=state,
@@ -270,6 +283,7 @@ def build_and_save_report(
         market_map=market_map,
         missed_move_report=missed_move_report,
         llm_referee_report=llm_referee_report,
+        playbook_distiller_report=playbook_distiller_report,
     )
     try:
         ASSET_DOSSIERS_JSON.write_text(
