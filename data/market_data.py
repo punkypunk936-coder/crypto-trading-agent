@@ -19,6 +19,7 @@ import pandas as pd
 from typing import Optional
 from logger import get_logger
 from exchanges.hyperliquid_markets import (
+    get_hyperliquid_market_dex,
     get_hyperliquid_market_spec,
     is_hyperliquid_supported,
     resolve_hyperliquid_symbol,
@@ -308,6 +309,7 @@ def fetch_candles(
     # ── Hyperliquid-first venue data ───────────────────────────────────────
     if is_hyperliquid_supported(coin_upper):
         hl_coin = resolve_hyperliquid_symbol(coin_upper)
+        dex = get_hyperliquid_market_dex(coin_upper)
         cache_key = f"{hl_coin}_{interval}"
         now = time.time()
 
@@ -330,6 +332,8 @@ def fetch_candles(
                 "endTime": end_ms,
             },
         }
+        if dex:
+            payload["dex"] = dex
 
         try:
             resp = requests.post(HL_INFO_URL, json=payload, timeout=10)
@@ -493,8 +497,12 @@ def get_current_price(coin: str) -> Optional[float]:
 
     if is_hyperliquid_supported(coin_upper):
         hl_coin = resolve_hyperliquid_symbol(coin_upper)
+        dex = get_hyperliquid_market_dex(coin_upper)
         try:
-            resp = requests.post(HL_INFO_URL, json={"type": "allMids"}, timeout=5)
+            payload = {"type": "allMids"}
+            if dex:
+                payload["dex"] = dex
+            resp = requests.post(HL_INFO_URL, json=payload, timeout=5)
             resp.raise_for_status()
             mids = resp.json()
             price = float(mids.get(hl_coin, 0) or 0.0)

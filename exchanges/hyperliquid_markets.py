@@ -25,6 +25,7 @@ log = get_logger("hl_markets")
 HL_INFO_URL = "https://api.hyperliquid.xyz/info"
 CATALOG_CACHE_TTL_SECONDS = 300.0
 ACTIVITY_CACHE_TTL_SECONDS = 180.0
+TRADEXYZ_DEX = "xyz"
 
 _CATALOG_CACHE: Dict[str, Any] = {
     "ts": 0.0,
@@ -163,19 +164,46 @@ _SPOT_MARKETS: Dict[str, Dict[str, Any]] = {
     },
 }
 
+_TRADEXYZ_PERP_MARKETS: Dict[str, Dict[str, Any]] = {
+    "INTC": {
+        "venue_symbol": "xyz:INTC",
+        "market_type": "perp",
+        "instrument_type": "equity",
+        "shortable": True,
+        "paper_tradeable": True,
+        "live_tradeable": True,
+        "display_name": "Intel",
+        "dex": TRADEXYZ_DEX,
+    },
+    "HIMS": {
+        "venue_symbol": "xyz:HIMS",
+        "market_type": "perp",
+        "instrument_type": "equity",
+        "shortable": True,
+        "paper_tradeable": True,
+        "live_tradeable": True,
+        "display_name": "Hims & Hers",
+        "dex": TRADEXYZ_DEX,
+    },
+}
+
 _PREFERRED_ORDER = [
     "BTC", "ETH", "SOL", "HYPE", "TAO", "SP500", "XAU",
-    "AAPL", "AMZN", "GOOGL", "META", "MSFT", "TSLA",
+    "AAPL", "AMZN", "GOOGL", "META", "MSFT", "TSLA", "INTC", "HIMS",
 ]
 
 
-def _fetch_perp_names() -> Optional[set[str]]:
+def _fetch_perp_names(*, dex: str = "") -> Optional[set[str]]:
     try:
-        resp = requests.post(HL_INFO_URL, json={"type": "meta"}, timeout=8)
+        payload = {"type": "meta"}
+        if dex:
+            payload["dex"] = dex
+        resp = requests.post(HL_INFO_URL, json=payload, timeout=8)
         resp.raise_for_status()
         payload = resp.json()
     except Exception as exc:
-        log.warning("Failed to refresh Hyperliquid perp meta: %s", exc)
+        dex_label = dex or "native"
+        log.warning("Failed to refresh Hyperliquid perp meta for %s: %s", dex_label, exc)
         return None
 
     universe = payload.get("universe", []) or []
@@ -208,7 +236,7 @@ def _fetch_spot_pairs() -> Optional[Dict[str, Dict[str, Any]]]:
             quote_info = tokens[quote_idx]
             pair_name = f"{base_info['name']}/{quote_info['name']}"
             pairs[pair_name.upper()] = {
-                "venue_symbol": str(market.get("name") or "").upper(),
+                "venue_symbol": str(market.get("name") or "").strip(),
                 "pair_name": pair_name.upper(),
                 "index": int(market.get("index", 0) or 0),
             }
@@ -220,6 +248,11 @@ def _fetch_spot_pairs() -> Optional[Dict[str, Dict[str, Any]]]:
 def _catalog_from_fallback() -> Dict[str, Dict[str, Any]]:
     catalog: Dict[str, Dict[str, Any]] = {}
     for coin, spec in _PERP_MARKETS.items():
+        catalog[coin] = {
+            "coin": coin,
+            **spec,
+        }
+    for coin, spec in _TRADEXYZ_PERP_MARKETS.items():
         catalog[coin] = {
             "coin": coin,
             **spec,
@@ -250,15 +283,16 @@ def get_hyperliquid_market_catalog(*, force_refresh: bool = False) -> Dict[str, 
         return dict(cached_catalog)
 
     perp_names = _fetch_perp_names()
+    tradexyz_perp_names = _fetch_perp_names(dex=TRADEXYZ_DEX)
     spot_pairs = _fetch_spot_pairs()
 
     # If live refresh fails, fall back to the last good catalog first.
-    if (perp_names is None or spot_pairs is None) and cached_catalog:
+    if (perp_names is None or tradexyz_perp_names is None or spot_pairs is None) and cached_catalog:
         return dict(cached_catalog)
 
     catalog: Dict[str, Dict[str, Any]] = {}
 
-    if perp_names is None or spot_pairs is None:
+    if perp_names is None or tradexyz_perp_names is None or spot_pairs is None:
         catalog = _catalog_from_fallback()
     else:
         manual_perp_by_venue = {
@@ -266,28 +300,42 @@ def get_hyperliquid_market_catalog(*, force_refresh: bool = False) -> Dict[str, 
             for coin, spec in _PERP_MARKETS.items()
         }
         for venue_symbol in sorted(perp_names):
-            manual_coin, manual = manual_perp_by_venue.get(venue_symbol, (None, None))
+            venue_key = str(venue_symbol or "").upper()
+            manual_coin, manual = manual_perp_by_venue.get(venue_key, (None, None))
             if manual_coin and manual:
                 catalog[manual_coin] = {
                     "coin": manual_coin,
                     **manual,
                 }
                 continue
-            catalog[venue_symbol] = {
-                "coin": venue_symbol,
-                "venue_symbol": venue_symbol,
+            catalog[venue_key] = {
+                "coin": venue_key,
+                "venue_symbol": str(venue_symbol or "").strip() or venue_key,
                 "market_type": "perp",
                 "instrument_type": "crypto",
                 "shortable": True,
                 "paper_tradeable": True,
                 "live_tradeable": True,
-                "display_name": venue_symbol,
+                "display_name": venue_key,
+            }
+
+        manual_tradexyz_by_venue = {
+            str(spec.get("venue_symbol") or coin).upper(): (coin, spec)
+            for coin, spec in _TRADEXYZ_PERP_MARKETS.items()
+        }
+        for venue_symbol in sorted(tradexyz_perp_names):
+            manual_coin, manual = manual_tradexyz_by_venue.get(str(venue_symbol or "").upper(), (None, None))
+            if not manual_coin or not manual:
+                continue
+            catalog[manual_coin] = {
+                "coin": manual_coin,
+                **manual,
             }
 
         for coin, spec in _SPOT_MARKETS.items():
             pair_name = str(spec["pair_name"]).upper()
             live_spec = spot_pairs.get(pair_name)
-            venue_symbol = str((live_spec or {}).get("venue_symbol") or spec["fallback_symbol"]).upper()
+            venue_symbol = str((live_spec or {}).get("venue_symbol") or spec["fallback_symbol"]).strip()
             if not venue_symbol:
                 continue
             catalog[coin] = {
@@ -307,6 +355,31 @@ def get_hyperliquid_market_spec(coin: str) -> Optional[Dict[str, Any]]:
     if not coin_upper:
         return None
     return get_hyperliquid_market_catalog().get(coin_upper)
+
+
+def resolve_hyperliquid_internal_coin(symbol: str) -> str:
+    symbol_upper = str(symbol or "").upper().strip()
+    if not symbol_upper:
+        return ""
+    catalog = get_hyperliquid_market_catalog()
+    for coin, spec in catalog.items():
+        if str(spec.get("venue_symbol") or coin).upper() == symbol_upper:
+            return coin
+    return symbol_upper
+
+
+def get_hyperliquid_market_dex(coin: str) -> str:
+    spec = get_hyperliquid_market_spec(coin) or {}
+    return str(spec.get("dex") or "").strip()
+
+
+def get_hyperliquid_supported_dexes() -> List[str]:
+    dexs = {
+        str(spec.get("dex") or "").strip()
+        for spec in get_hyperliquid_market_catalog().values()
+        if str(spec.get("market_type") or "").lower() == "perp" and str(spec.get("dex") or "").strip()
+    }
+    return sorted(dexs)
 
 
 def _activity_max_age_seconds(spec: Optional[Dict[str, Any]]) -> int:
@@ -340,7 +413,8 @@ def get_hyperliquid_market_activity(coin: str, *, force_refresh: bool = False) -
     ):
         return dict(cached)
 
-    venue_symbol = str(spec.get("venue_symbol") or coin_upper).upper()
+    venue_symbol = str(spec.get("venue_symbol") or coin_upper).strip()
+    dex = str(spec.get("dex") or "").strip()
     start_ms = int((now - (120 * 3600)) * 1000)
     end_ms = int(now * 1000)
     activity = {
@@ -363,6 +437,7 @@ def get_hyperliquid_market_activity(coin: str, *, force_refresh: bool = False) -
                     "startTime": start_ms,
                     "endTime": end_ms,
                 },
+                **({"dex": dex} if dex else {}),
             },
             timeout=8,
         )
@@ -396,7 +471,7 @@ def get_hyperliquid_market_activity(coin: str, *, force_refresh: bool = False) -
 def resolve_hyperliquid_symbol(coin: str) -> str:
     spec = get_hyperliquid_market_spec(coin)
     if spec:
-        return str(spec.get("venue_symbol") or str(coin or "").upper()).upper()
+        return str(spec.get("venue_symbol") or str(coin or "").upper()).strip()
     return str(coin or "").upper()
 
 

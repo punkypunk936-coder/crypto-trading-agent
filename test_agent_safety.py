@@ -3410,13 +3410,17 @@ def test_hyperliquid_market_catalog_expands_unknown_live_perps() -> None:
     try:
         hyperliquid_markets_module._CATALOG_CACHE["ts"] = 0.0
         hyperliquid_markets_module._CATALOG_CACHE["catalog"] = {}
-        hyperliquid_markets_module._fetch_perp_names = lambda: {"BTC", "XRP"}
+        hyperliquid_markets_module._fetch_perp_names = lambda dex="": {"BTC", "XRP"} if not dex else {"xyz:INTC"}
         hyperliquid_markets_module._fetch_spot_pairs = lambda: {}
         catalog = hyperliquid_markets_module.get_hyperliquid_market_catalog(force_refresh=True)
         assert "XRP" in catalog
         assert catalog["XRP"]["market_type"] == "perp"
         assert catalog["XRP"]["instrument_type"] == "crypto"
         assert catalog["XRP"]["shortable"] is True
+        assert "INTC" in catalog
+        assert catalog["INTC"]["venue_symbol"] == "xyz:INTC"
+        assert catalog["INTC"]["dex"] == "xyz"
+        assert catalog["INTC"]["instrument_type"] == "equity"
     finally:
         hyperliquid_markets_module._fetch_perp_names = original_perps
         hyperliquid_markets_module._fetch_spot_pairs = original_spots
@@ -3426,6 +3430,7 @@ def test_hyperliquid_market_catalog_expands_unknown_live_perps() -> None:
 
 def test_market_universe_filters_hyperliquid_large_caps_into_scout_watchlist() -> None:
     original_fetch = market_universe_module._fetch_coingecko_market_caps
+    original_equity_fetch = market_universe_module._fetch_equity_market_caps
     original_catalog = market_universe_module.get_hyperliquid_market_catalog
     original_active = market_universe_module.hyperliquid_market_is_active
     try:
@@ -3435,6 +3440,7 @@ def test_market_universe_filters_hyperliquid_large_caps_into_scout_watchlist() -
             {"symbol": "doge", "name": "Dogecoin", "market_cap": 15_000_000_000, "market_cap_rank": 8, "price_change_percentage_24h": 1.0},
             {"symbol": "abc", "name": "Abc", "market_cap": 500_000_000, "market_cap_rank": 999, "price_change_percentage_24h": 0.0},
         ]
+        market_universe_module._fetch_equity_market_caps = lambda symbols: {}
         market_universe_module.get_hyperliquid_market_catalog = lambda force_refresh=False: {
             "BTC": {"market_type": "perp", "instrument_type": "crypto", "venue_symbol": "BTC"},
             "XRP": {"market_type": "perp", "instrument_type": "crypto", "venue_symbol": "XRP"},
@@ -3453,6 +3459,41 @@ def test_market_universe_filters_hyperliquid_large_caps_into_scout_watchlist() -
         assert payload["coins"] == ["BTC", "XRP"]
     finally:
         market_universe_module._fetch_coingecko_market_caps = original_fetch
+        market_universe_module._fetch_equity_market_caps = original_equity_fetch
+        market_universe_module.get_hyperliquid_market_catalog = original_catalog
+        market_universe_module.hyperliquid_market_is_active = original_active
+
+
+def test_market_universe_includes_large_cap_hyperliquid_equities() -> None:
+    original_fetch = market_universe_module._fetch_coingecko_market_caps
+    original_equity_fetch = market_universe_module._fetch_equity_market_caps
+    original_catalog = market_universe_module.get_hyperliquid_market_catalog
+    original_active = market_universe_module.hyperliquid_market_is_active
+    try:
+        market_universe_module._fetch_coingecko_market_caps = lambda pages: []
+        market_universe_module._fetch_equity_market_caps = lambda symbols: {
+            "INTC": {"name": "Intel", "market_cap": 90_000_000_000, "market_cap_rank": None, "price_change_percentage_24h": 1.2},
+            "HIMS": {"name": "Hims & Hers", "market_cap": 14_000_000_000, "market_cap_rank": None, "price_change_percentage_24h": 3.4},
+        }
+        market_universe_module.get_hyperliquid_market_catalog = lambda force_refresh=False: {
+            "INTC": {"market_type": "perp", "instrument_type": "equity", "venue_symbol": "xyz:INTC"},
+            "HIMS": {"market_type": "perp", "instrument_type": "equity", "venue_symbol": "xyz:HIMS"},
+            "BTC": {"market_type": "perp", "instrument_type": "crypto", "venue_symbol": "BTC"},
+        }
+        market_universe_module.hyperliquid_market_is_active = lambda coin: coin != "HIMS"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            payload = market_universe_module.build_hyperliquid_market_cap_watchlist(
+                min_market_cap_usd=1_000_000_000.0,
+                active_only=True,
+                max_coins=10,
+                cache_path=Path(tmpdir) / "market_cap_universe.json",
+                force_refresh=True,
+            )
+        assert payload["coins"] == ["INTC"]
+        assert payload["records"][0]["venue_symbol"] == "xyz:INTC"
+    finally:
+        market_universe_module._fetch_coingecko_market_caps = original_fetch
+        market_universe_module._fetch_equity_market_caps = original_equity_fetch
         market_universe_module.get_hyperliquid_market_catalog = original_catalog
         market_universe_module.hyperliquid_market_is_active = original_active
 

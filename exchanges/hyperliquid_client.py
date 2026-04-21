@@ -16,9 +16,12 @@ from typing import Any, Optional
 from logger import get_logger
 from exchanges.base import BaseExchange, AccountState, LimitOrderStatus, OrderResult
 from exchanges.hyperliquid_markets import (
+    get_hyperliquid_market_dex,
     get_hyperliquid_market_spec,
     get_hyperliquid_supported_coins,
+    get_hyperliquid_supported_dexes,
     hyperliquid_market_type,
+    resolve_hyperliquid_internal_coin,
     resolve_hyperliquid_symbol,
 )
 
@@ -129,10 +132,15 @@ class HyperliquidClient(BaseExchange):
             account = eth_account.Account.from_key(self.private_key)
             url     = (constants.MAINNET_API_URL if self.mainnet
                        else constants.TESTNET_API_URL)
+            perp_dexs = get_hyperliquid_supported_dexes() or None
 
-            self._info     = Info(url, skip_ws=True)
-            self._exchange = Exchange(account, url,
-                                      account_address=self.account_address)
+            self._info     = Info(url, skip_ws=True, perp_dexs=perp_dexs)
+            self._exchange = Exchange(
+                account,
+                url,
+                account_address=self.account_address,
+                perp_dexs=perp_dexs,
+            )
             self._connected = True
             log.info(f"Connected to Hyperliquid {'mainnet' if self.mainnet else 'testnet'} "
                      f"as {self.account_address[:10]}…")
@@ -153,23 +161,43 @@ class HyperliquidClient(BaseExchange):
             log.error("Not connected to Hyperliquid")
             return None
         try:
-            state  = self._info.user_state(self.account_address)
-            equity = float(state["marginSummary"]["accountValue"])
-            avail  = float(state["marginSummary"]["totalRawUsd"])
-            positions = []
-            for p in state.get("assetPositions", []):
-                pos = p.get("position", {})
-                szi = float(pos.get("szi", 0))
-                if szi == 0:
+            dexs = [""] + list(get_hyperliquid_supported_dexes())
+            perp_states = []
+            equity = 0.0
+            avail = 0.0
+            for dex in dexs:
+                try:
+                    state = self._info.user_state(self.account_address, dex)
+                except Exception as exc:
+                    label = dex or "native"
+                    log.warning("Failed to read Hyperliquid %s perp state: %s", label, exc)
                     continue
-                positions.append({
-                    "coin":        pos.get("coin"),
-                    "size":        szi,
-                    "direction":   "LONG" if szi > 0 else "SHORT",
-                    "entry_price": float(pos.get("entryPx", 0)),
-                    "unrealised_pnl": float(pos.get("unrealizedPnl", 0)),
-                    "leverage":    pos.get("leverage", {}).get("value", 1),
-                })
+                perp_states.append(state)
+                margin = dict((state or {}).get("marginSummary") or {})
+                try:
+                    equity += float(margin.get("accountValue", 0) or 0.0)
+                except Exception:
+                    pass
+                try:
+                    avail += float(margin.get("totalRawUsd", 0) or 0.0)
+                except Exception:
+                    pass
+            positions = []
+            for state in perp_states:
+                for p in state.get("assetPositions", []):
+                    pos = p.get("position", {})
+                    szi = float(pos.get("szi", 0))
+                    if szi == 0:
+                        continue
+                    venue_coin = str(pos.get("coin") or "")
+                    positions.append({
+                        "coin":        resolve_hyperliquid_internal_coin(venue_coin),
+                        "size":        szi,
+                        "direction":   "LONG" if szi > 0 else "SHORT",
+                        "entry_price": float(pos.get("entryPx", 0)),
+                        "unrealised_pnl": float(pos.get("unrealizedPnl", 0)),
+                        "leverage":    pos.get("leverage", {}).get("value", 1),
+                    })
             if self.allow_spot_execution:
                 try:
                     spot_state = self._info.spot_user_state(self._active_user_address())
@@ -280,7 +308,7 @@ class HyperliquidClient(BaseExchange):
                     error=f"{coin} is a long-only Hyperliquid spot market; short sells are blocked",
                 )
         try:
-            venue_symbol = str(spec.get("venue_symbol") or resolve_hyperliquid_symbol(coin)).upper()
+            venue_symbol = str(spec.get("venue_symbol") or resolve_hyperliquid_symbol(coin)).strip()
             result = self._exchange.market_open(
                 name     = venue_symbol,
                 is_buy   = is_buy,
@@ -327,7 +355,7 @@ class HyperliquidClient(BaseExchange):
             if not is_buy:
                 return OrderResult(success=False, error=f"{coin} is a long-only Hyperliquid spot market; short sells are blocked")
         try:
-            venue_symbol = str(spec.get("venue_symbol") or resolve_hyperliquid_symbol(coin)).upper()
+            venue_symbol = str(spec.get("venue_symbol") or resolve_hyperliquid_symbol(coin)).strip()
             tif = "Alo" if maker_only else "Gtc"
             result = self._exchange.order(
                 name=venue_symbol,
@@ -393,7 +421,10 @@ class HyperliquidClient(BaseExchange):
             if any(token in status_text for token in ("filled", "closed")):
                 return LimitOrderStatus(order_id=order_id, coin=coin, filled=True)
 
-            open_orders = self._info.open_orders(self._active_user_address())
+            open_orders = self._info.open_orders(
+                self._active_user_address(),
+                get_hyperliquid_market_dex(coin) or "",
+            )
             for open_order in open_orders or []:
                 if str(open_order.get("oid") or "") == str(order_id):
                     return LimitOrderStatus(order_id=order_id, coin=coin, filled=False)
@@ -418,7 +449,7 @@ class HyperliquidClient(BaseExchange):
             if size <= 0:
                 return OrderResult(success=False, error=f"No open spot balance found for {coin}")
             try:
-                venue_symbol = str(spec.get("venue_symbol") or resolve_hyperliquid_symbol(coin)).upper()
+                venue_symbol = str(spec.get("venue_symbol") or resolve_hyperliquid_symbol(coin)).strip()
                 result = self._exchange.market_open(
                     name=venue_symbol,
                     is_buy=False,
@@ -437,7 +468,7 @@ class HyperliquidClient(BaseExchange):
                 log.error(f"[{coin}] close_position exception: {exc}")
                 return OrderResult(success=False, error=str(exc))
         try:
-            venue_symbol = str(spec.get("venue_symbol") or resolve_hyperliquid_symbol(coin)).upper()
+            venue_symbol = str(spec.get("venue_symbol") or resolve_hyperliquid_symbol(coin)).strip()
             result = self._exchange.market_close(venue_symbol)
             if result.get("status") == "ok":
                 log.info(f"[{coin}] Position closed successfully")

@@ -61,7 +61,7 @@ class TradingConfig:
     # not tradable on the primary execution venue.
     analysis_coins: List[str]   = field(default_factory=lambda: [
         "BTC", "ETH", "SOL", "HYPE", "TAO", "SP500", "XAU",
-        "AAPL", "AMZN", "GOOGL", "META", "MSFT", "TSLA",
+        "AAPL", "AMZN", "GOOGL", "META", "MSFT", "TSLA", "INTC", "HIMS",
     ])
 
     # ── Instrument type classification ───────────────────────────────────────
@@ -83,6 +83,8 @@ class TradingConfig:
         "META":  "equity",
         "MSFT":  "equity",
         "TSLA":  "equity",
+        "INTC":  "equity",
+        "HIMS":  "equity",
         "BRENT": "index",
         "WTI":   "index",
         "CL":    "index",
@@ -383,6 +385,8 @@ class TradingConfig:
         "META": "MEGA_CAP_TECH",
         "MSFT": "MEGA_CAP_TECH",
         "TSLA": "MEGA_CAP_TECH",
+        "INTC": "MEGA_CAP_TECH",
+        "HIMS": "US_GROWTH",
     })
 
     # ── Smarter execution tactics ───────────────────────────────────────────

@@ -2,9 +2,9 @@
 market_universe.py — build a broader Hyperliquid scout universe from market-cap filters.
 
 The goal is to widen observation without automatically widening execution.
-We intersect Hyperliquid's live perp universe with large-cap crypto assets so
-the agent can scout respectable names first and only promote them later if the
-operator wants that.
+We intersect Hyperliquid's live universe with respectable large-cap assets:
+  - crypto perps via CoinGecko market caps
+  - supported equities via a lightweight market-cap supplement
 """
 
 from __future__ import annotations
@@ -26,6 +26,11 @@ from paths import MARKET_CAP_UNIVERSE_JSON
 log = get_logger("market_universe")
 
 COINGECKO_MARKETS_URL = "https://api.coingecko.com/api/v3/coins/markets"
+YAHOO_QUOTE_URL = "https://query1.finance.yahoo.com/v7/finance/quote"
+EQUITY_MARKET_CAP_OVERRIDES_USD = {
+    "INTC": 90_000_000_000.0,
+    "HIMS": 14_000_000_000.0,
+}
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
@@ -38,6 +43,15 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
 def _safe_int(value: Any, default: int = 0) -> int:
     try:
         return int(value or 0)
+    except Exception:
+        return default
+
+
+def _rank_or_default(value: Any, default: int = 999999) -> int:
+    if value in (None, ""):
+        return default
+    try:
+        return int(value)
     except Exception:
         return default
 
@@ -61,24 +75,187 @@ def _fetch_coingecko_market_caps(*, pages: int, per_page: int = 250) -> list[dic
     session = requests.Session()
     session.headers.update({"Accept": "application/json"})
     for page in range(1, max(1, int(pages or 1)) + 1):
-        resp = session.get(
-            COINGECKO_MARKETS_URL,
-            params={
-                "vs_currency": "usd",
-                "order": "market_cap_desc",
-                "per_page": min(250, max(1, int(per_page))),
-                "page": page,
-                "sparkline": "false",
-                "price_change_percentage": "24h",
-            },
-            timeout=20,
-        )
-        resp.raise_for_status()
-        batch = resp.json()
+        try:
+            resp = session.get(
+                COINGECKO_MARKETS_URL,
+                params={
+                    "vs_currency": "usd",
+                    "order": "market_cap_desc",
+                    "per_page": min(250, max(1, int(per_page))),
+                    "page": page,
+                    "sparkline": "false",
+                    "price_change_percentage": "24h",
+                },
+                timeout=20,
+            )
+            resp.raise_for_status()
+            batch = resp.json()
+        except Exception:
+            if rows:
+                log.info("CoinGecko market-cap refresh stopped early on page %s; keeping the rows already fetched", page)
+                break
+            raise
         if not isinstance(batch, list) or not batch:
             break
         rows.extend(batch)
     return rows
+
+
+def _fetch_equity_market_caps(symbols: list[str]) -> dict[str, dict]:
+    tickers = [str(symbol or "").upper().strip() for symbol in symbols if str(symbol or "").strip()]
+    if not tickers:
+        return {}
+
+    rows: dict[str, dict] = {}
+    session = requests.Session()
+    session.headers.update({
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0",
+    })
+    try:
+        for offset in range(0, len(tickers), 25):
+            batch = tickers[offset: offset + 25]
+            resp = session.get(
+                YAHOO_QUOTE_URL,
+                params={"symbols": ",".join(batch)},
+                timeout=20,
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+            for item in list((payload.get("quoteResponse") or {}).get("result") or []):
+                symbol = str(item.get("symbol") or "").upper().strip()
+                market_cap = _safe_float(item.get("marketCap"))
+                if not symbol or market_cap <= 0:
+                    continue
+                rows[symbol] = {
+                    "name": str(item.get("longName") or item.get("shortName") or symbol),
+                    "market_cap": market_cap,
+                    "market_cap_rank": None,
+                    "price_change_percentage_24h": _safe_float(item.get("regularMarketChangePercent")),
+                    "source": "yahoo_quote",
+                }
+    except Exception as exc:
+        log.info("Equity market-cap refresh fell back to local overrides: %s", exc)
+
+    for symbol in tickers:
+        if symbol in rows:
+            continue
+        override = _safe_float(EQUITY_MARKET_CAP_OVERRIDES_USD.get(symbol))
+        if override <= 0:
+            continue
+        rows[symbol] = {
+            "name": symbol,
+            "market_cap": override,
+            "market_cap_rank": None,
+            "price_change_percentage_24h": 0.0,
+            "source": "equity_override",
+        }
+
+    return rows
+
+
+def _build_equity_candidates(
+    *,
+    catalog: dict[str, dict],
+    min_market_cap_usd: float,
+    active_only: bool,
+) -> list[dict]:
+    equity_symbols = [
+        str(coin).upper()
+        for coin, spec in catalog.items()
+        if str(spec.get("instrument_type") or "").lower() == "equity"
+    ]
+    equity_market_caps = _fetch_equity_market_caps(equity_symbols)
+    candidates: list[dict] = []
+    for coin in equity_symbols:
+        spec = dict(catalog.get(coin) or {})
+        market_row = equity_market_caps.get(coin)
+        if not market_row:
+            continue
+        market_cap = _safe_float(market_row.get("market_cap"))
+        if market_cap < float(min_market_cap_usd or 0.0):
+            continue
+        active = hyperliquid_market_is_active(coin) if active_only else True
+        if active_only and not active:
+            continue
+        candidates.append({
+            "coin": coin,
+            "name": str(market_row.get("name") or spec.get("display_name") or coin),
+            "symbol": coin,
+            "market_cap_usd": round(market_cap, 2),
+            "market_cap_rank": _rank_or_default(market_row.get("market_cap_rank")),
+            "price_change_pct_24h": _safe_float(market_row.get("price_change_percentage_24h")),
+            "venue_symbol": str(spec.get("venue_symbol") or coin).strip(),
+            "active": bool(active),
+        })
+    return candidates
+
+
+def _normalize_records(
+    records: list[dict] | None,
+    *,
+    catalog: dict[str, dict],
+    min_market_cap_usd: float,
+    active_only: bool,
+) -> list[dict]:
+    normalized: list[dict] = []
+    seen: set[str] = set()
+    for record in records or []:
+        coin = str(record.get("coin") or record.get("symbol") or "").upper().strip()
+        if not coin or coin in seen:
+            continue
+        market_cap = _safe_float(record.get("market_cap_usd") or record.get("market_cap"))
+        if market_cap < float(min_market_cap_usd or 0.0):
+            continue
+        spec = dict(catalog.get(coin) or {})
+        active = hyperliquid_market_is_active(coin) if active_only else bool(record.get("active", True))
+        if active_only and not active:
+            continue
+        normalized.append({
+            "coin": coin,
+            "name": str(record.get("name") or spec.get("display_name") or coin),
+            "symbol": coin,
+            "market_cap_usd": round(market_cap, 2),
+            "market_cap_rank": _rank_or_default(record.get("market_cap_rank")),
+            "price_change_pct_24h": _safe_float(
+                record.get("price_change_pct_24h")
+                if record.get("price_change_pct_24h") is not None
+                else record.get("price_change_percentage_24h")
+            ),
+            "venue_symbol": str(spec.get("venue_symbol") or record.get("venue_symbol") or coin).strip(),
+            "active": bool(active),
+        })
+        seen.add(coin)
+    return normalized
+
+
+def _finalize_watchlist_payload(
+    *,
+    candidates: list[dict],
+    min_market_cap_usd: float,
+    active_only: bool,
+    pages: int,
+    max_coins: int,
+    source: str,
+) -> dict:
+    candidates.sort(
+        key=lambda item: (
+            _rank_or_default(item.get("market_cap_rank")),
+            -_safe_float(item.get("market_cap_usd")),
+            str(item.get("coin")),
+        )
+    )
+    limited = candidates[: max(1, int(max_coins or 60))]
+    return {
+        "generated_at_ts": time.time(),
+        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "min_market_cap_usd": float(min_market_cap_usd),
+        "active_only": bool(active_only),
+        "pages": int(pages or 1),
+        "source": source,
+        "coins": [row["coin"] for row in limited],
+        "records": limited,
+    }
 
 
 def build_hyperliquid_market_cap_watchlist(
@@ -94,19 +271,48 @@ def build_hyperliquid_market_cap_watchlist(
     cache_target = Path(cache_path or MARKET_CAP_UNIVERSE_JSON).expanduser()
     cached = _load_cache(cache_target)
     max_age_seconds = max(900.0, float(cache_hours or 6.0) * 3600.0)
+    catalog = get_hyperliquid_market_catalog(force_refresh=True)
+
+    def _cached_payload_with_live_equities(source: str) -> dict | None:
+        base_records = _normalize_records(
+            list((cached or {}).get("records") or []),
+            catalog=catalog,
+            min_market_cap_usd=min_market_cap_usd,
+            active_only=active_only,
+        )
+        equity_records = _build_equity_candidates(
+            catalog=catalog,
+            min_market_cap_usd=min_market_cap_usd,
+            active_only=active_only,
+        )
+        merged: dict[str, dict] = {row["coin"]: row for row in base_records}
+        for row in equity_records:
+            merged[row["coin"]] = row
+        if not merged:
+            return None
+        return _finalize_watchlist_payload(
+            candidates=list(merged.values()),
+            min_market_cap_usd=min_market_cap_usd,
+            active_only=active_only,
+            pages=pages,
+            max_coins=max_coins,
+            source=source,
+        )
+
     if (
         not force_refresh
         and cached
         and (time.time() - _safe_float(cached.get("generated_at_ts"))) <= max_age_seconds
     ):
-        return cached
+        return _cached_payload_with_live_equities(str(cached.get("source") or "cached")) or cached
 
     try:
         market_rows = _fetch_coingecko_market_caps(pages=pages)
     except Exception as exc:
         log.warning("Market-cap universe refresh failed: %s", exc)
-        if cached:
-            return cached
+        cached_payload = _cached_payload_with_live_equities("cached_plus_live_equities")
+        if cached_payload:
+            return cached_payload
         return {
             "generated_at_ts": time.time(),
             "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -126,7 +332,6 @@ def build_hyperliquid_market_cap_watchlist(
         if current is None or market_cap > _safe_float(current.get("market_cap")):
             strongest_by_symbol[symbol] = row
 
-    catalog = get_hyperliquid_market_catalog(force_refresh=True)
     candidates: list[dict] = []
     for coin, spec in catalog.items():
         if str(spec.get("market_type") or "").lower() != "perp":
@@ -147,31 +352,28 @@ def build_hyperliquid_market_cap_watchlist(
             "name": str(market_row.get("name") or coin),
             "symbol": str(market_row.get("symbol") or coin).upper(),
             "market_cap_usd": round(market_cap, 2),
-            "market_cap_rank": _safe_int(market_row.get("market_cap_rank")),
+            "market_cap_rank": _rank_or_default(market_row.get("market_cap_rank")),
             "price_change_pct_24h": _safe_float(market_row.get("price_change_percentage_24h")),
-            "venue_symbol": str(spec.get("venue_symbol") or coin).upper(),
+            "venue_symbol": str(spec.get("venue_symbol") or coin).strip(),
             "active": bool(active),
         })
 
-    candidates.sort(
-        key=lambda item: (
-            _safe_int(item.get("market_cap_rank"), 999999),
-            -_safe_float(item.get("market_cap_usd")),
-            str(item.get("coin")),
+    candidates.extend(
+        _build_equity_candidates(
+            catalog=catalog,
+            min_market_cap_usd=min_market_cap_usd,
+            active_only=active_only,
         )
     )
-    limited = candidates[: max(1, int(max_coins or 60))]
 
-    payload = {
-        "generated_at_ts": time.time(),
-        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "min_market_cap_usd": float(min_market_cap_usd),
-        "active_only": bool(active_only),
-        "pages": int(pages or 1),
-        "source": "coingecko_x_hyperliquid",
-        "coins": [row["coin"] for row in limited],
-        "records": limited,
-    }
+    payload = _finalize_watchlist_payload(
+        candidates=candidates,
+        min_market_cap_usd=min_market_cap_usd,
+        active_only=active_only,
+        pages=pages,
+        max_coins=max_coins,
+        source="coingecko_yahoo_x_hyperliquid",
+    )
     try:
         _save_cache(cache_target, payload)
     except Exception as exc:

@@ -27,6 +27,7 @@ import requests
 
 from data.market_data import fetch_candles
 from exchanges.hyperliquid_markets import (
+    get_hyperliquid_market_dex,
     is_hyperliquid_supported,
     resolve_hyperliquid_symbol,
 )
@@ -582,9 +583,13 @@ def _fetch_live_snapshot(coin: str, depth_limit: int) -> OrderBookFeedSnapshot:
 
     try:
         venue_symbol = resolve_hyperliquid_symbol(coin)
+        dex = get_hyperliquid_market_dex(coin)
+        payload = {"type": "l2Book", "coin": venue_symbol}
+        if dex:
+            payload["dex"] = dex
         resp = requests.post(
             "https://api.hyperliquid.xyz/info",
-            json={"type": "l2Book", "coin": venue_symbol},
+            json=payload,
             timeout=8,
         )
         resp.raise_for_status()

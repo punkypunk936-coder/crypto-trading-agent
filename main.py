@@ -22,6 +22,7 @@ from logger import log
 from promotion_gate import evaluate_live_promotion
 from exchanges.hyperliquid_client import HyperliquidClient
 from exchanges.hyperliquid_markets import (
+    hyperliquid_instrument_type,
     get_hyperliquid_market_activity,
     get_hyperliquid_supported_coins,
     hyperliquid_market_is_active,
@@ -132,7 +133,7 @@ def apply_dynamic_analysis_universe() -> list[str]:
                 ", ".join(dynamic_analysis),
             )
         for coin in dynamic_analysis:
-            config.trading.instrument_types.setdefault(coin, "crypto")
+            config.trading.instrument_types.setdefault(coin, hyperliquid_instrument_type(coin, "crypto"))
 
     config.trading.dynamic_analysis_coins = dynamic_analysis
     merged = list(base_analysis)
