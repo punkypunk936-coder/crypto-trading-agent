@@ -406,6 +406,29 @@ class TradingConfig:
     challenger_min_labeled_decisions: int = 25
     challenger_min_win_rate_edge: float = 0.04
     challenger_refresh_hours: float = 6.0
+    asset_dossier_enabled: bool = True
+    asset_dossier_refresh_hours: float = 6.0
+    missed_move_lab_enabled: bool = True
+    llm_referee_enabled: bool = field(
+        default_factory=lambda: os.getenv("OPENAI_REFEREE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+    )
+    llm_referee_api_key: str = field(default_factory=lambda: os.getenv("OPENAI_API_KEY", ""))
+    llm_referee_base_url: str = field(default_factory=lambda: os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"))
+    llm_referee_model: str = field(default_factory=lambda: os.getenv("OPENAI_REFEREE_MODEL", "gpt-5.4"))
+    llm_referee_timeout_seconds: float = 18.0
+    llm_referee_cache_minutes: int = 45
+    llm_referee_max_setups_per_cycle: int = 2
+    llm_referee_min_expectancy_probability: float = 0.56
+    llm_referee_min_score_distance: float = 10.0
+    llm_referee_block_on_verdicts: List[str] = field(default_factory=lambda: ["BLOCK"])
+    llm_referee_review_on_asset_states: List[str] = field(default_factory=lambda: [
+        "ARMED",
+        "WAITING_CONFIRMATION",
+        "EXECUTABLE",
+        "PASSIVE_ENTRY",
+        "READY_LONG",
+        "READY_SHORT",
+    ])
 
     # ── Visual chart confirmation ────────────────────────
     # When enabled, borderline signals (score 38–62) are confirmed by

@@ -543,6 +543,9 @@ def action_board(state: dict, market_map: dict) -> dict:
                 "confidence": confidence,
                 "score": round(score, 1),
                 "pnl_usd": _safe_float(pos.get("unrealised_pnl")) if pos else 0.0,
+                "llm_referee": dict(sig.get("llm_referee") or {}),
+                "llm_referee_summary": str(sig.get("llm_referee_summary") or ""),
+                "llm_referee_why_now": str(sig.get("llm_referee_why_now") or ""),
             }
         )
 
@@ -918,6 +921,9 @@ def build_dashboard_snapshot(
     trade_dataset_records: Iterable[dict] | None = None,
     decision_review_report: Any = None,
     challenger_report: Any = None,
+    missed_move_report: Any = None,
+    asset_dossiers: Any = None,
+    llm_referee_report: Any = None,
     *,
     server_timestamp: str | None = None,
 ) -> dict:
@@ -939,6 +945,9 @@ def build_dashboard_snapshot(
         "learning_summary": learning_summary(safe_trades),
         "decision_review_report": dict(decision_review_report or {}),
         "challenger_report": dict(challenger_report or {}),
+        "missed_move_report": dict(missed_move_report or {}),
+        "asset_dossiers": dict(asset_dossiers or {}),
+        "llm_referee_report": dict(llm_referee_report or {}),
         "runtime": runtime_status(shaped_state),
         "server_time": server_timestamp or server_time(),
     }

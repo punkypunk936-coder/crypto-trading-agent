@@ -1640,6 +1640,9 @@ let latestActionBoard = { items: [], summary: {}, lead: null };
 let latestReviewStore = { reviews: {} };
 let latestReviewSummary = {};
 let latestLearningSummary = {};
+let latestAssetDossiers = { assets: {}, summary: {} };
+let latestMissedMoveReport = { summary: {} };
+let latestLLMRefereeReport = { verdicts: {} };
 let currentTickerSearchQuery = '';
 let tradexyzLookupBusy = false;
 let actionBoardBucket = 'coin';
@@ -1921,6 +1924,14 @@ function updateTickerSearchOptions() {
     .join('');
 }
 
+function assetDossierForCoin(coin) {
+  return (((latestAssetDossiers || {}).assets || {})[String(coin || '').toUpperCase()]) || null;
+}
+
+function refereeVerdictForCoin(coin) {
+  return (((latestLLMRefereeReport || {}).verdicts || {})[String(coin || '').toUpperCase()]) || null;
+}
+
 function renderTickerSearch(value) {
   currentTickerSearchQuery = String(value == null ? '' : value);
   const normalized = String(currentTickerSearchQuery || '').trim().toUpperCase();
@@ -1956,6 +1967,10 @@ function renderTickerSearch(value) {
   const matchNote = found.match && found.match !== 'exact'
     ? 'Matched from ' + found.match + ' search on ' + item.coin + '.'
     : 'Exact live dashboard read for ' + item.coin + '.';
+  const dossier = assetDossierForCoin(item.coin) || {};
+  const dossierBody = dossier.dossier || {};
+  const referee = item.llm_referee || refereeVerdictForCoin(item.coin) || {};
+  const missed = dossier.missed_move_context || {};
 
   hint.textContent = item.coin + ': ' + trackedLine;
   result.innerHTML = '<div class="search-title">' + esc(item.coin) + ' • ' + esc(item.label || 'Watching') + '</div>'
@@ -1967,6 +1982,10 @@ function renderTickerSearch(value) {
       + '<div class="token-detail"><span class="token-detail-label">Trigger</span><div class="token-detail-value">' + esc(shortText(item.trigger || 'Wait for a cleaner setup.', 140)) + '</div></div>'
       + '<div class="token-detail"><span class="token-detail-label">Risk</span><div class="token-detail-value">' + esc(shortText(item.risk || item.map_summary || 'Stay patient until the map and order-flow align.', 140)) + '</div></div>'
     + '</div>'
+    + (dossierBody.current_read ? '<div class="search-summary"><strong>Dossier read:</strong> ' + esc(shortText(dossierBody.current_read, 180)) + '</div>' : '')
+    + (dossierBody.playbook ? '<div class="search-summary"><strong>Playbook:</strong> ' + esc(shortText(dossierBody.playbook, 180)) + '</div>' : '')
+    + (referee.summary ? '<div class="search-summary"><strong>Referee:</strong> ' + esc(shortText(referee.summary, 180)) + (referee.verdict ? ' • ' + esc(String(referee.verdict)) : '') + '</div>' : '')
+    + ((missed.miss_count || 0) > 0 ? '<div class="search-summary"><strong>Missed-move pressure:</strong> ' + esc(String(missed.miss_count)) + ' recent skipped winner(s) on this ticker.</div>' : '')
     + (item.map_summary ? '<div class="search-summary"><strong>Daily view:</strong> ' + esc(shortText(item.map_summary, 180)) + '</div>' : '')
     + '<div class="search-summary"><strong>Execution lane:</strong> ' + esc(item.mode_meta || (item.tradable ? 'Executable' : 'Support pending')) + ' • <strong>Lookup:</strong> ' + esc(matchNote) + '</div>';
 }
@@ -2257,18 +2276,36 @@ function renderMarketMapSummary(summary, marketMap) {
 
 function renderLearningSummary(summary, trades) {
   const meta = document.getElementById('review-meta');
+  const missedCount = Number((((latestMissedMoveReport || {}).summary || {}).missed_win_count) || 0);
+  const dossierCount = Number((latestAssetDossiers || {}).count || 0);
   meta.textContent = 'Lessons ' + (summary.count || 0)
-    + ' • wins ' + (summary.wins || 0)
-    + ' • losses ' + (summary.losses || 0);
+    + ' • missed winners ' + missedCount
+    + ' • dossiers ' + dossierCount;
 
   const body = document.getElementById('review-body');
   const lessons = (summary.recent_lessons || []).slice(0, 5);
   const latest = summary.latest || null;
+  const focusAssets = (((latestAssetDossiers || {}).summary || {}).focus_assets || []).slice(0, 6);
+  const missedFamilies = ((latestMissedMoveReport || {}).top_missed_families || []).slice(0, 4);
+  const refereeVerdicts = Object.entries(((latestLLMRefereeReport || {}).verdicts || {}))
+    .slice(0, 4)
+    .map(([coin, verdict]) => ({ coin, verdict: verdict || {} }));
   let html = '<div class="review-stack"><div class="review-summary-grid">'
     + '<div class="review-summary-box"><div class="card-label">Closed Trades</div><div class="review-count">' + esc(String(summary.count || 0)) + '</div><div class="review-count-sub">recent lessons absorbed</div></div>'
     + '<div class="review-summary-box"><div class="card-label">Winning Lessons</div><div class="review-count green">' + esc(String(summary.wins || 0)) + '</div><div class="review-count-sub">setups that paid</div></div>'
     + '<div class="review-summary-box"><div class="card-label">Losing Lessons</div><div class="review-count red">' + esc(String(summary.losses || 0)) + '</div><div class="review-count-sub">mistakes now tracked</div></div>'
-    + '<div class="review-summary-box"><div class="card-label">Learning Loop</div><div class="review-notes">The agent keeps the detailed labeling internally and surfaces only the trade logic and the lesson here.</div></div>'
+    + '<div class="review-summary-box"><div class="card-label">Research Brain</div><div class="review-notes">Dossiers, referee calls, and missed-move pressure now sit behind the same calm dashboard instead of living in separate tools.</div></div>'
+    + '</div>';
+
+  html += '<div class="review-summary-grid">'
+    + '<div class="review-summary-box"><div class="card-label">Asset Dossiers</div><div class="review-notes">' + esc(dossierCount ? ('Focus: ' + focusAssets.join(', ')) : 'Dossiers will populate as the agent refreshes its universe.') + '</div></div>'
+    + '<div class="review-summary-box"><div class="card-label">LLM Referee</div><div class="review-notes">' + (refereeVerdicts.length
+      ? esc(refereeVerdicts.map((item) => item.coin + ' ' + String(item.verdict.verdict || 'WAIT')).join(' • '))
+      : 'OpenAI referee is optional. Once enabled, high-value setups will show structured SUPPORT / WAIT / BLOCK calls here.') + '</div></div>'
+    + '<div class="review-summary-box"><div class="card-label">Missed-Move Lab</div><div class="review-notes">' + (missedFamilies.length
+      ? esc(missedFamilies.map((item) => item.family + ' ' + item.misses).join(' • '))
+      : 'No obvious skipped winners are labeled yet.') + '</div></div>'
+    + '<div class="review-summary-box"><div class="card-label">North Star</div><div class="review-notes">Trade less, but know the asset better. The new stack is built to sharpen context, not force activity.</div></div>'
     + '</div>';
 
   if (latest) {
@@ -2565,6 +2602,9 @@ async function refresh() {
     latestReviewStore = data.trade_reviews || { reviews: {} };
     latestReviewSummary = data.review_summary || {};
     latestLearningSummary = data.learning_summary || {};
+    latestAssetDossiers = data.asset_dossiers || { assets: {}, summary: {} };
+    latestMissedMoveReport = data.missed_move_report || { summary: {} };
+    latestLLMRefereeReport = data.llm_referee_report || { verdicts: {} };
     const actionBoard = data.action_board || { items: [], lead: null };
     latestActionBoard = actionBoard;
 

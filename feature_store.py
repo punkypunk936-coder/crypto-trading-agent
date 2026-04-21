@@ -89,6 +89,7 @@ NUMERIC_FEATURE_KEYS = (
     "portfolio_guard_size_multiplier",
     "same_direction_exposure_pct",
     "total_theme_exposure_pct",
+    "llm_referee_confidence_score",
 )
 
 BOOL_FEATURE_KEYS = (
@@ -110,6 +111,8 @@ BOOL_FEATURE_KEYS = (
     "analog_hard_block",
     "data_reliability_permitted",
     "portfolio_guard_permitted",
+    "llm_referee_used",
+    "llm_referee_blocked",
 )
 
 CATEGORICAL_FEATURE_KEYS = (
@@ -144,6 +147,8 @@ CATEGORICAL_FEATURE_KEYS = (
     "decision_stage",
     "data_reliability_quality",
     "portfolio_theme",
+    "llm_referee_verdict",
+    "llm_referee_sentiment_bias",
 )
 
 TEXT_FEATURE_KEYS = (
@@ -160,6 +165,12 @@ TEXT_FEATURE_KEYS = (
     "next_unblock_reason",
     "data_reliability_summary",
     "portfolio_guard_summary",
+    "llm_referee_summary",
+    "llm_referee_why_now",
+    "llm_referee_principal_risk",
+    "llm_referee_invalidation_focus",
+    "llm_referee_next_unblock",
+    "llm_referee_execution_style",
 )
 
 
@@ -225,6 +236,19 @@ def build_signal_feature_map(signal_snapshot: Mapping[str, Any], extra: Mapping[
     features["portfolio_guard_permitted"] = _safe_bool((snap.get("portfolio_guard") or {}).get("permitted", True))
     features["same_direction_exposure_pct"] = round(_safe_float((snap.get("portfolio_guard") or {}).get("same_direction_exposure_pct")), 6)
     features["total_theme_exposure_pct"] = round(_safe_float((snap.get("portfolio_guard") or {}).get("total_theme_exposure_pct")), 6)
+    llm_referee = dict(snap.get("llm_referee") or {})
+    confidence_map = {"LOW": 0.33, "MEDIUM": 0.66, "HIGH": 1.0}
+    features["llm_referee_confidence_score"] = round(confidence_map.get(_safe_str(llm_referee.get("confidence")).upper(), 0.0), 6)
+    features["llm_referee_used"] = _safe_bool(llm_referee.get("used", False))
+    features["llm_referee_blocked"] = _safe_bool(_safe_str(llm_referee.get("verdict")).upper() == "BLOCK")
+    features["llm_referee_verdict"] = _category(llm_referee.get("verdict"))
+    features["llm_referee_sentiment_bias"] = _category(llm_referee.get("sentiment_bias"))
+    features["llm_referee_summary"] = _compact_text(llm_referee.get("summary"))
+    features["llm_referee_why_now"] = _compact_text(llm_referee.get("why_now"))
+    features["llm_referee_principal_risk"] = _compact_text(llm_referee.get("principal_risk"))
+    features["llm_referee_invalidation_focus"] = _compact_text(llm_referee.get("invalidation_focus"))
+    features["llm_referee_next_unblock"] = _compact_text(llm_referee.get("next_unblock"))
+    features["llm_referee_execution_style"] = _compact_text(llm_referee.get("execution_style"))
 
     for key, value in ctx.items():
         normalized = f"ctx_{_category(key)}"

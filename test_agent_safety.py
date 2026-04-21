@@ -22,6 +22,7 @@ import pandas as pd
 import checkpoint as checkpoint_module
 import agent as agent_module
 import analog_engine as analog_engine_module
+import asset_dossier as asset_dossier_module
 import asset_state_machine as asset_state_machine_module
 import backtest as backtest_module
 import challenger_model as challenger_model_module
@@ -30,9 +31,11 @@ import decision_dataset as decision_dataset_module
 import decision_review_lab as decision_review_lab_module
 import feature_store as feature_store_module
 import hosted_state_sync as hosted_state_sync_module
+import llm_referee as llm_referee_module
 import main as main_module
 import market_map as market_map_module
 import market_universe as market_universe_module
+import missed_move_lab as missed_move_lab_module
 import portfolio_guard as portfolio_guard_module
 import precision_lab as precision_lab_module
 import promotion_gate as promotion_gate_module
@@ -2329,6 +2332,45 @@ def test_dashboard_snapshot_includes_trade_logic_and_learning_summary() -> None:
     assert snapshot["learning_summary"]["latest"]["lesson"]
 
 
+def test_dashboard_snapshot_includes_asset_dossiers_and_referee_reports() -> None:
+    snapshot = build_dashboard_snapshot(
+        state={
+            "status": "online",
+            "cycle_number": 99,
+            "positions": [],
+            "signals": {
+                "BTC": {
+                    "action": "LONG",
+                    "score": 74.0,
+                    "confidence": "HIGH",
+                    "execution_mode": "tradable",
+                    "asset_state": "WAITING_CONFIRMATION",
+                    "next_unblock_reason": "Need one more clean reclaim close.",
+                    "llm_referee": {"verdict": "SUPPORT", "summary": "Momentum and structure agree."},
+                }
+            },
+            "mode": "dry_run",
+            "config": {"coins": ["BTC"]},
+        },
+        trades=[],
+        asset_dossiers={
+            "summary": {"focus_assets": ["BTC"]},
+            "assets": {
+                "BTC": {
+                    "coin": "BTC",
+                    "dossier": {"current_read": "Momentum and structure agree."},
+                }
+            },
+        },
+        missed_move_report={"summary": {"missed_win_count": 3}},
+        llm_referee_report={"enabled": True, "verdicts": {"BTC": {"verdict": "SUPPORT"}}},
+        server_timestamp="2026-04-21 21:05:00",
+    )
+    assert snapshot["asset_dossiers"]["summary"]["focus_assets"] == ["BTC"]
+    assert snapshot["missed_move_report"]["summary"]["missed_win_count"] == 3
+    assert snapshot["llm_referee_report"]["verdicts"]["BTC"]["verdict"] == "SUPPORT"
+
+
 def test_dashboard_action_board_uses_asset_state_and_next_unblock_reason() -> None:
     snapshot = build_dashboard_snapshot(
         state={
@@ -3844,6 +3886,58 @@ def test_decision_review_lab_flags_missed_winner() -> None:
             decision_review_lab_module.precision_lab._label_episode = original_label
 
 
+def test_missed_move_lab_surfaces_recent_blockers() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        data_dir = Path(tmpdir)
+        (data_dir / "decision_dataset.jsonl").write_text(
+            json.dumps(
+                {
+                    "decision_id": "1",
+                    "coin": "AMZN",
+                    "stage": "precision_cadence_block",
+                    "candidate_action": "LONG",
+                    "final_action": "FLAT",
+                    "blocked": True,
+                    "executed": False,
+                    "pending_limit": False,
+                    "decision_reason": "same family is cooling down for another ~120m",
+                    "recorded_at_ts": time.time(),
+                    "signal_snapshot": {
+                        "planned_risk_pct": 1.1,
+                        "planned_reward_pct": 3.0,
+                        "planned_risk_reward_ratio": 2.7,
+                        "expectancy_probability": 0.64,
+                        "expectancy_uncertainty": 0.21,
+                        "expectancy_score": 73.0,
+                        "confidence": "HIGH",
+                        "thesis_quality": "HIGH",
+                        "orderbook_breakout_state": "PERSISTENT_BULLISH_BREAKOUT",
+                        "orderbook_interaction": "ABOVE_RESISTANCE",
+                        "dominant_regime": "TREND",
+                        "instrument_type": "equity",
+                        "flat_reason": "same family is cooling down for another ~120m",
+                    },
+                }
+            ) + "\n",
+            encoding="utf-8",
+        )
+        original_label = missed_move_lab_module.precision_lab._label_episode
+        try:
+            missed_move_lab_module.precision_lab._label_episode = lambda row, **_kwargs: {**row, "outcome": 1}
+            report = missed_move_lab_module.build_report(
+                data_dir=data_dir,
+                target_r=0.25,
+                horizon_minutes=720,
+                interval="5m",
+                dedupe_minutes=30,
+            )
+            assert report["summary"]["missed_win_count"] == 1
+            assert report["top_missed_assets"][0]["coin"] == "AMZN"
+            assert "cooling down" in report["recent_missed_moves"][0]["summary"]
+        finally:
+            missed_move_lab_module.precision_lab._label_episode = original_label
+
+
 def test_challenger_model_reports_when_shadow_is_ready() -> None:
     cfg = build_config()
     cfg.trading.challenger_min_labeled_decisions = 4
@@ -3879,6 +3973,111 @@ def test_challenger_model_reports_when_shadow_is_ready() -> None:
         assert report["shadow_ready"] is True
         assert report["promote"] is True
         assert report["status"] == "CHALLENGER_READY"
+
+
+def test_asset_dossier_builds_focus_assets_and_referee_context() -> None:
+    state = {
+        "last_cycle": "2026-04-21 20:00:00",
+        "signals": {
+            "BTC": {
+                "action": "LONG",
+                "execution_mode": "tradable",
+                "asset_state": "WAITING_CONFIRMATION",
+                "instrument_type": "crypto",
+                "confidence": "HIGH",
+                "score": 78.0,
+                "expectancy_probability": 0.66,
+                "expectancy_expected_r": 0.42,
+                "live_price": 71000.0,
+                "decision_reason": "Support-defense long is setting up cleanly.",
+                "next_unblock_reason": "Need one more clean close above reclaim.",
+                "market_map_bias": "BULLISH",
+                "market_map_summary": "daily reclaim is holding",
+                "narrative_summary": "ETF flow and risk appetite still support the move.",
+                "analog_summary": "close winners mostly worked when reclaim held.",
+            }
+        },
+        "positions": [],
+        "config": {
+            "coins": ["BTC"],
+            "analysis_coins": ["BTC", "AMZN"],
+            "instrument_types": {"BTC": "crypto", "AMZN": "equity"},
+        },
+    }
+    market_map = {
+        "coins": {
+            "BTC": {
+                "bias": "BULLISH",
+                "supports": [68500],
+                "resistances": [72500],
+                "daily_close_long_above": [71500],
+                "trade_mode": "Buy defended reclaims.",
+            }
+        }
+    }
+    report = asset_dossier_module.build_report(
+        state=state,
+        trades=[{"coin": "BTC", "agent_lesson": "Respect demand when reclaim holds."}],
+        market_map=market_map,
+        missed_move_report={"summary": {"missed_win_count": 2}, "top_missed_assets": [{"coin": "BTC", "misses": 2}]},
+        llm_referee_report={"enabled": True, "verdicts": {"BTC": {"verdict": "SUPPORT", "summary": "Continuation still looks healthy."}}},
+    )
+    assert report["summary"]["focus_assets"][0] == "BTC"
+    assert report["assets"]["BTC"]["dossier"]["playbook"] == "Buy defended reclaims."
+    assert report["assets"]["BTC"]["missed_move_context"]["miss_count"] == 2
+    assert report["assets"]["BTC"]["llm_referee"]["verdict"] == "SUPPORT"
+
+
+def test_llm_referee_returns_disabled_without_api_key() -> None:
+    cfg = build_config()
+    cfg.trading.llm_referee_enabled = True
+    cfg.trading.llm_referee_api_key = ""
+    referee = llm_referee_module.LLMReferee(cfg.trading)
+    result = referee.review_setup("BTC", {"action": "LONG"})
+    assert result["enabled"] is False
+    assert result["verdict"] == "DISABLED"
+
+
+def test_llm_referee_parses_structured_openai_verdict() -> None:
+    cfg = build_config()
+    cfg.trading.llm_referee_enabled = True
+    cfg.trading.llm_referee_api_key = "test-key"
+    cfg.trading.llm_referee_model = "gpt-5.4"
+    referee = llm_referee_module.LLMReferee(cfg.trading)
+    original_post = llm_referee_module._post_responses_request
+    try:
+        llm_referee_module._post_responses_request = lambda **_kwargs: {
+            "output_text": json.dumps(
+                {
+                    "verdict": "BLOCK",
+                    "confidence": "HIGH",
+                    "sentiment_bias": "MIXED",
+                    "summary": "Narrative and structure are still fighting each other.",
+                    "why_now": "Price reclaimed, but the catalyst read is still messy.",
+                    "principal_risk": "failed reclaim",
+                    "invalidation_focus": "lose 71,500",
+                    "next_unblock": "wait for a cleaner daily close",
+                    "execution_style": "wait",
+                }
+            )
+        }
+        result = referee.review_setup(
+            "BTC",
+            {
+                "action": "LONG",
+                "asset_state": "WAITING_CONFIRMATION",
+                "score": 74.0,
+                "expectancy_probability": 0.68,
+                "expectancy_expected_r": 0.44,
+                "confidence": "HIGH",
+                "live_price": 71800.0,
+            },
+        )
+        assert result["used"] is True
+        assert result["verdict"] == "BLOCK"
+        assert "messy" in result["why_now"].lower()
+    finally:
+        llm_referee_module._post_responses_request = original_post
 
 
 def test_historical_analog_engine_blends_supportive_history() -> None:
@@ -4605,6 +4804,8 @@ def run_all() -> None:
     print("PASS dashboard market-map snapshot")
     test_dashboard_snapshot_includes_trade_logic_and_learning_summary()
     print("PASS dashboard learning summary")
+    test_dashboard_snapshot_includes_asset_dossiers_and_referee_reports()
+    print("PASS dashboard intelligence snapshot")
     test_dashboard_action_board_uses_asset_state_and_next_unblock_reason()
     print("PASS dashboard asset-state action board")
     test_dashboard_snapshot_canonicalizes_inactive_control_and_empty_review_shape()
@@ -4669,8 +4870,16 @@ def run_all() -> None:
     print("PASS feature store state features")
     test_decision_review_lab_flags_missed_winner()
     print("PASS decision review lab")
+    test_missed_move_lab_surfaces_recent_blockers()
+    print("PASS missed move lab")
     test_challenger_model_reports_when_shadow_is_ready()
     print("PASS challenger model")
+    test_asset_dossier_builds_focus_assets_and_referee_context()
+    print("PASS asset dossier")
+    test_llm_referee_returns_disabled_without_api_key()
+    print("PASS LLM referee disabled fallback")
+    test_llm_referee_parses_structured_openai_verdict()
+    print("PASS LLM referee structured output")
     test_historical_analog_engine_blends_supportive_history()
     print("PASS historical analog engine")
     test_agent_apply_analog_context_can_flatten_bad_setup()

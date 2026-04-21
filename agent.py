@@ -26,10 +26,12 @@ Chart confirmation rule:
 import math
 import time
 import sys
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import List, Optional, Dict
 from paths import (
+    ASSET_DOSSIERS_JSON,
     CHALLENGER_MODEL_JSON,
     CONTROL_JSON,
     DATA_DIR,
@@ -37,6 +39,8 @@ from paths import (
     DASHBOARD_SNAPSHOT_JSON,
     DECISION_REVIEW_REPORT_JSON,
     KILL_FILE,
+    LLM_REFEREE_REPORT_JSON,
+    MISSED_MOVE_REPORT_JSON,
     STATE_JSON,
     TRADE_REVIEWS_JSON,
     TRADES_CSV,
@@ -45,16 +49,19 @@ from datetime import datetime
 
 import os
 import analog_engine
+import asset_dossier
 import challenger_model
 from config import Config
 import data_reliability
 import decision_dataset
 import decision_review_lab
 import feature_store
+import llm_referee
 from logger import get_logger
 from data.market_data import completed_candle_frame, fetch_candles, get_current_price
 import hosted_state_sync
 import market_map
+import missed_move_lab
 import portfolio_guard
 import trade_dataset
 import trade_logger
@@ -91,7 +98,7 @@ from exchanges.base import BaseExchange
 from notifications import build_notifier
 from checkpoint import checkpoint_manager, load_checkpoint
 from runtime_power import get_power_status
-from dashboard.snapshot import build_dashboard_snapshot, default_control
+from dashboard.snapshot import build_dashboard_snapshot, default_control, merge_dataset_into_trades
 from circuit_breaker import (
     circuit_breaker_registry,
     get_exchange_circuit,
@@ -149,6 +156,7 @@ class TradingAgent:
         }
         self._memory = trade_memory          # reinforcement learning module
         self._analog_engine = analog_engine.HistoricalAnalogEngine(cfg.trading)
+        self._llm_referee = llm_referee.LLMReferee(cfg.trading)
         self._last_learning_report_refresh_ts = 0.0
 
         # ── Signal streak: require N consecutive cycles before entering ──────
@@ -411,10 +419,92 @@ class TradingAgent:
         })
         return lifecycle
 
+    def _load_json_file(self, path: Path) -> dict:
+        if not path.exists():
+            return {}
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            return payload if isinstance(payload, dict) else {}
+        except Exception:
+            return {}
+
+    def _get_asset_dossier_entry(self, coin: str) -> dict:
+        payload = self._load_json_file(ASSET_DOSSIERS_JSON)
+        return dict((payload.get("assets") or {}).get(coin) or {})
+
+    def _get_missed_move_context(self, coin: str) -> dict:
+        payload = self._load_json_file(MISSED_MOVE_REPORT_JSON)
+        recent = [
+            dict(item or {})
+            for item in list(payload.get("recent_missed_moves") or [])
+            if str((item or {}).get("coin") or "").strip().upper() == coin
+        ][:3]
+        top_assets = {
+            str((item or {}).get("coin") or "").strip().upper(): int((item or {}).get("misses") or 0)
+            for item in list(payload.get("top_missed_assets") or [])
+        }
+        return {
+            "miss_count": int(top_assets.get(coin, 0)),
+            "recent_examples": recent,
+        }
+
+    def _apply_llm_referee(self, coin: str, signal, *, current_position: str | None = None) -> bool:
+        snap = dict(self._last_signals.get(coin) or {})
+        if not self._llm_referee.should_review(coin, snap, current_position=current_position or ""):
+            if not self._llm_referee.enabled():
+                self._last_signals[coin]["llm_referee"] = {
+                    "enabled": False,
+                    "used": False,
+                    "verdict": "DISABLED",
+                    "summary": "OpenAI referee is disabled or OPENAI_API_KEY is missing",
+                }
+            return False
+
+        dossier = self._get_asset_dossier_entry(coin)
+        missed_context = self._get_missed_move_context(coin)
+        verdict = self._llm_referee.review_setup(
+            coin,
+            snap,
+            dossier=dossier,
+            missed_move_context=missed_context,
+        )
+        self._last_signals[coin]["llm_referee"] = verdict
+        summary = str(verdict.get("summary") or "").strip()
+        why_now = str(verdict.get("why_now") or "").strip()
+        next_unblock = str(verdict.get("next_unblock") or "").strip()
+        if summary:
+            self._last_signals[coin]["llm_referee_summary"] = summary
+        if why_now:
+            self._last_signals[coin]["llm_referee_why_now"] = why_now
+        if next_unblock and not str(self._last_signals[coin].get("next_unblock_reason") or "").strip():
+            self._last_signals[coin]["next_unblock_reason"] = next_unblock
+
+        blocking_verdicts = {
+            str(item or "").strip().upper()
+            for item in list(getattr(self.cfg.trading, "llm_referee_block_on_verdicts", []) or [])
+        }
+        verdict_name = str(verdict.get("verdict") or "").strip().upper()
+        if verdict_name in blocking_verdicts:
+            reason = summary or "OpenAI referee blocked the setup"
+            log.info(f"[{coin}] 🧠 OpenAI referee blocks {signal.action}: {reason}")
+            signal.action = "FLAT"
+            signal.flat_reason = reason
+            signal.reason = reason
+            self._sync_signal_snapshot(coin, signal)
+            return True
+
+        if why_now:
+            combined = why_now if not summary else f"{summary} • {why_now}"
+            self._last_signals[coin]["decision_reason"] = combined
+            signal.reason = combined
+        self._sync_signal_snapshot(coin, signal)
+        return False
+
     def _maybe_refresh_learning_reports(self) -> None:
         if not (
             getattr(self.cfg.trading, "decision_review_enabled", True)
             or getattr(self.cfg.trading, "challenger_model_enabled", True)
+            or getattr(self.cfg.trading, "missed_move_lab_enabled", True)
         ):
             return
 
@@ -434,6 +524,14 @@ class TradingAgent:
         try:
             if getattr(self.cfg.trading, "decision_review_enabled", True):
                 decision_review_lab.build_and_save_report(
+                    data_dir=DATA_DIR,
+                    target_r=target_r,
+                    horizon_minutes=horizon_minutes,
+                    interval=interval,
+                    dedupe_minutes=dedupe_minutes,
+                )
+            if getattr(self.cfg.trading, "missed_move_lab_enabled", True):
+                missed_move_lab.build_and_save_report(
                     data_dir=DATA_DIR,
                     target_r=target_r,
                     horizon_minutes=horizon_minutes,
@@ -1115,6 +1213,9 @@ class TradingAgent:
             "asset_state": "OBSERVING",
             "asset_state_label": "Observing",
             "next_unblock_reason": "",
+            "llm_referee": {},
+            "llm_referee_summary": "",
+            "llm_referee_why_now": "",
         }
         self._refresh_asset_state(coin, stage="analysis", current_position=current_pos)
         self._apply_analog_context(
@@ -1439,6 +1540,18 @@ class TradingAgent:
                         signal.reason = review_reason
 
             self._sync_signal_snapshot(coin, signal)
+
+        if signal.action in ("LONG", "SHORT"):
+            if self._apply_llm_referee(coin, signal, current_position=current_pos):
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="llm_referee_block",
+                    signal=signal,
+                    current_position=current_pos,
+                    blocked=True,
+                )
+                return
 
         if signal.action == "FLAT":
             log.info(f"[{coin}] Guardrails keep this setup flat for now")
@@ -3800,7 +3913,7 @@ class TradingAgent:
 
     def _write_state(self, portfolio_usd: float, sentiment: dict):
         """Write current agent state to state.json for the dashboard."""
-        import json, os
+        import os
         from pathlib import Path
 
         positions_out = []
@@ -3926,6 +4039,7 @@ class TradingAgent:
             trade_dataset_records = trade_dataset.load_closed_trades(limit=max(200, len(trades_data) + 20))
         except Exception as e:
             log.debug(f"trade_dataset.jsonl read failed: {e}")
+        enriched_trade_records = merge_dataset_into_trades(trades_data, trade_dataset_records)
 
         market_map_data = market_map.build_effective_market_map(
             self._analysis_coins,
@@ -3945,12 +4059,41 @@ class TradingAgent:
                 decision_review_data = json.loads(DECISION_REVIEW_REPORT_JSON.read_text())
             except Exception as e:
                 log.debug(f"decision_review_report.json read failed: {e}")
+        missed_move_report_data = {}
+        if MISSED_MOVE_REPORT_JSON.exists():
+            try:
+                missed_move_report_data = json.loads(MISSED_MOVE_REPORT_JSON.read_text())
+            except Exception as e:
+                log.debug(f"missed_move_report.json read failed: {e}")
         challenger_report_data = {}
         if CHALLENGER_MODEL_JSON.exists():
             try:
                 challenger_report_data = json.loads(CHALLENGER_MODEL_JSON.read_text())
             except Exception as e:
                 log.debug(f"challenger_model_report.json read failed: {e}")
+        llm_referee_report_data = self._llm_referee.default_report()
+        if LLM_REFEREE_REPORT_JSON.exists():
+            try:
+                llm_referee_report_data = json.loads(LLM_REFEREE_REPORT_JSON.read_text())
+            except Exception as e:
+                log.debug(f"llm_referee_report.json read failed: {e}")
+        asset_dossier_data = {}
+        try:
+            if getattr(self.cfg.trading, "asset_dossier_enabled", True):
+                asset_dossier_data = asset_dossier.build_and_save_report(
+                    state=state,
+                    trades=enriched_trade_records,
+                    market_map=market_map_data,
+                    missed_move_report=missed_move_report_data,
+                    llm_referee_report=llm_referee_report_data,
+                )
+        except Exception as e:
+            log.debug(f"asset_dossiers.json write failed: {e}")
+            if ASSET_DOSSIERS_JSON.exists():
+                try:
+                    asset_dossier_data = json.loads(ASSET_DOSSIERS_JSON.read_text())
+                except Exception:
+                    asset_dossier_data = {}
 
         control_data = default_control()
         control_path = CONTROL_JSON
@@ -3969,6 +4112,9 @@ class TradingAgent:
             trade_dataset_records=trade_dataset_records,
             decision_review_report=decision_review_data,
             challenger_report=challenger_report_data,
+            missed_move_report=missed_move_report_data,
+            asset_dossiers=asset_dossier_data,
+            llm_referee_report=llm_referee_report_data,
         )
         try:
             DASHBOARD_SNAPSHOT_JSON.write_text(json.dumps(snapshot, indent=2))
@@ -3993,6 +4139,9 @@ class TradingAgent:
                     "trade_reviews": review_data,
                     "decision_review_report": decision_review_data,
                     "challenger_report": challenger_report_data,
+                    "missed_move_report": missed_move_report_data,
+                    "asset_dossiers": asset_dossier_data,
+                    "llm_referee_report": llm_referee_report_data,
                 }).encode()
                 req = urllib.request.Request(
                     remote_url.rstrip("/") + "/api/push",
@@ -4081,6 +4230,9 @@ class TradingAgent:
                 trade_reviews=review_data,
                 decision_review_report=decision_review_data,
                 challenger_report=challenger_report_data,
+                missed_move_report=missed_move_report_data,
+                asset_dossiers=asset_dossier_data,
+                llm_referee_report=llm_referee_report_data,
             )
 
     def _print_final_summary(self):

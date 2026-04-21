@@ -43,6 +43,9 @@ TRADE_REVIEWS_JSON = DATA_DIR / "trade_reviews.json"            # Operator revie
 MACRO_EVENTS_JSON = DATA_DIR / "macro_events.json"              # Optional macro event calendar for narrative gating
 DASHBOARD_STATE_SYNC_REPO = DATA_DIR / ".dashboard_state_sync"  # Local clone/worktree for hosted dashboard fallback sync
 MARKET_CAP_UNIVERSE_JSON = DATA_DIR / "market_cap_universe.json"  # Cached Hyperliquid scout universe from market-cap filter
+ASSET_DOSSIERS_JSON = DATA_DIR / "asset_dossiers.json"          # Living per-asset trading dossiers
+MISSED_MOVE_REPORT_JSON = DATA_DIR / "missed_move_report.json"  # Rich review of obvious winners the bot skipped
+LLM_REFEREE_REPORT_JSON = DATA_DIR / "llm_referee_report.json"  # Latest structured LLM referee verdicts
 
 # ── Logs directory ────────────────────────────────────────────────────────────
 LOGS_DIR = DATA_DIR / "logs"

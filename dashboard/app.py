@@ -21,6 +21,7 @@ import trade_logger
 import trade_review as trade_review_store
 import tradexyz_volume
 from paths import (
+    ASSET_DOSSIERS_JSON,
     CHALLENGER_MODEL_JSON,
     CODE_ROOT,
     CONTROL_JSON,
@@ -28,6 +29,8 @@ from paths import (
     DASHBOARD_SNAPSHOT_JSON,
     DECISION_REVIEW_REPORT_JSON,
     KILL_FILE,
+    LLM_REFEREE_REPORT_JSON,
+    MISSED_MOVE_REPORT_JSON,
     STATE_JSON,
     TRADE_REVIEWS_JSON,
     TRADES_CSV,
@@ -48,6 +51,9 @@ MARKET_MAP = DAILY_MARKET_MAP_JSON
 REVIEWS = TRADE_REVIEWS_JSON
 DECISION_REVIEW = DECISION_REVIEW_REPORT_JSON
 CHALLENGER_REPORT = CHALLENGER_MODEL_JSON
+MISSED_MOVE_REPORT = MISSED_MOVE_REPORT_JSON
+ASSET_DOSSIERS = ASSET_DOSSIERS_JSON
+LLM_REFEREE_REPORT = LLM_REFEREE_REPORT_JSON
 HOSTED_INDEX = CODE_ROOT / "netlify-dashboard" / "public" / "index.html"
 
 # Secret token for push endpoint (set DASHBOARD_TOKEN env var for security)
@@ -114,6 +120,33 @@ def _load_challenger_report_local() -> dict:
     return {}
 
 
+def _load_missed_move_report_local() -> dict:
+    if MISSED_MOVE_REPORT.exists():
+        try:
+            return json.loads(MISSED_MOVE_REPORT.read_text())
+        except Exception:
+            pass
+    return {}
+
+
+def _load_asset_dossiers_local() -> dict:
+    if ASSET_DOSSIERS.exists():
+        try:
+            return json.loads(ASSET_DOSSIERS.read_text())
+        except Exception:
+            pass
+    return {}
+
+
+def _load_llm_referee_report_local() -> dict:
+    if LLM_REFEREE_REPORT.exists():
+        try:
+            return json.loads(LLM_REFEREE_REPORT.read_text())
+        except Exception:
+            pass
+    return {}
+
+
 def _load_control_local() -> dict:
     if CONTROL.exists():
         try:
@@ -150,7 +183,7 @@ def _snapshot_needs_refresh() -> bool:
         snapshot_mtime = SNAPSHOT.stat().st_mtime
     except Exception:
         return True
-    for path in (STATE, LOG, CONTROL, MARKET_MAP, REVIEWS, DECISION_REVIEW, CHALLENGER_REPORT):
+    for path in (STATE, LOG, CONTROL, MARKET_MAP, REVIEWS, DECISION_REVIEW, CHALLENGER_REPORT, MISSED_MOVE_REPORT, ASSET_DOSSIERS, LLM_REFEREE_REPORT):
         try:
             if path.exists() and path.stat().st_mtime > snapshot_mtime:
                 return True
@@ -175,6 +208,9 @@ def _build_local_snapshot(server_timestamp: str | None = None) -> dict:
         trade_dataset_records=_load_trade_dataset_local(),
         decision_review_report=_load_decision_review_local(),
         challenger_report=_load_challenger_report_local(),
+        missed_move_report=_load_missed_move_report_local(),
+        asset_dossiers=_load_asset_dossiers_local(),
+        llm_referee_report=_load_llm_referee_report_local(),
         server_timestamp=server_timestamp,
     )
 
@@ -194,6 +230,9 @@ def _hydrate_snapshot_payload(data: dict, *, server_timestamp: str | None = None
         data.get("trade_reviews"),
         decision_review_report=data.get("decision_review_report"),
         challenger_report=data.get("challenger_report"),
+        missed_move_report=data.get("missed_move_report"),
+        asset_dossiers=data.get("asset_dossiers"),
+        llm_referee_report=data.get("llm_referee_report"),
         server_timestamp=server_timestamp,
     )
 
