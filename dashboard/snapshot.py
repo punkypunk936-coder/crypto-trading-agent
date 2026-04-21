@@ -183,7 +183,11 @@ def _map_blurb(text: Any) -> str:
         "auto bearish map": "bearish daily view",
         "auto neutral map": "neutral daily view",
         "daily reclaim confirmed": "reclaim is confirmed",
+        "daily reclaim is holding": "reclaim is holding",
+        "daily reclaim was confirmed, but live price slipped back below reclaim": "reclaim was confirmed, but price slipped back below the trigger",
         "daily breakdown confirmed": "breakdown is still active",
+        "daily breakdown is holding": "breakdown is holding",
+        "daily breakdown was confirmed, but live price bounced back above breakdown": "breakdown was confirmed, but price bounced back above the trigger",
         "price is sitting in mapped demand": "price is in demand",
         "price is sitting in mapped supply": "price is in supply",
         "price is pressing mapped resistance": "price is at resistance",
@@ -277,6 +281,19 @@ def action_board(state: dict, market_map: dict) -> dict:
         confidence = str(sig.get("confidence") or "LOW").upper()
         score = _safe_float(sig.get("score") or 50.0)
         action = str(sig.get("action") or "FLAT").upper()
+        live_anchor = _safe_float(sig.get("live_price") or sig.get("price"))
+        reclaim_confirmed = bool(sig.get("market_map_reclaim_confirmed"))
+        live_reclaim = bool(sig.get("market_map_live_reclaim"))
+        reclaim_lost = bool(sig.get("market_map_reclaim_lost"))
+        if long_trigger and live_anchor > 0 and live_anchor >= long_trigger:
+            live_reclaim = True
+        breakout_states = {
+            str(sig.get("orderbook_breakout_state") or "").upper(),
+            str(sig.get("orderbook_intracycle_breakout_state") or "").upper(),
+        }
+        bullish_breakout_live = bool(
+            {"CONFIRMED_BULLISH_BREAKOUT", "PERSISTENT_BULLISH_BREAKOUT"} & breakout_states
+        )
         asset_state = str(sig.get("asset_state") or "").upper()
         asset_state_label = str(sig.get("asset_state_label") or "").strip()
         next_unblock = str(sig.get("next_unblock_reason") or "").strip()
@@ -319,7 +336,6 @@ def action_board(state: dict, market_map: dict) -> dict:
             status = asset_state or "ARMED"
             label = asset_state_label or "Setup pending"
             headline = _primary_reason(next_unblock or current_logic or blocker) or "The setup is still gated."
-            live_anchor = _safe_float(sig.get("live_price") or sig.get("price"))
             if action == "LONG" and live_anchor > 0:
                 trigger = f"Long is tracking around {live_anchor:,.2f}"
             elif action == "SHORT" and live_anchor > 0:
@@ -361,6 +377,26 @@ def action_board(state: dict, market_map: dict) -> dict:
                 execution_note = "The thesis qualifies, but the bot still waits for confirmation, sizing, and clean fills before sending the order."
             else:
                 execution_note = "The thesis qualifies, but this market is still observation-only on the active venue."
+        elif bias == "BULLISH" and long_trigger and (reclaim_confirmed or bullish_breakout_live):
+            status = "WATCH_LONG"
+            label = "Bullish watch"
+            headline = (
+                "Daily bias is bullish, and the reclaim is on the board."
+                if not map_summary
+                else f"Daily bias is bullish, and {map_summary}."
+            )
+            if reclaim_lost and not live_reclaim:
+                trigger = f"Needs to hold back above {long_trigger:,.2f}"
+                execution_note = (
+                    "The bot saw the reclaim, but live price slipped back below the trigger. "
+                    "It wants that level held again before buying."
+                )
+            else:
+                trigger = f"Reclaim above {long_trigger:,.2f} is already on the board; waiting for cleaner continuation or pullback entry."
+                execution_note = (
+                    "The bot sees the reclaim, but it still wants stronger continuation, "
+                    "safer entry quality, and final sizing checks before buying."
+                )
         elif bias == "BULLISH" and bool(sig.get("market_map_block_longs")) and long_trigger:
             status = "WAIT_RECLAIM"
             label = "Wait for reclaim"

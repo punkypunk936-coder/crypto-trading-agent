@@ -1994,8 +1994,39 @@ def test_market_map_signal_respects_operator_daily_levels() -> None:
             assert signal.favor_longs is True
             assert signal.block_shorts is True
             assert signal.above_reclaim_levels == [71_500.0, 72_500.0]
+            assert signal.live_above_reclaim_levels == [71_500.0]
             assert signal.score_adjustment > 0
-            assert "daily reclaim confirmed" in signal.summary.lower()
+            assert "daily reclaim is holding" in signal.summary.lower()
+        finally:
+            market_map_module.DAILY_MARKET_MAP_JSON = original_path
+            market_map_module._get_daily_close = original_daily_close
+
+
+def test_market_map_signal_flags_reclaim_that_slipped_back_below_live_price() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        original_path = market_map_module.DAILY_MARKET_MAP_JSON
+        original_daily_close = market_map_module._get_daily_close
+        try:
+            market_map_module.DAILY_MARKET_MAP_JSON = Path(tmpdir) / "daily_market_map.json"
+            market_map_module._get_daily_close = lambda _coin, ttl_seconds=300: 256.52
+            market_map_module.save_market_map({
+                "date": "2026-04-21",
+                "coins": {
+                    "AMZN": {
+                        "bias": "BULLISH",
+                        "confidence": "HIGH",
+                        "supports": [250.0],
+                        "resistances": [253.36, 256.5],
+                        "daily_close_long_above": [253.36],
+                        "daily_close_short_below": [248.0],
+                    }
+                },
+            })
+            signal = market_map_module.get_market_map_signal("AMZN", current_price=253.03, closed_price=256.52)
+            assert signal.valid is True
+            assert signal.above_reclaim_levels == [253.36]
+            assert signal.live_above_reclaim_levels == []
+            assert "slipped back below reclaim" in signal.summary.lower()
         finally:
             market_map_module.DAILY_MARKET_MAP_JSON = original_path
             market_map_module._get_daily_close = original_daily_close
@@ -2203,6 +2234,60 @@ def test_dashboard_action_board_uses_asset_state_and_next_unblock_reason() -> No
     assert lead["coin"] == "GOOGL"
     assert lead["label"] == "Waiting confirmation"
     assert "confirming cycle" in lead["execution_note"].lower()
+
+
+def test_dashboard_action_board_shows_reclaim_watch_not_wait_reclaim_after_confirmation() -> None:
+    snapshot = build_dashboard_snapshot(
+        state={
+            "status": "online",
+            "last_cycle": "2026-04-21 07:57:30",
+            "cycle_number": 5889,
+            "positions": [],
+            "signals": {
+                "AMZN": {
+                    "action": "FLAT",
+                    "score": 41.5,
+                    "confidence": "LOW",
+                    "execution_mode": "tradable",
+                    "asset_state": "OBSERVING",
+                    "asset_state_label": "Observing",
+                    "decision_reason": "Breakout is confirmed, but the long still lacks clean continuation.",
+                    "flat_reason": "Equity spot: prior reclaim slipped back below the trigger; waiting for price to hold above reclaim again",
+                    "market_map_bias": "BULLISH",
+                    "market_map_block_longs": True,
+                    "market_map_reclaim_confirmed": True,
+                    "market_map_live_reclaim": False,
+                    "market_map_reclaim_lost": True,
+                    "market_map_summary": "auto bullish map; daily reclaim was confirmed, but live price slipped back below reclaim; price is sitting in mapped supply; price is pressing mapped resistance",
+                    "market_map_nearest_support": 250.0,
+                    "market_map_nearest_resistance": 253.36,
+                    "orderbook_breakout_state": "CONFIRMED_BULLISH_BREAKOUT",
+                    "orderbook_intracycle_breakout_state": "PERSISTENT_BULLISH_BREAKOUT",
+                    "live_price": 253.03,
+                }
+            },
+            "mode": "dry_run",
+            "config": {"coins": ["AMZN"]},
+        },
+        market_map={
+            "coins": {
+                "AMZN": {
+                    "bias": "BULLISH",
+                    "supports": [250.0],
+                    "resistances": [253.36, 256.5],
+                    "daily_close_long_above": [253.36],
+                }
+            }
+        },
+        trades=[],
+        server_timestamp="2026-04-21 07:57:33",
+    )
+    lead = snapshot["action_board"]["lead"]
+    assert lead["coin"] == "AMZN"
+    assert lead["status"] == "WATCH_LONG"
+    assert lead["label"] == "Bullish watch"
+    assert "hold back above 253.36" in lead["trigger"]
+    assert "slipped back below the trigger" in lead["execution_note"].lower()
 
 
 def test_dashboard_action_board_surfaces_scout_universe_summary() -> None:

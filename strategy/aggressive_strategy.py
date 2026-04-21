@@ -1746,7 +1746,24 @@ class AggressiveStrategy:
             if instrument_type == "index":
                 flat_parts.append("Index: waiting for macro confirmation")
             elif instrument_type == "equity":
-                flat_parts.append("Equity spot: waiting for reclaim / earnings-quality confirmation")
+                reclaim_confirmed = bool(getattr(market_map_signal, "above_reclaim_levels", [])) if market_map_signal else False
+                live_reclaim = bool(getattr(market_map_signal, "live_above_reclaim_levels", [])) if market_map_signal else False
+                breakout_state = str(getattr(orderbook_signal, "breakout_state", "NONE") or "NONE").upper()
+                bullish_breakout_live = breakout_state in {
+                    "PROBING_BULLISH_BREAKOUT",
+                    "CONFIRMED_BULLISH_BREAKOUT",
+                    "PERSISTENT_BULLISH_BREAKOUT",
+                }
+                if reclaim_confirmed and not live_reclaim:
+                    flat_parts.append(
+                        "Equity spot: prior reclaim slipped back below the trigger; waiting for price to hold above reclaim again"
+                    )
+                elif reclaim_confirmed or bullish_breakout_live:
+                    flat_parts.append(
+                        "Equity spot: reclaim is on the board; waiting for cleaner continuation, pullback quality, or earnings confirmation"
+                    )
+                else:
+                    flat_parts.append("Equity spot: waiting for reclaim / earnings-quality confirmation")
 
             if orderbook_guard_reason and orderbook_guard_reason not in flat_parts:
                 flat_parts.insert(0, orderbook_guard_reason)

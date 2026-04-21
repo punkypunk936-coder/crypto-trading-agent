@@ -1052,6 +1052,14 @@ class TradingAgent:
             "market_map_favor_shorts": getattr(market_map_signal, "favor_shorts", False) if market_map_signal else False,
             "market_map_block_longs": getattr(market_map_signal, "block_longs", False) if market_map_signal else False,
             "market_map_block_shorts": getattr(market_map_signal, "block_shorts", False) if market_map_signal else False,
+            "market_map_reclaim_confirmed": bool(getattr(market_map_signal, "above_reclaim_levels", [])) if market_map_signal else False,
+            "market_map_live_reclaim": bool(getattr(market_map_signal, "live_above_reclaim_levels", [])) if market_map_signal else False,
+            "market_map_reclaim_lost": (
+                bool(getattr(market_map_signal, "above_reclaim_levels", []))
+                and not bool(getattr(market_map_signal, "live_above_reclaim_levels", []))
+            ) if market_map_signal else False,
+            "market_map_breakdown_confirmed": bool(getattr(market_map_signal, "below_breakdown_levels", [])) if market_map_signal else False,
+            "market_map_live_breakdown": bool(getattr(market_map_signal, "live_below_breakdown_levels", [])) if market_map_signal else False,
             "market_map_daily_close": getattr(market_map_signal, "daily_close", 0.0) if market_map_signal else 0.0,
             "market_map_nearest_support": getattr(market_map_signal, "nearest_support", 0.0) if market_map_signal else 0.0,
             "market_map_nearest_resistance": getattr(market_map_signal, "nearest_resistance", 0.0) if market_map_signal else 0.0,

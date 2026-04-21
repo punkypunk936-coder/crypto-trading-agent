@@ -555,6 +555,8 @@ class MarketMapSignal:
     in_supply_zone: bool = False
     above_reclaim_levels: List[float] = field(default_factory=list)
     below_breakdown_levels: List[float] = field(default_factory=list)
+    live_above_reclaim_levels: List[float] = field(default_factory=list)
+    live_below_breakdown_levels: List[float] = field(default_factory=list)
     probing_above_reclaim_levels: List[float] = field(default_factory=list)
     probing_below_breakdown_levels: List[float] = field(default_factory=list)
     summary: str = ""
@@ -617,6 +619,8 @@ def get_market_map_signal(coin: str, current_price: float, closed_price: float =
     signal.in_supply_zone = supply_zone["low"] > 0 and supply_zone["low"] <= signal.current_price <= max(supply_zone["high"], supply_zone["low"])
     signal.above_reclaim_levels = [level for level in daily_reclaim if signal.daily_close >= level]
     signal.below_breakdown_levels = [level for level in daily_breakdown if signal.daily_close <= level]
+    signal.live_above_reclaim_levels = [level for level in daily_reclaim if signal.current_price >= level]
+    signal.live_below_breakdown_levels = [level for level in daily_breakdown if signal.current_price <= level]
     signal.probing_above_reclaim_levels = [level for level in daily_reclaim if signal.closed_price >= level]
     signal.probing_below_breakdown_levels = [level for level in daily_breakdown if signal.closed_price <= level]
 
@@ -666,13 +670,25 @@ def get_market_map_signal(coin: str, current_price: float, closed_price: float =
     signal.score_adjustment = round(max(-12.0, min(12.0, bias_score)), 2)
     parts: List[str] = [f"{signal.source.lower()} {signal.bias.lower()} map"]
     if signal.above_reclaim_levels:
-        parts.append("daily reclaim confirmed")
+        if signal.live_above_reclaim_levels:
+            parts.append("daily reclaim is holding")
+        else:
+            parts.append("daily reclaim was confirmed, but live price slipped back below reclaim")
     elif signal.probing_above_reclaim_levels:
-        parts.append("intraday reclaim in play")
+        if signal.live_above_reclaim_levels:
+            parts.append("intraday reclaim is live")
+        else:
+            parts.append("intraday reclaim in play")
     if signal.below_breakdown_levels:
-        parts.append("daily breakdown confirmed")
+        if signal.live_below_breakdown_levels:
+            parts.append("daily breakdown is holding")
+        else:
+            parts.append("daily breakdown was confirmed, but live price bounced back above breakdown")
     elif signal.probing_below_breakdown_levels:
-        parts.append("intraday breakdown in play")
+        if signal.live_below_breakdown_levels:
+            parts.append("intraday breakdown is live")
+        else:
+            parts.append("intraday breakdown in play")
     if signal.in_demand_zone:
         parts.append("price is sitting in mapped demand")
     if signal.in_supply_zone:
