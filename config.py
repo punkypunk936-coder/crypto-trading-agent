@@ -272,7 +272,8 @@ class TradingConfig:
     auto_promote_analysis_coins: bool = True
     enforce_active_venue_markets: bool = True
     dynamic_analysis_coins: List[str] = field(default_factory=list)
-    dynamic_analysis_auto_promote: bool = False
+    dynamic_analysis_auto_promote: bool = True
+    promote_analysis_before_activity: bool = True
     dynamic_market_cap_watchlist_enabled: bool = True
     dynamic_market_cap_min_usd: float = 1_000_000_000.0
     dynamic_market_cap_pages: int = 3

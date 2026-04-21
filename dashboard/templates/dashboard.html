@@ -284,6 +284,8 @@
     margin-bottom: 12px;
   }
   .asset-tab {
+    position: relative;
+    z-index: 1;
     display: inline-flex;
     align-items: center;
     gap: 8px;
@@ -349,6 +351,32 @@
     color: var(--text-secondary);
     font-size: 11px;
     line-height: 1.45;
+  }
+  .utility-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin-top: 14px;
+  }
+  .utility-card {
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 14px;
+    background: rgba(255,255,255,0.02);
+    padding: 14px;
+  }
+  .utility-title {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .utility-sub {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+    margin-bottom: 12px;
   }
   .map-card {
     border: 1px solid var(--border);
@@ -1327,7 +1355,8 @@
       text-align: left;
     }
     .asset-section-grid,
-    .market-map-grid {
+    .market-map-grid,
+    .utility-grid {
       grid-template-columns: 1fr;
     }
   }
@@ -1411,55 +1440,55 @@
   </div>
 </div>
 
-<!-- Ticker Search -->
 <div class="full-width">
-  <div class="card">
-    <div class="card-label">🔎 Ticker Search</div>
-    <div class="card-sub">Type any tracked ticker to see the agent's current read instantly.</div>
-    <div class="search-shell">
-      <div class="search-row">
-        <input
-          id="ticker-search-input"
-          class="search-input"
-          type="text"
-          placeholder="Search BTC, HYPE, GOOGL, TAO..."
-          autocomplete="off"
-          list="ticker-search-options"
-          oninput="handleTickerSearch(this.value)"
-        />
-        <datalist id="ticker-search-options"></datalist>
+  <details class="card details-card" id="tools-panel">
+    <summary class="card-label">🧰 Lookup Tools</summary>
+    <div class="utility-grid">
+      <div class="utility-card">
+        <div class="utility-title">Ticker Search</div>
+        <div class="utility-sub">Type any tracked ticker to pull the agent's current read instantly.</div>
+        <div class="search-shell">
+          <div class="search-row">
+            <input
+              id="ticker-search-input"
+              class="search-input"
+              type="text"
+              placeholder="Search BTC, HYPE, GOOGL, TAO..."
+              autocomplete="off"
+              list="ticker-search-options"
+              oninput="handleTickerSearch(this.value)"
+            />
+            <datalist id="ticker-search-options"></datalist>
+          </div>
+          <div class="search-hint" id="ticker-search-hint">Try a live ticker from the active universe or scout watchlist.</div>
+          <div id="ticker-search-result" class="search-result">
+            <div class="search-result-empty">Start typing a ticker and the dashboard will pull the agent's current thesis, trigger, and risk view for that market.</div>
+          </div>
+        </div>
       </div>
-      <div class="search-hint" id="ticker-search-hint">Try a live ticker from the active universe or scout watchlist.</div>
-      <div id="ticker-search-result" class="search-result">
-        <div class="search-result-empty">Start typing a ticker and the dashboard will pull the agent's current thesis, trigger, and risk view for that market.</div>
+      <div class="utility-card">
+        <div class="utility-title">Trade.xyz Volume</div>
+        <div class="utility-sub">Paste a wallet to check Hyperliquid fills against the live <span style="font-family:var(--mono);">dex=xyz</span> market universe.</div>
+        <div class="volume-shell">
+          <div class="volume-actions">
+            <input
+              id="tradexyz-wallet-input"
+              class="search-input"
+              type="text"
+              placeholder="0x..."
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button class="tool-btn" id="tradexyz-check-btn" onclick="lookupTradexyzVolume()">CHECK VOLUME</button>
+          </div>
+          <div id="tradexyz-status" class="volume-status">Volume checks run against Hyperliquid’s native fill history and then filter down to the current Trade.xyz market set.</div>
+          <div id="tradexyz-result" class="search-result">
+            <div class="search-result-empty">No wallet checked yet. Once you paste an address, the dashboard will show total Trade.xyz volume, fill count, and top traded markets.</div>
+          </div>
+        </div>
       </div>
     </div>
-  </div>
-</div>
-
-<!-- Trade.xyz Volume Checker -->
-<div class="full-width">
-  <div class="card">
-    <div class="card-label">📊 Trade.xyz Volume</div>
-    <div class="card-sub">Paste a wallet and the dashboard will check Hyperliquid fills against the live <span style="font-family:var(--mono);">dex=xyz</span> market universe.</div>
-    <div class="volume-shell">
-      <div class="volume-actions">
-        <input
-          id="tradexyz-wallet-input"
-          class="search-input"
-          type="text"
-          placeholder="0x..."
-          autocomplete="off"
-          spellcheck="false"
-        />
-        <button class="tool-btn" id="tradexyz-check-btn" onclick="lookupTradexyzVolume()">CHECK VOLUME</button>
-      </div>
-      <div id="tradexyz-status" class="volume-status">Volume checks run against Hyperliquid’s native fill history and then filter down to the current Trade.xyz market set.</div>
-      <div id="tradexyz-result" class="search-result">
-        <div class="search-result-empty">No wallet checked yet. Once you paste an address, the dashboard will show total Trade.xyz volume, fill count, and top traded markets.</div>
-      </div>
-    </div>
-  </div>
+  </details>
 </div>
 
 <!-- Action Board -->
@@ -1688,7 +1717,7 @@ function chooseBucket(current, groups) {
   return order.find((key) => groups && groups[key] && Number(groups[key].count || 0) > 0) || 'coin';
 }
 
-function renderBucketTabs(current, groups, clickHandler) {
+function renderBucketTabs(current, groups, scope) {
   const order = ['coin', 'equity'];
   const available = order.filter((key) => groups && groups[key] && Number(groups[key].count || 0) > 0);
   if (available.length <= 1) return '';
@@ -1696,12 +1725,21 @@ function renderBucketTabs(current, groups, clickHandler) {
     + available.map((key) => {
       const group = groups[key] || {};
       const active = key === current;
-      return '<button class="asset-tab' + (active ? ' active' : '') + '" onclick="' + clickHandler + '(' + JSON.stringify(key) + ')">'
+      return '<button type="button" class="asset-tab' + (active ? ' active' : '') + '" data-bucket-scope="' + esc(scope) + '" data-bucket-value="' + esc(key) + '">'
         + esc(bucketLabel(key))
         + '<span class="asset-tab-count">' + esc(String(group.count || 0)) + '</span>'
       + '</button>';
     }).join('')
     + '</div>';
+}
+
+function handleAssetBucketClick(scope, bucket) {
+  const normalizedScope = String(scope || '').trim().toLowerCase();
+  if (normalizedScope === 'market') {
+    setMarketMapBucket(bucket);
+    return;
+  }
+  setActionBoardBucket(bucket);
 }
 
 function setActionBoardBucket(bucket) {
@@ -1713,6 +1751,13 @@ function setMarketMapBucket(bucket) {
   marketMapBucket = String(bucket || 'coin');
   renderMarketMapSummary(latestMarketMapSummary || {}, latestMarketMap || { coins: {} });
 }
+
+document.addEventListener('click', (event) => {
+  const button = event.target.closest('.asset-tab[data-bucket-scope][data-bucket-value]');
+  if (!button) return;
+  event.preventDefault();
+  handleAssetBucketClick(button.dataset.bucketScope, button.dataset.bucketValue);
+});
 
 function humanizeKey(value) {
   return String(value == null ? '' : value)
@@ -1774,7 +1819,7 @@ function fallbackSearchItem(coin) {
   let trigger = 'Wait for a clearer thesis.';
   let executionNote = tradable
     ? 'This market can execute on the active venue once the thesis, sizing, and fills all clear.'
-    : 'This market is being watched, but it is not live-eligible on the active venue right now.';
+    : 'This market is being watched, but venue support or live market quality is not ready enough yet.';
 
   if (position) {
     const direction = String(position.direction || action || 'LONG').toUpperCase();
@@ -1800,7 +1845,7 @@ function fallbackSearchItem(coin) {
       : (longTrigger ? 'Best long trigger stays above ' + fmt(longTrigger) : 'Watching for a clean long trigger.');
     executionNote = tradable
       ? 'The thesis qualifies, but the bot still waits for confirmation, sizing, and clean fills before sending the order.'
-      : 'The thesis qualifies, but this market is still observation-only on the active venue.';
+      : 'The thesis qualifies, but venue support or live market quality is not ready enough yet.';
   } else if (action === 'SHORT') {
     status = 'READY_SHORT';
     label = 'Short thesis live';
@@ -1810,7 +1855,7 @@ function fallbackSearchItem(coin) {
       : (shortTrigger ? 'Best short trigger stays below ' + fmt(shortTrigger) : 'Watching for a clean short trigger.');
     executionNote = tradable
       ? 'The thesis qualifies, but the bot still waits for confirmation, sizing, and clean fills before sending the order.'
-      : 'The thesis qualifies, but this market is still observation-only on the active venue.';
+      : 'The thesis qualifies, but venue support or live market quality is not ready enough yet.';
   } else if (assetState) {
     status = assetState;
     label = assetStateLabel || humanizeKey(assetState);
@@ -1849,8 +1894,8 @@ function fallbackSearchItem(coin) {
   return {
     coin: ticker,
     tradable,
-    mode_badge: tradable ? 'LIVE' : 'WATCH',
-    mode_meta: tradable ? 'Live-eligible' : 'Observation-only',
+    mode_badge: tradable ? 'EXEC' : 'PENDING',
+    mode_meta: tradable ? 'Executable' : 'Support pending',
     mode_detail: tradable
       ? 'This market can execute on the active venue, but the bot still needs final entry checks to clear.'
       : 'The agent is tracking this market, but execution is blocked on the active venue right now.',
@@ -1906,8 +1951,8 @@ function renderTickerSearch(value) {
   const biasChip = '<span class="' + biasClass(item.bias) + '">' + esc(String(item.bias || 'NEUTRAL')) + '</span>';
   const statusChip = '<span class="review-chip">' + esc(String(item.label || 'Watching').toUpperCase()) + '</span>';
   const trackedLine = item.tradable
-    ? item.mode_detail || 'Live-eligible on the active venue.'
-    : item.mode_detail || 'Tracked only in watch mode right now.';
+    ? item.mode_detail || 'Executable on the active venue.'
+    : item.mode_detail || 'Support or live data is still pending.';
   const matchNote = found.match && found.match !== 'exact'
     ? 'Matched from ' + found.match + ' search on ' + item.coin + '.'
     : 'Exact live dashboard read for ' + item.coin + '.';
@@ -1923,7 +1968,7 @@ function renderTickerSearch(value) {
       + '<div class="token-detail"><span class="token-detail-label">Risk</span><div class="token-detail-value">' + esc(shortText(item.risk || item.map_summary || 'Stay patient until the map and order-flow align.', 140)) + '</div></div>'
     + '</div>'
     + (item.map_summary ? '<div class="search-summary"><strong>Daily view:</strong> ' + esc(shortText(item.map_summary, 180)) + '</div>' : '')
-    + '<div class="search-summary"><strong>Execution lane:</strong> ' + esc(item.mode_meta || (item.tradable ? 'Live-eligible' : 'Observation-only')) + ' • <strong>Lookup:</strong> ' + esc(matchNote) + '</div>';
+    + '<div class="search-summary"><strong>Execution lane:</strong> ' + esc(item.mode_meta || (item.tradable ? 'Executable' : 'Support pending')) + ' • <strong>Lookup:</strong> ' + esc(matchNote) + '</div>';
 }
 
 function handleTickerSearch(value) {
@@ -2117,7 +2162,7 @@ function renderMarketMapSummary(summary, marketMap) {
     html += '<div class="map-global-notes"><strong>Global notes:</strong> ' + esc(globalNotes) + '</div>';
   }
 
-  html += renderBucketTabs(marketMapBucket, groups, 'setMarketMapBucket');
+  html += renderBucketTabs(marketMapBucket, groups, 'market');
   html += '<div class="asset-bucket-note">' + esc(bucketDescription(marketMapBucket)) + '</div>';
 
   const selectedCoins = sortCoinsForBucket(selected.items || []);
@@ -2134,8 +2179,8 @@ function renderMarketMapSummary(summary, marketMap) {
     const modeLabel = isTradable ? 'LIVE' : 'WATCH';
     const modeClass = isTradable ? 'signal-mode-tradable' : 'signal-mode-watch';
     const modeNote = isTradable
-      ? 'Live-eligible on the active venue, but still needs a qualified thesis and clean execution.'
-      : 'Tracked only until the active venue promotes it.';
+      ? 'Executable on the active venue, but still needs a qualified thesis and clean execution.'
+      : 'Support or venue-quality checks are still pending.';
     const signalAction = String(signal.action || 'FLAT').toUpperCase();
     const signalState = String(signal.asset_state || '').toUpperCase();
     const shouldOpen = isTradable && (signalAction !== 'FLAT' || signalState === 'PENDING_ENTRY');
@@ -2300,14 +2345,14 @@ function renderActionBoard(board) {
   if (lead) metaBits.push('Best setup: ' + lead.coin + ' • ' + lead.label);
   meta.textContent = metaBits.join(' • ');
 
-  let html = renderBucketTabs(actionBoardBucket, groups, 'setActionBoardBucket');
+  let html = renderBucketTabs(actionBoardBucket, groups, 'action');
   html += '<div class="asset-bucket-note">' + esc(bucketDescription(actionBoardBucket)) + '</div>';
   html += '<div class="decision-board asset-section-stack">';
   if (tradableItems.length) {
     const tradableSub = pendingCount > 0
-      ? 'These names are live-eligible on the active venue right now. Some entries are already working passively while the bot waits for fills or a clean escalation.'
-      : 'These names are live-eligible on the active venue right now.';
-    html += '<div><div class="asset-section-header"><div class="asset-section-title">Tradable Now</div><div class="asset-section-sub">' + esc(tradableSub) + '</div></div><div class="asset-section-grid">'
+      ? 'These names can execute now. Some entries are already working passively while the bot waits for fills or a clean escalation.'
+      : 'These names can execute now as soon as the thesis and final fill checks align.';
+    html += '<div><div class="asset-section-header"><div class="asset-section-title">Executable Now</div><div class="asset-section-sub">' + esc(tradableSub) + '</div></div><div class="asset-section-grid">'
     + tradableItems.map((item) => {
       const status = String(item.status || 'NO_SETUP');
       const highlightBase = status.includes('LONG')
@@ -2330,7 +2375,7 @@ function renderActionBoard(board) {
             + '<div class="token-detail"><span class="token-detail-label">Entry status</span><div class="token-detail-value">' + esc(shortText(item.execution_note || item.mode_detail || 'Still waiting for final entry checks.', 150)) + '</div></div>'
             + '<div class="token-detail"><span class="token-detail-label">Trigger</span><div class="token-detail-value">' + esc(shortText(item.trigger || 'Wait for a cleaner setup.', 120)) + '</div></div>'
             + '<div class="token-detail"><span class="token-detail-label">Risk</span><div class="token-detail-value">' + esc(shortText(item.risk || item.map_summary || 'Stay patient until the map and order-flow align.', 120)) + '</div></div>'
-            + '<div class="token-detail"><span class="token-detail-label">Execution lane</span><div class="token-detail-value">' + esc(item.mode_meta || 'Live-eligible') + '</div></div>'
+            + '<div class="token-detail"><span class="token-detail-label">Execution lane</span><div class="token-detail-value">' + esc(item.mode_meta || 'Executable') + '</div></div>'
           + '</div>'
           + (item.map_summary ? '<div class="decision-rl-note"><strong>Daily view:</strong> ' + esc(shortText(item.map_summary, 130)) + '</div>' : '')
         + '</div>'
@@ -2338,7 +2383,7 @@ function renderActionBoard(board) {
     }).join('')
     + '</div></div>';
   } else {
-    html += '<div class="empty-state">No live-eligible assets are active in this lane right now.</div>';
+    html += '<div class="empty-state">No executable assets are active in this lane right now.</div>';
   }
 
   const scoutFootnote = actionBoardBucket === 'coin' && scoutCount > 0
@@ -2348,26 +2393,26 @@ function renderActionBoard(board) {
     : '';
 
   if (observationItems.length) {
-    html += '<div><div class="asset-section-header"><div class="asset-section-title">Observation Only</div><div class="asset-section-sub">These names are still being read carefully, but execution is blocked until the active venue supports them cleanly.</div></div>' + scoutFootnote + '<div class="asset-section-grid">'
+    html += '<details class="card details-card"><summary class="asset-section-header"><div class="asset-section-title">Support Pending</div><div class="asset-section-sub">These names are still being tracked, but venue support or live market quality is not ready enough yet.</div></summary>' + scoutFootnote + '<div class="asset-section-grid">'
       + observationItems.map((item, index) => '<details class="decision-card decision-card-watch decision-box"' + (index === 0 ? ' open' : '') + '>'
         + '<summary class="decision-summary">'
           + '<div class="decision-summary-main">'
-            + '<div class="token-line"><div class="decision-coin">' + esc(item.coin) + '</div><span class="signal-mode-watch">' + esc(item.mode_badge || 'WATCH') + '</span><span class="review-chip">' + esc(String(item.label || 'Watch').toUpperCase()) + '</span></div>'
+            + '<div class="token-line"><div class="decision-coin">' + esc(item.coin) + '</div><span class="signal-mode-watch">' + esc(item.mode_badge || 'PENDING') + '</span><span class="review-chip">' + esc(String(item.label || 'Watch').toUpperCase()) + '</span></div>'
             + '<div class="token-subline">' + esc(shortText(item.execution_note || item.headline || item.mode_detail || 'Tracked only right now.', 150)) + '</div>'
           + '</div>'
-          + '<div class="decision-summary-side"><div class="token-preview">' + esc(shortText(item.trigger || item.mode_meta || 'Observation only', 90)) + '</div><span class="token-chevron">⌄</span></div>'
+          + '<div class="decision-summary-side"><div class="token-preview">' + esc(shortText(item.trigger || item.mode_meta || 'Support pending', 90)) + '</div><span class="token-chevron">⌄</span></div>'
         + '</summary>'
         + '<div class="decision-body">'
           + '<div class="token-detail-grid">'
-            + '<div class="token-detail"><span class="token-detail-label">Why not live</span><div class="token-detail-value">' + esc(shortText(item.mode_detail || 'Execution is blocked on the active venue right now.', 140)) + '</div></div>'
+            + '<div class="token-detail"><span class="token-detail-label">Why not executable</span><div class="token-detail-value">' + esc(shortText(item.mode_detail || 'Venue support or live market quality is not ready enough yet.', 140)) + '</div></div>'
             + '<div class="token-detail"><span class="token-detail-label">Current read</span><div class="token-detail-value">' + esc(shortText(item.execution_note || item.headline || 'Still being observed carefully.', 140)) + '</div></div>'
             + '<div class="token-detail"><span class="token-detail-label">Next trigger</span><div class="token-detail-value">' + esc(shortText(item.trigger || 'Wait for venue and thesis alignment.', 120)) + '</div></div>'
           + '</div>'
         + '</div>'
       + '</details>').join('')
-      + '</div></div>';
+      + '</div></details>';
   } else if (actionBoardBucket === 'coin' && scoutCount > 0) {
-    html += '<div><div class="asset-section-header"><div class="asset-section-title">Observation Only</div><div class="asset-section-sub">No blocked names need surfacing right now, but the broader scout lane is still watching the large-cap universe in the background.</div></div>' + scoutFootnote + '</div>';
+    html += '<details class="card details-card"><summary class="asset-section-header"><div class="asset-section-title">Support Pending</div><div class="asset-section-sub">No blocked names need surfacing right now, but the broader scout lane is still watching the large-cap universe in the background.</div></summary>' + scoutFootnote + '</details>';
   }
   html += '</div>';
   body.innerHTML = html;

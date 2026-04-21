@@ -412,7 +412,7 @@ def action_board(state: dict, market_map: dict) -> dict:
             if tradable:
                 execution_note = "The thesis qualifies, but the bot still waits for confirmation, sizing, and clean fills before sending the order."
             else:
-                execution_note = "The thesis qualifies, but this market is still observation-only on the active venue."
+                execution_note = "The thesis qualifies, but venue support or live market quality is not ready enough to execute yet."
         elif action == "SHORT":
             status = "READY_SHORT"
             label = "Short thesis live"
@@ -424,7 +424,7 @@ def action_board(state: dict, market_map: dict) -> dict:
             if tradable:
                 execution_note = "The thesis qualifies, but the bot still waits for confirmation, sizing, and clean fills before sending the order."
             else:
-                execution_note = "The thesis qualifies, but this market is still observation-only on the active venue."
+                execution_note = "The thesis qualifies, but venue support or live market quality is not ready enough to execute yet."
         elif bias == "BULLISH" and long_trigger and (reclaim_confirmed or bullish_breakout_live):
             status = "WATCH_LONG"
             label = "Bullish watch"
@@ -508,15 +508,15 @@ def action_board(state: dict, market_map: dict) -> dict:
             risk = map_summary or ""
 
         if tradable:
-            mode_label = "TRADEABLE NOW"
-            mode_meta = "Live-eligible"
-            mode_badge = "LIVE"
-            mode_detail = "This market can execute on the active venue, but the bot still needs final entry checks to clear."
+            mode_label = "EXECUTABLE"
+            mode_meta = "Executable"
+            mode_badge = "EXEC"
+            mode_detail = "This market can execute on the active venue as soon as the thesis, sizing, and fill-quality checks align."
         else:
-            mode_label = "OBSERVATION ONLY"
-            mode_meta = "Observation-only"
-            mode_badge = "WATCH"
-            mode_detail = "The agent is tracking this market, but execution is blocked on the active venue right now."
+            mode_label = "SUPPORT PENDING"
+            mode_meta = "Support pending"
+            mode_badge = "PENDING"
+            mode_detail = "The agent is tracking this market, but venue support or live data quality is not ready enough to execute it yet."
 
         items.append(
             {

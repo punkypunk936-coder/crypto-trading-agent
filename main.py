@@ -162,6 +162,7 @@ def enforce_trade_universe(
         raise ValueError("No supported trading symbols are available for the configured venues")
 
     enforce_active = bool(getattr(config.trading, "enforce_active_venue_markets", True))
+    promote_before_activity = bool(getattr(config.trading, "promote_analysis_before_activity", True))
 
     def _is_active_for_execution(coin: str) -> bool:
         if not enforce_active:
@@ -179,36 +180,53 @@ def enforce_trade_universe(
         )
     inactive_configured = [coin for coin in active if coin in supported and not _is_active_for_execution(coin)]
     if inactive_configured:
-        log.info(
-            "Configured symbols stay observation-only until the venue prints fresh activity: "
-            + ", ".join(inactive_configured)
-        )
+        if promote_before_activity:
+            log.info(
+                "Arming configured symbols for execution even while the venue is still warming up: "
+                + ", ".join(inactive_configured)
+            )
+        else:
+            log.info(
+                "Configured symbols stay observation-only until the venue prints fresh activity: "
+                + ", ".join(inactive_configured)
+            )
 
     promoted = []
+    armed_pending_activity = []
     if getattr(config.trading, "auto_promote_analysis_coins", False):
         analysis = _normalise_coin_list(getattr(config.trading, "analysis_coins", []) or [])
         if not getattr(config.trading, "dynamic_analysis_auto_promote", False):
             dynamic_set = {str(coin).upper() for coin in getattr(config.trading, "dynamic_analysis_coins", []) or []}
             analysis = [coin for coin in analysis if coin not in dynamic_set]
         for coin in analysis:
-            if coin in supported and coin not in active and _is_active_for_execution(coin):
+            if coin in supported and coin not in active and (_is_active_for_execution(coin) or promote_before_activity):
                 promoted.append(coin)
+                if not _is_active_for_execution(coin):
+                    armed_pending_activity.append(coin)
         if promoted:
             log.info(
                 "Promoting watchlist symbols into the tradeable universe on active venue(s): "
                 + ", ".join(promoted)
             )
+        if armed_pending_activity:
+            log.info(
+                "These promoted symbols are executable immediately, but the venue is still cold so the live data/execution gates must still clear: "
+                + ", ".join(armed_pending_activity)
+            )
         deferred = [
             coin for coin in analysis
-            if coin not in active and (coin not in supported or not _is_active_for_execution(coin))
+            if coin not in active and coin not in supported
         ]
         if deferred:
             log.info(
-                "Keeping watchlist symbols in observation mode until a connected venue supports them and prints fresh activity: "
+                "Keeping watchlist symbols in observation mode until a connected venue supports them: "
                 + ", ".join(deferred)
             )
 
-    config.trading.coins = [coin for coin in active if coin in supported and _is_active_for_execution(coin)] + promoted
+    config.trading.coins = [
+        coin for coin in active
+        if coin in supported and (_is_active_for_execution(coin) or promote_before_activity)
+    ] + promoted
     return config.trading.coins
 
 
