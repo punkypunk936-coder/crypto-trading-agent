@@ -126,6 +126,21 @@ GOLD_BEARISH_KEYWORDS: Dict[str, float] = {
     "risk-on": 12, "profit taking": 10, "gold sell-off": 22,
 }
 
+EQUITY_BULLISH_KEYWORDS: Dict[str, float] = {
+    "beats": 18, "beat": 14, "tops estimates": 18, "raises guidance": 22,
+    "guidance raised": 22, "upgraded": 14, "upgrade": 12,
+    "growth accelerates": 16, "strong demand": 14, "shares rise": 12,
+    "stock rises": 12, "shares gain": 12, "stock gains": 12,
+    "soars": 16, "jumps": 14, "surges": 14,
+}
+
+EQUITY_BEARISH_KEYWORDS: Dict[str, float] = {
+    "misses": 18, "miss": 14, "cuts guidance": 22, "guidance cut": 22,
+    "downgraded": 14, "downgrade": 12, "growth slows": 16,
+    "weak demand": 14, "shares fall": 12, "stock falls": 12,
+    "shares drop": 12, "stock drops": 12, "slides": 14, "slumps": 16,
+}
+
 # Bullish/bearish keyword weights
 BULLISH_KEYWORDS: Dict[str, float] = {
     # Strong
@@ -209,6 +224,39 @@ MACRO_NEWS_QUERIES: Dict[str, str] = {
     "VIX": "VIX OR volatility index OR stock market volatility",
 }
 
+ASSET_NEWS_PROFILES: Dict[str, Dict[str, List[str]]] = {
+    "BTC": {"primary": ["bitcoin", "btc"], "context": ["spot etf", "miners", "on-chain"]},
+    "ETH": {"primary": ["ethereum", "eth"], "context": ["ether", "staking", "layer 2"]},
+    "SOL": {"primary": ["solana", "sol"], "context": ["validator", "solana ecosystem"]},
+    "HYPE": {"primary": ["hyperliquid", "hype"], "context": ["perp dex", "hyperliquid protocol"]},
+    "TAO": {"primary": ["bittensor", "tao"], "context": ["subnet", "ai network"]},
+    "XRP": {"primary": ["xrp", "ripple"], "context": ["ripple labs"]},
+    "BNB": {"primary": ["bnb", "binance coin"], "context": ["binance"]},
+    "DOGE": {"primary": ["dogecoin", "doge"], "context": ["memecoin"]},
+    "ADA": {"primary": ["cardano", "ada"], "context": ["hoskinson"]},
+    "BCH": {"primary": ["bitcoin cash", "bch"], "context": []},
+    "LINK": {"primary": ["chainlink"], "context": ["oracle network", "$link"]},
+    "TRX": {"primary": ["tron", "trx"], "context": ["justin sun"]},
+    "SP500": {"primary": ["s&p 500", "sp500", "spx"], "context": ["wall street", "u.s. stocks", "stock market", "equities"]},
+    "XAU": {"primary": ["gold", "bullion", "xau", "gold price", "spot gold"], "context": ["treasury yields", "central bank", "dollar"]},
+    "AAPL": {"primary": ["apple", "aapl"], "context": ["iphone", "ios", "mac", "tim cook", "services"]},
+    "AMZN": {"primary": ["amazon", "amzn"], "context": ["aws", "prime", "kindle", "e-commerce"]},
+    "GOOGL": {"primary": ["alphabet", "google", "googl"], "context": ["youtube", "android", "gemini", "cloud"]},
+    "META": {"primary": ["meta"], "context": ["facebook", "instagram", "whatsapp", "reels"]},
+    "MSFT": {"primary": ["microsoft", "msft"], "context": ["azure", "copilot", "windows", "office", "satya nadella"]},
+    "TSLA": {"primary": ["tesla", "tsla"], "context": ["musk", "deliveries", "robotaxi", "ev"]},
+    "INTC": {"primary": ["intel", "intc"], "context": ["foundry", "xeon", "gaudi", "chipmaker"]},
+    "HIMS": {"primary": ["hims", "hims & hers", "hims and hers"], "context": ["telehealth", "glp-1", "weight loss", "subscription"]},
+    "BRENT": {"primary": ["brent", "oil"], "context": ["opec", "crude"]},
+    "WTI": {"primary": ["wti", "oil"], "context": ["opec", "crude"]},
+    "CL": {"primary": ["wti", "oil"], "context": ["opec", "crude"]},
+    "NDX": {"primary": ["nasdaq", "ndx"], "context": ["tech stocks"]},
+    "DJI": {"primary": ["dow jones", "dji", "dow"], "context": ["industrials"]},
+    "VIX": {"primary": ["vix", "volatility index"], "context": ["stock market volatility"]},
+}
+
+RELEVANCE_THRESHOLD = 0.35
+
 
 def _backoff_active(key: str) -> bool:
     return time.time() < float(_source_backoff.get(key, 0.0) or 0.0)
@@ -267,6 +315,63 @@ def _fetch_google_news_headlines(query: str, *, limit: int = 20) -> List[str]:
     resp = requests.get(GOOGLE_NEWS_RSS_URL, params=params, timeout=8, headers=REQUEST_HEADERS)
     resp.raise_for_status()
     return _parse_rss_titles(resp.content, limit=limit)
+
+
+def _token_present(text: str, token: str) -> bool:
+    token = str(token or "").strip().lower()
+    if not token:
+        return False
+    if re.search(r"[a-z0-9]", token) and " " not in token and all(ch.isalnum() for ch in token):
+        return re.search(rf"(?<![a-z0-9]){re.escape(token)}(?![a-z0-9])", text) is not None
+    return token in text
+
+
+def _headline_relevance(title: str, coin: str) -> float:
+    lower = str(title or "").lower()
+    profile = ASSET_NEWS_PROFILES.get(str(coin or "").upper(), {})
+    primary_terms = list(profile.get("primary") or [])
+    context_terms = list(profile.get("context") or [])
+
+    if not primary_terms and not context_terms:
+        # Keep the old behavior for unmapped assets instead of inventing false strictness.
+        return 1.0
+
+    primary_hits = sum(1 for term in primary_terms if _token_present(lower, term))
+    context_hits = sum(1 for term in context_terms if _token_present(lower, term))
+    if primary_hits <= 0 and context_hits <= 0:
+        return 0.0
+
+    relevance = 0.0
+    if primary_hits > 0:
+        relevance += 0.55 + min(0.25, 0.12 * max(0, primary_hits - 1))
+    if context_hits > 0:
+        relevance += 0.15 + min(0.15, 0.08 * max(0, context_hits - 1))
+    if primary_hits == 0 and context_hits > 0:
+        relevance -= 0.15
+    return max(0.0, min(1.0, relevance))
+
+
+def _filter_relevant_headlines(headlines: List[str], coin: str) -> List[tuple[str, float]]:
+    relevant: List[tuple[str, float]] = []
+    for title in headlines:
+        relevance = _headline_relevance(title, coin)
+        if relevance >= RELEVANCE_THRESHOLD:
+            relevant.append((title, relevance))
+    return relevant
+
+
+def _neutral_asset_specific_signal(coin: str, *, context: str) -> NewsSignal:
+    return NewsSignal(
+        coin=coin,
+        score=50.0,
+        raw_sentiment=0.0,
+        article_count=0,
+        velocity="LOW",
+        top_headlines=[],
+        is_extreme=False,
+        valid=True,
+        error=f"no asset-specific headlines ({context})",
+    )
 
 
 def get_news_signal(coin: str, auth_token: str = "") -> NewsSignal:
@@ -352,25 +457,28 @@ def _fetch_macro_news(coin: str) -> NewsSignal:
                           top_headlines=[], is_extreme=False,
                           valid=False, error=error)
 
-    if not headlines:
-        return NewsSignal(coin=coin, score=50.0, raw_sentiment=0.0,
-                          article_count=0, velocity="LOW",
-                          top_headlines=[], is_extreme=False, valid=True)
+    relevant_headlines = _filter_relevant_headlines(headlines, coin)
+    if not relevant_headlines:
+        log.info(f"[{coin}] Macro news returned headlines, but none were asset-specific enough to trust")
+        return _neutral_asset_specific_signal(coin, context="macro/equity flow")
 
     scores = []
-    for title in headlines:
+    weighted: List[tuple[str, float, float]] = []
+    for title, relevance in relevant_headlines:
         score = _score_macro_headline(title, coin=coin)
-        scores.append(score)
+        weighted_score = score * (0.65 + (0.35 * relevance))
+        scores.append(weighted_score)
+        weighted.append((title, weighted_score, relevance))
 
     raw = sum(scores) / len(scores) if scores else 0.0
     indicator_score = (raw + 100) / 2   # map -100…+100 → 0…100
 
-    count = len(headlines)
+    count = len(relevant_headlines)
     velocity = "EXTREME" if count >= 15 else "HIGH" if count >= 10 else "NORMAL" if count >= 5 else "LOW"
     is_extreme = abs(raw) >= 40 or velocity == "EXTREME"
 
-    top = sorted(zip(headlines, scores), key=lambda x: abs(x[1]), reverse=True)
-    top_headlines = [h for h, _ in top[:3]]
+    top = sorted(weighted, key=lambda x: abs(x[1]), reverse=True)
+    top_headlines = [headline for headline, _, _ in top[:3]]
 
     log.info(
         f"[{coin}] Macro news: {count} headlines | raw={raw:+.1f} | "
@@ -413,6 +521,13 @@ def _score_macro_headline(title: str, coin: str = "") -> float:
             if kw in lower:
                 score += weight
         for kw, weight in GOLD_BEARISH_KEYWORDS.items():
+            if kw in lower:
+                score -= weight
+    if coin.upper() in {"AAPL", "AMZN", "GOOGL", "META", "MSFT", "TSLA", "INTC", "HIMS"}:
+        for kw, weight in EQUITY_BULLISH_KEYWORDS.items():
+            if kw in lower:
+                score += weight
+        for kw, weight in EQUITY_BEARISH_KEYWORDS.items():
             if kw in lower:
                 score -= weight
     # S&P specific boost
@@ -504,8 +619,24 @@ def _fetch_and_score(coin: str, auth_token: str = "") -> NewsSignal:
                           top_headlines=[], is_extreme=False,
                           valid=False, error=error)
 
+    filtered_items = [
+        (item, _headline_relevance(item.title, coin))
+        for item in items
+    ]
+    filtered_items = [
+        (item, relevance) for item, relevance in filtered_items
+        if relevance >= RELEVANCE_THRESHOLD
+    ]
+    if not filtered_items:
+        log.info(f"[{coin}] News returned headlines, but none were asset-specific enough to trust")
+        return _neutral_asset_specific_signal(coin, context="headline flow")
+
     # Average headline sentiment
-    scores = [it.sentiment_score for it in items]
+    items = [item for item, _ in filtered_items]
+    scores = [
+        item.sentiment_score * (0.65 + (0.35 * relevance))
+        for item, relevance in filtered_items
+    ]
     raw    = sum(scores) / len(scores) if scores else 0.0
 
     # HYPE: boost if Hyperliquid-specific positive/negative news found

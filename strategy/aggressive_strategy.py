@@ -1728,11 +1728,14 @@ class AggressiveStrategy:
                     flat_parts.append("3-candle trend flat")
 
             # Mixed signals: news vs technicals
-            if news_signal and news_signal.valid and news_signal.article_count > 0:
-                tech_dir = "LONG" if raw_score > 50 else "SHORT"
-                news_dir = "LONG" if news_signal.score > 55 else ("SHORT" if news_signal.score < 45 else "NEUTRAL")
-                if tech_dir != news_dir and news_dir != "NEUTRAL":
-                    flat_parts.append(f"News ({news_dir}) vs technicals ({tech_dir}) conflict")
+            if news_signal and news_signal.valid:
+                if getattr(news_signal, "article_count", 0) <= 0 and "asset-specific" in str(getattr(news_signal, "error", "") or ""):
+                    flat_parts.append("News: no asset-specific flow confirmed yet")
+                elif news_signal.article_count > 0:
+                    tech_dir = "LONG" if raw_score > 50 else "SHORT"
+                    news_dir = "LONG" if news_signal.score > 55 else ("SHORT" if news_signal.score < 45 else "NEUTRAL")
+                    if tech_dir != news_dir and news_dir != "NEUTRAL":
+                        flat_parts.append(f"News ({news_dir}) vs technicals ({tech_dir}) conflict")
 
             # Regime mixed
             if regimes and regimes.valid and regimes.dominant_regime in ("MIXED", "ABSORPTION"):

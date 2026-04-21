@@ -928,6 +928,102 @@ def test_crypto_news_falls_back_to_google_when_cryptopanic_is_unavailable() -> N
         news_module._source_backoff.update(original_backoff)
 
 
+def test_macro_news_filters_irrelevant_cross_ticker_headlines() -> None:
+    class _Resp:
+        def __init__(self, status_code: int, *, content: bytes = b""):
+            self.status_code = status_code
+            self.content = content
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise requests.HTTPError(f"{self.status_code} boom")
+
+    import requests
+
+    original_get = news_module.requests.get
+    original_cache = dict(news_module._cache)
+    original_backoff = dict(news_module._source_backoff)
+    try:
+        news_module._cache.clear()
+        news_module._source_backoff.clear()
+
+        def fake_get(url, params=None, **kwargs):
+            if "feeds.finance.yahoo.com" in url:
+                return _Resp(404)
+            if "news.google.com" in url:
+                return _Resp(
+                    200,
+                    content=(
+                        b'<?xml version="1.0"?><rss><channel>'
+                        b"<item><title>Tim Cook names successor as he steps down as Apple CEO</title></item>"
+                        b"<item><title>Amazon stock rises as AWS growth accelerates</title></item>"
+                        b"</channel></rss>"
+                    ),
+                )
+            raise AssertionError(f"unexpected url {url}")
+
+        news_module.requests.get = fake_get
+        signal = news_module.get_news_signal("AMZN", auth_token="")
+        assert signal.valid is True
+        assert signal.article_count == 1
+        assert signal.top_headlines == ["Amazon stock rises as AWS growth accelerates"]
+        assert signal.score > 50.0
+    finally:
+        news_module.requests.get = original_get
+        news_module._cache.clear()
+        news_module._cache.update(original_cache)
+        news_module._source_backoff.clear()
+        news_module._source_backoff.update(original_backoff)
+
+
+def test_macro_news_returns_neutral_when_no_asset_specific_headlines_exist() -> None:
+    class _Resp:
+        def __init__(self, status_code: int, *, content: bytes = b""):
+            self.status_code = status_code
+            self.content = content
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise requests.HTTPError(f"{self.status_code} boom")
+
+    import requests
+
+    original_get = news_module.requests.get
+    original_cache = dict(news_module._cache)
+    original_backoff = dict(news_module._source_backoff)
+    try:
+        news_module._cache.clear()
+        news_module._source_backoff.clear()
+
+        def fake_get(url, params=None, **kwargs):
+            if "feeds.finance.yahoo.com" in url:
+                return _Resp(404)
+            if "news.google.com" in url:
+                return _Resp(
+                    200,
+                    content=(
+                        b'<?xml version="1.0"?><rss><channel>'
+                        b"<item><title>Tim Cook names successor as he steps down as Apple CEO</title></item>"
+                        b"<item><title>Meta boosts AI capex for next year</title></item>"
+                        b"</channel></rss>"
+                    ),
+                )
+            raise AssertionError(f"unexpected url {url}")
+
+        news_module.requests.get = fake_get
+        signal = news_module.get_news_signal("AMZN", auth_token="")
+        assert signal.valid is True
+        assert signal.article_count == 0
+        assert signal.score == 50.0
+        assert "asset-specific" in signal.error
+    finally:
+        news_module.requests.get = original_get
+        news_module._cache.clear()
+        news_module._cache.update(original_cache)
+        news_module._source_backoff.clear()
+        news_module._source_backoff.update(original_backoff)
+
+
 def test_market_data_reuses_stale_yahoo_candles_when_live_fetch_fails() -> None:
     import requests
 
@@ -4415,6 +4511,10 @@ def run_all() -> None:
     print("PASS probing breakout guard")
     test_crypto_news_falls_back_to_google_when_cryptopanic_is_unavailable()
     print("PASS crypto news fallback")
+    test_macro_news_filters_irrelevant_cross_ticker_headlines()
+    print("PASS macro news relevance filter")
+    test_macro_news_returns_neutral_when_no_asset_specific_headlines_exist()
+    print("PASS macro news neutral fallback")
     test_market_data_reuses_stale_yahoo_candles_when_live_fetch_fails()
     print("PASS stale market data fallback")
     test_supported_hyperliquid_market_does_not_fallback_to_yahoo_when_venue_is_empty()
