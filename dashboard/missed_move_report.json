@@ -1,17 +1,45 @@
 {
   "classifications": {
     "CORRECT_PASS": 109,
-    "GOOD_TRADE": 1,
-    "MISSED_WIN": 102
+    "GOOD_TRADE": 2,
+    "MISSED_WIN": 104
   },
   "data_dir": "/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime",
-  "decision_rows": 424,
-  "episodes": 327,
-  "generated_at": 1776789109,
+  "decision_rows": 458,
+  "episodes": 361,
+  "generated_at": 1776821791,
   "horizon_minutes": 720,
   "interval": "5m",
-  "labeled_episodes": 212,
+  "labeled_episodes": 215,
   "recent_missed_moves": [
+    {
+      "action": "LONG",
+      "breakout": "confirmed_bullish_breakout",
+      "coin": "HIMS",
+      "interaction": "at_support",
+      "probability": 0.95,
+      "recorded_at": "2026-04-22 00:08:03",
+      "regime": "breakout",
+      "risk_reward_ratio": 3.95,
+      "score": 100.0,
+      "stage": "risk_rejected",
+      "summary": "Thesis high: strong support defense is holding beneath price; daily breakout is already confirmed; breakout regime supports follow-through",
+      "ts": 1776796683.7947452
+    },
+    {
+      "action": "LONG",
+      "breakout": "confirmed_bullish_breakout",
+      "coin": "HIMS",
+      "interaction": "at_support",
+      "probability": 0.95,
+      "recorded_at": "2026-04-21 23:51:41",
+      "regime": "breakout",
+      "risk_reward_ratio": 3.48,
+      "score": 100.0,
+      "stage": "signal_streak_wait",
+      "summary": "Thesis high: strong support defense is holding beneath price; daily breakout is already confirmed; breakout regime supports follow-through",
+      "ts": 1776795701.794348
+    },
     {
       "action": "LONG",
       "breakout": "confirmed_bullish_breakout",
@@ -123,41 +151,13 @@
       "stage": "observation_only",
       "summary": "Thesis high: strong support defense is holding beneath price; daily breakout is already confirmed; breakout regime supports follow-through",
       "ts": 1776613213.442533
-    },
-    {
-      "action": "LONG",
-      "breakout": "none",
-      "coin": "TRX",
-      "interaction": "at_support",
-      "probability": 0.95,
-      "recorded_at": "2026-04-19 20:17:02",
-      "regime": "trend",
-      "risk_reward_ratio": 2.34,
-      "score": 100.0,
-      "stage": "observation_only",
-      "summary": "Thesis high: strong support defense is holding beneath price; support-defense setup allows a range low reclaim before full breakout confirmation; trend regime supports follow-through",
-      "ts": 1776610022.739965
-    },
-    {
-      "action": "LONG",
-      "breakout": "confirmed_bullish_breakout",
-      "coin": "XLM",
-      "interaction": "at_support",
-      "probability": 0.95,
-      "recorded_at": "2026-04-19 19:32:57",
-      "regime": "breakout",
-      "risk_reward_ratio": 2.93,
-      "score": 100.0,
-      "stage": "observation_only",
-      "summary": "Thesis high: strong support defense is holding beneath price; daily breakout is already confirmed; breakout regime supports follow-through",
-      "ts": 1776607377.185718
     }
   ],
   "summary": {
     "bad_trade_count": 0,
     "correct_pass_count": 109,
-    "good_trade_count": 1,
-    "missed_win_count": 102
+    "good_trade_count": 2,
+    "missed_win_count": 104
   },
   "target_r": 0.25,
   "top_blockers": [
@@ -171,7 +171,7 @@
     },
     {
       "blocker": "Thesis high: strong support defense is holding beneath price; daily breakout is already confirmed; breakout regime supports follow-through",
-      "misses": 14
+      "misses": 16
     },
     {
       "blocker": "Thesis high: strong support defense is holding beneath price; background orderbook feed shows the breakout holding between cycles; breakout regime supports follow-through",
@@ -264,7 +264,7 @@
   ],
   "top_missed_stages": [
     {
-      "misses": 26,
+      "misses": 27,
       "stage": "signal_streak_wait"
     },
     {
@@ -286,6 +286,10 @@
     {
       "misses": 4,
       "stage": "guardrails_flat"
+    },
+    {
+      "misses": 1,
+      "stage": "risk_rejected"
     }
   ]
 }
