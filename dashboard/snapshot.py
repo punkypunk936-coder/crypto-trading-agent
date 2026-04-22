@@ -5,6 +5,7 @@ Shared dashboard payload builder used by the local Flask UI and remote sync.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import datetime
 from typing import Any, Iterable
 
@@ -142,6 +143,17 @@ def _safe_float(value: Any) -> float:
         return 0.0
 
 
+def _safe_int(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except Exception:
+        return 0
+
+
+def _clamp(value: float, lower: float, upper: float) -> float:
+    return max(lower, min(upper, value))
+
+
 def _pick_level(values: Any, *, prefer: str = "min", fallback: Any = None) -> float | None:
     numbers: list[float] = []
     for value in list(values or []):
@@ -245,7 +257,581 @@ def _map_blurb(text: Any) -> str:
     return cleaned
 
 
-def action_board(state: dict, market_map: dict) -> dict:
+def _level_move(current_price: float, level: float) -> str:
+    if current_price <= 0 or level <= 0:
+        return ""
+    delta = level - current_price
+    pct = (delta / current_price) * 100.0 if current_price else 0.0
+    return f"{delta:+,.2f} / {pct:+.2f}%"
+
+
+def _level_gap(current_price: float, level: float) -> str:
+    if current_price <= 0 or level <= 0:
+        return ""
+    delta = current_price - level
+    pct = (delta / level) * 100.0 if level else 0.0
+    return f"{delta:+,.2f} ({pct:+.2f}%)"
+
+
+def _numeric_level_text(label: str, level: float | None, current_price: float = 0.0) -> str:
+    safe_level = _safe_float(level)
+    if safe_level <= 0:
+        return ""
+    move = _level_move(current_price, safe_level)
+    return f"{label} {safe_level:,.2f}" + (f" ({move})" if move else "")
+
+
+def _entry_status_text(current_price: float, level: float | None, label: str) -> str:
+    safe_level = _safe_float(level)
+    if current_price <= 0 or safe_level <= 0:
+        return ""
+    return f"Live {current_price:,.2f}; {label} {safe_level:,.2f}; gap {_level_gap(current_price, safe_level)}"
+
+
+def _stop_target_text(current_price: float, stop_price: float | None, target_price: float | None) -> str:
+    parts: list[str] = []
+    stop_text = _numeric_level_text("SL", stop_price, current_price)
+    target_text = _numeric_level_text("TP", target_price, current_price)
+    if stop_text:
+        parts.append(stop_text)
+    if target_text:
+        parts.append(target_text)
+    return " • ".join(parts)
+
+
+def _fallback_probability(score: float, confidence: str, conviction_score: float = 0.0) -> float:
+    anchor = conviction_score if conviction_score > 0 else score
+    confidence_adjustments = {
+        "LOW": -0.05,
+        "MEDIUM": 0.0,
+        "HIGH": 0.06,
+    }
+    probability = 0.50 + ((_clamp(anchor, 0.0, 100.0) - 50.0) / 50.0) * 0.18
+    probability += confidence_adjustments.get(str(confidence or "MEDIUM").upper(), 0.0)
+    return _clamp(probability, 0.18, 0.82)
+
+
+def _watch_calibration_distance_band(current_price: float, level: float | None, *, direction: str) -> str:
+    safe_level = _safe_float(level)
+    if current_price <= 0 or safe_level <= 0:
+        return "unknown"
+    if direction == "below":
+        distance_pct = max(0.0, (current_price - safe_level) / safe_level)
+    else:
+        distance_pct = max(0.0, (safe_level - current_price) / safe_level)
+    if distance_pct <= 0.0025:
+        return "tight"
+    if distance_pct <= 0.0075:
+        return "near"
+    if distance_pct <= 0.015:
+        return "stretch"
+    return "far"
+
+
+def _watch_calibration_candidate_state(asset_state: str, stage: str) -> bool:
+    return asset_state in {
+        "ARMED",
+        "WAITING_CONFIRMATION",
+        "EXECUTION_BLOCKED",
+        "PENDING_ENTRY",
+        "MAJOR_CATALYST_WATCH",
+        "PASSIVE_ENTRY",
+        "DATA_QUALITY_HOLD",
+    } or stage in {
+        "SIGNAL_STREAK_WAIT",
+        "EXECUTION_QUALITY_BLOCK",
+        "EXECUTION_COACH_SKIP",
+        "PRECISION_CADENCE_BLOCK",
+        "MAJOR_CATALYST_WATCH",
+        "OBSERVATION_ONLY",
+        "GUARDRAILS_FLAT",
+        "LIMIT_ENTRY_PLACED",
+    }
+
+
+def _watch_calibration_text(*parts: Any) -> str:
+    return " ".join(str(part or "") for part in parts).lower()
+
+
+def _watch_calibration_reclaim_success(row: dict) -> bool:
+    snap = dict(row.get("signal_snapshot") or {})
+    final_action = str(row.get("final_action") or snap.get("action") or "").upper()
+    return bool(
+        snap.get("market_map_live_reclaim")
+        or (snap.get("market_map_reclaim_confirmed") and not snap.get("market_map_reclaim_lost"))
+        or ((final_action == "LONG" or row.get("executed") or row.get("pending_limit")) and not row.get("blocked"))
+    )
+
+
+def _watch_calibration_breakdown_success(row: dict) -> bool:
+    snap = dict(row.get("signal_snapshot") or {})
+    final_action = str(row.get("final_action") or snap.get("action") or "").upper()
+    return bool(
+        snap.get("market_map_live_breakdown")
+        or (snap.get("market_map_breakdown_confirmed") and not snap.get("market_map_breakdown_lost"))
+        or ((final_action == "SHORT" or row.get("executed") or row.get("pending_limit")) and not row.get("blocked"))
+    )
+
+
+def _watch_calibration_event_from_record(record: dict) -> dict[str, Any] | None:
+    if not isinstance(record, dict):
+        return None
+
+    snap = dict(record.get("signal_snapshot") or {})
+    candidate_action = str(
+        record.get("candidate_action")
+        or snap.get("thesis_candidate_action")
+        or snap.get("action")
+        or ""
+    ).upper()
+    final_action = str(record.get("final_action") or snap.get("action") or "").upper()
+    asset_state = str(record.get("asset_state") or snap.get("asset_state") or "").upper()
+    stage = str(record.get("stage") or "").upper()
+    bias = str(snap.get("market_map_bias") or "").upper()
+    text = _watch_calibration_text(
+        record.get("decision_reason"),
+        record.get("stage"),
+        record.get("asset_state"),
+        snap.get("flat_reason"),
+        snap.get("next_unblock_reason"),
+    )
+    if not _watch_calibration_candidate_state(asset_state, stage):
+        return None
+
+    if candidate_action == "LONG" and bias == "BULLISH":
+        reclaim_confirmed = bool(snap.get("market_map_reclaim_confirmed"))
+        live_reclaim = bool(snap.get("market_map_live_reclaim"))
+        if live_reclaim or (final_action == "LONG" and not bool(record.get("blocked"))):
+            return None
+        if not (reclaim_confirmed or bool(snap.get("market_map_block_longs")) or "reclaim" in text):
+            return None
+        long_trigger = _pick_level(
+            snap.get("daily_close_long_above"),
+            prefer="min",
+            fallback=snap.get("market_map_nearest_resistance") or snap.get("daily_breakout_level"),
+        )
+        live_anchor = _safe_float(snap.get("live_price") or snap.get("price") or snap.get("analysis_price"))
+        instrument_type = str(snap.get("instrument_type") or "crypto").strip().lower() or "crypto"
+        return {
+            "scenario": "reclaim_retake" if reclaim_confirmed else "reclaim_initial",
+            "asset_bucket": _asset_bucket(instrument_type),
+            "major_catalyst": _safe_float(snap.get("news_catalyst_score")) >= 3.0,
+            "distance_band": _watch_calibration_distance_band(live_anchor, long_trigger, direction="above"),
+        }
+
+    if candidate_action == "SHORT" and bias == "BEARISH":
+        breakdown_confirmed = bool(snap.get("market_map_breakdown_confirmed"))
+        live_breakdown = bool(snap.get("market_map_live_breakdown"))
+        if live_breakdown or (final_action == "SHORT" and not bool(record.get("blocked"))):
+            return None
+        if not (breakdown_confirmed or bool(snap.get("market_map_block_shorts")) or "breakdown" in text or "break support" in text):
+            return None
+        short_trigger = _pick_level(
+            snap.get("daily_close_short_below"),
+            prefer="max",
+            fallback=snap.get("market_map_nearest_support") or snap.get("daily_breakdown_level"),
+        )
+        live_anchor = _safe_float(snap.get("live_price") or snap.get("price") or snap.get("analysis_price"))
+        instrument_type = str(snap.get("instrument_type") or "crypto").strip().lower() or "crypto"
+        return {
+            "scenario": "breakdown_retake" if breakdown_confirmed else "breakdown_initial",
+            "asset_bucket": _asset_bucket(instrument_type),
+            "major_catalyst": _safe_float(snap.get("news_catalyst_score")) >= 3.0,
+            "distance_band": _watch_calibration_distance_band(live_anchor, short_trigger, direction="below"),
+        }
+
+    return None
+
+
+def _watch_calibration_future_success(coin_rows: list[dict], start_index: int, scenario: str, *, horizon: int = 24) -> bool:
+    origin_cycle = _safe_int(coin_rows[start_index].get("cycle_number"))
+    seen = 0
+    for row in coin_rows[start_index + 1:]:
+        if _safe_int(row.get("cycle_number")) <= origin_cycle:
+            continue
+        seen += 1
+        if scenario.startswith("reclaim"):
+            if _watch_calibration_reclaim_success(row):
+                return True
+            if _watch_calibration_breakdown_success(row):
+                return False
+        else:
+            if _watch_calibration_breakdown_success(row):
+                return True
+            if _watch_calibration_reclaim_success(row):
+                return False
+        if seen >= horizon:
+            break
+    return False
+
+
+def _watch_calibration_bucket_keys(event: dict[str, Any]) -> list[tuple[Any, ...]]:
+    catalyst_band = "major" if event.get("major_catalyst") else "normal"
+    return [
+        (
+            "scenario_bucket_catalyst_distance",
+            event.get("scenario"),
+            event.get("asset_bucket"),
+            catalyst_band,
+            event.get("distance_band"),
+        ),
+        (
+            "scenario_bucket_catalyst",
+            event.get("scenario"),
+            event.get("asset_bucket"),
+            catalyst_band,
+        ),
+        ("scenario_bucket", event.get("scenario"), event.get("asset_bucket")),
+        ("scenario", event.get("scenario")),
+    ]
+
+
+def _build_watch_probability_calibration(records: Iterable[dict] | None) -> dict[tuple[Any, ...], dict[str, Any]]:
+    calibration: dict[tuple[Any, ...], dict[str, Any]] = {}
+    by_coin: dict[str, list[dict]] = defaultdict(list)
+    for record in list(records or []):
+        if not isinstance(record, dict):
+            continue
+        coin = str(record.get("coin") or "").upper().strip()
+        if not coin:
+            continue
+        by_coin[coin].append(dict(record))
+
+    for coin_rows in by_coin.values():
+        coin_rows.sort(
+            key=lambda row: (
+                _safe_int(row.get("cycle_number")),
+                _safe_float(row.get("recorded_at_ts")),
+            )
+        )
+        index = 0
+        while index < len(coin_rows):
+            row = coin_rows[index]
+            event = _watch_calibration_event_from_record(row)
+            if not event:
+                index += 1
+                continue
+            success = _watch_calibration_future_success(coin_rows, index, str(event.get("scenario") or ""))
+            for key in _watch_calibration_bucket_keys(event):
+                bucket = calibration.setdefault(key, {"count": 0, "success": 0})
+                bucket["count"] += 1
+                bucket["success"] += 1 if success else 0
+            index += 1
+            while index < len(coin_rows):
+                next_event = _watch_calibration_event_from_record(coin_rows[index])
+                if not next_event:
+                    break
+                if (
+                    str(next_event.get("scenario") or "") != str(event.get("scenario") or "")
+                    or str(next_event.get("asset_bucket") or "") != str(event.get("asset_bucket") or "")
+                ):
+                    break
+                index += 1
+
+    for key, bucket in calibration.items():
+        count = int(bucket.get("count") or 0)
+        success = int(bucket.get("success") or 0)
+        bucket["rate"] = (success / count) if count > 0 else 0.0
+        bucket["key"] = key
+    return calibration
+
+
+def _pick_watch_probability_calibration(
+    calibration: dict[tuple[Any, ...], dict[str, Any]] | None,
+    *,
+    scenario: str,
+    asset_bucket: str,
+    major_catalyst: bool,
+    distance_band: str,
+) -> dict[str, Any] | None:
+    if not calibration:
+        return None
+    catalyst_band = "major" if major_catalyst else "normal"
+    lookup = [
+        (("scenario_bucket_catalyst_distance", scenario, asset_bucket, catalyst_band, distance_band), 10),
+        (("scenario_bucket_catalyst", scenario, asset_bucket, catalyst_band), 12),
+        (("scenario_bucket", scenario, asset_bucket), 18),
+        (("scenario", scenario), 28),
+    ]
+    fallback: dict[str, Any] | None = None
+    for key, min_count in lookup:
+        bucket = calibration.get(key)
+        if not bucket:
+            continue
+        if int(bucket.get("count") or 0) >= min_count:
+            return bucket
+        if fallback is None or int(bucket.get("count") or 0) > int(fallback.get("count") or 0):
+            fallback = bucket
+    if fallback and int(fallback.get("count") or 0) >= 5:
+        return fallback
+    return None
+
+
+def _calibrate_watch_probability(
+    *,
+    calibration: dict[tuple[Any, ...], dict[str, Any]] | None,
+    probability: float,
+    scenario: str,
+    asset_bucket: str,
+    major_catalyst: bool,
+    distance_band: str,
+) -> dict[str, Any] | None:
+    bucket = _pick_watch_probability_calibration(
+        calibration,
+        scenario=scenario,
+        asset_bucket=asset_bucket,
+        major_catalyst=major_catalyst,
+        distance_band=distance_band,
+    )
+    if not bucket:
+        return None
+
+    samples = int(bucket.get("count") or 0)
+    empirical_rate = _clamp(_safe_float(bucket.get("rate")), 0.05, 0.95)
+    prior_weight = 14.0
+    if samples < 10:
+        prior_weight += 10.0
+    elif samples < 20:
+        prior_weight += 6.0
+    elif samples < 35:
+        prior_weight += 3.0
+    if major_catalyst:
+        prior_weight += 2.0
+    calibrated_probability = ((empirical_rate * samples) + (probability * prior_weight)) / (samples + prior_weight)
+    noun = "reclaim watches" if scenario.startswith("reclaim") else "breakdown watches"
+    return {
+        "probability": _clamp(calibrated_probability, 0.05, 0.95),
+        "empirical_rate": empirical_rate,
+        "samples": samples,
+        "history_note": f"history {int(round(empirical_rate * 100.0))}% across {samples} similar {noun}",
+    }
+
+
+def _setup_probability(
+    *,
+    sig: dict[str, Any],
+    status: str,
+    action: str,
+    confidence: str,
+    score: float,
+    conviction_score: float,
+    live_anchor: float,
+    long_trigger: float | None,
+    short_trigger: float | None,
+    reclaim_confirmed: bool,
+    live_reclaim: bool,
+    reclaim_lost: bool,
+    bullish_breakout_live: bool,
+    bias: str,
+    tradable: bool,
+    coach_verdict: str,
+    asset_bucket: str,
+    asset_state: str,
+    calibration_model: dict[tuple[Any, ...], dict[str, Any]] | None,
+) -> dict[str, Any]:
+    expectancy_probability = _safe_float(sig.get("expectancy_probability"))
+    uncertainty = _safe_float(sig.get("expectancy_uncertainty"))
+    analog_adjustment = _clamp(_safe_float(sig.get("analog_probability_adjustment")), -0.08, 0.08)
+    catalyst_score = _safe_float(sig.get("news_catalyst_score"))
+    referee = dict(sig.get("llm_referee") or {})
+    referee_verdict = str(referee.get("verdict") or sig.get("llm_referee_verdict") or "").upper()
+    execution_quality_score = _safe_float(sig.get("execution_quality_score"))
+    status_key = str(status or "").upper()
+    action_key = str(action or "").upper()
+    coach_key = str(coach_verdict or "").upper()
+    base_probability = (
+        expectancy_probability
+        if 0.0 < expectancy_probability <= 1.0
+        else _fallback_probability(score, confidence, conviction_score)
+    )
+    probability = base_probability
+    probability_source = "heuristic"
+    empirical_rate: float | None = None
+    empirical_samples = 0
+    label = "Setup odds"
+    reasons: list[str] = []
+
+    if uncertainty > 0:
+        if uncertainty <= 0.22:
+            probability += 0.02
+            reasons.append("low model uncertainty")
+        elif uncertainty >= 0.40:
+            probability -= 0.04
+            reasons.append("high model uncertainty")
+
+    if analog_adjustment:
+        probability += analog_adjustment
+        reasons.append("historical analogs are supportive" if analog_adjustment > 0 else "historical analogs are cautious")
+
+    if referee_verdict == "SUPPORT":
+        probability += 0.03
+        reasons.append("referee supports the setup")
+    elif referee_verdict == "WAIT":
+        probability -= 0.02
+        reasons.append("referee still wants cleaner confirmation")
+    elif referee_verdict == "BLOCK":
+        probability -= 0.05
+        reasons.append("referee is blocking the setup")
+
+    if coach_key == "BLOCK":
+        probability -= 0.06
+        reasons.append("execution coach is blocking here")
+    elif coach_key == "GO":
+        probability += 0.03
+        reasons.append("execution coach likes the tape")
+
+    if execution_quality_score > 0:
+        if execution_quality_score >= 75.0:
+            probability += 0.03
+            reasons.append("execution quality is clean")
+        elif execution_quality_score <= 55.0:
+            probability -= 0.03
+            reasons.append("execution quality is messy")
+
+    if catalyst_score >= 3.0:
+        probability += 0.04
+        reasons.append("major catalyst still supports the move")
+    elif catalyst_score >= 2.0:
+        probability += 0.02
+        reasons.append("fresh catalyst support is still there")
+
+    waiting_reclaim = status_key == "WAIT_RECLAIM" or (
+        status_key == "WATCH_LONG" and long_trigger and not live_reclaim and (reclaim_confirmed or bias == "BULLISH")
+    )
+    waiting_break = status_key == "WAIT_BREAKDOWN" or (
+        status_key == "WATCH_SHORT" and short_trigger and not bool(sig.get("market_map_live_breakdown")) and bias == "BEARISH"
+    )
+    calibration_context: dict[str, Any] | None = None
+
+    if waiting_reclaim and long_trigger:
+        label = "Reclaim odds"
+        calibration_context = {
+            "scenario": "reclaim_retake" if reclaim_confirmed else "reclaim_initial",
+            "asset_bucket": asset_bucket,
+            "major_catalyst": catalyst_score >= 3.0 or asset_state == "MAJOR_CATALYST_WATCH",
+            "distance_band": _watch_calibration_distance_band(live_anchor, long_trigger, direction="above"),
+        }
+        if reclaim_confirmed:
+            probability += 0.07
+            reasons.append("prior reclaim already printed")
+        if reclaim_lost and not live_reclaim:
+            probability -= 0.03
+            reasons.append("intraday hold was lost")
+        if bullish_breakout_live:
+            probability += 0.04
+            reasons.append("breakout pressure is still live")
+        if live_anchor > 0:
+            distance_pct = max(0.0, (long_trigger - live_anchor) / long_trigger)
+            if distance_pct <= 0.0025:
+                probability += 0.06
+                reasons.append(f"{distance_pct * 100:.2f}% below reclaim")
+            elif distance_pct <= 0.0075:
+                probability += 0.03
+                reasons.append(f"{distance_pct * 100:.2f}% below reclaim")
+            elif distance_pct >= 0.03:
+                probability -= 0.06
+                reasons.append(f"{distance_pct * 100:.2f}% below reclaim")
+            elif distance_pct >= 0.015:
+                probability -= 0.03
+                reasons.append(f"{distance_pct * 100:.2f}% below reclaim")
+    elif waiting_break and short_trigger:
+        label = "Break odds"
+        breakdown_confirmed = bool(sig.get("market_map_breakdown_confirmed"))
+        live_breakdown = bool(sig.get("market_map_live_breakdown"))
+        breakdown_lost = breakdown_confirmed and not live_breakdown
+        calibration_context = {
+            "scenario": "breakdown_retake" if breakdown_confirmed else "breakdown_initial",
+            "asset_bucket": asset_bucket,
+            "major_catalyst": catalyst_score >= 3.0 or asset_state == "MAJOR_CATALYST_WATCH",
+            "distance_band": _watch_calibration_distance_band(live_anchor, short_trigger, direction="below"),
+        }
+        bearish_breakout_live = bool(
+            {
+                str(sig.get("orderbook_breakout_state") or "").upper(),
+                str(sig.get("orderbook_intracycle_breakout_state") or "").upper(),
+            } & {"CONFIRMED_BEARISH_BREAKOUT", "PERSISTENT_BEARISH_BREAKOUT"}
+        )
+        if breakdown_confirmed:
+            probability += 0.07
+            reasons.append("prior breakdown already printed")
+        if breakdown_lost and not live_breakdown:
+            probability -= 0.03
+            reasons.append("intraday breakdown was lost")
+        if bearish_breakout_live:
+            probability += 0.04
+            reasons.append("sell pressure is still live")
+        if live_anchor > 0:
+            distance_pct = max(0.0, (live_anchor - short_trigger) / short_trigger)
+            if distance_pct <= 0.0025:
+                probability += 0.06
+                reasons.append(f"{distance_pct * 100:.2f}% above breakdown")
+            elif distance_pct <= 0.0075:
+                probability += 0.03
+                reasons.append(f"{distance_pct * 100:.2f}% above breakdown")
+            elif distance_pct >= 0.03:
+                probability -= 0.06
+                reasons.append(f"{distance_pct * 100:.2f}% above breakdown")
+            elif distance_pct >= 0.015:
+                probability -= 0.03
+                reasons.append(f"{distance_pct * 100:.2f}% above breakdown")
+    elif status_key in {"OPEN_LONG", "OPEN_SHORT"}:
+        label = "Hold odds"
+    elif status_key in {"READY_LONG", "READY_SHORT", "PENDING_ENTRY", "WAITING_CONFIRMATION", "EXECUTABLE", "PASSIVE_ENTRY"}:
+        label = "Entry odds"
+    elif action_key in {"LONG", "SHORT"}:
+        label = "Entry odds"
+
+    if tradable and label in {"Entry odds", "Setup odds"}:
+        probability += 0.01
+
+    calibration_result = None
+    if calibration_context:
+        calibration_result = _calibrate_watch_probability(
+            calibration=calibration_model,
+            probability=probability,
+            scenario=str(calibration_context.get("scenario") or ""),
+            asset_bucket=str(calibration_context.get("asset_bucket") or asset_bucket),
+            major_catalyst=bool(calibration_context.get("major_catalyst")),
+            distance_band=str(calibration_context.get("distance_band") or "unknown"),
+        )
+    if calibration_result:
+        probability = _safe_float(calibration_result.get("probability"))
+        empirical_rate = _safe_float(calibration_result.get("empirical_rate"))
+        empirical_samples = int(calibration_result.get("samples") or 0)
+        probability_source = "calibrated"
+        reasons = [str(calibration_result.get("history_note") or "")] + reasons
+
+    probability = _clamp(probability, 0.05, 0.95)
+    probability_pct = int(round(probability * 100.0))
+    if probability_pct >= 65:
+        tier = "high"
+    elif probability_pct >= 50:
+        tier = "medium"
+    else:
+        tier = "low"
+    note = _compact_sentences(reasons, limit=3)
+    detail = f"{label} {probability_pct}%"
+    if note:
+        detail += f" • {note}"
+    return {
+        "probability": round(probability, 4),
+        "probability_pct": probability_pct,
+        "probability_label": label,
+        "probability_text": f"{label} {probability_pct}%",
+        "probability_detail": detail,
+        "probability_tier": tier,
+        "probability_source": probability_source,
+        "probability_empirical": round(empirical_rate, 4) if empirical_rate is not None else None,
+        "probability_empirical_pct": int(round(empirical_rate * 100.0)) if empirical_rate is not None else None,
+        "probability_empirical_samples": empirical_samples,
+    }
+
+
+def action_board(
+    state: dict,
+    market_map: dict,
+    decision_dataset_records: Iterable[dict] | None = None,
+) -> dict:
     signals = dict((state or {}).get("signals") or {})
     positions = list((state or {}).get("positions") or [])
     positions_by_coin = {str(item.get("coin") or "").upper(): dict(item or {}) for item in positions}
@@ -261,6 +847,7 @@ def action_board(state: dict, market_map: dict) -> dict:
     tracked.update(str(coin or "").upper() for coin in positions_by_coin.keys())
 
     entries = dict((market_map or {}).get("coins") or {})
+    probability_calibration = _build_watch_probability_calibration(decision_dataset_records)
     items: list[dict[str, Any]] = []
     order = {
         "OPEN_LONG": 0,
@@ -328,6 +915,7 @@ def action_board(state: dict, market_map: dict) -> dict:
         map_summary = _map_blurb(sig.get("market_map_summary") or map_entry.get("summary") or map_entry.get("notes") or "")
         confidence = str(sig.get("confidence") or "LOW").upper()
         score = _safe_float(sig.get("score") or 50.0)
+        conviction_score = _safe_float(sig.get("thesis_conviction_score") or score)
         action = str(sig.get("action") or "FLAT").upper()
         live_anchor = _safe_float(sig.get("live_price") or sig.get("price"))
         reclaim_confirmed = bool(sig.get("market_map_reclaim_confirmed"))
@@ -344,6 +932,7 @@ def action_board(state: dict, market_map: dict) -> dict:
         )
         asset_state = str(sig.get("asset_state") or "").upper()
         asset_state_label = str(sig.get("asset_state_label") or "").strip()
+        catalyst_watch_label = asset_state_label if asset_state == "MAJOR_CATALYST_WATCH" else ""
         next_unblock = str(sig.get("next_unblock_reason") or "").strip()
         state_override = asset_state in {
             "PENDING_ENTRY",
@@ -359,6 +948,7 @@ def action_board(state: dict, market_map: dict) -> dict:
         }
 
         execution_note = ""
+        entry_status = ""
 
         if pos:
             direction = str(pos.get("direction") or "").upper() or action
@@ -367,31 +957,34 @@ def action_board(state: dict, market_map: dict) -> dict:
             headline = _primary_reason(current_logic) or "Trade is live and being managed."
             stop = _safe_float(pos.get("stop_loss"))
             target = _safe_float(pos.get("take_profit"))
-            trigger = (
-                f"Stop {stop:,.2f} • Target {target:,.2f}"
-                if stop > 0 and target > 0
-                else "Trade is already open."
-            )
+            live_reference = live_anchor or _safe_float(pos.get("current_price"))
+            entry_status = _entry_status_text(live_reference, _safe_float(pos.get("entry_price")), "entry")
+            trigger = _stop_target_text(live_reference, stop, target) or "Trade is already open."
             execution_note = "Position is already open and under active management."
         elif asset_state == "PENDING_ENTRY":
             status = "PENDING_ENTRY"
             label = asset_state_label or "Pending entry"
             headline = next_unblock or "A resting limit order is already on the book."
             anchor_price = _safe_float(sig.get("price") or sig.get("live_price"))
-            trigger = f"Working order around {anchor_price:,.2f}" if anchor_price > 0 else "Waiting for the resting limit order to resolve."
+            entry_status = _entry_status_text(live_anchor, anchor_price, "limit")
+            trigger = _numeric_level_text("Limit", anchor_price, live_anchor) or "Waiting for the resting limit order to resolve."
             execution_note = next_unblock or "The order is already working. The next event is a fill, cancel, or expiry."
         elif state_override or (asset_state == "EXECUTABLE" and action == "FLAT"):
             status = asset_state or "ARMED"
             label = asset_state_label or "Setup pending"
             headline = _primary_reason(next_unblock or current_logic or blocker) or "The setup is still gated."
             if action == "LONG" and live_anchor > 0:
-                trigger = f"Long is tracking around {live_anchor:,.2f}"
+                entry_status = _entry_status_text(live_anchor, long_trigger, "trigger")
+                trigger = _numeric_level_text("Trigger", long_trigger, live_anchor) or f"Live {live_anchor:,.2f}"
             elif action == "SHORT" and live_anchor > 0:
-                trigger = f"Short is tracking around {live_anchor:,.2f}"
+                entry_status = _entry_status_text(live_anchor, short_trigger, "trigger")
+                trigger = _numeric_level_text("Trigger", short_trigger, live_anchor) or f"Live {live_anchor:,.2f}"
             elif long_trigger and bias == "BULLISH":
-                trigger = f"Best long trigger stays above {long_trigger:,.2f}"
+                entry_status = _entry_status_text(live_anchor, long_trigger, "trigger")
+                trigger = _numeric_level_text("Trigger", long_trigger, live_anchor) or f"Trigger {long_trigger:,.2f}"
             elif short_trigger and bias == "BEARISH":
-                trigger = f"Best short trigger stays below {short_trigger:,.2f}"
+                entry_status = _entry_status_text(live_anchor, short_trigger, "trigger")
+                trigger = _numeric_level_text("Trigger", short_trigger, live_anchor) or f"Trigger {short_trigger:,.2f}"
             else:
                 trigger = "Wait for the next unblock."
             execution_note = (
@@ -405,10 +998,11 @@ def action_board(state: dict, market_map: dict) -> dict:
             status = "READY_LONG"
             label = "Long thesis live"
             headline = _primary_reason(sig.get("decision_reason") or current_logic) or "Long thesis is live."
-            trigger = (
-                f"Watching entry around {(_safe_float(sig.get('live_price')) or _safe_float(sig.get('price'))):,.2f} "
-                "once final entry checks stay clean."
-            )
+            entry_status = _entry_status_text(live_anchor, long_trigger, "trigger")
+            trigger_level = long_trigger or _safe_float(sig.get("price")) or _safe_float(sig.get("live_price"))
+            trigger = _numeric_level_text("Entry", trigger_level, live_anchor)
+            if not trigger:
+                trigger = "Watching for a clean long trigger."
             if tradable:
                 execution_note = "The thesis qualifies, but the bot still waits for confirmation, sizing, and clean fills before sending the order."
             else:
@@ -417,82 +1011,82 @@ def action_board(state: dict, market_map: dict) -> dict:
             status = "READY_SHORT"
             label = "Short thesis live"
             headline = _primary_reason(sig.get("decision_reason") or current_logic) or "Short thesis is live."
-            trigger = (
-                f"Watching entry around {(_safe_float(sig.get('live_price')) or _safe_float(sig.get('price'))):,.2f} "
-                "once final entry checks stay clean."
-            )
+            entry_status = _entry_status_text(live_anchor, short_trigger, "trigger")
+            trigger_level = short_trigger or _safe_float(sig.get("price")) or _safe_float(sig.get("live_price"))
+            trigger = _numeric_level_text("Entry", trigger_level, live_anchor)
+            if not trigger:
+                trigger = "Watching for a clean short trigger."
             if tradable:
                 execution_note = "The thesis qualifies, but the bot still waits for confirmation, sizing, and clean fills before sending the order."
             else:
                 execution_note = "The thesis qualifies, but venue support or live market quality is not ready enough to execute yet."
         elif bias == "BULLISH" and long_trigger and (reclaim_confirmed or bullish_breakout_live):
             status = "WATCH_LONG"
-            label = "Bullish watch"
+            label = catalyst_watch_label or "Bullish watch"
             headline = (
                 "Daily bias is bullish, and the reclaim is on the board."
                 if not map_summary
                 else f"Daily bias is bullish, and {map_summary}."
             )
+            entry_status = _entry_status_text(live_anchor, long_trigger, "reclaim")
             if reclaim_lost and not live_reclaim:
-                trigger = f"Needs to hold back above {long_trigger:,.2f}"
-                execution_note = (
+                trigger = _numeric_level_text("Reclaim", long_trigger, live_anchor)
+                default_note = (
                     "The bot saw the reclaim, but live price slipped back below the trigger. "
                     "It wants that level held again before buying."
                 )
+                execution_note = next_unblock or default_note
             else:
-                trigger = f"Reclaim above {long_trigger:,.2f} is already on the board; waiting for cleaner continuation or pullback entry."
-                execution_note = (
+                trigger = _numeric_level_text("Hold", long_trigger, live_anchor)
+                default_note = (
                     "The bot sees the reclaim, but it still wants stronger continuation, "
                     "safer entry quality, and final sizing checks before buying."
                 )
+                execution_note = next_unblock or default_note
         elif bias == "BULLISH" and bool(sig.get("market_map_block_longs")) and long_trigger:
             status = "WAIT_RECLAIM"
-            label = "Wait for reclaim"
+            label = catalyst_watch_label or "Wait for reclaim"
             headline = (
                 "Daily bias is bullish, but the long is still blocked until price reclaims resistance."
                 if not map_summary
                 else f"Daily bias is bullish, but {map_summary}."
             )
-            trigger = f"Long only after a reclaim above {long_trigger:,.2f}"
-            execution_note = "The higher-timeframe view is constructive, but the reclaim still has to confirm before the bot can buy."
+            entry_status = _entry_status_text(live_anchor, long_trigger, "reclaim")
+            trigger = _numeric_level_text("Reclaim", long_trigger, live_anchor)
+            execution_note = next_unblock or "The higher-timeframe view is constructive, but the reclaim still has to confirm before the bot can buy."
         elif bias == "BEARISH" and bool(sig.get("market_map_block_shorts")) and short_trigger:
             status = "WAIT_BREAKDOWN"
-            label = "Wait for breakdown"
+            label = catalyst_watch_label or "Wait for breakdown"
             headline = (
                 "Daily bias is bearish, but the short is still blocked until price breaks support."
                 if not map_summary
                 else f"Daily bias is bearish, but {map_summary}."
             )
-            trigger = f"Short only after a breakdown below {short_trigger:,.2f}"
-            execution_note = "The higher-timeframe view is bearish, but the breakdown still has to confirm before the bot can short."
+            entry_status = _entry_status_text(live_anchor, short_trigger, "breakdown")
+            trigger = _numeric_level_text("Break", short_trigger, live_anchor)
+            execution_note = next_unblock or "The higher-timeframe view is bearish, but the breakdown still has to confirm before the bot can short."
         elif bias == "BULLISH":
             status = "WATCH_LONG"
-            label = "Bullish watch"
+            label = catalyst_watch_label or "Bullish watch"
             headline = (
                 "Higher-timeframe bias is bullish, but the entry is not ready."
                 if not map_summary
                 else f"Higher-timeframe bias is bullish, and {map_summary}."
             )
-            trigger = (
-                f"Best long trigger is above {long_trigger:,.2f}"
-                if long_trigger
-                else "Wait for cleaner long confirmation."
-            )
-            execution_note = "The agent is reading this as bullish context only. It still needs a qualified live thesis before any order can go out."
+            entry_status = _entry_status_text(live_anchor, long_trigger, "trigger")
+            trigger = _numeric_level_text("Trigger", long_trigger, live_anchor) or "Wait for cleaner long confirmation."
+            execution_note = next_unblock or "The agent is reading this as bullish context only. It still needs a qualified live thesis before any order can go out."
         elif bias == "BEARISH":
             status = "WATCH_SHORT"
-            label = "Bearish watch"
+            label = catalyst_watch_label or "Bearish watch"
             headline = (
                 "Higher-timeframe bias is bearish, but the entry is not ready."
                 if not map_summary
                 else f"Higher-timeframe bias is bearish, and {map_summary}."
             )
-            trigger = (
-                f"Best short trigger is below {short_trigger:,.2f}"
-                if short_trigger
-                else "Wait for cleaner short confirmation."
-            )
-            execution_note = "The agent is reading this as bearish context only. It still needs a qualified live thesis before any order can go out."
+            entry_status = _entry_status_text(live_anchor, short_trigger, "trigger")
+            trigger = _numeric_level_text("Trigger", short_trigger, live_anchor) or "Wait for cleaner short confirmation."
+            execution_note = next_unblock or "The agent is reading this as bearish context only. It still needs a qualified live thesis before any order can go out."
         else:
             status = "NO_SETUP"
             label = "No setup"
@@ -505,10 +1099,32 @@ def action_board(state: dict, market_map: dict) -> dict:
         if coach_summary and status in {"READY_LONG", "READY_SHORT", "PASSIVE_ENTRY", "EXECUTION_BLOCKED"}:
             execution_note = coach_summary
 
+        probability = _setup_probability(
+            sig=sig,
+            status=status,
+            action=action,
+            confidence=confidence,
+            score=score,
+            conviction_score=conviction_score,
+            live_anchor=live_anchor,
+            long_trigger=long_trigger,
+            short_trigger=short_trigger,
+            reclaim_confirmed=reclaim_confirmed,
+            live_reclaim=live_reclaim,
+            reclaim_lost=reclaim_lost,
+            bullish_breakout_live=bullish_breakout_live,
+            bias=bias,
+            tradable=tradable,
+            coach_verdict=coach_verdict,
+            asset_bucket=asset_bucket,
+            asset_state=asset_state,
+            calibration_model=probability_calibration,
+        )
+
         if status in {"WATCH_LONG", "WAIT_RECLAIM", "READY_LONG", "OPEN_LONG"} and support:
-            risk = f"Risk if it loses {support:,.2f}"
+            risk = _numeric_level_text("Lose", support, live_anchor) or f"Lose {support:,.2f}"
         elif status in {"WATCH_SHORT", "WAIT_BREAKDOWN", "READY_SHORT", "OPEN_SHORT"} and resistance:
-            risk = f"Risk if it reclaims {resistance:,.2f}"
+            risk = _numeric_level_text("Reclaim", resistance, live_anchor) or f"Reclaim {resistance:,.2f}"
         else:
             risk = map_summary or ""
 
@@ -542,17 +1158,20 @@ def action_board(state: dict, market_map: dict) -> dict:
                 "label": label,
                 "headline": headline,
                 "trigger": trigger,
+                "entry_status": entry_status or execution_note,
                 "execution_note": execution_note,
                 "risk": risk,
                 "map_summary": map_summary,
                 "confidence": confidence,
                 "score": round(score, 1),
+                "thesis_conviction_score": round(conviction_score or score, 1),
                 "pnl_usd": _safe_float(pos.get("unrealised_pnl")) if pos else 0.0,
                 "llm_referee": dict(sig.get("llm_referee") or {}),
                 "llm_referee_summary": str(sig.get("llm_referee_summary") or ""),
                 "llm_referee_why_now": str(sig.get("llm_referee_why_now") or ""),
                 "execution_coach_verdict": coach_verdict,
                 "execution_coach_summary": coach_summary,
+                **probability,
             }
         )
 
@@ -926,6 +1545,7 @@ def build_dashboard_snapshot(
     market_map: Any = None,
     trade_reviews: Any = None,
     trade_dataset_records: Iterable[dict] | None = None,
+    decision_dataset_records: Iterable[dict] | None = None,
     decision_review_report: Any = None,
     challenger_report: Any = None,
     missed_move_report: Any = None,
@@ -945,7 +1565,7 @@ def build_dashboard_snapshot(
         "trades": safe_trades[-50:][::-1],
         "stats": calc_stats(safe_trades),
         "control": normalize_control(control),
-        "action_board": action_board(shaped_state, normalized_market_map),
+        "action_board": action_board(shaped_state, normalized_market_map, decision_dataset_records),
         "market_map": normalized_market_map,
         "market_map_summary": market_map_summary(normalized_market_map),
         "trade_reviews": normalized_trade_reviews,

@@ -126,6 +126,8 @@ def _headline_bias(news_signal) -> tuple[str, float, int, bool, bool, list[str],
 
     score = float(getattr(news_signal, "score", 50.0) or 50.0)
     count = int(getattr(news_signal, "article_count", 0) or 0)
+    catalyst_score = float(getattr(news_signal, "catalyst_score", 0.0) or 0.0)
+    catalyst_summary = str(getattr(news_signal, "catalyst_summary", "") or "")
     reasons: list[str] = []
     block_longs = False
     block_shorts = False
@@ -149,6 +151,17 @@ def _headline_bias(news_signal) -> tuple[str, float, int, bool, bool, list[str],
         elif score >= 75.0:
             block_shorts = True
             reasons.append("extreme bullish headlines block shorts")
+
+    if catalyst_score >= 3.0 and score >= 55.0:
+        catalyst_adjustment = min(6.0, catalyst_score * 1.2)
+        score_adjustment += catalyst_adjustment
+        if catalyst_summary:
+            reasons.append(f"catalyst checklist aligned: {catalyst_summary}")
+        else:
+            reasons.append("major catalyst checklist aligned with the move")
+        if catalyst_score >= 4.0 and score >= 68.0:
+            block_shorts = True
+            reasons.append("major bullish catalyst means fading it needs exceptional evidence")
 
     return bias, score, count, block_longs, block_shorts, reasons, score_adjustment
 

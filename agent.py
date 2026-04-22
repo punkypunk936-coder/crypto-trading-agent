@@ -1089,6 +1089,8 @@ class TradingAgent:
             "news_velocity":  news_signal.velocity      if news_signal and news_signal.valid else "LOW",
             "news_headline":  news_signal.top_headlines[0][:80] if news_signal and news_signal.valid and news_signal.top_headlines else "",
             "news_articles":  news_signal.article_count if news_signal and news_signal.valid else 0,
+            "news_catalyst_score": getattr(news_signal, "catalyst_score", 0.0) if news_signal and news_signal.valid else 0.0,
+            "news_catalyst_summary": getattr(news_signal, "catalyst_summary", "") if news_signal and news_signal.valid else "",
             "narrative_summary": getattr(narrative_signal, "summary", "") if narrative_signal else "",
             "narrative_event_risk_active": bool(getattr(narrative_signal, "event_risk_active", False)) if narrative_signal else False,
             "narrative_event_name": getattr(narrative_signal, "event_name", "") if narrative_signal else "",
@@ -2218,11 +2220,25 @@ class TradingAgent:
             current_position=current_position,
             pending_limit=pending_limit,
         )
+        resolved_stage = stage
+        if (
+            lifecycle.get("state") == "MAJOR_CATALYST_WATCH"
+            and stage in {"analysis", "flat_no_trade", "guardrails_flat", "observation_only"}
+        ):
+            resolved_stage = "major_catalyst_watch"
+            snap["decision_stage"] = resolved_stage
+            lifecycle = self._refresh_asset_state(
+                coin,
+                stage=resolved_stage,
+                current_position=current_position,
+                pending_limit=pending_limit,
+            )
+            snap = dict(self._last_signals.get(coin, {}) or {})
 
         record = {
             "cycle_number": self._cycle,
             "coin": coin,
-            "stage": stage,
+            "stage": resolved_stage,
             "candidate_action": snap.get("thesis_candidate_action", snap.get("action", "FLAT")),
             "final_action": snap.get("action", "FLAT"),
             "decision_reason": snap.get("decision_reason", ""),
@@ -4038,11 +4054,21 @@ class TradingAgent:
             except Exception as e:
                 log.debug(f"trades_log.csv read failed: {e}")
 
+        history_data_dir = trade_dataset.resolve_richest_history_data_dir()
+        decision_history_dir = decision_dataset.resolve_richest_decision_data_dir(history_data_dir)
         trade_dataset_records = []
         try:
-            trade_dataset_records = trade_dataset.load_closed_trades(limit=max(200, len(trades_data) + 20))
+            trade_dataset_records = trade_dataset.load_closed_trades(
+                limit=max(200, len(trades_data) + 20),
+                data_dir=history_data_dir,
+            )
         except Exception as e:
             log.debug(f"trade_dataset.jsonl read failed: {e}")
+        decision_dataset_records = []
+        try:
+            decision_dataset_records = decision_dataset.load_decisions(limit=25000, data_dir=decision_history_dir)
+        except Exception as e:
+            log.debug(f"decision_dataset.jsonl read failed: {e}")
         enriched_trade_records = merge_dataset_into_trades(trades_data, trade_dataset_records)
 
         market_map_data = market_map.build_effective_market_map(
@@ -4121,6 +4147,7 @@ class TradingAgent:
             market_map=market_map_data,
             trade_reviews=review_data,
             trade_dataset_records=trade_dataset_records,
+            decision_dataset_records=decision_dataset_records,
             decision_review_report=decision_review_data,
             challenger_report=challenger_report_data,
             missed_move_report=missed_move_report_data,

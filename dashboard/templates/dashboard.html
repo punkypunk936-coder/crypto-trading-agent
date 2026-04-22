@@ -692,6 +692,137 @@
     color: var(--text-secondary);
     line-height: 1.5;
   }
+  .daily-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+    margin: 12px 0;
+  }
+  .daily-summary-card {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    background: rgba(255,255,255,0.02);
+    min-width: 0;
+  }
+  .daily-summary-card-wide {
+    grid-column: span 2;
+  }
+  .daily-summary-label {
+    color: var(--muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    margin-bottom: 6px;
+  }
+  .daily-summary-value {
+    color: var(--text);
+    font-size: 20px;
+    font-weight: 800;
+    font-family: var(--mono);
+  }
+  .daily-summary-note {
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.45;
+    font-family: var(--mono);
+  }
+  .daily-inline-note {
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(91, 140, 255, 0.06);
+    border: 1px solid rgba(91, 140, 255, 0.12);
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  .prob-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    font-family: var(--mono);
+    border: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .prob-chip-high {
+    color: var(--green);
+    background: var(--green-dim);
+    border-color: rgba(0,230,138,0.24);
+  }
+  .prob-chip-medium {
+    color: var(--yellow);
+    background: var(--yellow-dim);
+    border-color: rgba(255,184,77,0.24);
+  }
+  .prob-chip-low {
+    color: #ffb8c2;
+    background: rgba(255,77,106,0.08);
+    border-color: rgba(255,77,106,0.24);
+  }
+  .daily-sheet {
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: rgba(255,255,255,0.02);
+    overflow: hidden;
+  }
+  .daily-sheet-header,
+  .daily-sheet-row {
+    display: grid;
+    grid-template-columns: minmax(220px, 1.4fr) repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    align-items: start;
+  }
+  .daily-sheet-header {
+    padding: 0 14px 10px;
+    color: var(--muted);
+    font-size: 10px;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    font-family: var(--mono);
+  }
+  .daily-sheet-row {
+    padding: 14px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+  }
+  .daily-sheet-row:first-of-type {
+    border-top: none;
+  }
+  .daily-sheet-row[data-tradable="true"] {
+    background: rgba(0,230,138,0.02);
+  }
+  .daily-sheet-main,
+  .daily-sheet-stat {
+    min-width: 0;
+  }
+  .daily-sheet-stat {
+    display: grid;
+    gap: 4px;
+  }
+  .daily-sheet-label {
+    color: var(--muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+  }
+  .daily-sheet-value {
+    color: var(--text);
+    font-size: 11px;
+    line-height: 1.45;
+    font-family: var(--mono);
+    word-break: break-word;
+  }
+  .daily-details-panel {
+    margin-top: 12px;
+  }
+  .daily-details-panel .market-map-grid {
+    margin-top: 12px;
+  }
   .map-card-empty {
     border-style: dashed;
     opacity: 0.92;
@@ -1359,6 +1490,16 @@
     .utility-grid {
       grid-template-columns: 1fr;
     }
+    .daily-summary-card-wide {
+      grid-column: span 1;
+    }
+    .daily-sheet-header {
+      display: none;
+    }
+    .daily-sheet-row {
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
   }
   @media (max-width: 380px) {
     .grid-4 { grid-template-columns: 1fr; }
@@ -1502,8 +1643,8 @@
   </div>
 </div>
 
-<!-- Daily View + Latest Lesson -->
-<div class="grid-2">
+<!-- Daily View -->
+<div class="full-width">
   <div class="card">
     <div class="card-label-row">
       <div class="card-label">🗺️ Daily View</div>
@@ -1514,12 +1655,6 @@
     <div class="map-meta" id="market-map-meta">Waiting for daily view...</div>
     <div id="market-map-body">
       <div class="empty-state">Building live daily view...</div>
-    </div>
-  </div>
-  <div class="card">
-    <div class="card-label">🧾 Latest Lesson</div>
-    <div id="latest-lesson-body">
-      <div class="empty-state">No closed trades yet. The first lesson will show up here.</div>
     </div>
   </div>
 </div>
@@ -1578,6 +1713,42 @@ const shortText = (v, max=120) => {
   const text = String(v == null ? '' : v).trim();
   return text.length > max ? text.slice(0, max - 1) + '…' : text;
 };
+const levelMove = (current, level) => {
+  const cur = Number(current || 0);
+  const lvl = Number(level || 0);
+  if (!(cur > 0) || !(lvl > 0)) return '';
+  const delta = lvl - cur;
+  const pct = cur ? (delta / cur) * 100 : 0;
+  return fmtSigned(delta, 2) + ' / ' + fmtP(pct);
+};
+const levelGap = (current, level) => {
+  const cur = Number(current || 0);
+  const lvl = Number(level || 0);
+  if (!(cur > 0) || !(lvl > 0)) return '';
+  const delta = cur - lvl;
+  const pct = lvl ? (delta / lvl) * 100 : 0;
+  return fmtSigned(delta, 2) + ' (' + fmtP(pct) + ')';
+};
+const numericLevel = (label, level, current=0) => {
+  const lvl = Number(level || 0);
+  if (!(lvl > 0)) return '';
+  const move = levelMove(current, lvl);
+  return label + ' ' + fmt(lvl) + (move ? ' (' + move + ')' : '');
+};
+const entryStatusLine = (current, level, label) => {
+  const cur = Number(current || 0);
+  const lvl = Number(level || 0);
+  if (!(cur > 0) || !(lvl > 0)) return '';
+  return 'Live ' + fmt(cur) + '; ' + label + ' ' + fmt(lvl) + '; gap ' + levelGap(cur, lvl);
+};
+const stopTargetLine = (current, stop, target) => {
+  const parts = [];
+  const stopText = numericLevel('SL', stop, current);
+  const targetText = numericLevel('TP', target, current);
+  if (stopText) parts.push(stopText);
+  if (targetText) parts.push(targetText);
+  return parts.join(' • ');
+};
 const csvText = (values, dec=2) => {
   const list = Array.isArray(values) ? values : [];
   if (!list.length) return '--';
@@ -1630,6 +1801,242 @@ const reviewBreakdownHtml = (label, values) => {
   return '<div class="review-notes"><strong>' + esc(label) + ':</strong> '
     + esc(entries.map(([key, count]) => key.replaceAll('_', ' ') + ' ' + count).join(' • '))
     + '</div>';
+};
+const surfaceModeMeta = (value, tradable=false) => {
+  const text = String(value || '').trim();
+  if (tradable) return text || 'Executable';
+  if (!text || text.toLowerCase() === 'support pending') return 'Watching only';
+  return text;
+};
+const surfaceModeBadge = (value, tradable=false) => {
+  const text = String(value || '').trim().toUpperCase();
+  if (tradable) return text || 'EXEC';
+  if (!text || text === 'PENDING') return 'WATCH';
+  return text;
+};
+const latestWinningLesson = (summary) => {
+  const latest = (summary || {}).latest || null;
+  if (latest && String(latest.result || '').toUpperCase() === 'WIN') return latest;
+  const lessons = Array.isArray((summary || {}).recent_lessons) ? summary.recent_lessons : [];
+  return lessons.find((lesson) => String((lesson || {}).result || '').toUpperCase() === 'WIN') || null;
+};
+const fallbackProbability = (score, confidence, convictionScore=0) => {
+  const anchor = Number(convictionScore || 0) > 0 ? Number(convictionScore || 0) : Number(score || 50);
+  const adjustments = { LOW: -0.05, MEDIUM: 0.0, HIGH: 0.06 };
+  const base = 0.50 + ((Math.max(0, Math.min(100, anchor)) - 50) / 50) * 0.18 + (adjustments[String(confidence || 'MEDIUM').toUpperCase()] || 0);
+  return Math.max(0.18, Math.min(0.82, base));
+};
+const probabilityTierForPct = (pct) => {
+  const value = Number(pct || 0);
+  if (value >= 65) return 'high';
+  if (value >= 50) return 'medium';
+  return 'low';
+};
+const probabilityChipHtml = (item) => {
+  const pct = Number((item || {}).probability_pct || 0);
+  if (!(pct > 0)) return '';
+  const tier = String((item || {}).probability_tier || probabilityTierForPct(pct));
+  return '<span class="prob-chip prob-chip-' + esc(tier) + '">' + esc(String(pct) + '% odds') + '</span>';
+};
+const compactOddsText = (item) => {
+  const pct = Number((item || {}).probability_pct || 0);
+  if (!(pct > 0)) return '';
+  return String(pct) + '% odds';
+};
+const setupProbabilityPayload = ({
+  signal,
+  status,
+  action,
+  confidence,
+  score,
+  convictionScore,
+  livePrice,
+  longTrigger,
+  shortTrigger,
+  bias,
+  tradable,
+  coachVerdict,
+}) => {
+  const sig = signal || {};
+  const expectancyProbability = Number(sig.expectancy_probability || 0);
+  const uncertainty = Number(sig.expectancy_uncertainty || 0);
+  const analogAdjustment = Math.max(-0.08, Math.min(0.08, Number(sig.analog_probability_adjustment || 0)));
+  const catalystScore = Number(sig.news_catalyst_score || 0);
+  const referee = (sig.llm_referee || {});
+  const refereeVerdict = String(referee.verdict || sig.llm_referee_verdict || '').toUpperCase();
+  const executionQualityScore = Number(sig.execution_quality_score || 0);
+  const statusKey = String(status || '').toUpperCase();
+  const actionKey = String(action || '').toUpperCase();
+  const coachKey = String(coachVerdict || '').toUpperCase();
+  let probability = expectancyProbability > 0 && expectancyProbability <= 1
+    ? expectancyProbability
+    : fallbackProbability(score, confidence, convictionScore);
+  let label = 'Setup odds';
+  const reasons = [];
+
+  if (uncertainty > 0) {
+    if (uncertainty <= 0.22) {
+      probability += 0.02;
+      reasons.push('low model uncertainty');
+    } else if (uncertainty >= 0.40) {
+      probability -= 0.04;
+      reasons.push('high model uncertainty');
+    }
+  }
+  if (analogAdjustment) {
+    probability += analogAdjustment;
+    reasons.push(analogAdjustment > 0 ? 'historical analogs are supportive' : 'historical analogs are cautious');
+  }
+  if (refereeVerdict === 'SUPPORT') {
+    probability += 0.03;
+    reasons.push('referee supports the setup');
+  } else if (refereeVerdict === 'WAIT') {
+    probability -= 0.02;
+    reasons.push('referee still wants cleaner confirmation');
+  } else if (refereeVerdict === 'BLOCK') {
+    probability -= 0.05;
+    reasons.push('referee is blocking the setup');
+  }
+  if (coachKey === 'BLOCK') {
+    probability -= 0.06;
+    reasons.push('execution coach is blocking here');
+  } else if (coachKey === 'GO') {
+    probability += 0.03;
+    reasons.push('execution coach likes the tape');
+  }
+  if (executionQualityScore > 0) {
+    if (executionQualityScore >= 75) {
+      probability += 0.03;
+      reasons.push('execution quality is clean');
+    } else if (executionQualityScore <= 55) {
+      probability -= 0.03;
+      reasons.push('execution quality is messy');
+    }
+  }
+  if (catalystScore >= 3.0) {
+    probability += 0.04;
+    reasons.push('major catalyst still supports the move');
+  } else if (catalystScore >= 2.0) {
+    probability += 0.02;
+    reasons.push('fresh catalyst support is still there');
+  }
+
+  const liveReclaim = Boolean(sig.market_map_live_reclaim) || (Number(livePrice || 0) > 0 && Number(longTrigger || 0) > 0 && Number(livePrice || 0) >= Number(longTrigger || 0));
+  const waitingReclaim = statusKey === 'WAIT_RECLAIM' || (
+    statusKey === 'WATCH_LONG' && Number(longTrigger || 0) > 0 && !liveReclaim && (Boolean(sig.market_map_reclaim_confirmed) || String(bias || '').toUpperCase() === 'BULLISH')
+  );
+  const liveBreakdown = Boolean(sig.market_map_live_breakdown);
+  const waitingBreak = statusKey === 'WAIT_BREAKDOWN' || (
+    statusKey === 'WATCH_SHORT' && Number(shortTrigger || 0) > 0 && !liveBreakdown && String(bias || '').toUpperCase() === 'BEARISH'
+  );
+
+  if (waitingReclaim && Number(longTrigger || 0) > 0) {
+    label = 'Reclaim odds';
+    if (sig.market_map_reclaim_confirmed) {
+      probability += 0.07;
+      reasons.push('prior reclaim already printed');
+    }
+    if (sig.market_map_reclaim_lost && !liveReclaim) {
+      probability -= 0.03;
+      reasons.push('intraday hold was lost');
+    }
+    const breakoutStates = new Set([
+      String(sig.orderbook_breakout_state || '').toUpperCase(),
+      String(sig.orderbook_intracycle_breakout_state || '').toUpperCase(),
+    ]);
+    if (breakoutStates.has('CONFIRMED_BULLISH_BREAKOUT') || breakoutStates.has('PERSISTENT_BULLISH_BREAKOUT')) {
+      probability += 0.04;
+      reasons.push('breakout pressure is still live');
+    }
+    if (Number(livePrice || 0) > 0) {
+      const distancePct = Math.max(0, (Number(longTrigger || 0) - Number(livePrice || 0)) / Number(longTrigger || 0));
+      if (distancePct <= 0.0025) {
+        probability += 0.06;
+        reasons.push((distancePct * 100).toFixed(2) + '% below reclaim');
+      } else if (distancePct <= 0.0075) {
+        probability += 0.03;
+        reasons.push((distancePct * 100).toFixed(2) + '% below reclaim');
+      } else if (distancePct >= 0.03) {
+        probability -= 0.06;
+        reasons.push((distancePct * 100).toFixed(2) + '% below reclaim');
+      } else if (distancePct >= 0.015) {
+        probability -= 0.03;
+        reasons.push((distancePct * 100).toFixed(2) + '% below reclaim');
+      }
+    }
+  } else if (waitingBreak && Number(shortTrigger || 0) > 0) {
+    label = 'Break odds';
+    const breakdownConfirmed = Boolean(sig.market_map_breakdown_confirmed);
+    const breakdownLost = breakdownConfirmed && !liveBreakdown;
+    const breakoutStates = new Set([
+      String(sig.orderbook_breakout_state || '').toUpperCase(),
+      String(sig.orderbook_intracycle_breakout_state || '').toUpperCase(),
+    ]);
+    if (breakdownConfirmed) {
+      probability += 0.07;
+      reasons.push('prior breakdown already printed');
+    }
+    if (breakdownLost) {
+      probability -= 0.03;
+      reasons.push('intraday breakdown was lost');
+    }
+    if (breakoutStates.has('CONFIRMED_BEARISH_BREAKOUT') || breakoutStates.has('PERSISTENT_BEARISH_BREAKOUT')) {
+      probability += 0.04;
+      reasons.push('sell pressure is still live');
+    }
+    if (Number(livePrice || 0) > 0) {
+      const distancePct = Math.max(0, (Number(livePrice || 0) - Number(shortTrigger || 0)) / Number(shortTrigger || 0));
+      if (distancePct <= 0.0025) {
+        probability += 0.06;
+        reasons.push((distancePct * 100).toFixed(2) + '% above breakdown');
+      } else if (distancePct <= 0.0075) {
+        probability += 0.03;
+        reasons.push((distancePct * 100).toFixed(2) + '% above breakdown');
+      } else if (distancePct >= 0.03) {
+        probability -= 0.06;
+        reasons.push((distancePct * 100).toFixed(2) + '% above breakdown');
+      } else if (distancePct >= 0.015) {
+        probability -= 0.03;
+        reasons.push((distancePct * 100).toFixed(2) + '% above breakdown');
+      }
+    }
+  } else if (statusKey === 'OPEN_LONG' || statusKey === 'OPEN_SHORT') {
+    label = 'Hold odds';
+  } else if (['READY_LONG', 'READY_SHORT', 'PENDING_ENTRY', 'WAITING_CONFIRMATION', 'EXECUTABLE', 'PASSIVE_ENTRY'].includes(statusKey)) {
+    label = 'Entry odds';
+  } else if (actionKey === 'LONG' || actionKey === 'SHORT') {
+    label = 'Entry odds';
+  }
+
+  if (tradable && (label === 'Entry odds' || label === 'Setup odds')) {
+    probability += 0.01;
+  }
+
+  probability = Math.max(0.05, Math.min(0.95, probability));
+  const probabilityPct = Math.round(probability * 100);
+  const tier = probabilityTierForPct(probabilityPct);
+  const detailReasons = [];
+  const seen = new Set();
+  reasons.forEach((reason) => {
+    const text = String(reason || '').trim();
+    const key = text.toLowerCase();
+    if (!text || seen.has(key) || detailReasons.length >= 3) return;
+    seen.add(key);
+    detailReasons.push(text);
+  });
+  const detail = label + ' ' + probabilityPct + '%' + (detailReasons.length ? ' • ' + detailReasons.join(' • ') : '');
+  return {
+    probability: Number(probability.toFixed(4)),
+    probability_pct: probabilityPct,
+    probability_label: label,
+    probability_text: label + ' ' + probabilityPct + '%',
+    probability_detail: detail,
+    probability_tier: tier,
+  };
+};
+const dashboardItemForCoin = (coin) => {
+  const found = findActionBoardItem(coin);
+  return found.item || fallbackSearchItem(coin);
 };
 let latestControl = null;
 let latestState = null;
@@ -1821,32 +2228,35 @@ function fallbackSearchItem(coin) {
   let label = 'Watching';
   let headline = shortText(signal.flat_reason || signal.decision_reason || signal.market_map_summary || mapEntry.summary || 'Tracked by the agent, but it is not surfacing a live setup yet.', 180);
   let trigger = 'Wait for a clearer thesis.';
+  let entryStatus = '';
   let executionNote = tradable
     ? 'This market can execute on the active venue once the thesis, sizing, and fills all clear.'
     : 'This market is being watched, but venue support or live market quality is not ready enough yet.';
 
   if (position) {
     const direction = String(position.direction || action || 'LONG').toUpperCase();
+    const liveReference = livePrice > 0 ? livePrice : Number(position.current_price || 0);
     status = direction === 'SHORT' ? 'OPEN_SHORT' : 'OPEN_LONG';
     label = 'In ' + direction;
     headline = shortText(position.current_logic || position.entry_logic || 'Trade is live and under active management.', 180);
-    trigger = (position.stop_loss && position.take_profit)
-      ? 'Stop ' + fmt(position.stop_loss) + ' • Target ' + fmt(position.take_profit)
-      : 'Trade is already open.';
+    entryStatus = entryStatusLine(liveReference, Number(position.entry_price || 0), 'entry');
+    trigger = stopTargetLine(liveReference, Number(position.stop_loss || 0), Number(position.take_profit || 0)) || 'Trade is already open.';
     executionNote = 'Position is already open and under active management.';
   } else if (assetState === 'PENDING_ENTRY') {
     status = 'PENDING_ENTRY';
     label = assetStateLabel || 'Pending entry';
     headline = shortText(signal.next_unblock_reason || 'A resting order is already on the book.', 180);
-    trigger = livePrice > 0 ? 'Working order around ' + fmt(livePrice) : 'Waiting for the resting order to resolve.';
+    const anchorPrice = Number(signal.price || signal.live_price || 0);
+    entryStatus = entryStatusLine(livePrice, anchorPrice, 'limit');
+    trigger = numericLevel('Limit', anchorPrice, livePrice) || 'Waiting for the resting order to resolve.';
     executionNote = String(signal.next_unblock_reason || signal.execution_quality_summary || 'The order is working and waiting for a fill, cancel, or expiry.');
   } else if (action === 'LONG') {
     status = 'READY_LONG';
     label = 'Long thesis live';
     headline = shortText(signal.decision_reason || 'Long thesis is live.', 180);
-    trigger = livePrice > 0
-      ? 'Watching entry around ' + fmt(livePrice) + ' once final checks stay clean.'
-      : (longTrigger ? 'Best long trigger stays above ' + fmt(longTrigger) : 'Watching for a clean long trigger.');
+    const triggerLevel = longTrigger || Number(signal.price || signal.live_price || 0);
+    entryStatus = entryStatusLine(livePrice, longTrigger, 'trigger');
+    trigger = numericLevel('Entry', triggerLevel, livePrice) || 'Watching for a clean long trigger.';
     executionNote = tradable
       ? 'The thesis qualifies, but the bot still waits for confirmation, sizing, and clean fills before sending the order.'
       : 'The thesis qualifies, but venue support or live market quality is not ready enough yet.';
@@ -1854,9 +2264,9 @@ function fallbackSearchItem(coin) {
     status = 'READY_SHORT';
     label = 'Short thesis live';
     headline = shortText(signal.decision_reason || 'Short thesis is live.', 180);
-    trigger = livePrice > 0
-      ? 'Watching entry around ' + fmt(livePrice) + ' once final checks stay clean.'
-      : (shortTrigger ? 'Best short trigger stays below ' + fmt(shortTrigger) : 'Watching for a clean short trigger.');
+    const triggerLevel = shortTrigger || Number(signal.price || signal.live_price || 0);
+    entryStatus = entryStatusLine(livePrice, shortTrigger, 'trigger');
+    trigger = numericLevel('Entry', triggerLevel, livePrice) || 'Watching for a clean short trigger.';
     executionNote = tradable
       ? 'The thesis qualifies, but the bot still waits for confirmation, sizing, and clean fills before sending the order.'
       : 'The thesis qualifies, but venue support or live market quality is not ready enough yet.';
@@ -1865,48 +2275,69 @@ function fallbackSearchItem(coin) {
     label = assetStateLabel || humanizeKey(assetState);
     headline = shortText(signal.next_unblock_reason || signal.flat_reason || signal.decision_reason || 'The setup is still gated.', 180);
     if (action === 'LONG' && livePrice > 0) {
-      trigger = 'Long is tracking around ' + fmt(livePrice);
+      entryStatus = entryStatusLine(livePrice, longTrigger, 'trigger');
+      trigger = numericLevel('Trigger', longTrigger, livePrice) || ('Live ' + fmt(livePrice));
     } else if (action === 'SHORT' && livePrice > 0) {
-      trigger = 'Short is tracking around ' + fmt(livePrice);
+      entryStatus = entryStatusLine(livePrice, shortTrigger, 'trigger');
+      trigger = numericLevel('Trigger', shortTrigger, livePrice) || ('Live ' + fmt(livePrice));
     } else if (longTrigger && bias === 'BULLISH') {
-      trigger = 'Best long trigger stays above ' + fmt(longTrigger);
+      entryStatus = entryStatusLine(livePrice, longTrigger, 'trigger');
+      trigger = numericLevel('Trigger', longTrigger, livePrice);
     } else if (shortTrigger && bias === 'BEARISH') {
-      trigger = 'Best short trigger stays below ' + fmt(shortTrigger);
+      entryStatus = entryStatusLine(livePrice, shortTrigger, 'trigger');
+      trigger = numericLevel('Trigger', shortTrigger, livePrice);
     }
     executionNote = String(signal.next_unblock_reason || signal.portfolio_guard_summary || signal.data_reliability_summary || signal.execution_quality_summary || executionNote);
   } else if (bias === 'BULLISH') {
     status = 'WATCH_LONG';
     label = 'Bullish watch';
     headline = shortText(signal.market_map_summary || mapEntry.summary || 'Higher-timeframe bias is bullish, but the entry is not ready.', 180);
-    trigger = longTrigger ? 'Best long trigger is above ' + fmt(longTrigger) : 'Wait for cleaner long confirmation.';
+    entryStatus = entryStatusLine(livePrice, longTrigger, signal.market_map_reclaim_confirmed ? 'reclaim' : 'trigger');
+    trigger = numericLevel(signal.market_map_reclaim_confirmed ? 'Reclaim' : 'Trigger', longTrigger, livePrice) || 'Wait for cleaner long confirmation.';
     executionNote = 'The agent is reading this as bullish context only. It still needs a qualified live thesis before any order can go out.';
   } else if (bias === 'BEARISH') {
     status = 'WATCH_SHORT';
     label = 'Bearish watch';
     headline = shortText(signal.market_map_summary || mapEntry.summary || 'Higher-timeframe bias is bearish, but the entry is not ready.', 180);
-    trigger = shortTrigger ? 'Best short trigger is below ' + fmt(shortTrigger) : 'Wait for cleaner short confirmation.';
+    entryStatus = entryStatusLine(livePrice, shortTrigger, signal.market_map_breakdown_confirmed ? 'breakdown' : 'trigger');
+    trigger = numericLevel(signal.market_map_breakdown_confirmed ? 'Break' : 'Trigger', shortTrigger, livePrice) || 'Wait for cleaner short confirmation.';
     executionNote = 'The agent is reading this as bearish context only. It still needs a qualified live thesis before any order can go out.';
   }
 
   let risk = shortText(mapEntry.summary || signal.market_map_summary || '', 120);
   if (status.includes('LONG') && support) {
-    risk = 'Risk if it loses ' + fmt(support);
+    risk = numericLevel('Lose', support, livePrice) || ('Lose ' + fmt(support));
   } else if (status.includes('SHORT') && resistance) {
-    risk = 'Risk if it reclaims ' + fmt(resistance);
+    risk = numericLevel('Reclaim', resistance, livePrice) || ('Reclaim ' + fmt(resistance));
   }
+  const probability = setupProbabilityPayload({
+    signal,
+    status,
+    action,
+    confidence: String(signal.confidence || 'LOW').toUpperCase(),
+    score: Number(signal.score || 50),
+    convictionScore: Number(signal.thesis_conviction_score || signal.score || 50),
+    livePrice,
+    longTrigger,
+    shortTrigger,
+    bias,
+    tradable,
+    coachVerdict: String(signal.execution_coach_verdict || ''),
+  });
 
   return {
     coin: ticker,
     tradable,
-    mode_badge: tradable ? 'EXEC' : 'PENDING',
-    mode_meta: tradable ? 'Executable' : 'Support pending',
+    mode_badge: tradable ? 'EXEC' : 'WATCH',
+    mode_meta: tradable ? 'Executable' : 'Watching only',
     mode_detail: tradable
       ? 'This market can execute on the active venue, but the bot still needs final entry checks to clear.'
-      : 'The agent is tracking this market, but execution is blocked on the active venue right now.',
+      : 'The agent is tracking this market and waiting for clearer confirmation before it becomes actionable.',
     status,
     label,
     headline,
     trigger,
+    entry_status: entryStatus || executionNote,
     execution_note: executionNote,
     risk,
     bias,
@@ -1914,6 +2345,7 @@ function fallbackSearchItem(coin) {
     confidence: String(signal.confidence || 'LOW').toUpperCase(),
     score: Number(signal.score || 50),
     tracked,
+    ...probability,
   };
 }
 
@@ -1964,7 +2396,7 @@ function renderTickerSearch(value) {
   const statusChip = '<span class="review-chip">' + esc(String(item.label || 'Watching').toUpperCase()) + '</span>';
   const trackedLine = item.tradable
     ? item.mode_detail || 'Executable on the active venue.'
-    : item.mode_detail || 'Support or live data is still pending.';
+    : item.mode_detail || 'Watching only while the setup keeps developing.';
   const matchNote = found.match && found.match !== 'exact'
     ? 'Matched from ' + found.match + ' search on ' + item.coin + '.'
     : 'Exact live dashboard read for ' + item.coin + '.';
@@ -1975,12 +2407,13 @@ function renderTickerSearch(value) {
 
   hint.textContent = item.coin + ': ' + trackedLine;
   result.innerHTML = '<div class="search-title">' + esc(item.coin) + ' • ' + esc(item.label || 'Watching') + '</div>'
-    + '<div class="search-chip-row">' + tradableChip + statusChip + biasChip + '</div>'
+    + '<div class="search-chip-row">' + tradableChip + statusChip + biasChip + probabilityChipHtml(item) + '</div>'
     + '<div class="search-summary">' + esc(shortText(item.headline || item.execution_note || 'No clear read right now.', 220)) + '</div>'
     + '<div class="search-grid">'
       + '<div class="token-detail"><span class="token-detail-label">Current read</span><div class="token-detail-value">' + esc(item.label || 'Watching') + '</div></div>'
-      + '<div class="token-detail"><span class="token-detail-label">Entry status</span><div class="token-detail-value">' + esc(shortText(item.execution_note || item.mode_detail || 'Still waiting for final entry checks.', 140)) + '</div></div>'
+      + '<div class="token-detail"><span class="token-detail-label">Entry status</span><div class="token-detail-value">' + esc(shortText(item.entry_status || item.execution_note || item.mode_detail || 'Still waiting for final entry checks.', 140)) + '</div></div>'
       + '<div class="token-detail"><span class="token-detail-label">Trigger</span><div class="token-detail-value">' + esc(shortText(item.trigger || 'Wait for a cleaner setup.', 140)) + '</div></div>'
+      + '<div class="token-detail"><span class="token-detail-label">Odds</span><div class="token-detail-value">' + esc(shortText(item.probability_detail || item.probability_text || 'No odds yet.', 140)) + '</div></div>'
       + '<div class="token-detail"><span class="token-detail-label">Risk</span><div class="token-detail-value">' + esc(shortText(item.risk || item.map_summary || 'Stay patient until the map and order-flow align.', 140)) + '</div></div>'
     + '</div>'
     + (dossierBody.current_read ? '<div class="search-summary"><strong>Dossier read:</strong> ' + esc(shortText(dossierBody.current_read, 180)) + '</div>' : '')
@@ -1988,7 +2421,7 @@ function renderTickerSearch(value) {
     + (referee.summary ? '<div class="search-summary"><strong>Referee:</strong> ' + esc(shortText(referee.summary, 180)) + (referee.verdict ? ' • ' + esc(String(referee.verdict)) : '') + '</div>' : '')
     + ((missed.miss_count || 0) > 0 ? '<div class="search-summary"><strong>Missed-move pressure:</strong> ' + esc(String(missed.miss_count)) + ' recent skipped winner(s) on this ticker.</div>' : '')
     + (item.map_summary ? '<div class="search-summary"><strong>Daily view:</strong> ' + esc(shortText(item.map_summary, 180)) + '</div>' : '')
-    + '<div class="search-summary"><strong>Execution lane:</strong> ' + esc(item.mode_meta || (item.tradable ? 'Executable' : 'Support pending')) + ' • <strong>Lookup:</strong> ' + esc(matchNote) + '</div>';
+    + '<div class="search-summary"><strong>Execution lane:</strong> ' + esc(surfaceModeMeta(item.mode_meta, item.tradable)) + ' • <strong>Lookup:</strong> ' + esc(matchNote) + '</div>';
 }
 
 function handleTickerSearch(value) {
@@ -2155,6 +2588,134 @@ async function lookupTradexyzVolume() {
   }
 }
 
+function marketMapBiasMixText(coins, entries) {
+  const counts = { BULLISH: 0, BEARISH: 0, NEUTRAL: 0 };
+  (coins || []).forEach((coin) => {
+    const entry = (entries || {})[coin] || {};
+    const signal = ((((latestState || {}).signals || {})[coin]) || {});
+    const bias = String(signal.market_map_bias || entry.bias || 'NEUTRAL').toUpperCase();
+    if (bias === 'BULLISH') counts.BULLISH += 1;
+    else if (bias === 'BEARISH') counts.BEARISH += 1;
+    else counts.NEUTRAL += 1;
+  });
+  const parts = [];
+  if (counts.BULLISH) parts.push(counts.BULLISH + ' bullish');
+  if (counts.BEARISH) parts.push(counts.BEARISH + ' bearish');
+  if (counts.NEUTRAL) parts.push(counts.NEUTRAL + ' neutral');
+  return parts.join(' • ') || 'No directional bias yet.';
+}
+
+function marketMapCompactRowHtml(coin, item) {
+  const safeItem = item || {
+    coin,
+    tradable: false,
+    mode_badge: 'WATCH',
+    label: 'Watching',
+    bias: 'NEUTRAL',
+    headline: 'Waiting for a clearer daily read.',
+    entry_status: 'Still mapping structure.',
+    trigger: 'No trigger set yet.',
+    risk: 'Risk line still forming.',
+  };
+  const tradable = Boolean(safeItem.tradable);
+  const modeClass = tradable ? 'signal-mode-tradable' : 'signal-mode-watch';
+  return '<div class="daily-sheet-row" data-tradable="' + (tradable ? 'true' : 'false') + '">'
+    + '<div class="daily-sheet-main">'
+      + '<div class="token-line"><div class="map-coin">' + esc(safeItem.coin || coin) + '</div><span class="' + modeClass + '">' + esc(surfaceModeBadge(safeItem.mode_badge, tradable)) + '</span>' + probabilityChipHtml(safeItem) + '<span class="review-chip">' + esc(String(safeItem.label || 'Watching').toUpperCase()) + '</span><span class="' + biasClass(safeItem.bias) + '">' + esc(String(safeItem.bias || 'NEUTRAL')) + '</span></div>'
+      + '<div class="token-subline">' + esc(shortText(safeItem.headline || safeItem.execution_note || safeItem.map_summary || 'Waiting for a clearer daily read.', 130)) + '</div>'
+    + '</div>'
+    + '<div class="daily-sheet-stat"><div class="daily-sheet-label">Entry</div><div class="daily-sheet-value">' + esc(shortText(safeItem.entry_status || 'Still mapping structure.', 88)) + '</div></div>'
+    + '<div class="daily-sheet-stat"><div class="daily-sheet-label">Trigger</div><div class="daily-sheet-value">' + esc(shortText((safeItem.trigger || 'No trigger set yet.') + (compactOddsText(safeItem) ? ' • ' + compactOddsText(safeItem) : ''), 88)) + '</div></div>'
+    + '<div class="daily-sheet-stat"><div class="daily-sheet-label">Risk</div><div class="daily-sheet-value">' + esc(shortText(safeItem.risk || 'Risk line still forming.', 88)) + '</div></div>'
+  + '</div>';
+}
+
+function marketMapDetailCardHtml(coin, entry, signal, item) {
+  const safeSignal = signal || {};
+  const safeItem = item || dashboardItemForCoin(coin) || {};
+  const isTradable = Boolean(safeItem.tradable) || String(safeSignal.execution_mode || 'observation_only') === 'tradable';
+  const modeLabel = surfaceModeBadge(safeItem.mode_badge, isTradable);
+  const modeClass = isTradable ? 'signal-mode-tradable' : 'signal-mode-watch';
+  const modeNote = isTradable
+    ? 'Executable on the active venue, but still needs a qualified thesis and clean execution.'
+    : 'Watching only until the reclaim, breakdown, and live market quality line up cleanly.';
+  const signalAction = String(safeSignal.action || 'FLAT').toUpperCase();
+  const signalState = String(safeSignal.asset_state || '').toUpperCase();
+  const shouldOpen = isTradable && (signalAction !== 'FLAT' || signalState === 'PENDING_ENTRY');
+  if (!entry) {
+    return '<details class="map-card map-card-empty" data-tradable="' + (isTradable ? 'true' : 'false') + '"' + (shouldOpen ? ' open' : '') + '>'
+      + '<summary class="map-card-summary">'
+        + '<div class="map-summary-main">'
+          + '<div class="token-line"><div class="map-coin">' + esc(coin) + '</div><span class="' + modeClass + '">' + esc(modeLabel) + '</span>' + probabilityChipHtml(safeItem) + '<span class="review-chip">AUTO PENDING</span></div>'
+          + '<div class="token-subline">No structure map is available yet for this asset. Add a manual override if you want custom levels immediately.</div>'
+        + '</div>'
+        + '<div class="map-summary-side"><div class="token-preview">' + esc(modeNote) + '</div><span class="token-chevron">⌄</span></div>'
+      + '</summary>'
+      + '<div class="map-card-body">'
+        + '<div class="token-detail-grid">'
+          + '<div class="token-detail"><span class="token-detail-label">Execution</span><div class="token-detail-value">' + esc(surfaceModeMeta(safeItem.mode_meta, isTradable)) + '</div></div>'
+          + '<div class="token-detail"><span class="token-detail-label">Map status</span><div class="token-detail-value">Waiting for a stronger daily structure map.</div></div>'
+        + '</div>'
+        + '<div class="map-card-actions"><button class="tool-btn" onclick="editMarketMap(' + JSON.stringify(coin) + ')">OVERRIDE</button></div>'
+      + '</div>'
+      + '</details>';
+  }
+
+  const source = String(entry.source || (entry.auto_generated ? 'AUTO' : 'MANUAL')).toUpperCase();
+  const longTrigger = pickLevel(entry.daily_close_long_above, null, 'min');
+  const shortTrigger = pickLevel(entry.daily_close_short_below, null, 'max');
+  const mapBias = String(entry.bias || 'NEUTRAL').toUpperCase();
+  const support = pickLevel(entry.supports, entry.demand_zone && entry.demand_zone.high, 'max');
+  const resistance = pickLevel(entry.resistances, entry.supply_zone && entry.supply_zone.low, 'min');
+  let setupLine = 'No clear directional edge from the daily view yet.';
+  if (mapBias === 'BULLISH' && longTrigger) {
+    setupLine = 'Bullish bias only. Longs earn permission after a daily close above ' + fmt(longTrigger) + '.';
+  } else if (mapBias === 'BEARISH' && shortTrigger) {
+    setupLine = 'Bearish bias only. Shorts earn permission after a daily close below ' + fmt(shortTrigger) + '.';
+  } else if (mapBias === 'BULLISH') {
+    setupLine = 'Bullish bias, but the exact long trigger is still forming.';
+  } else if (mapBias === 'BEARISH') {
+    setupLine = 'Bearish bias, but the exact short trigger is still forming.';
+  }
+  const preview = safeItem.trigger
+    ? shortText(safeItem.trigger, 60)
+    : mapBias === 'BULLISH'
+      ? 'Long above ' + (longTrigger ? fmt(longTrigger) : '--')
+      : mapBias === 'BEARISH'
+        ? 'Short below ' + (shortTrigger ? fmt(shortTrigger) : '--')
+        : 'No directional edge';
+  const previewRisk = safeItem.risk
+    ? shortText(safeItem.risk, 60)
+    : 'Risk below ' + (shortTrigger ? fmt(shortTrigger) : '--');
+  return '<details class="map-card" data-tradable="' + (isTradable ? 'true' : 'false') + '"' + (shouldOpen ? ' open' : '') + '>'
+    + '<summary class="map-card-summary">'
+      + '<div class="map-summary-main">'
+        + '<div class="token-line"><div class="map-coin">' + esc(coin) + '</div><span class="' + modeClass + '">' + esc(modeLabel) + '</span>' + probabilityChipHtml(safeItem) + '<span class="review-chip">' + esc(source === 'AUTO' ? 'AUTO MAP' : 'MANUAL') + '</span><span class="' + biasClass(entry.bias) + '">' + esc(String(entry.bias || 'NEUTRAL')) + '</span></div>'
+        + '<div class="token-subline">' + esc(shortText(setupLine, 150)) + '</div>'
+      + '</div>'
+      + '<div class="map-summary-side"><div class="token-preview">' + esc(preview) + '<br>' + esc(previewRisk) + '</div><span class="token-chevron">⌄</span></div>'
+    + '</summary>'
+    + '<div class="map-card-body">'
+        + '<div class="token-detail-grid">'
+          + '<div class="token-detail"><span class="token-detail-label">Support</span><div class="token-detail-value">' + esc(support ? fmt(support) : csvText(entry.supports)) + '</div></div>'
+          + '<div class="token-detail"><span class="token-detail-label">Resistance</span><div class="token-detail-value">' + esc(resistance ? fmt(resistance) : csvText(entry.resistances)) + '</div></div>'
+          + '<div class="token-detail"><span class="token-detail-label">Long trigger</span><div class="token-detail-value">' + esc(longTrigger ? fmt(longTrigger) : '--') + '</div></div>'
+          + '<div class="token-detail"><span class="token-detail-label">Risk below</span><div class="token-detail-value">' + esc(shortTrigger ? fmt(shortTrigger) : '--') + '</div></div>'
+          + '<div class="token-detail"><span class="token-detail-label">Odds</span><div class="token-detail-value">' + esc(shortText(safeItem.probability_detail || safeItem.probability_text || 'No odds yet.', 140)) + '</div></div>'
+          + '<div class="token-detail"><span class="token-detail-label">Playbook</span><div class="token-detail-value">' + esc(String(entry.trade_mode || '--')) + '</div></div>'
+          + '<div class="token-detail"><span class="token-detail-label">Execution</span><div class="token-detail-value">' + esc(surfaceModeMeta(safeItem.mode_meta, isTradable)) + '</div></div>'
+        + '</div>'
+      + '<div class="map-zone"><strong>Daily take:</strong> ' + esc(setupLine) + '</div>'
+      + '<div class="map-zone"><strong>Demand:</strong> ' + esc(zoneText(entry.demand_zone)) + ' • <strong>Supply:</strong> ' + esc(zoneText(entry.supply_zone)) + '</div>'
+      + '<div class="map-notes"><strong>Map:</strong> ' + esc(shortText(entry.summary || entry.notes || 'No coin-specific notes yet.', 180)) + '</div>'
+      + '<div class="map-card-actions">'
+        + '<button class="tool-btn" onclick="editMarketMap(' + JSON.stringify(coin) + ')">' + (source === 'AUTO' ? 'OVERRIDE' : 'EDIT') + '</button>'
+        + (source === 'AUTO' ? '' : '<button class="tool-btn" onclick="deleteMarketMap(' + JSON.stringify(coin) + ')">DELETE</button>')
+      + '</div>'
+    + '</div>'
+    + '</details>';
+}
+
 function renderMarketMapSummary(summary, marketMap) {
   const meta = document.getElementById('market-map-meta');
   const body = document.getElementById('market-map-body');
@@ -2164,7 +2725,7 @@ function renderMarketMapSummary(summary, marketMap) {
   const groups = groupTrackedCoinsByBucket(coins);
   marketMapBucket = chooseBucket(marketMapBucket, groups);
   const selected = groups[marketMapBucket] || groups.coin;
-  const metaBits = ['Higher-timeframe bias only'];
+  const metaBits = ['Map read only'];
   ['coin', 'equity'].forEach((bucket) => {
     const group = groups[bucket];
     if (group && group.count > 0) metaBits.push(bucketLabel(bucket) + ' ' + group.count);
@@ -2178,10 +2739,6 @@ function renderMarketMapSummary(summary, marketMap) {
   }
 
   let html = '';
-  if (globalNotes) {
-    html += '<div class="map-global-notes"><strong>Global notes:</strong> ' + esc(globalNotes) + '</div>';
-  }
-
   html += renderBucketTabs(marketMapBucket, groups, 'market');
   html += '<div class="asset-bucket-note">' + esc(bucketDescription(marketMapBucket)) + '</div>';
 
@@ -2191,87 +2748,34 @@ function renderMarketMapSummary(summary, marketMap) {
     return;
   }
 
-  html += '<div class="market-map-grid">';
+  const itemByCoin = {};
   selectedCoins.forEach((coin) => {
-    const entry = entries[coin];
-    const signal = ((((latestState || {}).signals || {})[coin]) || {});
-    const isTradable = String(signal.execution_mode || 'observation_only') === 'tradable';
-    const modeLabel = isTradable ? 'LIVE' : 'WATCH';
-    const modeClass = isTradable ? 'signal-mode-tradable' : 'signal-mode-watch';
-    const modeNote = isTradable
-      ? 'Executable on the active venue, but still needs a qualified thesis and clean execution.'
-      : 'Support or venue-quality checks are still pending.';
-    const signalAction = String(signal.action || 'FLAT').toUpperCase();
-    const signalState = String(signal.asset_state || '').toUpperCase();
-    const shouldOpen = isTradable && (signalAction !== 'FLAT' || signalState === 'PENDING_ENTRY');
-    if (!entry) {
-      html += '<details class="map-card map-card-empty" data-tradable="' + (isTradable ? 'true' : 'false') + '"' + (shouldOpen ? ' open' : '') + '>'
-        + '<summary class="map-card-summary">'
-          + '<div class="map-summary-main">'
-            + '<div class="token-line"><div class="map-coin">' + esc(coin) + '</div><span class="' + modeClass + '">' + esc(modeLabel) + '</span><span class="review-chip">AUTO PENDING</span></div>'
-            + '<div class="token-subline">No structure map is available yet for this asset. Add a manual override if you want custom levels immediately.</div>'
-          + '</div>'
-          + '<div class="map-summary-side"><div class="token-preview">' + esc(modeNote) + '</div><span class="token-chevron">⌄</span></div>'
-        + '</summary>'
-        + '<div class="map-card-body">'
-          + '<div class="token-detail-grid">'
-            + '<div class="token-detail"><span class="token-detail-label">Execution</span><div class="token-detail-value">' + esc(modeNote) + '</div></div>'
-            + '<div class="token-detail"><span class="token-detail-label">Map status</span><div class="token-detail-value">Waiting for a stronger daily structure map.</div></div>'
-          + '</div>'
-          + '<div class="map-card-actions"><button class="tool-btn" onclick="editMarketMap(' + JSON.stringify(coin) + ')">OVERRIDE</button></div>'
-        + '</div>'
-        + '</details>';
-      return;
-    }
-    const source = String(entry.source || (entry.auto_generated ? 'AUTO' : 'MANUAL')).toUpperCase();
-    const longTrigger = pickLevel(entry.daily_close_long_above, null, 'min');
-    const shortTrigger = pickLevel(entry.daily_close_short_below, null, 'max');
-    const mapBias = String(entry.bias || 'NEUTRAL').toUpperCase();
-    const support = pickLevel(entry.supports, entry.demand_zone && entry.demand_zone.high, 'max');
-    const resistance = pickLevel(entry.resistances, entry.supply_zone && entry.supply_zone.low, 'min');
-    let setupLine = 'No clear directional edge from the daily view yet.';
-    if (mapBias === 'BULLISH' && longTrigger) {
-      setupLine = 'Bullish bias only. Longs earn permission after a daily close above ' + fmt(longTrigger) + '.';
-    } else if (mapBias === 'BEARISH' && shortTrigger) {
-      setupLine = 'Bearish bias only. Shorts earn permission after a daily close below ' + fmt(shortTrigger) + '.';
-    } else if (mapBias === 'BULLISH') {
-      setupLine = 'Bullish bias, but the exact long trigger is still forming.';
-    } else if (mapBias === 'BEARISH') {
-      setupLine = 'Bearish bias, but the exact short trigger is still forming.';
-    }
-    const preview = mapBias === 'BULLISH'
-      ? 'Long above ' + (longTrigger ? fmt(longTrigger) : '--')
-      : mapBias === 'BEARISH'
-        ? 'Short below ' + (shortTrigger ? fmt(shortTrigger) : '--')
-        : 'No directional edge';
-    html += '<details class="map-card" data-tradable="' + (isTradable ? 'true' : 'false') + '"' + (shouldOpen ? ' open' : '') + '>'
-      + '<summary class="map-card-summary">'
-        + '<div class="map-summary-main">'
-          + '<div class="token-line"><div class="map-coin">' + esc(coin) + '</div><span class="' + modeClass + '">' + esc(modeLabel) + '</span><span class="review-chip">' + esc(source === 'AUTO' ? 'AUTO MAP' : 'MANUAL') + '</span><span class="' + biasClass(entry.bias) + '">' + esc(String(entry.bias || 'NEUTRAL')) + '</span></div>'
-          + '<div class="token-subline">' + esc(shortText(setupLine, 150)) + '</div>'
-        + '</div>'
-        + '<div class="map-summary-side"><div class="token-preview">' + esc(preview) + '<br>' + esc('Risk below ' + (shortTrigger ? fmt(shortTrigger) : '--')) + '</div><span class="token-chevron">⌄</span></div>'
-      + '</summary>'
-      + '<div class="map-card-body">'
-        + '<div class="token-detail-grid">'
-          + '<div class="token-detail"><span class="token-detail-label">Support</span><div class="token-detail-value">' + esc(support ? fmt(support) : csvText(entry.supports)) + '</div></div>'
-          + '<div class="token-detail"><span class="token-detail-label">Resistance</span><div class="token-detail-value">' + esc(resistance ? fmt(resistance) : csvText(entry.resistances)) + '</div></div>'
-          + '<div class="token-detail"><span class="token-detail-label">Long trigger</span><div class="token-detail-value">' + esc(longTrigger ? fmt(longTrigger) : '--') + '</div></div>'
-          + '<div class="token-detail"><span class="token-detail-label">Risk below</span><div class="token-detail-value">' + esc(shortTrigger ? fmt(shortTrigger) : '--') + '</div></div>'
-          + '<div class="token-detail"><span class="token-detail-label">Playbook</span><div class="token-detail-value">' + esc(String(entry.trade_mode || '--')) + '</div></div>'
-          + '<div class="token-detail"><span class="token-detail-label">Execution</span><div class="token-detail-value">' + esc(modeNote) + '</div></div>'
-        + '</div>'
-        + '<div class="map-zone"><strong>Daily take:</strong> ' + esc(setupLine) + '</div>'
-        + '<div class="map-zone"><strong>Demand:</strong> ' + esc(zoneText(entry.demand_zone)) + ' • <strong>Supply:</strong> ' + esc(zoneText(entry.supply_zone)) + '</div>'
-        + '<div class="map-notes"><strong>Map:</strong> ' + esc(shortText(entry.summary || entry.notes || 'No coin-specific notes yet.', 180)) + '</div>'
-        + '<div class="map-card-actions">'
-          + '<button class="tool-btn" onclick="editMarketMap(' + JSON.stringify(coin) + ')">' + (source === 'AUTO' ? 'OVERRIDE' : 'EDIT') + '</button>'
-          + (source === 'AUTO' ? '' : '<button class="tool-btn" onclick="deleteMarketMap(' + JSON.stringify(coin) + ')">DELETE</button>')
-        + '</div>'
-      + '</div>'
-      + '</details>';
+    itemByCoin[coin] = dashboardItemForCoin(coin);
   });
-  html += '</div>';
+  const tradableCount = selectedCoins.filter((coin) => Boolean((itemByCoin[coin] || {}).tradable)).length;
+  const latestWin = latestWinningLesson(latestLearningSummary);
+
+  html += '<div class="daily-summary-grid">'
+    + '<div class="daily-summary-card"><div class="daily-summary-label">Tracked</div><div class="daily-summary-value">' + esc(String(selectedCoins.length)) + '</div><div class="daily-summary-note">' + esc(bucketLabel(marketMapBucket)) + ' in this lane</div></div>'
+    + '<div class="daily-summary-card"><div class="daily-summary-label">Bias Mix</div><div class="daily-summary-note">' + esc(marketMapBiasMixText(selectedCoins, entries)) + '</div></div>'
+    + '<div class="daily-summary-card"><div class="daily-summary-label">Execution</div><div class="daily-summary-note">' + esc(String(tradableCount) + ' executable • ' + String(selectedCoins.length - tradableCount) + ' watching only') + '</div></div>'
+    + '<div class="daily-summary-card daily-summary-card-wide"><div class="daily-summary-label">Latest Win</div><div class="daily-summary-note">' + esc(latestWin
+      ? (String(latestWin.coin || '--') + ' ' + String(latestWin.direction || '') + ' ' + fmtD(Number(latestWin.pnl_usd || 0)) + ' • ' + shortText(latestWin.lesson || latestWin.close_logic || latestWin.open_logic || 'No lesson recorded yet.', 120))
+      : 'No winning close logged yet. This tile will fold the latest clean repeatable win into the daily scan.') + '</div></div>'
+    + '</div>';
+
+  if (globalNotes) {
+    html += '<div class="daily-inline-note"><strong>Today:</strong> ' + esc(shortText(globalNotes, 220)) + '</div>';
+  }
+
+  html += '<div class="daily-sheet">'
+    + '<div class="daily-sheet-header"><div>Asset</div><div>Entry</div><div>Trigger</div><div>Risk</div></div>'
+    + selectedCoins.map((coin) => marketMapCompactRowHtml(coin, itemByCoin[coin])).join('')
+    + '</div>';
+
+  html += '<details class="card details-card daily-details-panel"><summary class="asset-section-header"><div class="asset-section-title">Expand Full Level Sheet</div><div class="asset-section-sub">Full demand, supply, trigger, and map notes for every asset in this lane.</div></summary><div class="market-map-grid">'
+    + selectedCoins.map((coin) => marketMapDetailCardHtml(coin, entries[coin], ((((latestState || {}).signals || {})[coin]) || {}), itemByCoin[coin])).join('')
+    + '</div></details>';
   body.innerHTML = html;
 }
 
@@ -2352,6 +2856,7 @@ function renderLearningSummary(summary, trades) {
 
 function renderLatestLesson(summary) {
   const body = document.getElementById('latest-lesson-body');
+  if (!body) return;
   const latest = (summary || {}).latest;
   if (!latest) {
     body.innerHTML = '<div class="empty-state">No closed trades yet. The first trade lesson will show up here with why it opened, why it closed, and what the agent should repeat or avoid.</div>';
@@ -2372,7 +2877,6 @@ function renderActionBoard(board) {
   const body = document.getElementById('signals-body');
   const allItems = Array.isArray((board || {}).items) ? board.items.filter((item) => item) : [];
   const groups = normalizeActionGroups(board);
-  const summary = (board || {}).summary || {};
   const lead = (board || {}).lead || null;
   if (!allItems.length) {
     meta.textContent = 'No tracked setup yet.';
@@ -2382,22 +2886,15 @@ function renderActionBoard(board) {
   actionBoardBucket = chooseBucket(actionBoardBucket, groups);
   const selected = groups[actionBoardBucket] || groups.coin;
   const tradableItems = selected.tradable_items || [];
-  const observationItems = selected.observation_items || [];
   const tradableCount = Number(selected.tradable_count || tradableItems.length || 0);
-  const observationCount = Number(selected.observation_count || observationItems.length || 0);
   const activeTradableCount = Number(selected.active_count || 0);
   const pendingCount = Number(selected.pending_count || 0);
-  const scoutCount = Number(summary.scout_count || 0);
-  const scoutPreview = Array.isArray(summary.scout_preview) ? summary.scout_preview.filter((item) => item) : [];
-  const scoutThreshold = fmtCompactUsd(summary.scout_market_cap_min_usd || 1_000_000_000);
   const metaBits = [
     bucketLabel(actionBoardBucket),
     'Live ' + tradableCount,
-    'Watch ' + observationCount,
   ];
   if (activeTradableCount > 0) metaBits.push('Actionable ' + activeTradableCount);
   if (pendingCount > 0) metaBits.push('Working orders ' + pendingCount);
-  if (actionBoardBucket === 'coin' && scoutCount > 0) metaBits.push('Scouting ' + scoutCount + ' above ' + scoutThreshold);
   if (lead) metaBits.push('Best setup: ' + lead.coin + ' • ' + lead.label);
   meta.textContent = metaBits.join(' • ');
 
@@ -2421,17 +2918,18 @@ function renderActionBoard(board) {
       return '<details class="' + highlight + ' decision-box"' + (shouldOpen ? ' open' : '') + '>'
         + '<summary class="decision-summary">'
           + '<div class="decision-summary-main">'
-            + '<div class="token-line"><div class="decision-coin">' + esc(item.coin) + '</div><span class="signal-mode-tradable">' + esc(item.mode_badge || 'LIVE') + '</span>' + (status === 'PENDING_ENTRY' ? '<span class="review-chip">ORDER LIVE</span>' : '') + '<span class="review-chip">' + esc(String(item.label || 'No setup').toUpperCase()) + '</span><span class="' + biasClass(item.bias) + '">' + esc(String(item.bias || 'NEUTRAL')) + '</span></div>'
+            + '<div class="token-line"><div class="decision-coin">' + esc(item.coin) + '</div><span class="signal-mode-tradable">' + esc(item.mode_badge || 'LIVE') + '</span>' + probabilityChipHtml(item) + (status === 'PENDING_ENTRY' ? '<span class="review-chip">ORDER LIVE</span>' : '') + '<span class="review-chip">' + esc(String(item.label || 'No setup').toUpperCase()) + '</span><span class="' + biasClass(item.bias) + '">' + esc(String(item.bias || 'NEUTRAL')) + '</span></div>'
             + '<div class="token-subline">' + esc(shortText(item.headline || 'No clear edge right now.', 150)) + '</div>'
           + '</div>'
           + '<div class="decision-summary-side"><div class="token-preview">' + esc(shortText(item.trigger || 'Wait for a cleaner setup.', 90)) + '</div><span class="token-chevron">⌄</span></div>'
         + '</summary>'
         + '<div class="decision-body">'
           + '<div class="token-detail-grid">'
-            + '<div class="token-detail"><span class="token-detail-label">Entry status</span><div class="token-detail-value">' + esc(shortText(item.execution_note || item.mode_detail || 'Still waiting for final entry checks.', 150)) + '</div></div>'
+            + '<div class="token-detail"><span class="token-detail-label">Entry status</span><div class="token-detail-value">' + esc(shortText(item.entry_status || item.execution_note || item.mode_detail || 'Still waiting for final entry checks.', 150)) + '</div></div>'
             + '<div class="token-detail"><span class="token-detail-label">Trigger</span><div class="token-detail-value">' + esc(shortText(item.trigger || 'Wait for a cleaner setup.', 120)) + '</div></div>'
+            + '<div class="token-detail"><span class="token-detail-label">Odds</span><div class="token-detail-value">' + esc(shortText(item.probability_detail || item.probability_text || 'No odds yet.', 140)) + '</div></div>'
             + '<div class="token-detail"><span class="token-detail-label">Risk</span><div class="token-detail-value">' + esc(shortText(item.risk || item.map_summary || 'Stay patient until the map and order-flow align.', 120)) + '</div></div>'
-            + '<div class="token-detail"><span class="token-detail-label">Execution lane</span><div class="token-detail-value">' + esc(item.mode_meta || 'Executable') + '</div></div>'
+            + '<div class="token-detail"><span class="token-detail-label">Execution lane</span><div class="token-detail-value">' + esc(surfaceModeMeta(item.mode_meta, true)) + '</div></div>'
           + '</div>'
           + (item.map_summary ? '<div class="decision-rl-note"><strong>Daily view:</strong> ' + esc(shortText(item.map_summary, 130)) + '</div>' : '')
         + '</div>'
@@ -2439,36 +2937,7 @@ function renderActionBoard(board) {
     }).join('')
     + '</div></div>';
   } else {
-    html += '<div class="empty-state">No executable assets are active in this lane right now.</div>';
-  }
-
-  const scoutFootnote = actionBoardBucket === 'coin' && scoutCount > 0
-    ? '<div class="decision-group-footnote">Large-cap scout lane: ' + scoutCount + ' Hyperliquid crypto names above ' + esc(scoutThreshold)
-      + (scoutPreview.length ? ' • ' + esc(scoutPreview.join(', ')) + (scoutCount > scoutPreview.length ? '…' : '') : '')
-      + '</div>'
-    : '';
-
-  if (observationItems.length) {
-    html += '<details class="card details-card"><summary class="asset-section-header"><div class="asset-section-title">Support Pending</div><div class="asset-section-sub">These names are still being tracked, but venue support or live market quality is not ready enough yet.</div></summary>' + scoutFootnote + '<div class="asset-section-grid">'
-      + observationItems.map((item, index) => '<details class="decision-card decision-card-watch decision-box"' + (index === 0 ? ' open' : '') + '>'
-        + '<summary class="decision-summary">'
-          + '<div class="decision-summary-main">'
-            + '<div class="token-line"><div class="decision-coin">' + esc(item.coin) + '</div><span class="signal-mode-watch">' + esc(item.mode_badge || 'PENDING') + '</span><span class="review-chip">' + esc(String(item.label || 'Watch').toUpperCase()) + '</span></div>'
-            + '<div class="token-subline">' + esc(shortText(item.execution_note || item.headline || item.mode_detail || 'Tracked only right now.', 150)) + '</div>'
-          + '</div>'
-          + '<div class="decision-summary-side"><div class="token-preview">' + esc(shortText(item.trigger || item.mode_meta || 'Support pending', 90)) + '</div><span class="token-chevron">⌄</span></div>'
-        + '</summary>'
-        + '<div class="decision-body">'
-          + '<div class="token-detail-grid">'
-            + '<div class="token-detail"><span class="token-detail-label">Why not executable</span><div class="token-detail-value">' + esc(shortText(item.mode_detail || 'Venue support or live market quality is not ready enough yet.', 140)) + '</div></div>'
-            + '<div class="token-detail"><span class="token-detail-label">Current read</span><div class="token-detail-value">' + esc(shortText(item.execution_note || item.headline || 'Still being observed carefully.', 140)) + '</div></div>'
-            + '<div class="token-detail"><span class="token-detail-label">Next trigger</span><div class="token-detail-value">' + esc(shortText(item.trigger || 'Wait for venue and thesis alignment.', 120)) + '</div></div>'
-          + '</div>'
-        + '</div>'
-      + '</details>').join('')
-      + '</div></details>';
-  } else if (actionBoardBucket === 'coin' && scoutCount > 0) {
-    html += '<details class="card details-card"><summary class="asset-section-header"><div class="asset-section-title">Support Pending</div><div class="asset-section-sub">No blocked names need surfacing right now, but the broader scout lane is still watching the large-cap universe in the background.</div></summary>' + scoutFootnote + '</details>';
+    html += '<div class="empty-state">No executable assets are active in this lane right now. Use the daily view below for the compact watchlist and levels.</div>';
   }
   html += '</div>';
   body.innerHTML = html;
@@ -2743,7 +3212,6 @@ async function refresh() {
     document.getElementById('stat-daily-pnl').innerHTML = '<span class="' + cls(dailyPnl) + '">' + fmtD(dailyPnl) + '</span>';
 
     renderMarketMapSummary(data.market_map_summary || {}, latestMarketMap);
-    renderLatestLesson(latestLearningSummary);
     renderLearningSummary(latestLearningSummary, latestTrades);
 
     // Closed Trades

@@ -37,6 +37,7 @@ import main as main_module
 import market_map as market_map_module
 import market_universe as market_universe_module
 import missed_move_lab as missed_move_lab_module
+import narrative as narrative_module
 import portfolio_guard as portfolio_guard_module
 import playbook_distiller as playbook_distiller_module
 import precision_lab as precision_lab_module
@@ -1059,6 +1060,74 @@ def test_macro_news_returns_neutral_when_no_asset_specific_headlines_exist() -> 
         news_module._source_backoff.update(original_backoff)
 
 
+def test_macro_news_recognizes_major_platform_customer_catalyst() -> None:
+    class _Resp:
+        def __init__(self, status_code: int, *, content: bytes = b""):
+            self.status_code = status_code
+            self.content = content
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise requests.HTTPError(f"{self.status_code} boom")
+
+    import requests
+
+    original_get = news_module.requests.get
+    original_cache = dict(news_module._cache)
+    original_backoff = dict(news_module._source_backoff)
+    try:
+        news_module._cache.clear()
+        news_module._source_backoff.clear()
+
+        def fake_get(url, params=None, **kwargs):
+            if "feeds.finance.yahoo.com" in url:
+                return _Resp(404)
+            if "news.google.com" in url:
+                return _Resp(
+                    200,
+                    content=(
+                        b'<?xml version="1.0"?><rss><channel>'
+                        b"<item><title>Anthropic commits $100 billion to AWS over next 10 years</title></item>"
+                        b"</channel></rss>"
+                    ),
+                )
+            raise AssertionError(f"unexpected url {url}")
+
+        news_module.requests.get = fake_get
+        signal = news_module.get_news_signal("AMZN", auth_token="")
+        assert signal.valid is True
+        assert signal.article_count == 1
+        assert signal.top_headlines == ["Anthropic commits $100 billion to AWS over next 10 years"]
+        assert signal.score > 60.0
+        assert signal.catalyst_score >= 3.5
+        assert "platform anchor" in signal.catalyst_summary
+        assert "demand commitment" in signal.catalyst_summary
+    finally:
+        news_module.requests.get = original_get
+        news_module._cache.clear()
+        news_module._cache.update(original_cache)
+        news_module._source_backoff.clear()
+        news_module._source_backoff.update(original_backoff)
+
+
+def test_narrative_signal_boosts_major_catalyst_and_blocks_fading_it() -> None:
+    news_signal = SimpleNamespace(
+        valid=True,
+        score=72.0,
+        article_count=1,
+        is_extreme=False,
+        catalyst_score=4.5,
+        catalyst_summary="platform anchor + demand commitment + capacity lock-in",
+    )
+
+    signal = narrative_module.get_narrative_signal("AMZN", news_signal=news_signal, now_ts=time.time())
+
+    assert signal.headline_bias == "BULLISH"
+    assert signal.score_adjustment >= 8.0
+    assert signal.block_shorts is True
+    assert "catalyst checklist aligned" in signal.summary
+
+
 def test_market_data_reuses_stale_yahoo_candles_when_live_fetch_fails() -> None:
     import requests
 
@@ -2078,6 +2147,17 @@ def test_hosted_dashboard_bundle_matches_local_template() -> None:
     assert hosted_bundle == local_template, "hosted dashboard should mirror the local dashboard UI exactly"
 
 
+def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> None:
+    template = Path("dashboard/templates/dashboard.html").read_text()
+    assert "Expand Full Level Sheet" in template
+    assert "Latest Win" in template
+    assert "Watching only" in template
+    assert "prob-chip" in template
+    assert "Reclaim odds" in template
+    assert "🧾 Latest Lesson" not in template
+    assert '<div class="asset-section-title">Support Pending</div>' not in template
+
+
 def test_local_dashboard_serves_hosted_bundle() -> None:
     client = dashboard_module.app.test_client()
     served = client.get("/").data
@@ -2457,8 +2537,188 @@ def test_dashboard_action_board_shows_reclaim_watch_not_wait_reclaim_after_confi
     assert lead["coin"] == "AMZN"
     assert lead["status"] == "WATCH_LONG"
     assert lead["label"] == "Bullish watch"
-    assert "hold back above 253.36" in lead["trigger"]
+    assert lead["entry_status"] == "Live 253.03; reclaim 253.36; gap -0.33 (-0.13%)"
+    assert lead["trigger"] == "Reclaim 253.36 (+0.33 / +0.13%)"
+    assert lead["probability_pct"] == 56
+    assert lead["probability_label"] == "Reclaim odds"
+    assert lead["probability_text"] == "Reclaim odds 56%"
+    assert "prior reclaim already printed" in lead["probability_detail"].lower()
+    assert lead["risk"] == "Lose 250.00 (-3.03 / -1.20%)"
     assert "slipped back below the trigger" in lead["execution_note"].lower()
+
+
+def test_dashboard_action_board_uses_major_catalyst_watch_label_and_unblock_reason() -> None:
+    snapshot = build_dashboard_snapshot(
+        state={
+            "status": "online",
+            "last_cycle": "2026-04-21 07:57:30",
+            "cycle_number": 5890,
+            "positions": [],
+            "signals": {
+                "AMZN": {
+                    "action": "FLAT",
+                    "score": 41.5,
+                    "confidence": "LOW",
+                    "execution_mode": "observation_only",
+                    "instrument_type": "equity",
+                    "asset_state": "MAJOR_CATALYST_WATCH",
+                    "asset_state_label": "Major catalyst watch",
+                    "next_unblock_reason": "Major catalyst watch: hold back above 253.36 and keep the reclaim to unlock the long.",
+                    "decision_reason": "Anthropic/AWS catalyst is strong, but the retake still has to confirm.",
+                    "flat_reason": "Equity spot: prior reclaim slipped back below the trigger; waiting for price to hold above reclaim again",
+                    "market_map_bias": "BULLISH",
+                    "market_map_reclaim_confirmed": True,
+                    "market_map_live_reclaim": False,
+                    "market_map_reclaim_lost": True,
+                    "market_map_summary": "auto bullish map; daily reclaim was confirmed, but live price slipped back below reclaim",
+                    "market_map_nearest_support": 250.0,
+                    "market_map_nearest_resistance": 253.36,
+                    "news_catalyst_score": 3.75,
+                    "news_catalyst_summary": "platform anchor + partner attached + demand commitment",
+                    "live_price": 253.03,
+                }
+            },
+            "mode": "dry_run",
+            "config": {"coins": ["AMZN"]},
+        },
+        market_map={
+            "coins": {
+                "AMZN": {
+                    "bias": "BULLISH",
+                    "supports": [250.0],
+                    "resistances": [253.36, 256.5],
+                    "daily_close_long_above": [253.36],
+                }
+            }
+        },
+        trades=[],
+        server_timestamp="2026-04-21 07:57:34",
+    )
+    lead = snapshot["action_board"]["lead"]
+    assert lead["coin"] == "AMZN"
+    assert lead["status"] == "WATCH_LONG"
+    assert lead["label"] == "Major catalyst watch"
+    assert lead["entry_status"] == "Live 253.03; reclaim 253.36; gap -0.33 (-0.13%)"
+    assert lead["trigger"] == "Reclaim 253.36 (+0.33 / +0.13%)"
+    assert lead["probability_pct"] == 56
+    assert lead["probability_label"] == "Reclaim odds"
+    assert "major catalyst still supports the move" in lead["probability_detail"].lower()
+    assert lead["risk"] == "Lose 250.00 (-3.03 / -1.20%)"
+    assert "hold back above 253.36" in lead["execution_note"].lower()
+    assert lead["mode_badge"] == "PENDING"
+    assert lead["mode_label"] == "SUPPORT PENDING"
+
+
+def test_dashboard_action_board_calibrates_reclaim_odds_from_decision_history() -> None:
+    decision_rows: list[dict] = []
+    cycle = 1
+    for success in [True, True, True, False, True, False, True, True, True, False, True, True]:
+        decision_rows.append(
+            {
+                "coin": "AMZN",
+                "cycle_number": cycle,
+                "stage": "flat_no_trade",
+                "candidate_action": "LONG",
+                "final_action": "FLAT",
+                "blocked": True,
+                "executed": False,
+                "pending_limit": False,
+                "asset_state": "ARMED",
+                "signal_snapshot": {
+                    "instrument_type": "equity",
+                    "market_map_bias": "BULLISH",
+                    "market_map_reclaim_confirmed": True,
+                    "market_map_live_reclaim": False,
+                    "market_map_reclaim_lost": True,
+                    "market_map_nearest_resistance": 100.0,
+                    "market_map_nearest_support": 96.0,
+                    "daily_close_long_above": [100.0],
+                    "live_price": 99.82,
+                    "flat_reason": "waiting for price to hold above reclaim again",
+                    "news_catalyst_score": 3.6,
+                },
+            }
+        )
+        cycle += 1
+        decision_rows.append(
+            {
+                "coin": "AMZN",
+                "cycle_number": cycle,
+                "stage": "signal_streak_wait" if success else "flat_no_trade",
+                "candidate_action": "LONG",
+                "final_action": "LONG" if success else "FLAT",
+                "blocked": not success,
+                "executed": False,
+                "pending_limit": False,
+                "asset_state": "WAITING_CONFIRMATION" if success else "OBSERVING",
+                "signal_snapshot": {
+                    "instrument_type": "equity",
+                    "market_map_bias": "BULLISH",
+                    "market_map_reclaim_confirmed": True,
+                    "market_map_live_reclaim": success,
+                    "market_map_reclaim_lost": not success,
+                    "market_map_nearest_resistance": 100.0,
+                    "daily_close_long_above": [100.0],
+                    "live_price": 100.12 if success else 99.4,
+                    "news_catalyst_score": 3.6,
+                },
+            }
+        )
+        cycle += 1
+
+    snapshot = build_dashboard_snapshot(
+        state={
+            "status": "online",
+            "last_cycle": "2026-04-21 07:57:30",
+            "cycle_number": 6000,
+            "positions": [],
+            "signals": {
+                "AMZN": {
+                    "action": "FLAT",
+                    "score": 41.5,
+                    "confidence": "LOW",
+                    "execution_mode": "tradable",
+                    "instrument_type": "equity",
+                    "asset_state": "MAJOR_CATALYST_WATCH",
+                    "asset_state_label": "Major catalyst watch",
+                    "next_unblock_reason": "Major catalyst watch: hold back above 253.36 and keep the reclaim to unlock the long.",
+                    "decision_reason": "Anthropic/AWS catalyst is strong, but the retake still has to confirm.",
+                    "flat_reason": "Equity spot: prior reclaim slipped back below the trigger; waiting for price to hold above reclaim again",
+                    "market_map_bias": "BULLISH",
+                    "market_map_reclaim_confirmed": True,
+                    "market_map_live_reclaim": False,
+                    "market_map_reclaim_lost": True,
+                    "market_map_summary": "auto bullish map; daily reclaim was confirmed, but live price slipped back below reclaim",
+                    "market_map_nearest_support": 250.0,
+                    "market_map_nearest_resistance": 253.36,
+                    "news_catalyst_score": 3.75,
+                    "live_price": 253.03,
+                }
+            },
+            "mode": "dry_run",
+            "config": {"coins": ["AMZN"], "instrument_types": {"AMZN": "equity"}},
+        },
+        market_map={
+            "coins": {
+                "AMZN": {
+                    "bias": "BULLISH",
+                    "supports": [250.0],
+                    "resistances": [253.36, 256.5],
+                    "daily_close_long_above": [253.36],
+                }
+            }
+        },
+        trades=[],
+        decision_dataset_records=decision_rows,
+        server_timestamp="2026-04-21 07:57:34",
+    )
+    lead = snapshot["action_board"]["lead"]
+    assert lead["coin"] == "AMZN"
+    assert lead["probability_source"] == "calibrated"
+    assert lead["probability_empirical_samples"] == 12
+    assert lead["probability_empirical_pct"] >= 90
+    assert lead["probability_pct"] >= 65
+    assert "similar reclaim watches" in lead["probability_detail"].lower()
 
 
 def test_dashboard_action_board_surfaces_scout_universe_summary() -> None:
@@ -3176,6 +3436,30 @@ def test_asset_state_machine_reports_confirmation_wait_clearly() -> None:
     assert "confirming cycle" in lifecycle["next_unblock_reason"]
 
 
+def test_asset_state_machine_promotes_major_catalyst_reclaim_watch() -> None:
+    lifecycle = asset_state_machine_module.build_asset_state(
+        {
+            "action": "FLAT",
+            "execution_mode": "observation_only",
+            "instrument_type": "equity",
+            "news_score": 62.77,
+            "news_catalyst_score": 3.75,
+            "news_catalyst_summary": "platform anchor + partner attached + demand commitment",
+            "market_map_bias": "BULLISH",
+            "market_map_reclaim_confirmed": True,
+            "market_map_live_reclaim": False,
+            "market_map_reclaim_lost": True,
+            "market_map_nearest_resistance": 253.36,
+            "thesis_candidate_action": "LONG",
+            "thesis_permitted": False,
+        },
+        stage="observation_only",
+    )
+    assert lifecycle["state"] == "MAJOR_CATALYST_WATCH"
+    assert lifecycle["label"] == "Major catalyst watch"
+    assert "253.36" in lifecycle["next_unblock_reason"]
+
+
 def test_data_reliability_blocks_stale_incoherent_setup() -> None:
     cfg = build_config()
     cfg.trading.use_news = True
@@ -3839,6 +4123,60 @@ def test_feature_store_captures_asset_state_and_guard_features() -> None:
     assert row["features"]["decision_stage"] == "signal_streak_wait"
     assert row["features"]["data_reliability_score"] == 71.0
     assert row["features"]["portfolio_guard_size_multiplier"] == 0.65
+
+
+def test_record_decision_snapshot_promotes_major_catalyst_watch_stage() -> None:
+    cfg = build_config()
+    exchange = DryRunExchange(starting_balance_usd=1000.0)
+    exchange.connect()
+    agent = TradingAgent(cfg, [exchange])
+    agent._cycle = 777
+    agent._last_signals["AMZN"] = {
+        "action": "FLAT",
+        "decision": "FLAT",
+        "score": 41.5,
+        "confidence": "LOW",
+        "reason": "Breakout is confirmed, but the long still lacks clean continuation.",
+        "flat_reason": "Equity spot: prior reclaim slipped back below the trigger; waiting for price to hold above reclaim again",
+        "decision_reason": "Breakout is confirmed, but the long still lacks clean continuation.",
+        "execution_mode": "observation_only",
+        "instrument_type": "equity",
+        "news_score": 62.77,
+        "news_catalyst_score": 3.75,
+        "news_catalyst_summary": "platform anchor + partner attached + demand commitment",
+        "market_map_bias": "BULLISH",
+        "market_map_reclaim_confirmed": True,
+        "market_map_live_reclaim": False,
+        "market_map_reclaim_lost": True,
+        "market_map_nearest_resistance": 253.36,
+        "market_map_nearest_support": 250.0,
+        "thesis_candidate_action": "LONG",
+        "thesis_permitted": False,
+        "asset_state": "OBSERVING",
+        "asset_state_label": "Observing",
+        "next_unblock_reason": "",
+    }
+
+    captured: dict[str, dict] = {}
+    original_append_decision = decision_dataset_module.append_decision
+    original_append_feature = feature_store_module.append_decision_feature_row
+    try:
+        decision_dataset_module.append_decision = lambda record: captured.setdefault("decision", dict(record))
+        feature_store_module.append_decision_feature_row = lambda record: captured.setdefault("feature", dict(record))
+        agent._record_decision_snapshot(
+            "AMZN",
+            portfolio_usd=10_000.0,
+            stage="observation_only",
+        )
+    finally:
+        decision_dataset_module.append_decision = original_append_decision
+        feature_store_module.append_decision_feature_row = original_append_feature
+
+    record = captured["decision"]
+    assert record["stage"] == "major_catalyst_watch"
+    assert record["asset_state"] == "MAJOR_CATALYST_WATCH"
+    assert record["signal_snapshot"]["asset_state"] == "MAJOR_CATALYST_WATCH"
+    assert "hold back above 253.36" in record["signal_snapshot"]["next_unblock_reason"].lower()
 
 
 def test_decision_review_lab_flags_missed_winner() -> None:
@@ -4870,6 +5208,10 @@ def run_all() -> None:
     print("PASS macro news relevance filter")
     test_macro_news_returns_neutral_when_no_asset_specific_headlines_exist()
     print("PASS macro news neutral fallback")
+    test_macro_news_recognizes_major_platform_customer_catalyst()
+    print("PASS macro news catalyst checklist")
+    test_narrative_signal_boosts_major_catalyst_and_blocks_fading_it()
+    print("PASS narrative catalyst boost")
     test_market_data_reuses_stale_yahoo_candles_when_live_fetch_fails()
     print("PASS stale market data fallback")
     test_supported_hyperliquid_market_does_not_fallback_to_yahoo_when_venue_is_empty()
@@ -4914,6 +5256,8 @@ def run_all() -> None:
     print("PASS dashboard snapshot refresh")
     test_hosted_dashboard_bundle_matches_local_template()
     print("PASS hosted dashboard bundle sync")
+    test_dashboard_template_compacts_daily_view_and_hides_support_pending()
+    print("PASS dashboard compact daily view")
     test_local_dashboard_serves_hosted_bundle()
     print("PASS local dashboard hosted bundle")
     test_install_launchagent_preserves_learning_datasets()
@@ -4932,6 +5276,10 @@ def run_all() -> None:
     print("PASS dashboard intelligence snapshot")
     test_dashboard_action_board_uses_asset_state_and_next_unblock_reason()
     print("PASS dashboard asset-state action board")
+    test_dashboard_action_board_calibrates_reclaim_odds_from_decision_history()
+    print("PASS dashboard calibrated reclaim odds")
+    test_dashboard_action_board_uses_major_catalyst_watch_label_and_unblock_reason()
+    print("PASS dashboard major catalyst watch")
     test_dashboard_snapshot_canonicalizes_inactive_control_and_empty_review_shape()
     print("PASS dashboard canonical state shape")
     test_dashboard_market_map_and_review_endpoints_roundtrip()
@@ -4958,6 +5306,8 @@ def run_all() -> None:
     print("PASS pending limit escalation")
     test_asset_state_machine_reports_confirmation_wait_clearly()
     print("PASS asset state machine")
+    test_asset_state_machine_promotes_major_catalyst_reclaim_watch()
+    print("PASS major catalyst asset state")
     test_data_reliability_blocks_stale_incoherent_setup()
     print("PASS data reliability gate")
     test_portfolio_guard_blocks_theme_stacking_and_trims_secondary_exposure()
@@ -4992,6 +5342,8 @@ def run_all() -> None:
     print("PASS decision dataset + feature store")
     test_feature_store_captures_asset_state_and_guard_features()
     print("PASS feature store state features")
+    test_record_decision_snapshot_promotes_major_catalyst_watch_stage()
+    print("PASS major catalyst decision stage")
     test_decision_review_lab_flags_missed_winner()
     print("PASS decision review lab")
     test_missed_move_lab_surfaces_recent_blockers()

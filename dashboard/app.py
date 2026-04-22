@@ -14,6 +14,7 @@ import os
 import threading
 from datetime import datetime
 
+import decision_dataset
 from flask import Flask, render_template, jsonify, request, abort, send_file
 import market_map as market_map_store
 import trade_dataset
@@ -92,7 +93,16 @@ def _load_market_map_local() -> dict:
 
 def _load_trade_dataset_local() -> list:
     try:
-        return trade_dataset.load_closed_trades(limit=250)
+        history_dir = trade_dataset.resolve_richest_history_data_dir()
+        return trade_dataset.load_closed_trades(limit=250, data_dir=history_dir)
+    except Exception:
+        return []
+
+
+def _load_decision_dataset_local() -> list:
+    try:
+        history_dir = decision_dataset.resolve_richest_decision_data_dir()
+        return decision_dataset.load_decisions(limit=25000, data_dir=history_dir)
     except Exception:
         return []
 
@@ -217,6 +227,7 @@ def _build_local_snapshot(server_timestamp: str | None = None) -> dict:
         market_map=effective_market_map,
         trade_reviews=_load_trade_reviews_local(),
         trade_dataset_records=_load_trade_dataset_local(),
+        decision_dataset_records=_load_decision_dataset_local(),
         decision_review_report=_load_decision_review_local(),
         challenger_report=_load_challenger_report_local(),
         missed_move_report=_load_missed_move_report_local(),
@@ -240,6 +251,7 @@ def _hydrate_snapshot_payload(data: dict, *, server_timestamp: str | None = None
         data.get("control"),
         data.get("market_map"),
         data.get("trade_reviews"),
+        decision_dataset_records=data.get("decision_dataset_records"),
         decision_review_report=data.get("decision_review_report"),
         challenger_report=data.get("challenger_report"),
         missed_move_report=data.get("missed_move_report"),

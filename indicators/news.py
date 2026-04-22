@@ -141,6 +141,76 @@ EQUITY_BEARISH_KEYWORDS: Dict[str, float] = {
     "shares drop": 12, "stock drops": 12, "slides": 14, "slumps": 16,
 }
 
+EQUITY_STRATEGIC_DEAL_KEYWORDS = (
+    "strategic collaboration",
+    "expand collaboration",
+    "expanded collaboration",
+    "strategic partnership",
+    "deepen ties",
+    "deepens ties",
+    "agreement",
+    "deal",
+    "partnership",
+    "collaboration",
+)
+
+EQUITY_CAPITAL_COMMITMENT_KEYWORDS = (
+    "invest",
+    "investment",
+    "stake",
+    "funding",
+    "financing",
+    "inject",
+)
+
+EQUITY_DEMAND_COMMITMENT_KEYWORDS = (
+    "commit",
+    "commitment",
+    "spend",
+    "spending",
+    "contract",
+    "order",
+    "backlog",
+    "bookings",
+    "commercial milestones",
+    "revenue commitment",
+)
+
+EQUITY_CAPACITY_LOCKIN_KEYWORDS = (
+    "capacity",
+    "compute",
+    "inference",
+    "gigawatt",
+    "gigawatts",
+    "chip",
+    "chips",
+    "trainium",
+    "graviton",
+    "gpu",
+)
+
+EQUITY_DISTRIBUTION_EXPANSION_KEYWORDS = (
+    "available within",
+    "available on",
+    "native console",
+    "platform on aws",
+    "through aws",
+    "within aws",
+    "bedrock",
+    "marketplace",
+    "distribution",
+)
+
+CATALYST_TAG_LABELS: Dict[str, str] = {
+    "platform_anchor": "platform anchor",
+    "partner_attached": "partner attached",
+    "strategic_deal": "strategic deal",
+    "capital_commitment": "capital commitment",
+    "demand_commitment": "demand commitment",
+    "capacity_lock_in": "capacity lock-in",
+    "distribution_expand": "distribution expansion",
+}
+
 # Bullish/bearish keyword weights
 BULLISH_KEYWORDS: Dict[str, float] = {
     # Strong
@@ -192,6 +262,16 @@ class NewsSignal:
     is_extreme: bool          # big news → magnitude boost
     valid: bool = True
     error: str  = ""
+    catalyst_score: float = 0.0
+    catalyst_summary: str = ""
+    catalyst_tags: List[str] = field(default_factory=list)
+
+
+@dataclass
+class CatalystChecklist:
+    score: float = 0.0
+    summary: str = ""
+    tags: List[str] = field(default_factory=list)
 
 
 # ── Module-level cache ────────────────────────────────────────────────────
@@ -211,10 +291,10 @@ MACRO_NEWS_QUERIES: Dict[str, str] = {
     "SP500": "S&P 500 OR SPX OR US stocks OR Wall Street",
     "XAU": "gold OR XAU OR bullion OR treasury yields",
     "AAPL": "Apple stock OR AAPL earnings OR iPhone demand",
-    "AMZN": "Amazon stock OR AMZN earnings OR AWS growth",
-    "GOOGL": "Alphabet stock OR GOOGL earnings OR Google ad revenue",
+    "AMZN": "Amazon OR AMZN OR AWS OR Anthropic OR Trainium OR Bedrock",
+    "GOOGL": "Alphabet OR GOOGL OR Google Cloud OR Gemini OR Waymo OR Vertex AI",
     "META": "Meta stock OR META earnings OR ad revenue OR AI spend",
-    "MSFT": "Microsoft stock OR MSFT earnings OR Azure growth",
+    "MSFT": "Microsoft OR MSFT OR Azure OR OpenAI OR Copilot OR Foundry",
     "TSLA": "Tesla stock OR TSLA deliveries OR EV demand",
     "BRENT": "Brent crude OR oil OR OPEC",
     "WTI": "WTI crude OR oil OR OPEC",
@@ -240,10 +320,25 @@ ASSET_NEWS_PROFILES: Dict[str, Dict[str, List[str]]] = {
     "SP500": {"primary": ["s&p 500", "sp500", "spx"], "context": ["wall street", "u.s. stocks", "stock market", "equities"]},
     "XAU": {"primary": ["gold", "bullion", "xau", "gold price", "spot gold"], "context": ["treasury yields", "central bank", "dollar"]},
     "AAPL": {"primary": ["apple", "aapl"], "context": ["iphone", "ios", "mac", "tim cook", "services"]},
-    "AMZN": {"primary": ["amazon", "amzn"], "context": ["aws", "prime", "kindle", "e-commerce"]},
-    "GOOGL": {"primary": ["alphabet", "google", "googl"], "context": ["youtube", "android", "gemini", "cloud"]},
+    "AMZN": {
+        "primary": ["amazon", "amzn"],
+        "context": ["aws", "prime", "kindle", "e-commerce", "anthropic", "claude", "bedrock", "trainium", "graviton"],
+        "strong_context": ["aws", "amazon web services", "bedrock", "trainium", "graviton"],
+        "partner_context": ["anthropic", "claude"],
+    },
+    "GOOGL": {
+        "primary": ["alphabet", "google", "googl"],
+        "context": ["youtube", "android", "gemini", "cloud", "google cloud", "vertex ai", "waymo"],
+        "strong_context": ["google cloud", "gcp", "vertex ai", "gemini", "waymo", "tpu"],
+        "partner_context": ["anthropic"],
+    },
     "META": {"primary": ["meta"], "context": ["facebook", "instagram", "whatsapp", "reels"]},
-    "MSFT": {"primary": ["microsoft", "msft"], "context": ["azure", "copilot", "windows", "office", "satya nadella"]},
+    "MSFT": {
+        "primary": ["microsoft", "msft"],
+        "context": ["azure", "copilot", "windows", "office", "satya nadella", "openai", "chatgpt", "foundry"],
+        "strong_context": ["azure", "azure ai", "azure openai", "foundry"],
+        "partner_context": ["openai", "chatgpt"],
+    },
     "TSLA": {"primary": ["tesla", "tsla"], "context": ["musk", "deliveries", "robotaxi", "ev"]},
     "INTC": {"primary": ["intel", "intc"], "context": ["foundry", "xeon", "gaudi", "chipmaker"]},
     "HIMS": {"primary": ["hims", "hims & hers", "hims and hers"], "context": ["telehealth", "glp-1", "weight loss", "subscription"]},
@@ -331,14 +426,18 @@ def _headline_relevance(title: str, coin: str) -> float:
     profile = ASSET_NEWS_PROFILES.get(str(coin or "").upper(), {})
     primary_terms = list(profile.get("primary") or [])
     context_terms = list(profile.get("context") or [])
+    strong_context_terms = list(profile.get("strong_context") or [])
+    partner_terms = list(profile.get("partner_context") or [])
 
-    if not primary_terms and not context_terms:
+    if not primary_terms and not context_terms and not strong_context_terms and not partner_terms:
         # Keep the old behavior for unmapped assets instead of inventing false strictness.
         return 1.0
 
     primary_hits = sum(1 for term in primary_terms if _token_present(lower, term))
     context_hits = sum(1 for term in context_terms if _token_present(lower, term))
-    if primary_hits <= 0 and context_hits <= 0:
+    strong_context_hits = sum(1 for term in strong_context_terms if _token_present(lower, term))
+    partner_hits = sum(1 for term in partner_terms if _token_present(lower, term))
+    if primary_hits <= 0 and context_hits <= 0 and strong_context_hits <= 0 and partner_hits <= 0:
         return 0.0
 
     relevance = 0.0
@@ -346,9 +445,66 @@ def _headline_relevance(title: str, coin: str) -> float:
         relevance += 0.55 + min(0.25, 0.12 * max(0, primary_hits - 1))
     if context_hits > 0:
         relevance += 0.15 + min(0.15, 0.08 * max(0, context_hits - 1))
-    if primary_hits == 0 and context_hits > 0:
+    if strong_context_hits > 0:
+        relevance += 0.30 + min(0.20, 0.10 * max(0, strong_context_hits - 1))
+    if partner_hits > 0 and (primary_hits > 0 or strong_context_hits > 0):
+        relevance += 0.15 + min(0.10, 0.05 * max(0, partner_hits - 1))
+    if primary_hits == 0 and strong_context_hits == 0 and context_hits > 0:
         relevance -= 0.15
+    if primary_hits == 0 and strong_context_hits > 0 and partner_hits > 0:
+        relevance = max(relevance, 0.62)
     return max(0.0, min(1.0, relevance))
+
+
+def _equity_catalyst_checklist(title: str, coin: str) -> CatalystChecklist:
+    coin = str(coin or "").upper()
+    if coin not in {"AAPL", "AMZN", "GOOGL", "META", "MSFT", "TSLA", "INTC", "HIMS"}:
+        return CatalystChecklist()
+
+    lower = str(title or "").lower()
+    profile = ASSET_NEWS_PROFILES.get(coin, {})
+    primary_terms = list(profile.get("primary") or [])
+    strong_context_terms = list(profile.get("strong_context") or [])
+    partner_terms = list(profile.get("partner_context") or [])
+
+    primary_hits = sum(1 for term in primary_terms if _token_present(lower, term))
+    strong_context_hits = sum(1 for term in strong_context_terms if _token_present(lower, term))
+    partner_hits = sum(1 for term in partner_terms if _token_present(lower, term))
+
+    tags: List[str] = []
+    score = 0.0
+
+    if primary_hits > 0 or strong_context_hits > 0:
+        tags.append("platform_anchor")
+        score += 1.5 if strong_context_hits > 0 else 1.0
+    if partner_hits > 0 and (primary_hits > 0 or strong_context_hits > 0):
+        tags.append("partner_attached")
+        score += 1.0
+    if any(keyword in lower for keyword in EQUITY_STRATEGIC_DEAL_KEYWORDS):
+        tags.append("strategic_deal")
+        score += 1.0
+    if any(keyword in lower for keyword in EQUITY_CAPITAL_COMMITMENT_KEYWORDS):
+        tags.append("capital_commitment")
+        score += 1.0
+    if any(keyword in lower for keyword in EQUITY_DEMAND_COMMITMENT_KEYWORDS):
+        tags.append("demand_commitment")
+        score += 1.25
+    if any(keyword in lower for keyword in EQUITY_CAPACITY_LOCKIN_KEYWORDS):
+        tags.append("capacity_lock_in")
+        score += 1.0
+    if any(keyword in lower for keyword in EQUITY_DISTRIBUTION_EXPANSION_KEYWORDS):
+        tags.append("distribution_expand")
+        score += 0.75
+
+    summary = ""
+    if tags:
+        summary = " + ".join(CATALYST_TAG_LABELS[tag] for tag in tags[:4])
+
+    return CatalystChecklist(
+        score=round(score, 2),
+        summary=summary,
+        tags=tags,
+    )
 
 
 def _filter_relevant_headlines(headlines: List[str], coin: str) -> List[tuple[str, float]]:
@@ -464,8 +620,12 @@ def _fetch_macro_news(coin: str) -> NewsSignal:
 
     scores = []
     weighted: List[tuple[str, float, float]] = []
+    best_catalyst = CatalystChecklist()
     for title, relevance in relevant_headlines:
         score = _score_macro_headline(title, coin=coin)
+        checklist = _equity_catalyst_checklist(title, coin)
+        if checklist.score > best_catalyst.score:
+            best_catalyst = checklist
         weighted_score = score * (0.65 + (0.35 * relevance))
         scores.append(weighted_score)
         weighted.append((title, weighted_score, relevance))
@@ -475,7 +635,7 @@ def _fetch_macro_news(coin: str) -> NewsSignal:
 
     count = len(relevant_headlines)
     velocity = "EXTREME" if count >= 15 else "HIGH" if count >= 10 else "NORMAL" if count >= 5 else "LOW"
-    is_extreme = abs(raw) >= 40 or velocity == "EXTREME"
+    is_extreme = abs(raw) >= 40 or velocity == "EXTREME" or best_catalyst.score >= 4.0
 
     top = sorted(weighted, key=lambda x: abs(x[1]), reverse=True)
     top_headlines = [headline for headline, _, _ in top[:3]]
@@ -486,6 +646,8 @@ def _fetch_macro_news(coin: str) -> NewsSignal:
     )
     if top_headlines:
         log.info(f"[{coin}] Top macro headline: {top_headlines[0][:80]}")
+    if best_catalyst.summary:
+        log.info(f"[{coin}] Catalyst checklist {best_catalyst.score:.2f}: {best_catalyst.summary}")
 
     return NewsSignal(
         coin          = coin,
@@ -496,6 +658,9 @@ def _fetch_macro_news(coin: str) -> NewsSignal:
         top_headlines = top_headlines,
         is_extreme    = is_extreme,
         valid         = True,
+        catalyst_score = best_catalyst.score,
+        catalyst_summary = best_catalyst.summary,
+        catalyst_tags = best_catalyst.tags,
     )
 
 
@@ -549,6 +714,9 @@ def _score_macro_headline(title: str, coin: str = "") -> float:
         score *= 1.15
     if coin.upper() == "TSLA" and any(t in lower for t in ["tesla", "tsla", "deliveries", "ev", "autonomous", "robotaxi"]):
         score *= 1.15
+    catalyst = _equity_catalyst_checklist(title, coin)
+    if catalyst.score >= 3.0:
+        score += min(32.0, 10.0 + catalyst.score * 5.0)
     return max(-100, min(100, score))
 
 

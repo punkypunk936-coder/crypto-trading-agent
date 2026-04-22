@@ -1252,6 +1252,12 @@ class AggressiveStrategy:
                 f"[{tech.coin}] News score: {news_score:.1f}/100 "
                 f"({news_signal.velocity} velocity, {news_signal.article_count} articles)"
             )
+            if getattr(news_signal, "catalyst_summary", ""):
+                log.info(
+                    f"[{tech.coin}] News catalyst: "
+                    f"{getattr(news_signal, 'catalyst_summary', '')} "
+                    f"(score={float(getattr(news_signal, 'catalyst_score', 0.0) or 0.0):.2f})"
+                )
         classic_score += news_score * icfg.weight_news
 
         # ── 3. Candlestick pattern score ─────────────────────────────────────
@@ -1871,6 +1877,9 @@ class AggressiveStrategy:
                 f"News: {news_signal.score:.0f}/100 "
                 f"({news_signal.velocity})"
             )
+            catalyst_summary = str(getattr(news_signal, "catalyst_summary", "") or "")
+            if catalyst_summary:
+                parts.append(f"Catalyst: {catalyst_summary}")
 
         # Candles
         if candle_patterns and candle_patterns.valid and candle_patterns.patterns:
