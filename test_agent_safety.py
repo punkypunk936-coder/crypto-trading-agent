@@ -2149,9 +2149,10 @@ def test_hosted_dashboard_bundle_matches_local_template() -> None:
 
 def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> None:
     template = Path("dashboard/templates/dashboard.html").read_text()
-    assert "Expand Full Level Sheet" in template
+    assert "Desk Briefing" in template
+    assert "Open Level Sheet" in template
     assert "Latest Win" in template
-    assert "Watching only" in template
+    assert "daily-briefing" in template
     assert "Mag7" in template
     assert "prob-chip" in template
     assert "Reclaim odds" in template

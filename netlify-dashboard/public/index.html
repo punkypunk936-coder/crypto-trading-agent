@@ -692,50 +692,72 @@
     color: var(--text-secondary);
     line-height: 1.5;
   }
-  .daily-summary-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 10px;
+  .daily-briefing {
     margin: 12px 0;
-  }
-  .daily-summary-card {
+    padding: 14px;
     border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 12px 14px;
-    background: rgba(255,255,255,0.02);
-    min-width: 0;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.03);
+    display: grid;
+    gap: 10px;
   }
-  .daily-summary-card-wide {
-    grid-column: span 2;
+  .daily-briefing-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
   }
-  .daily-summary-label {
+  .daily-briefing-title {
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+  }
+  .daily-briefing-pills {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .daily-briefing-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.03);
+    color: var(--text-secondary);
+    font-size: 10px;
+    font-family: var(--mono);
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+  .daily-briefing-line {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+  }
+  .daily-briefing-line + .daily-briefing-line {
+    padding-top: 10px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+  }
+  .daily-briefing-label {
     color: var(--muted);
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.7px;
-    margin-bottom: 6px;
-  }
-  .daily-summary-value {
-    color: var(--text);
-    font-size: 20px;
-    font-weight: 800;
     font-family: var(--mono);
+    white-space: nowrap;
   }
-  .daily-summary-note {
-    color: var(--text-secondary);
-    font-size: 11px;
-    line-height: 1.45;
-    font-family: var(--mono);
-  }
-  .daily-inline-note {
-    margin-bottom: 12px;
-    padding: 10px 12px;
-    border-radius: 12px;
-    background: rgba(91, 140, 255, 0.06);
-    border: 1px solid rgba(91, 140, 255, 0.12);
+  .daily-briefing-text {
     color: var(--text-secondary);
     font-size: 11px;
     line-height: 1.5;
+    font-family: var(--mono);
+    min-width: 0;
   }
   .prob-chip {
     display: inline-flex;
@@ -817,10 +839,21 @@
     font-family: var(--mono);
     word-break: break-word;
   }
-  .daily-details-panel {
+  .daily-levels-panel {
     margin-top: 12px;
   }
-  .daily-details-panel .market-map-grid {
+  .daily-levels-panel .daily-sheet {
+    margin-top: 12px;
+  }
+  .daily-levels-separator {
+    margin: 14px 0 10px;
+    color: var(--muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    font-family: var(--mono);
+  }
+  .daily-levels-detail-grid {
     margin-top: 12px;
   }
   .map-card-empty {
@@ -1490,15 +1523,16 @@
     .utility-grid {
       grid-template-columns: 1fr;
     }
-    .daily-summary-card-wide {
-      grid-column: span 1;
-    }
     .daily-sheet-header {
       display: none;
     }
     .daily-sheet-row {
       grid-template-columns: 1fr;
       gap: 10px;
+    }
+    .daily-briefing-line {
+      grid-template-columns: 1fr;
+      gap: 6px;
     }
   }
   @media (max-width: 380px) {
@@ -1819,6 +1853,17 @@ const latestWinningLesson = (summary) => {
   if (latest && String(latest.result || '').toUpperCase() === 'WIN') return latest;
   const lessons = Array.isArray((summary || {}).recent_lessons) ? summary.recent_lessons : [];
   return lessons.find((lesson) => String((lesson || {}).result || '').toUpperCase() === 'WIN') || null;
+};
+const latestWinSummaryText = (lesson) => {
+  if (!lesson) return '';
+  const parts = [];
+  const coin = String(lesson.coin || '--').trim();
+  const direction = String(lesson.direction || '').trim().toUpperCase();
+  if (coin) parts.push(coin);
+  if (direction) parts.push(direction);
+  const lessonText = shortText(lesson.lesson || lesson.close_logic || lesson.open_logic || 'Clean win logged.', 110);
+  const headline = parts.join(' ');
+  return headline + ' ' + fmtD(Number(lesson.pnl_usd || 0)) + (lessonText ? ' • ' + lessonText : '');
 };
 const fallbackProbability = (score, confidence, convictionScore=0) => {
   const anchor = Number(convictionScore || 0) > 0 ? Number(convictionScore || 0) : Number(score || 50);
@@ -2893,26 +2938,24 @@ function renderMarketMapSummary(summary, marketMap) {
   });
   const tradableCount = visibleCoins.filter((coin) => Boolean((itemByCoin[coin] || {}).tradable)).length;
   const latestWin = latestWinningLesson(latestLearningSummary);
+  const deskLabel = marketMapBucket === 'equity' ? assetCategoryLabel(marketMapCategory) : bucketLabel(marketMapBucket);
+  const biasMixText = marketMapBiasMixText(visibleCoins, entries);
 
-  html += '<div class="daily-summary-grid">'
-    + '<div class="daily-summary-card"><div class="daily-summary-label">Tracked</div><div class="daily-summary-value">' + esc(String(visibleCoins.length)) + '</div><div class="daily-summary-note">' + esc(marketMapBucket === 'equity' ? assetCategoryLabel(marketMapCategory) : bucketLabel(marketMapBucket)) + '</div></div>'
-    + '<div class="daily-summary-card"><div class="daily-summary-label">Bias Mix</div><div class="daily-summary-note">' + esc(marketMapBiasMixText(visibleCoins, entries)) + '</div></div>'
-    + '<div class="daily-summary-card"><div class="daily-summary-label">Execution</div><div class="daily-summary-note">' + esc(String(tradableCount) + ' executable • ' + String(visibleCoins.length - tradableCount) + ' watching only') + '</div></div>'
-    + '<div class="daily-summary-card daily-summary-card-wide"><div class="daily-summary-label">Latest Win</div><div class="daily-summary-note">' + esc(latestWin
-      ? (String(latestWin.coin || '--') + ' ' + String(latestWin.direction || '') + ' ' + fmtD(Number(latestWin.pnl_usd || 0)) + ' • ' + shortText(latestWin.lesson || latestWin.close_logic || latestWin.open_logic || 'No lesson recorded yet.', 120))
-      : 'No winning close logged yet. This tile will fold the latest clean repeatable win into the daily scan.') + '</div></div>'
+  html += '<div class="daily-briefing">'
+    + '<div class="daily-briefing-header"><div class="daily-briefing-title">Desk Briefing</div><div class="daily-briefing-pills">'
+      + '<span class="daily-briefing-pill">' + esc(deskLabel) + '</span>'
+      + '<span class="daily-briefing-pill">' + esc(String(visibleCoins.length) + ' tracked') + '</span>'
+      + '<span class="daily-briefing-pill">' + esc(String(tradableCount) + ' executable') + '</span>'
+    + '</div></div>'
+    + '<div class="daily-briefing-line"><div class="daily-briefing-label">Bias Mix</div><div class="daily-briefing-text">' + esc(biasMixText) + '</div></div>'
+    + (latestWin ? '<div class="daily-briefing-line"><div class="daily-briefing-label">Latest Win</div><div class="daily-briefing-text">' + esc(latestWinSummaryText(latestWin)) + '</div></div>' : '')
+    + (globalNotes ? '<div class="daily-briefing-line"><div class="daily-briefing-label">Today</div><div class="daily-briefing-text">' + esc(shortText(globalNotes, 180)) + '</div></div>' : '')
     + '</div>';
 
-  if (globalNotes) {
-    html += '<div class="daily-inline-note"><strong>Today:</strong> ' + esc(shortText(globalNotes, 220)) + '</div>';
-  }
-
-  html += '<div class="daily-sheet">'
+  html += '<details class="card details-card daily-levels-panel"><summary class="asset-section-header"><div><div class="asset-section-title">Open Level Sheet</div><div class="asset-section-sub">All tracked assets, entry, trigger, risk, and full map notes for this desk.</div></div><div class="asset-section-sub">' + esc(String(visibleCoins.length) + ' tracked • ' + String(tradableCount) + ' executable') + '</div></summary><div class="daily-sheet">'
     + '<div class="daily-sheet-header"><div>Asset</div><div>Entry</div><div>Trigger</div><div>Risk</div></div>'
     + visibleCoins.map((coin) => marketMapCompactRowHtml(coin, itemByCoin[coin])).join('')
-    + '</div>';
-
-  html += '<details class="card details-card daily-details-panel"><summary class="asset-section-header"><div class="asset-section-title">Expand Full Level Sheet</div><div class="asset-section-sub">Full demand, supply, trigger, and map notes for every asset in this lane.</div></summary><div class="market-map-grid">'
+    + '</div><div class="daily-levels-separator">Full setup notes</div><div class="market-map-grid daily-levels-detail-grid">'
     + visibleCoins.map((coin) => marketMapDetailCardHtml(coin, entries[coin], ((((latestState || {}).signals || {})[coin]) || {}), itemByCoin[coin])).join('')
     + '</div></details>';
   body.innerHTML = html;
