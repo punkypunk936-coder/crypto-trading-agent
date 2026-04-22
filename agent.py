@@ -4037,6 +4037,8 @@ class TradingAgent:
                     getattr(self.cfg.trading, "dynamic_market_cap_min_usd", 1_000_000_000.0) or 1_000_000_000.0
                 ),
                 "instrument_types":      self.cfg.trading.instrument_types,
+                "asset_categories":      getattr(self.cfg.trading, "asset_category_map", {}),
+                "asset_category_labels": getattr(self.cfg.trading, "asset_category_labels", {}),
             },
         }
 

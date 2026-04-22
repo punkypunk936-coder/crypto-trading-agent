@@ -2152,6 +2152,7 @@ def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> N
     assert "Expand Full Level Sheet" in template
     assert "Latest Win" in template
     assert "Watching only" in template
+    assert "Mag7" in template
     assert "prob-chip" in template
     assert "Reclaim odds" in template
     assert "🧾 Latest Lesson" not in template
@@ -3883,6 +3884,59 @@ def test_hyperliquid_market_catalog_expands_unknown_live_perps() -> None:
         hyperliquid_markets_module._CATALOG_CACHE.update(original_cache)
 
 
+def test_hyperliquid_market_catalog_discovers_unknown_tradexyz_equities() -> None:
+    original_perps = hyperliquid_markets_module._fetch_perp_names
+    original_spots = hyperliquid_markets_module._fetch_spot_pairs
+    original_cache = dict(hyperliquid_markets_module._CATALOG_CACHE)
+    try:
+        hyperliquid_markets_module._CATALOG_CACHE["ts"] = 0.0
+        hyperliquid_markets_module._CATALOG_CACHE["catalog"] = {}
+        hyperliquid_markets_module._fetch_perp_names = lambda dex="": {"BTC"} if not dex else {"xyz:NVDA", "xyz:CRWV", "xyz:EWY"}
+        hyperliquid_markets_module._fetch_spot_pairs = lambda: {}
+        catalog = hyperliquid_markets_module.get_hyperliquid_market_catalog(force_refresh=True)
+        assert catalog["NVDA"]["venue_symbol"] == "xyz:NVDA"
+        assert catalog["NVDA"]["instrument_type"] == "equity"
+        assert catalog["NVDA"]["dex"] == "xyz"
+        assert catalog["CRWV"]["display_name"] == "CoreWeave"
+        assert catalog["EWY"]["instrument_type"] == "index"
+    finally:
+        hyperliquid_markets_module._fetch_perp_names = original_perps
+        hyperliquid_markets_module._fetch_spot_pairs = original_spots
+        hyperliquid_markets_module._CATALOG_CACHE.clear()
+        hyperliquid_markets_module._CATALOG_CACHE.update(original_cache)
+
+
+def test_apply_dynamic_analysis_universe_auto_adds_supported_stocks() -> None:
+    cfg = build_config()
+    cfg.trading.dry_run = False
+    cfg.exchange.use_hyperliquid = True
+    cfg.exchange.use_lighter = False
+    cfg.exchange.hl_spot_execution_enabled = True
+    cfg.trading.analysis_coins = ["BTC"]
+    cfg.trading.dynamic_market_cap_watchlist_enabled = False
+    original_config = main_module.config
+    original_supported = main_module.get_hyperliquid_supported_coins
+    original_catalog = main_module.get_hyperliquid_market_catalog
+    main_module.config = cfg
+    try:
+        main_module.get_hyperliquid_supported_coins = lambda **kwargs: ["BTC", "TSLA", "NVDA", "EWY"]
+        main_module.get_hyperliquid_market_catalog = lambda force_refresh=False: {
+            "BTC": {"instrument_type": "crypto"},
+            "TSLA": {"instrument_type": "equity"},
+            "NVDA": {"instrument_type": "equity"},
+            "EWY": {"instrument_type": "index"},
+        }
+        dynamic = main_module.apply_dynamic_analysis_universe()
+        assert dynamic == []
+        assert main_module.config.trading.analysis_coins == ["BTC", "EWY", "NVDA", "TSLA"]
+        assert main_module.config.trading.instrument_types["NVDA"] == "equity"
+        assert main_module.config.trading.instrument_types["EWY"] == "index"
+    finally:
+        main_module.config = original_config
+        main_module.get_hyperliquid_supported_coins = original_supported
+        main_module.get_hyperliquid_market_catalog = original_catalog
+
+
 def test_market_universe_filters_hyperliquid_large_caps_into_scout_watchlist() -> None:
     original_fetch = market_universe_module._fetch_coingecko_market_caps
     original_equity_fetch = market_universe_module._fetch_equity_market_caps
@@ -5330,6 +5384,10 @@ def run_all() -> None:
     print("PASS Hyperliquid limit order support")
     test_hyperliquid_market_catalog_expands_unknown_live_perps()
     print("PASS Hyperliquid market catalog expansion")
+    test_hyperliquid_market_catalog_discovers_unknown_tradexyz_equities()
+    print("PASS Hyperliquid Trade.xyz stock discovery")
+    test_apply_dynamic_analysis_universe_auto_adds_supported_stocks()
+    print("PASS supported stock auto-promotion")
     test_market_universe_filters_hyperliquid_large_caps_into_scout_watchlist()
     print("PASS market-cap scout universe")
     test_reentry_watch_inherits_dynamic_trade_plan()

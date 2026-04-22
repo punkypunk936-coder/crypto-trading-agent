@@ -21,7 +21,7 @@ class ExchangeConfig:
     hl_account_address: str    = field(default_factory=lambda: os.getenv("HL_ACCOUNT_ADDRESS", ""))
     hl_use_mainnet: bool       = True          # set False for testnet
     hl_spot_execution_enabled: bool = field(
-        default_factory=lambda: os.getenv("HL_SPOT_EXECUTION_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+        default_factory=lambda: os.getenv("HL_SPOT_EXECUTION_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
     )
 
     # Lighter
@@ -61,7 +61,8 @@ class TradingConfig:
     # not tradable on the primary execution venue.
     analysis_coins: List[str]   = field(default_factory=lambda: [
         "BTC", "ETH", "SOL", "HYPE", "TAO", "SP500", "XAU",
-        "AAPL", "AMZN", "GOOGL", "META", "MSFT", "TSLA", "INTC", "HIMS",
+        "AAPL", "AMZN", "GOOGL", "META", "MSFT", "TSLA",
+        "NVDA", "INTC", "MU", "SNDK", "SKHX", "CRWV", "EWY", "HIMS",
     ])
 
     # ── Instrument type classification ───────────────────────────────────────
@@ -83,7 +84,13 @@ class TradingConfig:
         "META":  "equity",
         "MSFT":  "equity",
         "TSLA":  "equity",
+        "NVDA":  "equity",
         "INTC":  "equity",
+        "MU":    "equity",
+        "SNDK":  "equity",
+        "SKHX":  "equity",
+        "CRWV":  "equity",
+        "EWY":   "index",
         "HIMS":  "equity",
         "BRENT": "index",
         "WTI":   "index",
@@ -270,6 +277,7 @@ class TradingConfig:
     # When enabled, any watchlist asset that the active venue can actually
     # execute is promoted into the live tradeable universe automatically.
     auto_promote_analysis_coins: bool = True
+    auto_promote_supported_stocks: bool = True
     enforce_active_venue_markets: bool = True
     dynamic_analysis_coins: List[str] = field(default_factory=list)
     dynamic_analysis_auto_promote: bool = True
@@ -386,8 +394,41 @@ class TradingConfig:
         "META": "MEGA_CAP_TECH",
         "MSFT": "MEGA_CAP_TECH",
         "TSLA": "MEGA_CAP_TECH",
-        "INTC": "MEGA_CAP_TECH",
+        "NVDA": "MEGA_CAP_TECH",
+        "INTC": "SEMIS_MEMORY",
+        "MU": "SEMIS_MEMORY",
+        "SNDK": "SEMIS_MEMORY",
+        "SKHX": "SEMIS_MEMORY",
+        "CRWV": "NEOCLOUDS",
+        "EWY": "ASIA_MACRO",
         "HIMS": "US_GROWTH",
+    })
+
+    asset_category_map: dict = field(default_factory=lambda: {
+        "SP500": "indices_macro",
+        "XAU": "indices_macro",
+        "EWY": "indices_macro",
+        "AAPL": "mag7",
+        "AMZN": "mag7",
+        "GOOGL": "mag7",
+        "META": "mag7",
+        "MSFT": "mag7",
+        "TSLA": "mag7",
+        "NVDA": "semis_memory",
+        "INTC": "semis_memory",
+        "MU": "semis_memory",
+        "SNDK": "semis_memory",
+        "SKHX": "semis_memory",
+        "CRWV": "neoclouds",
+        "HIMS": "growth",
+    })
+    asset_category_labels: dict = field(default_factory=lambda: {
+        "indices_macro": "Indices & Macro",
+        "mag7": "Mag7",
+        "semis_memory": "Semis & Memory",
+        "neoclouds": "Neoclouds",
+        "growth": "Growth",
+        "other_stocks": "Other Stocks",
     })
 
     # ── Smarter execution tactics ───────────────────────────────────────────

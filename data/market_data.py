@@ -137,6 +137,7 @@ INDEX_YAHOO_MAP = {
     "BRENT": "BZ=F",    # Brent crude futures
     "WTI":   "CL=F",    # WTI crude futures
     "CL":    "CL=F",    # Alias for WTI
+    "EWY":   "EWY",
     "NDX":   "^IXIC",
     "DJI":   "^DJI",
     "VIX":   "^VIX",
@@ -149,6 +150,12 @@ EQUITY_YAHOO_MAP = {
     "META": "META",
     "MSFT": "MSFT",
     "TSLA": "TSLA",
+    "NVDA": "NVDA",
+    "INTC": "INTC",
+    "MU": "MU",
+    "SNDK": "SNDK",
+    "CRWV": "CRWV",
+    "HIMS": "HIMS",
 }
 
 # Yahoo Finance interval map: our interval → yf period/interval params

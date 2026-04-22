@@ -22,6 +22,7 @@ from logger import log
 from promotion_gate import evaluate_live_promotion
 from exchanges.hyperliquid_client import HyperliquidClient
 from exchanges.hyperliquid_markets import (
+    get_hyperliquid_market_catalog,
     hyperliquid_instrument_type,
     get_hyperliquid_market_activity,
     get_hyperliquid_supported_coins,
@@ -110,6 +111,31 @@ def _normalise_coin_list(values) -> list[str]:
     return out
 
 
+def _sync_supported_stock_universe(*, dry_run_mode: bool | None = None) -> list[str]:
+    if not config.exchange.use_hyperliquid or not getattr(config.trading, "auto_promote_supported_stocks", True):
+        return []
+
+    supported = configured_supported_coins(dry_run_mode=dry_run_mode)
+    if not supported:
+        return []
+
+    catalog = get_hyperliquid_market_catalog()
+    promoted: list[str] = []
+    for coin in supported:
+        spec = dict(catalog.get(str(coin).upper()) or {})
+        instrument_type = str(
+            spec.get("instrument_type")
+            or config.trading.instrument_types.get(str(coin).upper(), "")
+            or hyperliquid_instrument_type(coin, "crypto")
+        ).strip().lower()
+        if instrument_type not in {"equity", "index"}:
+            continue
+        coin_upper = str(coin).upper()
+        config.trading.instrument_types[coin_upper] = instrument_type
+        promoted.append(coin_upper)
+    return _normalise_coin_list(promoted)
+
+
 def apply_dynamic_analysis_universe() -> list[str]:
     previous_dynamic = {str(coin).upper() for coin in getattr(config.trading, "dynamic_analysis_coins", []) or []}
     base_analysis = [
@@ -135,8 +161,13 @@ def apply_dynamic_analysis_universe() -> list[str]:
         for coin in dynamic_analysis:
             config.trading.instrument_types.setdefault(coin, hyperliquid_instrument_type(coin, "crypto"))
 
+    supported_stock_watchlist = _sync_supported_stock_universe(dry_run_mode=config.trading.dry_run)
+
     config.trading.dynamic_analysis_coins = dynamic_analysis
     merged = list(base_analysis)
+    for coin in supported_stock_watchlist:
+        if coin not in merged:
+            merged.append(coin)
     for coin in dynamic_analysis:
         if coin not in merged:
             merged.append(coin)

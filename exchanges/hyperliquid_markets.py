@@ -165,6 +165,16 @@ _SPOT_MARKETS: Dict[str, Dict[str, Any]] = {
 }
 
 _TRADEXYZ_PERP_MARKETS: Dict[str, Dict[str, Any]] = {
+    "NVDA": {
+        "venue_symbol": "xyz:NVDA",
+        "market_type": "perp",
+        "instrument_type": "equity",
+        "shortable": True,
+        "paper_tradeable": True,
+        "live_tradeable": True,
+        "display_name": "NVIDIA",
+        "dex": TRADEXYZ_DEX,
+    },
     "INTC": {
         "venue_symbol": "xyz:INTC",
         "market_type": "perp",
@@ -173,6 +183,56 @@ _TRADEXYZ_PERP_MARKETS: Dict[str, Dict[str, Any]] = {
         "paper_tradeable": True,
         "live_tradeable": True,
         "display_name": "Intel",
+        "dex": TRADEXYZ_DEX,
+    },
+    "MU": {
+        "venue_symbol": "xyz:MU",
+        "market_type": "perp",
+        "instrument_type": "equity",
+        "shortable": True,
+        "paper_tradeable": True,
+        "live_tradeable": True,
+        "display_name": "Micron",
+        "dex": TRADEXYZ_DEX,
+    },
+    "SNDK": {
+        "venue_symbol": "xyz:SNDK",
+        "market_type": "perp",
+        "instrument_type": "equity",
+        "shortable": True,
+        "paper_tradeable": True,
+        "live_tradeable": True,
+        "display_name": "SanDisk",
+        "dex": TRADEXYZ_DEX,
+    },
+    "SKHX": {
+        "venue_symbol": "xyz:SKHX",
+        "market_type": "perp",
+        "instrument_type": "equity",
+        "shortable": True,
+        "paper_tradeable": True,
+        "live_tradeable": True,
+        "display_name": "SK Hynix",
+        "dex": TRADEXYZ_DEX,
+    },
+    "CRWV": {
+        "venue_symbol": "xyz:CRWV",
+        "market_type": "perp",
+        "instrument_type": "equity",
+        "shortable": True,
+        "paper_tradeable": True,
+        "live_tradeable": True,
+        "display_name": "CoreWeave",
+        "dex": TRADEXYZ_DEX,
+    },
+    "EWY": {
+        "venue_symbol": "xyz:EWY",
+        "market_type": "perp",
+        "instrument_type": "index",
+        "shortable": True,
+        "paper_tradeable": True,
+        "live_tradeable": True,
+        "display_name": "South Korea ETF",
         "dex": TRADEXYZ_DEX,
     },
     "HIMS": {
@@ -189,8 +249,15 @@ _TRADEXYZ_PERP_MARKETS: Dict[str, Dict[str, Any]] = {
 
 _PREFERRED_ORDER = [
     "BTC", "ETH", "SOL", "HYPE", "TAO", "SP500", "XAU",
-    "AAPL", "AMZN", "GOOGL", "META", "MSFT", "TSLA", "INTC", "HIMS",
+    "AAPL", "AMZN", "GOOGL", "META", "MSFT", "TSLA",
+    "NVDA", "INTC", "MU", "SNDK", "SKHX", "CRWV", "EWY", "HIMS",
 ]
+
+_TRADEXYZ_DYNAMIC_OVERRIDES: Dict[str, Dict[str, Any]] = {
+    "EWY": {"instrument_type": "index", "display_name": "South Korea ETF"},
+    "SKHX": {"instrument_type": "equity", "display_name": "SK Hynix"},
+    "CRWV": {"instrument_type": "equity", "display_name": "CoreWeave"},
+}
 
 
 def _fetch_perp_names(*, dex: str = "") -> Optional[set[str]]:
@@ -324,8 +391,24 @@ def get_hyperliquid_market_catalog(*, force_refresh: bool = False) -> Dict[str, 
             for coin, spec in _TRADEXYZ_PERP_MARKETS.items()
         }
         for venue_symbol in sorted(tradexyz_perp_names):
-            manual_coin, manual = manual_tradexyz_by_venue.get(str(venue_symbol or "").upper(), (None, None))
+            venue_key = str(venue_symbol or "").upper()
+            manual_coin, manual = manual_tradexyz_by_venue.get(venue_key, (None, None))
             if not manual_coin or not manual:
+                internal_coin = venue_key.split(":", 1)[-1].strip().upper()
+                if not internal_coin:
+                    continue
+                override = dict(_TRADEXYZ_DYNAMIC_OVERRIDES.get(internal_coin) or {})
+                catalog[internal_coin] = {
+                    "coin": internal_coin,
+                    "venue_symbol": venue_key,
+                    "market_type": "perp",
+                    "instrument_type": str(override.get("instrument_type") or "equity"),
+                    "shortable": bool(override.get("shortable", True)),
+                    "paper_tradeable": True,
+                    "live_tradeable": True,
+                    "display_name": str(override.get("display_name") or internal_coin),
+                    "dex": TRADEXYZ_DEX,
+                }
                 continue
             catalog[manual_coin] = {
                 "coin": manual_coin,

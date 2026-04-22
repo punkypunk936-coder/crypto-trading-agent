@@ -184,11 +184,41 @@ def _asset_bucket(instrument_type: str) -> str:
     return "coin" if normalized == "crypto" else "equity"
 
 
+def _asset_category_for_coin(coin: str, instrument_type: str, config: dict | None) -> str:
+    config = dict(config or {})
+    category_map = dict(config.get("asset_categories") or {})
+    key = str(coin or "").upper()
+    category = str(category_map.get(key) or "").strip().lower()
+    if category:
+        return category
+    normalized_type = str(instrument_type or "crypto").strip().lower()
+    if normalized_type == "index":
+        return "indices_macro"
+    if normalized_type == "equity":
+        return "other_stocks"
+    return "crypto"
+
+
+def _asset_category_label(category: str, config: dict | None) -> str:
+    config = dict(config or {})
+    labels = {
+        "indices_macro": "Indices & Macro",
+        "mag7": "Mag7",
+        "semis_memory": "Semis & Memory",
+        "neoclouds": "Neoclouds",
+        "growth": "Growth",
+        "other_stocks": "Other Stocks",
+        "crypto": "Coins",
+    }
+    labels.update({str(key or "").strip().lower(): str(value or "") for key, value in dict(config.get("asset_category_labels") or {}).items()})
+    return labels.get(str(category or "").strip().lower(), _humanize_key(category) or "Other")
+
+
 def _group_action_items(items: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     groups: dict[str, dict[str, Any]] = {}
     labels = {
         "coin": "Coins",
-        "equity": "Equity Perps",
+        "equity": "Stocks & Indices",
     }
     for bucket in ("coin", "equity"):
         bucket_items = [item for item in items if str(item.get("asset_bucket") or "") == bucket]
@@ -884,6 +914,8 @@ def action_board(
         ).upper()
         instrument_type = _instrument_type_for_coin(coin, sig, config)
         asset_bucket = _asset_bucket(instrument_type)
+        asset_category = _asset_category_for_coin(coin, instrument_type, config)
+        asset_category_label = _asset_category_label(asset_category, config)
         support = _pick_level(
             map_entry.get("supports"),
             prefer="max",
@@ -1151,6 +1183,8 @@ def action_board(
                 "bias": bias,
                 "instrument_type": instrument_type,
                 "asset_bucket": asset_bucket,
+                "asset_category": asset_category,
+                "asset_category_label": asset_category_label,
                 "asset_state": asset_state,
                 "asset_state_label": asset_state_label,
                 "next_unblock_reason": next_unblock,

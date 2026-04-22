@@ -59,6 +59,7 @@ REQUEST_HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7
 INDEX_INSTRUMENTS = {
     "SP500", "XAU", "BRENT", "WTI", "CL", "NDX", "DJI", "VIX",
     "AAPL", "AMZN", "GOOGL", "META", "MSFT", "TSLA",
+    "NVDA", "INTC", "MU", "SNDK", "SKHX", "CRWV", "EWY", "HIMS",
 }
 
 # ── Macro / equity keyword weights ────────────────────────────────────────────
@@ -296,6 +297,13 @@ MACRO_NEWS_QUERIES: Dict[str, str] = {
     "META": "Meta stock OR META earnings OR ad revenue OR AI spend",
     "MSFT": "Microsoft OR MSFT OR Azure OR OpenAI OR Copilot OR Foundry",
     "TSLA": "Tesla stock OR TSLA deliveries OR EV demand",
+    "NVDA": "NVIDIA OR NVDA OR Blackwell OR GPU demand OR data center spend",
+    "INTC": "Intel OR INTC OR foundry OR AI PC OR Gaudi",
+    "MU": "Micron OR MU OR memory pricing OR HBM demand OR DRAM",
+    "SNDK": "SanDisk OR SNDK OR NAND pricing OR flash memory",
+    "SKHX": "SK Hynix OR SKHX OR HBM memory OR South Korea semiconductors",
+    "CRWV": "CoreWeave OR CRWV OR neocloud OR GPU cloud OR AI infrastructure",
+    "EWY": "EWY OR South Korea ETF OR Samsung OR SK Hynix OR Korea equities",
     "BRENT": "Brent crude OR oil OR OPEC",
     "WTI": "WTI crude OR oil OR OPEC",
     "CL": "WTI crude OR oil OR OPEC",
@@ -340,7 +348,13 @@ ASSET_NEWS_PROFILES: Dict[str, Dict[str, List[str]]] = {
         "partner_context": ["openai", "chatgpt"],
     },
     "TSLA": {"primary": ["tesla", "tsla"], "context": ["musk", "deliveries", "robotaxi", "ev"]},
+    "NVDA": {"primary": ["nvidia", "nvda"], "context": ["blackwell", "gpu", "data center", "ai chip", "cuda"]},
     "INTC": {"primary": ["intel", "intc"], "context": ["foundry", "xeon", "gaudi", "chipmaker"]},
+    "MU": {"primary": ["micron", "mu"], "context": ["dram", "nand", "hbm", "memory"]},
+    "SNDK": {"primary": ["sandisk", "sndk"], "context": ["nand", "flash memory", "storage"]},
+    "SKHX": {"primary": ["sk hynix", "skhx"], "context": ["hbm", "dram", "memory", "south korea chip"]},
+    "CRWV": {"primary": ["coreweave", "crwv"], "context": ["gpu cloud", "neocloud", "ai infrastructure", "data center"]},
+    "EWY": {"primary": ["ewy", "south korea etf"], "context": ["samsung", "sk hynix", "korea equities"]},
     "HIMS": {"primary": ["hims", "hims & hers", "hims and hers"], "context": ["telehealth", "glp-1", "weight loss", "subscription"]},
     "BRENT": {"primary": ["brent", "oil"], "context": ["opec", "crude"]},
     "WTI": {"primary": ["wti", "oil"], "context": ["opec", "crude"]},
@@ -458,7 +472,7 @@ def _headline_relevance(title: str, coin: str) -> float:
 
 def _equity_catalyst_checklist(title: str, coin: str) -> CatalystChecklist:
     coin = str(coin or "").upper()
-    if coin not in {"AAPL", "AMZN", "GOOGL", "META", "MSFT", "TSLA", "INTC", "HIMS"}:
+    if coin not in {"AAPL", "AMZN", "GOOGL", "META", "MSFT", "TSLA", "NVDA", "INTC", "MU", "SNDK", "SKHX", "CRWV", "EWY", "HIMS"}:
         return CatalystChecklist()
 
     lower = str(title or "").lower()
@@ -569,6 +583,12 @@ def _fetch_macro_news(coin: str) -> NewsSignal:
         "META":  "META",
         "MSFT":  "MSFT",
         "TSLA":  "TSLA",
+        "NVDA":  "NVDA",
+        "INTC":  "INTC",
+        "MU":    "MU",
+        "SNDK":  "SNDK",
+        "CRWV":  "CRWV",
+        "EWY":   "EWY",
         "BRENT": "BZ=F",
         "WTI":   "CL=F",
         "CL":    "CL=F",
@@ -688,7 +708,7 @@ def _score_macro_headline(title: str, coin: str = "") -> float:
         for kw, weight in GOLD_BEARISH_KEYWORDS.items():
             if kw in lower:
                 score -= weight
-    if coin.upper() in {"AAPL", "AMZN", "GOOGL", "META", "MSFT", "TSLA", "INTC", "HIMS"}:
+    if coin.upper() in {"AAPL", "AMZN", "GOOGL", "META", "MSFT", "TSLA", "NVDA", "INTC", "MU", "SNDK", "SKHX", "CRWV", "EWY", "HIMS"}:
         for kw, weight in EQUITY_BULLISH_KEYWORDS.items():
             if kw in lower:
                 score += weight
@@ -713,6 +733,20 @@ def _score_macro_headline(title: str, coin: str = "") -> float:
     if coin.upper() == "MSFT" and any(t in lower for t in ["microsoft", "msft", "azure", "copilot", "office"]):
         score *= 1.15
     if coin.upper() == "TSLA" and any(t in lower for t in ["tesla", "tsla", "deliveries", "ev", "autonomous", "robotaxi"]):
+        score *= 1.15
+    if coin.upper() == "NVDA" and any(t in lower for t in ["nvidia", "nvda", "gpu", "blackwell", "cuda", "data center"]):
+        score *= 1.15
+    if coin.upper() == "INTC" and any(t in lower for t in ["intel", "intc", "foundry", "gaudi", "ai pc"]):
+        score *= 1.15
+    if coin.upper() == "MU" and any(t in lower for t in ["micron", "mu", "dram", "nand", "hbm", "memory"]):
+        score *= 1.15
+    if coin.upper() == "SNDK" and any(t in lower for t in ["sandisk", "sndk", "nand", "flash"]):
+        score *= 1.15
+    if coin.upper() == "SKHX" and any(t in lower for t in ["sk hynix", "skhx", "hbm", "dram", "memory"]):
+        score *= 1.15
+    if coin.upper() == "CRWV" and any(t in lower for t in ["coreweave", "crwv", "gpu cloud", "neocloud", "ai infrastructure"]):
+        score *= 1.15
+    if coin.upper() == "EWY" and any(t in lower for t in ["ewy", "south korea", "samsung", "sk hynix", "korea equities"]):
         score *= 1.15
     catalyst = _equity_catalyst_checklist(title, coin)
     if catalyst.score >= 3.0:
