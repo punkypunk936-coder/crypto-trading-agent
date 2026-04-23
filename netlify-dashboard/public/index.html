@@ -324,6 +324,29 @@
     line-height: 1.5;
     margin-bottom: 12px;
   }
+  .desk-overview {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .desk-overview-label {
+    color: var(--muted);
+    font-size: 10px;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    font-family: var(--mono);
+  }
+  .desk-overview-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .desk-overview-pill.active {
+    border-color: rgba(91,140,255,0.28);
+    color: var(--blue);
+    background: rgba(91,140,255,0.12);
+    box-shadow: 0 0 0 1px rgba(91,140,255,0.08) inset;
+  }
   .asset-section-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -2266,6 +2289,28 @@ function renderCategoryTabs(current, groups, scope, bucket) {
     + '</div>';
 }
 
+function renderDeskOverview(groups, scope, activeBucket, activeCategory) {
+  const equityGroup = groups && groups.equity;
+  const equityItems = (equityGroup || {}).items || [];
+  if (!equityItems.length) return '';
+  const categoryGroups = groupAssetItemsByCategory(equityItems, (item) => {
+    if (typeof item === 'string') return assetCategoryForCoin(item);
+    return (item || {}).asset_category || assetCategoryForCoin((item || {}).coin);
+  });
+  const order = categoryOrder(categoryGroups).filter((key) => key !== 'all');
+  if (!order.length) return '';
+  return '<div class="desk-overview"><div class="desk-overview-label">Stock Desks</div><div class="desk-overview-pills">'
+    + order.map((key) => {
+      const group = categoryGroups[key] || {};
+      const active = activeBucket === 'equity' && activeCategory === key;
+      return '<button type="button" class="asset-tab desk-overview-pill' + (active ? ' active' : '') + '" data-desk-scope="' + esc(scope) + '" data-desk-category="' + esc(key) + '">'
+        + esc(assetCategoryLabel(key))
+        + '<span class="asset-tab-count">' + esc(String(group.count || 0)) + '</span>'
+      + '</button>';
+    }).join('')
+    + '</div></div>';
+}
+
 function emptyBucketGroups() {
   return {
     coin: { key: 'coin', label: bucketLabel('coin'), items: [], tradable_items: [], observation_items: [], count: 0, tradable_count: 0, observation_count: 0, active_count: 0, pending_count: 0 },
@@ -2341,6 +2386,21 @@ document.addEventListener('click', (event) => {
     return;
   }
   setActionBoardCategory(categoryButton.dataset.categoryValue);
+});
+
+document.addEventListener('click', (event) => {
+  const deskButton = event.target.closest('.desk-overview-pill[data-desk-scope][data-desk-category]');
+  if (!deskButton) return;
+  event.preventDefault();
+  const scope = String(deskButton.dataset.deskScope || '').trim().toLowerCase();
+  const category = deskButton.dataset.deskCategory;
+  if (scope === 'market') {
+    setMarketMapBucket('equity');
+    setMarketMapCategory(category);
+    return;
+  }
+  setActionBoardBucket('equity');
+  setActionBoardCategory(category);
 });
 
 function humanizeKey(value) {
@@ -2792,9 +2852,12 @@ function marketMapCompactRowHtml(coin, item) {
   };
   const tradable = Boolean(safeItem.tradable);
   const modeClass = tradable ? 'signal-mode-tradable' : 'signal-mode-watch';
+  const categoryBadge = safeItem.asset_bucket === 'equity' && safeItem.asset_category_label
+    ? '<span class="review-chip">' + esc(String(safeItem.asset_category_label || 'Stock Desk').toUpperCase()) + '</span>'
+    : '';
   return '<div class="daily-sheet-row" data-tradable="' + (tradable ? 'true' : 'false') + '">'
     + '<div class="daily-sheet-main">'
-      + '<div class="token-line"><div class="map-coin">' + esc(safeItem.coin || coin) + '</div><span class="' + modeClass + '">' + esc(surfaceModeBadge(safeItem.mode_badge, tradable)) + '</span>' + probabilityChipHtml(safeItem) + '<span class="review-chip">' + esc(String(safeItem.label || 'Watching').toUpperCase()) + '</span><span class="' + biasClass(safeItem.bias) + '">' + esc(String(safeItem.bias || 'NEUTRAL')) + '</span></div>'
+      + '<div class="token-line"><div class="map-coin">' + esc(safeItem.coin || coin) + '</div><span class="' + modeClass + '">' + esc(surfaceModeBadge(safeItem.mode_badge, tradable)) + '</span>' + probabilityChipHtml(safeItem) + categoryBadge + '<span class="review-chip">' + esc(String(safeItem.label || 'Watching').toUpperCase()) + '</span><span class="' + biasClass(safeItem.bias) + '">' + esc(String(safeItem.bias || 'NEUTRAL')) + '</span></div>'
       + '<div class="token-subline">' + esc(shortText(safeItem.headline || safeItem.execution_note || safeItem.map_summary || 'Waiting for a clearer daily read.', 130)) + '</div>'
     + '</div>'
     + '<div class="daily-sheet-stat"><div class="daily-sheet-label">Entry</div><div class="daily-sheet-value">' + esc(shortText(safeItem.entry_status || 'Still mapping structure.', 88)) + '</div></div>'
@@ -2921,6 +2984,7 @@ function renderMarketMapSummary(summary, marketMap) {
 
   let html = '';
   html += renderBucketTabs(marketMapBucket, groups, 'market');
+  html += renderDeskOverview(groups, 'market', marketMapBucket, marketMapCategory);
   html += renderCategoryTabs(marketMapCategory, categoryGroups, 'market', marketMapBucket);
   const categoryNote = marketMapBucket === 'equity' && marketMapCategory !== 'all'
     ? ' Focus: ' + assetCategoryDescription(marketMapCategory)
@@ -3068,10 +3132,11 @@ function renderActionBoard(board) {
   actionBoardBucket = chooseBucket(actionBoardBucket, groups);
   const selected = groups[actionBoardBucket] || groups.coin;
   const tradableItems = selected.tradable_items || [];
-  const categoryGroups = groupAssetItemsByCategory(tradableItems, (item) => (item || {}).asset_category || assetCategoryForCoin((item || {}).coin));
+  const categoryResolver = (item) => (item || {}).asset_category || assetCategoryForCoin((item || {}).coin);
+  const categoryGroups = groupAssetItemsByCategory(selected.items || [], categoryResolver);
   actionBoardCategory = chooseAssetCategory(actionBoardCategory, categoryGroups, actionBoardBucket);
   const visibleTradableItems = actionBoardBucket === 'equity' && actionBoardCategory !== 'all'
-    ? ((categoryGroups[actionBoardCategory] || {}).items || [])
+    ? tradableItems.filter((item) => categoryResolver(item) === actionBoardCategory)
     : tradableItems;
   const tradableCount = Number(visibleTradableItems.length || 0);
   const activeTradableCount = visibleTradableItems.filter((item) => ['OPEN_LONG', 'OPEN_SHORT', 'READY_LONG', 'READY_SHORT'].includes(String((item || {}).status || '').toUpperCase())).length;
@@ -3087,6 +3152,7 @@ function renderActionBoard(board) {
   meta.textContent = metaBits.join(' • ');
 
   let html = renderBucketTabs(actionBoardBucket, groups, 'action');
+  html += renderDeskOverview(groups, 'action', actionBoardBucket, actionBoardCategory);
   html += renderCategoryTabs(actionBoardCategory, categoryGroups, 'action', actionBoardBucket);
   const categoryNote = actionBoardBucket === 'equity' && actionBoardCategory !== 'all'
     ? ' Focus: ' + assetCategoryDescription(actionBoardCategory)
@@ -3107,10 +3173,13 @@ function renderActionBoard(board) {
           : 'decision-card decision-card-tradable';
       const highlight = status === 'PENDING_ENTRY' ? highlightBase + ' decision-card-pending' : highlightBase;
       const shouldOpen = status === 'PENDING_ENTRY' || status === 'OPEN_LONG' || status === 'OPEN_SHORT' || status === 'READY_LONG';
+      const categoryBadge = item.asset_bucket === 'equity' && item.asset_category_label
+        ? '<span class="review-chip">' + esc(String(item.asset_category_label || 'Stock Desk').toUpperCase()) + '</span>'
+        : '';
       return '<details class="' + highlight + ' decision-box"' + (shouldOpen ? ' open' : '') + '>'
         + '<summary class="decision-summary">'
           + '<div class="decision-summary-main">'
-            + '<div class="token-line"><div class="decision-coin">' + esc(item.coin) + '</div><span class="signal-mode-tradable">' + esc(item.mode_badge || 'LIVE') + '</span>' + probabilityChipHtml(item) + (status === 'PENDING_ENTRY' ? '<span class="review-chip">ORDER LIVE</span>' : '') + '<span class="review-chip">' + esc(String(item.label || 'No setup').toUpperCase()) + '</span><span class="' + biasClass(item.bias) + '">' + esc(String(item.bias || 'NEUTRAL')) + '</span></div>'
+            + '<div class="token-line"><div class="decision-coin">' + esc(item.coin) + '</div><span class="signal-mode-tradable">' + esc(item.mode_badge || 'LIVE') + '</span>' + probabilityChipHtml(item) + categoryBadge + (status === 'PENDING_ENTRY' ? '<span class="review-chip">ORDER LIVE</span>' : '') + '<span class="review-chip">' + esc(String(item.label || 'No setup').toUpperCase()) + '</span><span class="' + biasClass(item.bias) + '">' + esc(String(item.bias || 'NEUTRAL')) + '</span></div>'
             + '<div class="token-subline">' + esc(shortText(item.headline || 'No clear edge right now.', 150)) + '</div>'
           + '</div>'
           + '<div class="decision-summary-side"><div class="token-preview">' + esc(shortText(item.trigger || 'Wait for a cleaner setup.', 90)) + '</div><span class="token-chevron">⌄</span></div>'

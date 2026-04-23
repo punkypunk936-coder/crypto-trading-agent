@@ -38,6 +38,7 @@ from paths import (
     TRADES_CSV,
 )
 from dashboard.snapshot import (
+    augment_state,
     build_dashboard_snapshot,
     default_control,
     default_state,
@@ -190,7 +191,7 @@ def _load_snapshot_local() -> dict | None:
         return None
     if not isinstance(payload, dict) or "state" not in payload:
         return None
-    return payload
+    return _hydrate_snapshot_payload({"snapshot": payload}, server_timestamp=payload.get("server_time"))
 
 
 def _save_snapshot_local(snapshot: dict) -> None:
@@ -214,7 +215,7 @@ def _snapshot_needs_refresh() -> bool:
 
 
 def _build_local_snapshot(server_timestamp: str | None = None) -> dict:
-    state = _load_state_local()
+    state = augment_state(_load_state_local())
     tracked_coins = market_map_store.tracked_coins_from_state(state)
     effective_market_map = market_map_store.build_effective_market_map(
         tracked_coins,
@@ -241,10 +242,20 @@ def _build_local_snapshot(server_timestamp: str | None = None) -> dict:
 def _hydrate_snapshot_payload(data: dict, *, server_timestamp: str | None = None) -> dict:
     snapshot = data.get("snapshot")
     if isinstance(snapshot, dict) and "state" in snapshot:
-        payload = dict(snapshot)
-        if server_timestamp:
-            payload["server_time"] = server_timestamp
-        return payload
+        return build_dashboard_snapshot(
+            snapshot.get("state"),
+            snapshot.get("trades", []),
+            snapshot.get("control"),
+            snapshot.get("market_map"),
+            snapshot.get("trade_reviews"),
+            decision_review_report=snapshot.get("decision_review_report"),
+            challenger_report=snapshot.get("challenger_report"),
+            missed_move_report=snapshot.get("missed_move_report"),
+            asset_dossiers=snapshot.get("asset_dossiers"),
+            llm_referee_report=snapshot.get("llm_referee_report"),
+            playbook_distiller_report=snapshot.get("playbook_distiller_report"),
+            server_timestamp=server_timestamp or snapshot.get("server_time"),
+        )
     return build_dashboard_snapshot(
         data.get("state"),
         data.get("trades", []),
@@ -380,6 +391,7 @@ def api_market_map():
         state = (_remote_state.get("snapshot") or {}).get("state") if isinstance(_remote_state.get("snapshot"), dict) else None
         if not isinstance(state, dict):
             state = _load_state_local()
+        state = augment_state(state)
         tracked_coins = market_map_store.tracked_coins_from_state(state)
         return jsonify(
             market_map_store.build_effective_market_map(
@@ -397,7 +409,7 @@ def api_market_map():
         payload = market_map_store.save_market_map(data)
     with _lock:
         if _remote_state["snapshot"] is not None:
-            state = (_remote_state["snapshot"] or {}).get("state") or {}
+            state = augment_state((_remote_state["snapshot"] or {}).get("state") or {})
             tracked_coins = market_map_store.tracked_coins_from_state(state)
             effective_market_map = market_map_store.build_effective_market_map(
                 tracked_coins,

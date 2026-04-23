@@ -2153,6 +2153,7 @@ def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> N
     assert "Open Level Sheet" in template
     assert "Latest Win" in template
     assert "daily-briefing" in template
+    assert "Stock Desks" in template
     assert "Mag7" in template
     assert "prob-chip" in template
     assert "Reclaim odds" in template
@@ -2362,6 +2363,38 @@ def test_dashboard_snapshot_includes_market_map_and_trade_reviews() -> None:
     assert snapshot["review_summary"]["count"] == 1
     assert snapshot["review_summary"]["coverage_pct"] == 100.0
     assert snapshot["trades"][0]["review"]["verdict"] == "GOOD_TRADE"
+
+
+def test_dashboard_snapshot_backfills_stock_desks_from_runtime_defaults() -> None:
+    snapshot = build_dashboard_snapshot(
+        state={
+            "status": "online",
+            "cycle_number": 101,
+            "positions": [],
+            "signals": {},
+            "mode": "dry_run",
+            "config": {},
+        },
+        trades=[],
+        control={"kill": {"active": False, "reason": "", "requested_at": None, "acknowledged_at": None}},
+        market_map={
+            "date": "2026-04-23",
+            "updated_at": "2026-04-23 09:00:00",
+            "coins": {
+                "TSLA": {"bias": "BULLISH"},
+                "NVDA": {"bias": "BULLISH"},
+                "CRWV": {"bias": "BULLISH"},
+            },
+        },
+        server_timestamp="2026-04-23 09:05:00",
+    )
+    equity_counts = snapshot["action_board"]["summary"]["bucket_counts"]["equity"]
+    assert equity_counts["count"] >= 3
+    equity_items = [item for item in snapshot["action_board"]["items"] if item["asset_bucket"] == "equity"]
+    by_coin = {item["coin"]: item for item in equity_items}
+    assert by_coin["TSLA"]["asset_category"] == "mag7"
+    assert by_coin["NVDA"]["asset_category"] == "semis_memory"
+    assert by_coin["CRWV"]["asset_category"] == "neoclouds"
 
 
 def test_dashboard_snapshot_includes_trade_logic_and_learning_summary() -> None:
@@ -5325,6 +5358,8 @@ def run_all() -> None:
     print("PASS operator review hard block")
     test_dashboard_snapshot_includes_market_map_and_trade_reviews()
     print("PASS dashboard market-map snapshot")
+    test_dashboard_snapshot_backfills_stock_desks_from_runtime_defaults()
+    print("PASS dashboard stock desk backfill")
     test_dashboard_snapshot_includes_trade_logic_and_learning_summary()
     print("PASS dashboard learning summary")
     test_dashboard_snapshot_includes_asset_dossiers_and_referee_reports()

@@ -62,6 +62,92 @@ def default_market_map() -> dict:
     }
 
 
+def _normalize_coin_list(values: Any) -> list[str]:
+    items: list[str] = []
+    seen: set[str] = set()
+    for value in values or []:
+        coin = str(value or "").upper().strip()
+        if coin and coin not in seen:
+            seen.add(coin)
+            items.append(coin)
+    return items
+
+
+def _runtime_dashboard_config_defaults() -> dict:
+    try:
+        from config import config as runtime_config
+    except Exception:
+        return {}
+    trading = getattr(runtime_config, "trading", None)
+    if trading is None:
+        return {}
+    return {
+        "coins": _normalize_coin_list(getattr(trading, "coins", []) or []),
+        "analysis_coins": _normalize_coin_list(getattr(trading, "analysis_coins", []) or []),
+        "dynamic_analysis_coins": _normalize_coin_list(getattr(trading, "dynamic_analysis_coins", []) or []),
+        "instrument_types": {
+            str(key or "").upper(): str(value or "")
+            for key, value in dict(getattr(trading, "instrument_types", {}) or {}).items()
+            if str(key or "").strip()
+        },
+        "asset_categories": {
+            str(key or "").upper(): str(value or "")
+            for key, value in dict(getattr(trading, "asset_category_map", {}) or {}).items()
+            if str(key or "").strip()
+        },
+        "asset_category_labels": {
+            str(key or "").strip().lower(): str(value or "")
+            for key, value in dict(getattr(trading, "asset_category_labels", {}) or {}).items()
+            if str(key or "").strip()
+        },
+        "check_interval_seconds": int(getattr(trading, "check_interval_seconds", 120) or 120),
+        "dynamic_market_cap_min_usd": float(getattr(trading, "dynamic_market_cap_min_usd", 0.0) or 0.0),
+        "use_daily_market_map": bool(getattr(trading, "use_daily_market_map", True)),
+    }
+
+
+def _merge_dashboard_config(config: Any) -> dict:
+    current = dict(config or {}) if isinstance(config, dict) else {}
+    defaults = _runtime_dashboard_config_defaults()
+    merged = dict(defaults)
+    merged.update({
+        key: value
+        for key, value in current.items()
+        if key not in {
+            "coins",
+            "analysis_coins",
+            "dynamic_analysis_coins",
+            "instrument_types",
+            "asset_categories",
+            "asset_category_labels",
+        }
+    })
+    merged["coins"] = _normalize_coin_list(current.get("coins") or defaults.get("coins") or [])
+    merged["analysis_coins"] = _normalize_coin_list(current.get("analysis_coins") or defaults.get("analysis_coins") or [])
+    merged["dynamic_analysis_coins"] = _normalize_coin_list(
+        current.get("dynamic_analysis_coins") or defaults.get("dynamic_analysis_coins") or []
+    )
+    merged["instrument_types"] = dict(defaults.get("instrument_types") or {})
+    merged["instrument_types"].update({
+        str(key or "").upper(): str(value or "")
+        for key, value in dict(current.get("instrument_types") or {}).items()
+        if str(key or "").strip()
+    })
+    merged["asset_categories"] = dict(defaults.get("asset_categories") or {})
+    merged["asset_categories"].update({
+        str(key or "").upper(): str(value or "")
+        for key, value in dict(current.get("asset_categories") or {}).items()
+        if str(key or "").strip()
+    })
+    merged["asset_category_labels"] = dict(defaults.get("asset_category_labels") or {})
+    merged["asset_category_labels"].update({
+        str(key or "").strip().lower(): str(value or "")
+        for key, value in dict(current.get("asset_category_labels") or {}).items()
+        if str(key or "").strip()
+    })
+    return merged
+
+
 def normalize_market_map(market_map: Any) -> dict:
     base = default_market_map()
     if not isinstance(market_map, dict):
@@ -873,6 +959,8 @@ def action_board(
     ]
     tracked = set()
     tracked.update(str(coin or "").upper() for coin in config.get("coins", []) or [])
+    tracked.update(str(coin or "").upper() for coin in config.get("analysis_coins", []) or [])
+    tracked.update(str(coin or "").upper() for coin in (market_map or {}).get("coins", {}).keys())
     tracked.update(str(coin or "").upper() for coin in signals.keys())
     tracked.update(str(coin or "").upper() for coin in positions_by_coin.keys())
 
@@ -1563,6 +1651,7 @@ def augment_state(state: Any) -> dict:
     safe_state = dict(state or {})
     merged = default_state()
     merged.update(safe_state)
+    merged["config"] = _merge_dashboard_config(merged.get("config"))
     merged["positions_count"] = len(merged.get("positions") or [])
     merged["decision_summary"] = decision_summary(merged)
     return merged
