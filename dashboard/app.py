@@ -12,6 +12,7 @@ Deploy (Railway): set PORT env var, agent pushes to your Railway URL
 import json
 import os
 import threading
+import time
 from datetime import datetime
 
 import decision_dataset
@@ -67,6 +68,14 @@ app = Flask(__name__, template_folder="templates", static_folder="static")
 
 # In-memory store for remote-pushed snapshot
 _remote_state = {"snapshot": None}
+_local_snapshot_cache = {
+    "snapshot": None,
+    "mtime_ns": None,
+    "refreshing": False,
+    "last_refresh_started": 0.0,
+    "last_refresh_finished": 0.0,
+    "last_refresh_error": "",
+}
 _lock = threading.Lock()
 
 def _load_state_local() -> dict:
@@ -182,20 +191,63 @@ def _save_control_local(control: dict) -> None:
     CONTROL.write_text(json.dumps(normalize_control(control), indent=2))
 
 
+def _snapshot_is_prebuilt(payload: dict) -> bool:
+    return bool(
+        isinstance(payload, dict)
+        and isinstance(payload.get("state"), dict)
+        and (
+            "stats" in payload
+            or "runtime" in payload
+            or "action_board" in payload
+        )
+    )
+
+
+def _cache_local_snapshot(snapshot: dict | None, *, mtime_ns: int | None = None) -> dict | None:
+    if not isinstance(snapshot, dict) or "state" not in snapshot:
+        return None
+    cached = dict(snapshot)
+    cached["control"] = normalize_control(cached.get("control"))
+    with _lock:
+        _local_snapshot_cache["snapshot"] = cached
+        _local_snapshot_cache["mtime_ns"] = mtime_ns
+    return cached
+
+
 def _load_snapshot_local() -> dict | None:
     if not SNAPSHOT.exists():
         return None
+    try:
+        mtime_ns = SNAPSHOT.stat().st_mtime_ns
+    except Exception:
+        return None
+    with _lock:
+        cached_snapshot = _local_snapshot_cache.get("snapshot")
+        cached_mtime_ns = _local_snapshot_cache.get("mtime_ns")
+    if isinstance(cached_snapshot, dict) and cached_mtime_ns == mtime_ns:
+        return cached_snapshot
     try:
         payload = json.loads(SNAPSHOT.read_text())
     except Exception:
         return None
     if not isinstance(payload, dict) or "state" not in payload:
         return None
-    return _hydrate_snapshot_payload({"snapshot": payload}, server_timestamp=payload.get("server_time"))
+    if _snapshot_is_prebuilt(payload):
+        return _cache_local_snapshot(payload, mtime_ns=mtime_ns)
+    hydrated = _hydrate_snapshot_payload({"snapshot": payload}, server_timestamp=payload.get("server_time"))
+    return _cache_local_snapshot(hydrated, mtime_ns=mtime_ns)
 
 
 def _save_snapshot_local(snapshot: dict) -> None:
-    SNAPSHOT.write_text(json.dumps(snapshot, indent=2))
+    SNAPSHOT.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = SNAPSHOT.with_name(SNAPSHOT.name + ".tmp")
+    tmp_path.write_text(json.dumps(snapshot, separators=(",", ":")))
+    tmp_path.replace(SNAPSHOT)
+    try:
+        mtime_ns = SNAPSHOT.stat().st_mtime_ns
+    except Exception:
+        mtime_ns = None
+    _cache_local_snapshot(snapshot, mtime_ns=mtime_ns)
 
 
 def _snapshot_needs_refresh() -> bool:
@@ -237,6 +289,41 @@ def _build_local_snapshot(server_timestamp: str | None = None) -> dict:
         playbook_distiller_report=_load_playbook_distiller_report_local(),
         server_timestamp=server_timestamp,
     )
+
+
+def _refresh_local_snapshot_worker(server_timestamp: str | None = None) -> None:
+    try:
+        snapshot = _build_local_snapshot(server_timestamp=server_timestamp)
+        _save_snapshot_local(snapshot)
+        error = ""
+    except Exception as exc:
+        error = str(exc)
+    finally:
+        with _lock:
+            _local_snapshot_cache["refreshing"] = False
+            _local_snapshot_cache["last_refresh_finished"] = time.monotonic()
+            _local_snapshot_cache["last_refresh_error"] = error
+
+
+def _queue_local_snapshot_refresh(server_timestamp: str | None = None, *, force: bool = False) -> bool:
+    now = time.monotonic()
+    with _lock:
+        if _remote_state["snapshot"] is not None:
+            return False
+        if _local_snapshot_cache["refreshing"]:
+            return False
+        if not force and (now - float(_local_snapshot_cache.get("last_refresh_started") or 0.0)) < 3.0:
+            return False
+        _local_snapshot_cache["refreshing"] = True
+        _local_snapshot_cache["last_refresh_started"] = now
+    thread = threading.Thread(
+        target=_refresh_local_snapshot_worker,
+        kwargs={"server_timestamp": server_timestamp},
+        daemon=True,
+        name="dashboard-snapshot-refresh",
+    )
+    thread.start()
+    return True
 
 
 def _hydrate_snapshot_payload(data: dict, *, server_timestamp: str | None = None) -> dict:
@@ -307,9 +394,13 @@ def api_state():
             return jsonify(_remote_state["snapshot"])
 
     snapshot = _load_snapshot_local()
-    if snapshot is None or _snapshot_needs_refresh():
-        snapshot = _build_local_snapshot()
-        _save_snapshot_local(snapshot)
+    needs_refresh = snapshot is None or _snapshot_needs_refresh()
+    if snapshot is not None:
+        if needs_refresh:
+            _queue_local_snapshot_refresh()
+        return jsonify(snapshot)
+    snapshot = _build_local_snapshot()
+    _save_snapshot_local(snapshot)
     return jsonify(snapshot)
 
 

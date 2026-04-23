@@ -2087,6 +2087,8 @@ def test_dashboard_refreshes_snapshot_when_state_changes() -> None:
         original_log = dashboard_module.LOG
         original_snapshot = dashboard_module.SNAPSHOT
         original_remote = dict(dashboard_module._remote_state)
+        original_queue_refresh = dashboard_module._queue_local_snapshot_refresh
+        original_local_cache = dict(dashboard_module._local_snapshot_cache)
         try:
             dashboard_module.CONTROL = temp / "control.json"
             dashboard_module.KILL = temp / "KILL"
@@ -2094,6 +2096,14 @@ def test_dashboard_refreshes_snapshot_when_state_changes() -> None:
             dashboard_module.LOG = temp / "trades_log.csv"
             dashboard_module.SNAPSHOT = temp / "dashboard_snapshot.json"
             dashboard_module._remote_state = {"snapshot": None}
+            dashboard_module._local_snapshot_cache = {
+                "snapshot": None,
+                "mtime_ns": None,
+                "refreshing": False,
+                "last_refresh_started": 0.0,
+                "last_refresh_finished": 0.0,
+                "last_refresh_error": "",
+            }
 
             snapshot = {
                 "state": {
@@ -2128,10 +2138,13 @@ def test_dashboard_refreshes_snapshot_when_state_changes() -> None:
             }))
             dashboard_module.LOG.write_text("coin,exit_price,pnl_usd\n")
             os.utime(dashboard_module.STATE, None)
+            refresh_calls = {"count": 0}
+            dashboard_module._queue_local_snapshot_refresh = lambda server_timestamp=None, force=False: refresh_calls.__setitem__("count", refresh_calls["count"] + 1) or True
 
             client = dashboard_module.app.test_client()
             payload = client.get("/api/state").get_json()
-            assert payload["state"]["cycle_number"] == 11
+            assert payload["state"]["cycle_number"] == 10
+            assert refresh_calls["count"] == 1
         finally:
             dashboard_module.CONTROL = original_control
             dashboard_module.KILL = original_kill
@@ -2139,6 +2152,44 @@ def test_dashboard_refreshes_snapshot_when_state_changes() -> None:
             dashboard_module.LOG = original_log
             dashboard_module.SNAPSHOT = original_snapshot
             dashboard_module._remote_state = original_remote
+            dashboard_module._queue_local_snapshot_refresh = original_queue_refresh
+            dashboard_module._local_snapshot_cache = original_local_cache
+
+
+def test_dashboard_loads_prebuilt_snapshot_without_rehydrating() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        temp = Path(tmpdir)
+        original_snapshot = dashboard_module.SNAPSHOT
+        original_builder = dashboard_module.build_dashboard_snapshot
+        original_local_cache = dict(dashboard_module._local_snapshot_cache)
+        try:
+            dashboard_module.SNAPSHOT = temp / "dashboard_snapshot.json"
+            dashboard_module._local_snapshot_cache = {
+                "snapshot": None,
+                "mtime_ns": None,
+                "refreshing": False,
+                "last_refresh_started": 0.0,
+                "last_refresh_finished": 0.0,
+                "last_refresh_error": "",
+            }
+            dashboard_module.SNAPSHOT.write_text(json.dumps({
+                "state": {"status": "running", "cycle_number": 77, "positions": [], "signals": {}},
+                "trades": [],
+                "stats": {"total": 0, "wins": 0, "losses": 0, "win_rate": 0, "total_pnl": 0, "avg_win": 0, "avg_loss": 0, "best": 0, "worst": 0},
+                "control": {"kill": {"active": False, "reason": "", "requested_at": None, "acknowledged_at": None}},
+                "runtime": {"stale": False, "state_age_seconds": 2},
+                "server_time": "2026-04-23 23:16:00",
+            }))
+            dashboard_module.build_dashboard_snapshot = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not rehydrate prebuilt snapshot"))
+
+            payload = dashboard_module._load_snapshot_local()
+            assert payload is not None
+            assert payload["state"]["cycle_number"] == 77
+            assert payload["runtime"]["state_age_seconds"] == 2
+        finally:
+            dashboard_module.SNAPSHOT = original_snapshot
+            dashboard_module.build_dashboard_snapshot = original_builder
+            dashboard_module._local_snapshot_cache = original_local_cache
 
 
 def test_hosted_dashboard_bundle_matches_local_template() -> None:
@@ -2164,6 +2215,9 @@ def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> N
     assert "friction-stack" in template
     assert "catalyst-rail" in template
     assert "leadSummaryText(actionBoard.lead" in template
+    assert "AbortController" in template
+    assert "scheduleRefresh(" in template
+    assert "setInterval(refresh, 10000);" not in template
     assert "🧾 Latest Lesson" not in template
     assert '<div class="asset-section-title">Support Pending</div>' not in template
 
@@ -5650,6 +5704,8 @@ def run_all() -> None:
     print("PASS dashboard canonical snapshot")
     test_dashboard_refreshes_snapshot_when_state_changes()
     print("PASS dashboard snapshot refresh")
+    test_dashboard_loads_prebuilt_snapshot_without_rehydrating()
+    print("PASS dashboard prebuilt snapshot fast path")
     test_hosted_dashboard_bundle_matches_local_template()
     print("PASS hosted dashboard bundle sync")
     test_dashboard_template_compacts_daily_view_and_hides_support_pending()

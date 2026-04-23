@@ -2350,10 +2350,17 @@ let latestLLMRefereeReport = { verdicts: {} };
 let latestPlaybookDistillerReport = { summary: {}, assets: {} };
 let currentTickerSearchQuery = '';
 let tradexyzLookupBusy = false;
+let refreshRequest = null;
+let refreshTimer = null;
+let refreshFailureCount = 0;
 let actionBoardBucket = 'coin';
 let marketMapBucket = 'coin';
 let actionBoardCategory = 'all';
 let marketMapCategory = 'all';
+const REFRESH_BASE_MS = 15000;
+const REFRESH_STALE_MS = 25000;
+const REFRESH_MAX_MS = 60000;
+const REFRESH_TIMEOUT_MS = 8000;
 const DEFAULT_ASSET_CATEGORY_LABELS = {
   indices_macro: 'Indices & Macro',
   mag7: 'Mag7',
@@ -3674,8 +3681,16 @@ function reviewNextTrade() {
 }
 
 async function refresh() {
+  if (refreshRequest) return refreshRequest;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REFRESH_TIMEOUT_MS);
+  refreshRequest = (async () => {
   try {
-    const res  = await fetch('/api/state');
+    const res  = await fetch('/api/state', {
+      signal: controller.signal,
+      cache: 'no-store',
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     const s    = data.state;
     const st   = data.stats;
@@ -3841,9 +3856,35 @@ async function refresh() {
       tradBody.innerHTML = '<tr><td colspan="10" class="muted" style="text-align:center;padding:24px;">No closed trades yet</td></tr>';
     }
 
+    refreshFailureCount = 0;
+    const nextDelay = runtime.stale ? REFRESH_STALE_MS : REFRESH_BASE_MS;
+    scheduleRefresh(nextDelay);
   } catch(e) {
-    document.getElementById('last-update').textContent = 'Agent offline — ' + new Date().toLocaleTimeString();
+    refreshFailureCount += 1;
+    const retryDelay = Math.min(
+      REFRESH_MAX_MS,
+      Math.max(REFRESH_BASE_MS, REFRESH_BASE_MS * (2 ** Math.min(refreshFailureCount - 1, 2)))
+    );
+    const retrySeconds = Math.round(retryDelay / 1000);
+    const stamp = new Date().toLocaleTimeString();
+    const message = latestState
+      ? ('Live refresh delayed — retrying in ' + retrySeconds + 's • ' + stamp)
+      : ('Agent refresh delayed — retrying in ' + retrySeconds + 's • ' + stamp);
+    document.getElementById('last-update').textContent = message;
+    scheduleRefresh(retryDelay);
+  } finally {
+    clearTimeout(timeoutId);
+    refreshRequest = null;
   }
+  })();
+  return refreshRequest;
+}
+
+function scheduleRefresh(delayMs = REFRESH_BASE_MS) {
+  if (refreshTimer) clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => {
+    refresh();
+  }, Math.max(1000, Number(delayMs || REFRESH_BASE_MS)));
 }
 
 let killConfirm = false;
@@ -3914,7 +3955,6 @@ if (tradexyzWalletInput) {
 }
 
 refresh();
-setInterval(refresh, 10000);
 </script>
 </body>
 </html>
