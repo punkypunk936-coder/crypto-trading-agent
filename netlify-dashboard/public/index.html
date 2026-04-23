@@ -560,6 +560,130 @@
     line-height: 1.45;
     font-family: var(--mono);
   }
+  .detail-stack-section {
+    display: grid;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .detail-stack-label {
+    color: var(--muted);
+    font-size: 10px;
+    font-family: var(--mono);
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+  }
+  .lead-callout {
+    margin-bottom: 12px;
+    border: 1px solid rgba(91,140,255,0.14);
+    background: rgba(91,140,255,0.06);
+    border-radius: 12px;
+    padding: 12px 14px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .friction-stack {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 8px;
+  }
+  .friction-chip {
+    border-radius: 12px;
+    padding: 10px;
+    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.025);
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+  }
+  .friction-chip-clear {
+    border-color: rgba(0,230,138,0.16);
+    background: rgba(0,230,138,0.06);
+  }
+  .friction-chip-wait {
+    border-color: rgba(255,184,77,0.16);
+    background: rgba(255,184,77,0.06);
+  }
+  .friction-chip-block {
+    border-color: rgba(255,77,106,0.16);
+    background: rgba(255,77,106,0.06);
+  }
+  .friction-chip-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .friction-chip-label {
+    color: var(--text);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+  }
+  .friction-chip-state {
+    font-size: 10px;
+    font-family: var(--mono);
+    letter-spacing: 0.7px;
+    text-transform: uppercase;
+  }
+  .friction-chip-clear .friction-chip-state {
+    color: var(--green);
+  }
+  .friction-chip-wait .friction-chip-state {
+    color: var(--yellow);
+  }
+  .friction-chip-block .friction-chip-state {
+    color: #ff9aaa;
+  }
+  .friction-chip-summary {
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  .catalyst-rail {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .catalyst-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    border-radius: 999px;
+    padding: 7px 10px;
+    font-size: 11px;
+    line-height: 1.35;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.03);
+    color: var(--text-secondary);
+  }
+  .catalyst-pill-label {
+    color: var(--muted);
+    font-family: var(--mono);
+    letter-spacing: 0.7px;
+    text-transform: uppercase;
+    font-size: 10px;
+    flex: 0 0 auto;
+  }
+  .catalyst-pill-text {
+    min-width: 0;
+  }
+  .catalyst-pill-support {
+    border-color: rgba(0,230,138,0.16);
+    background: rgba(0,230,138,0.07);
+    color: #c6ffe6;
+  }
+  .catalyst-pill-watch {
+    border-color: rgba(91,140,255,0.18);
+    background: rgba(91,140,255,0.08);
+    color: #d5e0ff;
+  }
+  .catalyst-pill-risk {
+    border-color: rgba(255,184,77,0.18);
+    background: rgba(255,184,77,0.08);
+    color: #ffe4b3;
+  }
   .search-shell {
     display: grid;
     gap: 12px;
@@ -1914,6 +2038,54 @@ const setupReasonText = (item, limit=170) => {
     limit
   );
 };
+const whyLeadText = (item, limit=170) => {
+  const safe = item || {};
+  return shortText(
+    safe.why_this_lead
+      || safe.probability_detail
+      || safe.probability_text
+      || setupReasonText(safe, limit),
+    limit
+  );
+};
+const leadSummaryText = (item, limit=220) => {
+  const why = whyLeadText(item, 140);
+  const blocker = setupReasonText(item, 160);
+  if (why && blocker && why.toLowerCase() !== blocker.toLowerCase()) {
+    return shortText(why + ' • ' + blocker, limit);
+  }
+  return shortText(why || blocker || 'Waiting for the next clean setup.', limit);
+};
+const frictionStateLabel = (status) => {
+  const key = String(status || 'wait').toLowerCase();
+  if (key === 'clear') return 'Clear';
+  if (key === 'block') return 'Block';
+  return 'Wait';
+};
+const frictionStackHtml = (item) => {
+  const stack = Array.isArray((item || {}).friction_stack) ? item.friction_stack.filter((entry) => entry && (entry.label || entry.summary)) : [];
+  if (!stack.length) return '';
+  return '<div class="detail-stack-section"><div class="detail-stack-label">Friction Stack</div><div class="friction-stack">'
+    + stack.map((entry) => {
+      const tone = ['clear', 'wait', 'block'].includes(String(entry.status || '').toLowerCase()) ? String(entry.status || '').toLowerCase() : 'wait';
+      const summary = shortText(entry.summary || 'Still being evaluated.', 96);
+      return '<div class="friction-chip friction-chip-' + esc(tone) + '">'
+        + '<div class="friction-chip-top"><div class="friction-chip-label">' + esc(String(entry.label || 'Check')) + '</div><div class="friction-chip-state">' + esc(frictionStateLabel(tone)) + '</div></div>'
+        + '<div class="friction-chip-summary">' + esc(summary) + '</div>'
+      + '</div>';
+    }).join('')
+    + '</div></div>';
+};
+const catalystRailHtml = (item) => {
+  const rail = Array.isArray((item || {}).catalyst_rail) ? item.catalyst_rail.filter((entry) => entry && entry.text) : [];
+  if (!rail.length) return '';
+  return '<div class="detail-stack-section"><div class="detail-stack-label">Catalyst Rail</div><div class="catalyst-rail">'
+    + rail.map((entry) => {
+      const tone = ['support', 'watch', 'risk'].includes(String(entry.tone || '').toLowerCase()) ? String(entry.tone || '').toLowerCase() : 'watch';
+      return '<div class="catalyst-pill catalyst-pill-' + esc(tone) + '"><span class="catalyst-pill-label">' + esc(String(entry.label || 'Signal')) + '</span><span class="catalyst-pill-text">' + esc(shortText(entry.text || '', 100)) + '</span></div>';
+    }).join('')
+    + '</div></div>';
+};
 const itemBiasMixText = (items) => {
   const counts = { BULLISH: 0, BEARISH: 0, NEUTRAL: 0 };
   (items || []).forEach((item) => {
@@ -2729,6 +2901,9 @@ function fallbackSearchItem(coin) {
     risk,
     bias,
     map_summary: shortText(mapEntry.summary || mapEntry.notes || signal.market_map_summary || '', 140),
+    friction_stack: [],
+    catalyst_rail: [],
+    why_this_lead: shortText(probability.probability_detail || probability.probability_text || executionNote || headline, 160),
     confidence: String(signal.confidence || 'LOW').toUpperCase(),
     score: Number(signal.score || 50),
     tracked,
@@ -2795,6 +2970,7 @@ function renderTickerSearch(value) {
   result.innerHTML = '<div class="search-title">' + esc(item.coin) + ' • ' + esc(setupStanceText(item, 'title')) + '</div>'
     + '<div class="search-chip-row">' + tradableChip + stanceChip + probabilityChipHtml(item) + '</div>'
     + '<div class="search-summary">' + esc(setupReasonText(item, 220)) + '</div>'
+    + '<div class="search-summary"><strong>Why this lead:</strong> ' + esc(whyLeadText(item, 200)) + '</div>'
     + '<div class="search-grid">'
       + '<div class="token-detail"><span class="token-detail-label">Current read</span><div class="token-detail-value">' + esc(item.label || 'Watching') + '</div></div>'
       + '<div class="token-detail"><span class="token-detail-label">Entry status</span><div class="token-detail-value">' + esc(shortText(item.entry_status || item.execution_note || item.mode_detail || 'Still waiting for final entry checks.', 140)) + '</div></div>'
@@ -2802,6 +2978,8 @@ function renderTickerSearch(value) {
       + '<div class="token-detail"><span class="token-detail-label">Odds</span><div class="token-detail-value">' + esc(shortText(item.probability_detail || item.probability_text || 'No odds yet.', 140)) + '</div></div>'
       + '<div class="token-detail"><span class="token-detail-label">Risk</span><div class="token-detail-value">' + esc(shortText(item.risk || item.map_summary || 'Stay patient until the map and order-flow align.', 140)) + '</div></div>'
     + '</div>'
+    + frictionStackHtml(item)
+    + catalystRailHtml(item)
     + (dossierBody.current_read ? '<div class="search-summary"><strong>Dossier read:</strong> ' + esc(shortText(dossierBody.current_read, 180)) + '</div>' : '')
     + (dossierBody.playbook ? '<div class="search-summary"><strong>Playbook:</strong> ' + esc(shortText(dossierBody.playbook, 180)) + '</div>' : '')
     + (referee.summary ? '<div class="search-summary"><strong>Referee:</strong> ' + esc(shortText(referee.summary, 180)) + (referee.verdict ? ' • ' + esc(String(referee.verdict)) : '') + '</div>' : '')
@@ -3291,6 +3469,7 @@ function renderActionBoard(board) {
   const visibleTradableItems = actionBoardBucket === 'equity' && actionBoardCategory !== 'all'
     ? tradableItems.filter((item) => normalizeAssetCategories(categoryResolver(item)).includes(actionBoardCategory))
     : tradableItems;
+  const visibleLead = visibleTradableItems[0] || tradableItems[0] || ((selected.items || [])[0]) || lead;
   const tradableCount = Number(visibleTradableItems.length || 0);
   const activeTradableCount = visibleTradableItems.filter((item) => ['OPEN_LONG', 'OPEN_SHORT', 'READY_LONG', 'READY_SHORT'].includes(String((item || {}).status || '').toUpperCase())).length;
   const pendingCount = visibleTradableItems.filter((item) => String((item || {}).status || '').toUpperCase() === 'PENDING_ENTRY').length;
@@ -3302,7 +3481,7 @@ function renderActionBoard(board) {
   if (actionBoardBucket === 'equity' && actionBoardCategory !== 'all') metaBits.push(assetCategoryLabel(actionBoardCategory));
   if (activeTradableCount > 0) metaBits.push('Actionable ' + activeTradableCount);
   if (pendingCount > 0) metaBits.push('Working orders ' + pendingCount);
-  if (lead) metaBits.push('Best setup: ' + lead.coin + ' • ' + setupStanceText(lead, 'title'));
+  if (visibleLead) metaBits.push('Best setup: ' + visibleLead.coin + ' • ' + setupStanceText(visibleLead, 'title'));
   meta.textContent = metaBits.join(' • ');
 
   let html = renderBucketTabs(actionBoardBucket, groups, 'action');
@@ -3312,6 +3491,9 @@ function renderActionBoard(board) {
     ? ' Focus: ' + assetCategoryDescription(actionBoardCategory)
     : '';
   html += '<div class="asset-bucket-note">' + esc(bucketDescription(actionBoardBucket) + categoryNote + ' Stance mix: ' + stanceMixText + '.') + '</div>';
+  if (visibleLead) {
+    html += '<div class="lead-callout"><strong>Why this lead:</strong> ' + esc(whyLeadText(visibleLead, 210)) + '</div>';
+  }
   html += '<div class="decision-board asset-section-stack">';
   if (visibleTradableItems.length) {
     const tradableSub = pendingCount > 0
@@ -3345,6 +3527,9 @@ function renderActionBoard(board) {
             + '<div class="token-detail"><span class="token-detail-label">Risk</span><div class="token-detail-value">' + esc(shortText(item.risk || item.map_summary || 'Stay patient until the map and order-flow align.', 120)) + '</div></div>'
             + '<div class="token-detail"><span class="token-detail-label">Execution lane</span><div class="token-detail-value">' + esc(surfaceModeMeta(item.mode_meta, true)) + '</div></div>'
           + '</div>'
+          + '<div class="decision-rl-note"><strong>Why it ranks:</strong> ' + esc(whyLeadText(item, 180)) + '</div>'
+          + frictionStackHtml(item)
+          + catalystRailHtml(item)
           + (item.map_summary ? '<div class="decision-rl-note"><strong>Daily view:</strong> ' + esc(shortText(item.map_summary, 130)) + '</div>' : '')
         + '</div>'
       + '</details>';
@@ -3561,7 +3746,7 @@ async function refresh() {
     document.getElementById('wins-losses').textContent = 'Closed: ' + closedN + ' • Wins: ' + (st.wins||0) + ' • Losses: ' + (st.losses||0);
     if (actionBoard.lead) {
       document.getElementById('cycle').textContent = actionBoard.lead.coin + ' • ' + setupStanceText(actionBoard.lead, 'title');
-      document.getElementById('sentiment').textContent = setupReasonText(actionBoard.lead, 170);
+      document.getElementById('sentiment').textContent = leadSummaryText(actionBoard.lead, 210);
     } else {
       document.getElementById('cycle').textContent = openN ? 'Managing trades' : 'No setup';
       document.getElementById('sentiment').textContent = openN ? 'The agent is managing open exposure.' : 'Waiting for the next clean setup.';
@@ -3602,7 +3787,7 @@ async function refresh() {
       countBadge.className = 'open-count open-count-flat';
       openCard.className = 'card';
       const leadEmpty = actionBoard.lead
-        ? '<div style="margin-top:8px;"><strong>Best setup:</strong> ' + esc(actionBoard.lead.coin + ' • ' + setupStanceText(actionBoard.lead, 'title')) + ' — ' + esc(setupReasonText(actionBoard.lead, 150)) + '</div>'
+        ? '<div style="margin-top:8px;"><strong>Best setup:</strong> ' + esc(actionBoard.lead.coin + ' • ' + setupStanceText(actionBoard.lead, 'title')) + ' — ' + esc(leadSummaryText(actionBoard.lead, 170)) + '</div>'
         : '<div style="margin-top:8px;">The agent is flat and waiting for a clean, high-conviction setup.</div>';
       openBody.innerHTML =
         '<div class="empty-state">' +

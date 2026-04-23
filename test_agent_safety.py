@@ -2157,10 +2157,13 @@ def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> N
     assert "Mag7" in template
     assert "prob-chip" in template
     assert "Reclaim odds" in template
-    assert "setupReasonText(actionBoard.lead" in template
     assert "next_setup_reason" in template
     assert "setupStanceChipHtml" in template
     assert "Stance mix:" in template
+    assert "Why this lead:" in template
+    assert "friction-stack" in template
+    assert "catalyst-rail" in template
+    assert "leadSummaryText(actionBoard.lead" in template
     assert "🧾 Latest Lesson" not in template
     assert '<div class="asset-section-title">Support Pending</div>' not in template
 
@@ -2826,8 +2829,84 @@ def test_dashboard_action_board_uses_major_catalyst_watch_label_and_unblock_reas
     assert "major catalyst still supports the move" in lead["probability_detail"].lower()
     assert lead["risk"] == "Lose 250.00 (-3.03 / -1.20%)"
     assert "hold back above 253.36" in lead["execution_note"].lower()
-    assert lead["mode_badge"] == "PENDING"
-    assert lead["mode_label"] == "SUPPORT PENDING"
+    assert lead["mode_badge"] == "EXEC"
+    assert lead["mode_label"] == "EXECUTABLE"
+
+
+def test_dashboard_action_board_builds_friction_stack_catalyst_rail_and_lead_reason() -> None:
+    snapshot = build_dashboard_snapshot(
+        state={
+            "status": "online",
+            "last_cycle": "2026-04-23 10:15:00",
+            "cycle_number": 6012,
+            "positions": [],
+            "signals": {
+                "AMZN": {
+                    "action": "FLAT",
+                    "score": 43.5,
+                    "confidence": "MEDIUM",
+                    "execution_mode": "tradable",
+                    "instrument_type": "equity",
+                    "asset_state": "MAJOR_CATALYST_WATCH",
+                    "asset_state_label": "Major catalyst watch",
+                    "next_unblock_reason": "Hold back above 253.36 and keep the reclaim to unlock the long.",
+                    "decision_reason": "Anthropic/AWS catalyst is strong, but the retake still has to confirm.",
+                    "flat_reason": "Equity spot: prior reclaim slipped back below the trigger; waiting for price to hold above reclaim again",
+                    "market_map_bias": "BULLISH",
+                    "market_map_block_longs": True,
+                    "market_map_reclaim_confirmed": True,
+                    "market_map_live_reclaim": False,
+                    "market_map_reclaim_lost": True,
+                    "market_map_summary": "auto bullish map; daily reclaim was confirmed, but live price slipped back below reclaim; price is pressing mapped resistance",
+                    "market_map_nearest_support": 250.0,
+                    "market_map_nearest_resistance": 253.36,
+                    "thesis_quality": "HIGH",
+                    "thesis_summary": "Bullish daily structure is intact, but price still has to reclaim resistance cleanly.",
+                    "data_reliability_quality": "HIGH",
+                    "data_reliability_summary": "data quality is strong enough to trust the setup",
+                    "execution_quality_score": 61.0,
+                    "execution_quality_summary": "execution still wants a cleaner retake before buying",
+                    "orderbook_breakout_state": "CONFIRMED_BULLISH_BREAKOUT",
+                    "news_catalyst_score": 3.75,
+                    "news_catalyst_summary": "platform anchor + partner attached + demand commitment",
+                    "narrative_event_name": "AMZN earnings",
+                    "narrative_minutes_to_event": 55,
+                    "narrative_event_risk_active": True,
+                    "live_price": 253.03,
+                }
+            },
+            "mode": "dry_run",
+            "config": {
+                "coins": ["AMZN"],
+                "instrument_types": {"AMZN": "equity"},
+                "asset_categories": {"AMZN": "mag7"},
+            },
+        },
+        market_map={
+            "coins": {
+                "AMZN": {
+                    "bias": "BULLISH",
+                    "supports": [250.0],
+                    "resistances": [253.36, 256.5],
+                    "daily_close_long_above": [253.36],
+                }
+            }
+        },
+        trades=[],
+        server_timestamp="2026-04-23 10:15:30",
+    )
+    lead = snapshot["action_board"]["lead"]
+    assert lead["coin"] == "AMZN"
+    friction_stack = lead["friction_stack"]
+    assert [item["label"] for item in friction_stack] == ["Structure", "Flow", "Data", "Execution"]
+    assert any(item["status"] == "clear" for item in friction_stack)
+    assert any(item["status"] == "wait" for item in friction_stack)
+    catalyst_rail = lead["catalyst_rail"]
+    assert catalyst_rail
+    assert catalyst_rail[0]["label"] == "Catalyst"
+    assert any(item["label"] == "Event" for item in catalyst_rail)
+    assert "catalyst" in lead["why_this_lead"].lower()
+    assert "reclaim" in lead["why_this_lead"].lower()
 
 
 def test_dashboard_action_board_calibrates_reclaim_odds_from_decision_history() -> None:
@@ -5607,6 +5686,8 @@ def run_all() -> None:
     print("PASS dashboard calibrated reclaim odds")
     test_dashboard_action_board_uses_major_catalyst_watch_label_and_unblock_reason()
     print("PASS dashboard major catalyst watch")
+    test_dashboard_action_board_builds_friction_stack_catalyst_rail_and_lead_reason()
+    print("PASS dashboard friction stack and catalyst rail")
     test_dashboard_snapshot_canonicalizes_inactive_control_and_empty_review_shape()
     print("PASS dashboard canonical state shape")
     test_dashboard_market_map_and_review_endpoints_roundtrip()

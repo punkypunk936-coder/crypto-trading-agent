@@ -643,6 +643,329 @@ def _stop_target_text(current_price: float, stop_price: float | None, target_pri
     return " • ".join(parts)
 
 
+def _clip_text(text: Any, limit: int = 120) -> str:
+    cleaned = " ".join(str(text or "").split())
+    if len(cleaned) <= limit:
+        return cleaned
+    clipped = cleaned[: max(limit - 1, 0)].rstrip()
+    if " " in clipped:
+        clipped = clipped.rsplit(" ", 1)[0]
+    return clipped.rstrip(" ,.;:-") + "…"
+
+
+def _contains_any(text: Any, keywords: Iterable[str]) -> bool:
+    haystack = str(text or "").strip().lower()
+    return any(str(keyword or "").strip().lower() in haystack for keyword in keywords if str(keyword or "").strip())
+
+
+def _friction_item(key: str, label: str, status: str, summary: Any) -> dict[str, str]:
+    normalized_status = str(status or "wait").strip().lower()
+    if normalized_status not in {"clear", "wait", "block"}:
+        normalized_status = "wait"
+    return {
+        "key": str(key or "").strip().lower(),
+        "label": str(label or "").strip() or _humanize_key(key).title(),
+        "status": normalized_status,
+        "summary": _clip_text(summary, 120),
+    }
+
+
+def _flow_state_summary(sig: dict, direction: str) -> tuple[str, str]:
+    orderbook_summary = str(
+        sig.get("orderbook_summary")
+        or sig.get("orderbook_context")
+        or ""
+    ).strip()
+    interaction = str(sig.get("orderbook_interaction") or "").strip().upper()
+    breakout_states = {
+        str(sig.get("orderbook_breakout_state") or "").strip().upper(),
+        str(sig.get("orderbook_intracycle_breakout_state") or "").strip().upper(),
+    }
+    bullish_states = {
+        "PROBING_BULLISH_BREAKOUT",
+        "CONFIRMED_BULLISH_BREAKOUT",
+        "PERSISTENT_BULLISH_BREAKOUT",
+    }
+    bearish_states = {
+        "PROBING_BEARISH_BREAKDOWN",
+        "CONFIRMED_BEARISH_BREAKDOWN",
+        "PERSISTENT_BEARISH_BREAKDOWN",
+    }
+    supportive = (
+        direction == "long" and bool(breakout_states & bullish_states)
+    ) or (
+        direction == "short" and bool(breakout_states & bearish_states)
+    )
+    opposing = (
+        direction == "long" and bool(breakout_states & bearish_states)
+    ) or (
+        direction == "short" and bool(breakout_states & bullish_states)
+    )
+    if orderbook_summary:
+        summary = _primary_reason(orderbook_summary)
+    elif supportive:
+        summary = "directional breakout pressure is still live"
+    elif opposing:
+        summary = "opposite-side breakout pressure is getting in the way"
+    elif interaction and interaction != "BETWEEN_LEVELS":
+        summary = "order-flow: " + _humanize_key(interaction)
+    else:
+        summary = "order-flow still needs cleaner confirmation"
+
+    if opposing:
+        return "block", summary
+    if supportive:
+        return "clear", summary
+    if _contains_any(summary, {"absorption", "between levels", "no clear direction", "mixed"}):
+        return "wait", summary
+    return ("wait" if orderbook_summary or interaction else "wait"), summary
+
+
+def _reliability_state_summary(sig: dict, asset_state: str) -> tuple[str, str]:
+    quality = str(sig.get("data_reliability_quality") or "").strip().upper()
+    summary = str(sig.get("data_reliability_summary") or "").strip()
+    if asset_state == "DATA_QUALITY_HOLD":
+        return "block", _primary_reason(summary or "data quality is explicitly blocking this setup")
+    if not summary and quality in {"", "UNKNOWN"}:
+        return "clear", "no data-quality issue is currently flagged"
+    text = summary or quality or "data quality is being monitored"
+    if quality in {"HIGH", "STRONG"} or _contains_any(text, {"strong enough", "trust the setup", "reliable", "clean"}):
+        return "clear", _primary_reason(text)
+    if _contains_any(text, {"missing", "stale", "insufficient", "not ready", "not enough"}):
+        return "block", _primary_reason(text)
+    if quality in {"LOW", "WEAK"}:
+        return "block", _primary_reason(text)
+    if _contains_any(text, {"thin", "drifted", "partial", "lag", "waiting", "limited"}):
+        return "wait", _primary_reason(text)
+    return "wait", _primary_reason(text)
+
+
+def _execution_state_summary(
+    *,
+    sig: dict,
+    status: str,
+    asset_state: str,
+    tradable: bool,
+    coach_verdict: str,
+    execution_note: str,
+    mode_detail: str,
+) -> tuple[str, str]:
+    status_upper = str(status or "").upper()
+    coach_key = str(coach_verdict or "").strip().upper()
+    quality_score = _safe_float(sig.get("execution_quality_score"))
+    summary = str(
+        sig.get("execution_coach_summary")
+        or sig.get("execution_quality_summary")
+        or execution_note
+        or mode_detail
+        or ""
+    ).strip()
+    if not tradable or asset_state == "EXECUTION_BLOCKED" or coach_key == "BLOCK":
+        return "block", _primary_reason(summary or "execution lane is not clear enough yet")
+    if status_upper.startswith("OPEN_") or status_upper == "PENDING_ENTRY" or coach_key == "GO":
+        return "clear", _primary_reason(summary or "execution lane is already active")
+    if quality_score >= 75:
+        return "clear", _primary_reason(summary or "execution quality is clean")
+    if quality_score and quality_score <= 55:
+        return "wait", _primary_reason(summary or "execution quality is still messy")
+    return "wait", _primary_reason(summary or "execution still needs cleaner tape")
+
+
+def _structure_state_summary(
+    *,
+    sig: dict,
+    status: str,
+    bias: str,
+    headline: str,
+    map_summary: str,
+) -> tuple[str, str]:
+    status_upper = str(status or "").upper()
+    thesis_quality = str(sig.get("thesis_quality") or "").strip().upper()
+    thesis_summary = str(sig.get("thesis_summary") or "").strip()
+    blockers = str(sig.get("thesis_blockers") or "").strip()
+    text = thesis_summary or blockers or map_summary or headline or "structure is still forming"
+    if _contains_any(text, {"invalid", "broken", "conflict", "misaligned", "not aligned"}):
+        return "block", _primary_reason(text)
+    if status_upper.startswith("OPEN_") or status_upper in {"READY_LONG", "READY_SHORT", "PENDING_ENTRY"}:
+        return "clear", _primary_reason(text)
+    if thesis_quality in {"HIGH", "STRONG"}:
+        return "clear", _primary_reason(text)
+    if status_upper in {"WAIT_RECLAIM", "WAIT_BREAKDOWN", "WATCH_LONG", "WATCH_SHORT", "WAITING_CONFIRMATION", "ARMED"}:
+        return "wait", _primary_reason(text)
+    if thesis_quality in {"LOW", "WEAK"} or status_upper in {"NO_SETUP", "RISK_BLOCKED"}:
+        return "block", _primary_reason(text or f"{_humanize_key(bias)} structure is not ready")
+    return "wait", _primary_reason(text)
+
+
+def _build_friction_stack(
+    *,
+    sig: dict,
+    status: str,
+    action: str,
+    bias: str,
+    asset_state: str,
+    tradable: bool,
+    coach_verdict: str,
+    headline: str,
+    map_summary: str,
+    execution_note: str,
+    mode_detail: str,
+) -> list[dict[str, str]]:
+    direction = _setup_direction(status, action, bias)
+    structure_status, structure_summary = _structure_state_summary(
+        sig=sig,
+        status=status,
+        bias=bias,
+        headline=headline,
+        map_summary=map_summary,
+    )
+    flow_status, flow_summary = _flow_state_summary(sig, direction)
+    reliability_status, reliability_summary = _reliability_state_summary(sig, asset_state)
+    execution_status, execution_summary = _execution_state_summary(
+        sig=sig,
+        status=status,
+        asset_state=asset_state,
+        tradable=tradable,
+        coach_verdict=coach_verdict,
+        execution_note=execution_note,
+        mode_detail=mode_detail,
+    )
+    return [
+        _friction_item("structure", "Structure", structure_status, structure_summary),
+        _friction_item("flow", "Flow", flow_status, flow_summary),
+        _friction_item("data", "Data", reliability_status, reliability_summary),
+        _friction_item("execution", "Execution", execution_status, execution_summary),
+    ]
+
+
+def _event_time_blurb(minutes_to_event: Any) -> str:
+    minutes = _safe_int(minutes_to_event)
+    if minutes <= 0:
+        return "now"
+    if minutes < 60:
+        return f"in {minutes}m"
+    hours, remainder = divmod(minutes, 60)
+    if hours < 24:
+        return f"in {hours}h" + (f" {remainder}m" if remainder else "")
+    days, rem_hours = divmod(hours, 24)
+    return f"in {days}d" + (f" {rem_hours}h" if rem_hours else "")
+
+
+def _build_catalyst_rail(sig: dict) -> list[dict[str, str]]:
+    rail: list[dict[str, str]] = []
+    catalyst_score = _safe_float(sig.get("news_catalyst_score"))
+    catalyst_summary = str(sig.get("news_catalyst_summary") or "").strip()
+    news_headline = str(sig.get("news_headline") or "").strip()
+    narrative_summary = str(sig.get("narrative_summary") or "").strip()
+    event_name = str(sig.get("narrative_event_name") or "").strip()
+    event_risk_active = bool(sig.get("narrative_event_risk_active"))
+    if catalyst_score >= 3.0 or catalyst_summary:
+        catalyst_text = catalyst_summary or news_headline or "fresh catalyst support is still present"
+        label = "Catalyst"
+        if catalyst_score >= 3.0:
+            catalyst_text = "Major catalyst: " + catalyst_text
+        elif catalyst_score >= 2.0:
+            catalyst_text = "Fresh catalyst: " + catalyst_text
+        rail.append({
+            "label": label,
+            "tone": "support" if catalyst_score >= 2.0 else "watch",
+            "text": _clip_text(catalyst_text, 120),
+        })
+    if event_name or event_risk_active:
+        event_parts = [event_name or "Event risk"]
+        timing = _event_time_blurb(sig.get("narrative_minutes_to_event"))
+        if timing:
+            event_parts.append(timing)
+        rail.append({
+            "label": "Event",
+            "tone": "risk" if event_risk_active else "watch",
+            "text": _clip_text(" ".join(event_parts), 90),
+        })
+    narrative_text = narrative_summary or news_headline
+    if narrative_text and not _contains_any(
+        narrative_text,
+        {"neutral", "no clear catalyst", "no strong narrative", "no catalyst", "flat narrative"},
+    ):
+        existing_texts = {str(item.get("text") or "").lower() for item in rail}
+        clipped = _clip_text(_primary_reason(narrative_text), 110)
+        if clipped and clipped.lower() not in existing_texts:
+            rail.append({
+                "label": "Narrative" if narrative_summary else "Headline",
+                "tone": "watch",
+                "text": clipped,
+            })
+    return rail[:3]
+
+
+def _remaining_gate_blurb(status: str, sig: dict, direction: str) -> str:
+    status_upper = str(status or "").upper()
+    if status_upper == "WAIT_RECLAIM" or (
+        status_upper == "WATCH_LONG" and bool(sig.get("market_map_reclaim_confirmed")) and not bool(sig.get("market_map_live_reclaim"))
+    ):
+        return "only the reclaim retake remains"
+    if status_upper == "WAIT_BREAKDOWN" or (
+        status_upper == "WATCH_SHORT" and bool(sig.get("market_map_breakdown_confirmed")) and not bool(sig.get("market_map_live_breakdown"))
+    ):
+        return "only the breakdown confirmation remains"
+    if status_upper in {"WATCH_LONG", "WATCH_SHORT", "WAITING_CONFIRMATION", "ARMED", "PASSIVE_ENTRY", "EXECUTABLE"}:
+        return "only the final confirmation remains"
+    if status_upper in {"READY_LONG", "READY_SHORT"}:
+        return "only sizing and fill checks remain"
+    if status_upper == "PENDING_ENTRY":
+        return "the order is already working"
+    if status_upper.startswith("OPEN_"):
+        return "the trade is already live"
+    if direction == "long":
+        return "the long still needs cleaner confirmation"
+    if direction == "short":
+        return "the short still needs cleaner confirmation"
+    return "the setup still needs one final unlock"
+
+
+def _build_why_this_lead(
+    *,
+    sig: dict,
+    status: str,
+    action: str,
+    bias: str,
+    probability: dict[str, Any],
+    friction_stack: list[dict[str, str]],
+    catalyst_rail: list[dict[str, str]],
+) -> str:
+    direction = _setup_direction(status, action, bias)
+    reasons: list[str] = []
+    probability_pct = _safe_int(probability.get("probability_pct"))
+    probability_label = str(probability.get("probability_label") or "").strip().lower()
+    if probability_pct > 0:
+        lead_label = probability_label or "calibrated odds"
+        reasons.append(f"{lead_label} {probability_pct}%")
+
+    if any(str(item.get("tone") or "") == "support" for item in catalyst_rail):
+        reasons.append("catalyst is still live")
+
+    analog_count = _safe_int(sig.get("analog_count"))
+    analog_win_rate = _safe_float(sig.get("analog_win_rate"))
+    if analog_count >= 3 and analog_win_rate >= 0.55:
+        reasons.append(f"{analog_count} analogs support it")
+
+    clear_count = sum(1 for item in friction_stack if str(item.get("status") or "") == "clear")
+    block_count = sum(1 for item in friction_stack if str(item.get("status") or "") == "block")
+    if clear_count >= 3 and block_count == 0:
+        reasons.append("friction stack is mostly clean")
+    elif clear_count >= 2 and block_count <= 1:
+        reasons.append("most checks are already aligned")
+
+    reasons.append(_remaining_gate_blurb(status, sig, direction))
+
+    fallback = (
+        _primary_reason(sig.get("expectancy_summary"))
+        or _primary_reason(sig.get("analog_summary"))
+        or _primary_reason(sig.get("thesis_summary"))
+        or _remaining_gate_blurb(status, sig, direction)
+    )
+    return _compact_sentences(reasons, limit=3) or fallback
+
+
 def _fallback_probability(score: float, confidence: str, conviction_score: float = 0.0) -> float:
     anchor = conviction_score if conviction_score > 0 else score
     confidence_adjustments = {
@@ -1511,6 +1834,30 @@ def action_board(
             mode_badge = "PENDING"
             mode_detail = "The agent is tracking this market, but venue support or live data quality is not ready enough to execute it yet."
 
+        friction_stack = _build_friction_stack(
+            sig=sig,
+            status=status,
+            action=action,
+            bias=bias,
+            asset_state=asset_state,
+            tradable=tradable,
+            coach_verdict=coach_verdict,
+            headline=headline,
+            map_summary=map_summary,
+            execution_note=execution_note,
+            mode_detail=mode_detail,
+        )
+        catalyst_rail = _build_catalyst_rail(sig)
+        why_this_lead = _build_why_this_lead(
+            sig=sig,
+            status=status,
+            action=action,
+            bias=bias,
+            probability=probability,
+            friction_stack=friction_stack,
+            catalyst_rail=catalyst_rail,
+        )
+
         items.append(
             {
                 "coin": coin,
@@ -1539,6 +1886,9 @@ def action_board(
                 "execution_note": execution_note,
                 "risk": risk,
                 "map_summary": map_summary,
+                "friction_stack": friction_stack,
+                "catalyst_rail": catalyst_rail,
+                "why_this_lead": why_this_lead,
                 "confidence": confidence,
                 "score": round(score, 1),
                 "thesis_conviction_score": round(conviction_score or score, 1),
