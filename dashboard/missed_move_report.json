@@ -1,17 +1,45 @@
 {
   "classifications": {
-    "CORRECT_PASS": 322,
+    "CORRECT_PASS": 332,
     "GOOD_TRADE": 2,
-    "MISSED_WIN": 156
+    "MISSED_WIN": 179
   },
   "data_dir": "/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime",
-  "decision_rows": 673,
-  "episodes": 564,
-  "generated_at": 1776909628,
+  "decision_rows": 718,
+  "episodes": 572,
+  "generated_at": 1776924612,
   "horizon_minutes": 720,
   "interval": "5m",
-  "labeled_episodes": 480,
+  "labeled_episodes": 513,
   "recent_missed_moves": [
+    {
+      "action": "LONG",
+      "breakout": "confirmed_bullish_breakout",
+      "coin": "BCH",
+      "interaction": "at_support",
+      "probability": 1.0,
+      "recorded_at": "2026-04-23 11:11:35",
+      "regime": "trend",
+      "risk_reward_ratio": 2.97,
+      "score": 100.0,
+      "stage": "precision_cadence_block",
+      "summary": "Thesis high: strong support defense is holding beneath price; daily breakout is already confirmed; trend regime supports follow-through",
+      "ts": 1776922895.7629519
+    },
+    {
+      "action": "LONG",
+      "breakout": "confirmed_bullish_breakout",
+      "coin": "BCH",
+      "interaction": "at_support",
+      "probability": 1.0,
+      "recorded_at": "2026-04-23 11:07:22",
+      "regime": "trend",
+      "risk_reward_ratio": 2.87,
+      "score": 100.0,
+      "stage": "signal_streak_wait",
+      "summary": "Thesis high: strong support defense is holding beneath price; daily breakout is already confirmed; trend regime supports follow-through",
+      "ts": 1776922642.786649
+    },
     {
       "action": "SHORT",
       "breakout": "confirmed_bearish_breakdown",
@@ -123,47 +151,19 @@
       "stage": "signal_streak_wait",
       "summary": "Thesis high: strong support defense is holding beneath price; daily breakout is already confirmed; breakout regime supports follow-through",
       "ts": 1776893478.2119029
-    },
-    {
-      "action": "LONG",
-      "breakout": "confirmed_bullish_breakout",
-      "coin": "TRX",
-      "interaction": "at_support",
-      "probability": 0.9945,
-      "recorded_at": "2026-04-23 02:57:25",
-      "regime": "breakout",
-      "risk_reward_ratio": 3.36,
-      "score": 100.0,
-      "stage": "precision_cadence_block",
-      "summary": "Thesis high: strong support defense is holding beneath price; daily breakout is already confirmed; breakout regime supports follow-through",
-      "ts": 1776893245.539993
-    },
-    {
-      "action": "LONG",
-      "breakout": "confirmed_bullish_breakout",
-      "coin": "TRX",
-      "interaction": "at_support",
-      "probability": 0.994,
-      "recorded_at": "2026-04-23 02:52:50",
-      "regime": "breakout",
-      "risk_reward_ratio": 3.68,
-      "score": 100.0,
-      "stage": "signal_streak_wait",
-      "summary": "Thesis high: strong support defense is holding beneath price; daily breakout is already confirmed; breakout regime supports follow-through",
-      "ts": 1776892970.063227
     }
   ],
   "summary": {
     "bad_trade_count": 0,
-    "correct_pass_count": 322,
+    "correct_pass_count": 332,
     "good_trade_count": 2,
-    "missed_win_count": 156
+    "missed_win_count": 179
   },
   "target_r": 0.25,
   "top_blockers": [
     {
       "blocker": "Thesis high: strong support defense is holding beneath price; daily breakout is already confirmed; trend regime supports follow-through",
-      "misses": 55
+      "misses": 79
     },
     {
       "blocker": "Thesis high: strong support defense is holding beneath price; daily breakout is already confirmed; breakout regime supports follow-through",
@@ -197,7 +197,7 @@
   "top_missed_assets": [
     {
       "coin": "AAPL",
-      "misses": 43
+      "misses": 65
     },
     {
       "coin": "TRX",
@@ -231,7 +231,7 @@
   "top_missed_families": [
     {
       "family": "AAPL:LONG",
-      "misses": 43
+      "misses": 65
     },
     {
       "family": "TRX:LONG",
@@ -264,24 +264,24 @@
   ],
   "top_missed_stages": [
     {
-      "misses": 49,
-      "stage": "flat_no_trade"
+      "misses": 53,
+      "stage": "signal_streak_wait"
     },
     {
-      "misses": 42,
-      "stage": "signal_streak_wait"
+      "misses": 49,
+      "stage": "flat_no_trade"
     },
     {
       "misses": 23,
       "stage": "execution_quality_block"
     },
     {
-      "misses": 19,
-      "stage": "observation_only"
+      "misses": 23,
+      "stage": "precision_cadence_block"
     },
     {
-      "misses": 10,
-      "stage": "precision_cadence_block"
+      "misses": 19,
+      "stage": "observation_only"
     },
     {
       "misses": 5,
@@ -292,7 +292,7 @@
       "stage": "guardrails_flat"
     },
     {
-      "misses": 4,
+      "misses": 3,
       "stage": "data_reliability_block"
     }
   ]
