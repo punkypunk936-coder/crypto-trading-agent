@@ -2130,6 +2130,19 @@ const DEFAULT_ASSET_CATEGORY_LABELS = {
   mag7: 'Mag7',
   semis_memory: 'Semis & Memory',
   neoclouds: 'Neoclouds',
+  ai_infra: 'AI Infra',
+  crypto_equities: 'Crypto Equities',
+  asia_macro: 'Asia Macro',
+  commodities_metals: 'Metals',
+  energy: 'Energy',
+  agriculture: 'Agriculture',
+  fx_rates: 'FX & Rates',
+  uranium: 'Uranium',
+  volatility: 'Volatility',
+  consumer: 'Consumer',
+  financials: 'Financials',
+  biotech_glp1: 'Biotech & GLP-1',
+  meme_momentum: 'Meme Momentum',
   growth: 'Growth',
   other_stocks: 'Other Stocks',
 };
@@ -2201,22 +2214,66 @@ function assetCategoryLabels() {
   return Object.assign({}, DEFAULT_ASSET_CATEGORY_LABELS, ((((latestState || {}).config || {}).asset_category_labels) || {}));
 }
 
-function assetCategoryForCoin(coin) {
+function normalizeAssetCategories(value) {
+  let raw = [];
+  if (Array.isArray(value)) raw = value;
+  else if (typeof value === 'string') raw = value.replaceAll('|', ',').split(',');
+  else if (value != null) raw = [value];
+  const seen = new Set();
+  const categories = [];
+  raw.forEach((item) => {
+    const category = String(item || '').trim().toLowerCase();
+    if (!category || seen.has(category)) return;
+    seen.add(category);
+    categories.push(category);
+  });
+  return categories;
+}
+
+function normalizeTextList(value) {
+  let raw = [];
+  if (Array.isArray(value)) raw = value;
+  else if (typeof value === 'string') raw = value.replaceAll('|', ',').split(',');
+  else if (value != null) raw = [value];
+  const seen = new Set();
+  const items = [];
+  raw.forEach((item) => {
+    const text = String(item || '').trim();
+    const key = text.toLowerCase();
+    if (!text || seen.has(key)) return;
+    seen.add(key);
+    items.push(text);
+  });
+  return items;
+}
+
+function assetCategoriesForCoin(coin) {
   const ticker = String(coin || '').trim().toUpperCase();
-  if (!ticker) return 'other_stocks';
+  if (!ticker) return ['other_stocks'];
   const actionItems = Array.isArray((latestActionBoard || {}).items) ? latestActionBoard.items : [];
   const actionMatch = actionItems.find((item) => String((item || {}).coin || '').trim().toUpperCase() === ticker);
-  const itemCategory = String(((actionMatch || {}).asset_category) || '').trim().toLowerCase();
-  if (itemCategory) return itemCategory;
+  const itemCategories = normalizeAssetCategories((actionMatch || {}).asset_categories || (actionMatch || {}).asset_category);
+  if (itemCategories.length) return itemCategories;
   const signal = ((((latestState || {}).signals || {})[ticker]) || {});
-  const signalCategory = String(signal.asset_category || '').trim().toLowerCase();
-  if (signalCategory) return signalCategory;
-  const configCategory = String((assetCategoryMap() || {})[ticker] || '').trim().toLowerCase();
-  if (configCategory) return configCategory;
+  const signalCategories = normalizeAssetCategories(signal.asset_categories || signal.asset_category);
+  if (signalCategories.length) return signalCategories;
+  const configCategories = normalizeAssetCategories((assetCategoryMap() || {})[ticker]);
+  if (configCategories.length) return configCategories;
   const type = instrumentTypeForCoin(ticker);
-  if (type === 'index') return 'indices_macro';
-  if (type === 'equity') return 'other_stocks';
-  return 'crypto';
+  if (type === 'index') return ['indices_macro'];
+  if (type === 'equity') return ['other_stocks'];
+  return ['crypto'];
+}
+
+function assetCategoryForCoin(coin) {
+  return assetCategoriesForCoin(coin)[0] || 'other_stocks';
+}
+
+function itemAssetCategories(item) {
+  if (typeof item === 'string') return assetCategoriesForCoin(item);
+  const categories = normalizeAssetCategories((item || {}).asset_categories || (item || {}).asset_category);
+  if (categories.length) return categories;
+  return assetCategoriesForCoin((item || {}).coin);
 }
 
 function assetCategoryLabel(category) {
@@ -2225,12 +2282,41 @@ function assetCategoryLabel(category) {
   return String((assetCategoryLabels() || {})[key] || humanizeKey(key) || 'Other');
 }
 
+function itemAssetCategoryLabels(item) {
+  const explicitLabels = normalizeTextList((item || {}).asset_category_labels || (item || {}).asset_category_label);
+  if (explicitLabels.length) return explicitLabels;
+  return itemAssetCategories(item).map((category) => assetCategoryLabel(category));
+}
+
+function assetCategoryBadgeHtml(item) {
+  const bucket = typeof item === 'string' ? assetBucketForCoin(item) : ((item || {}).asset_bucket || assetBucketForCoin((item || {}).coin));
+  if (bucket !== 'equity') return '';
+  const labels = itemAssetCategoryLabels(item).filter(Boolean);
+  if (!labels.length) return '';
+  const visible = labels.slice(0, 2);
+  const extra = labels.length > 2 ? ' +' + String(labels.length - 2) : '';
+  return '<span class="review-chip">' + esc((visible.join(' / ') + extra).toUpperCase()) + '</span>';
+}
+
 function assetCategoryDescription(category) {
   const key = String(category || '').trim().toLowerCase();
   if (key === 'indices_macro') return 'Macro-linked index and ETF proxies with slower, cleaner tape.';
   if (key === 'mag7') return 'The big US platform leaders where catalyst reactions matter most.';
   if (key === 'semis_memory') return 'Chip, storage, and memory names that often move together on AI demand.';
   if (key === 'neoclouds') return 'GPU-cloud and AI infrastructure names tied to compute demand.';
+  if (key === 'ai_infra') return 'AI infrastructure names where cloud commitments and capex cycles can drive re-rates.';
+  if (key === 'crypto_equities') return 'Public market crypto beta, brokers, exchanges, and treasury-linked stocks.';
+  if (key === 'asia_macro') return 'Asia-linked equity, index, and currency proxies for regional risk appetite.';
+  if (key === 'commodities_metals') return 'Metals and hard-asset proxies with macro and supply-chain sensitivity.';
+  if (key === 'energy') return 'Oil, gas, and energy equity proxies where inventory and geopolitical catalysts matter.';
+  if (key === 'agriculture') return 'Agricultural contracts with cleaner macro and weather-driven trend behavior.';
+  if (key === 'fx_rates') return 'Currency and dollar-index proxies that can anchor macro risk direction.';
+  if (key === 'uranium') return 'Uranium spot and miner exposure with policy, supply, and nuclear-demand catalysts.';
+  if (key === 'volatility') return 'Volatility instruments for stress, hedging, and regime-change reads.';
+  if (key === 'consumer') return 'Consumer and discretionary names where spending trends drive tape.';
+  if (key === 'financials') return 'Financials and private-market exposure with rate and liquidity sensitivity.';
+  if (key === 'biotech_glp1') return 'Healthcare and GLP-1-linked growth where product catalysts matter.';
+  if (key === 'meme_momentum') return 'High-reflexivity tickers where flow, attention, and positioning dominate.';
   if (key === 'growth') return 'Single-name growth setups outside the big platform and chip baskets.';
   if (key === 'other_stocks') return 'Everything executable that does not fit the main desks yet.';
   return '';
@@ -2243,7 +2329,12 @@ function emptyCategoryGroups() {
 }
 
 function categoryOrder(groups) {
-  const preferred = ['all', 'indices_macro', 'mag7', 'semis_memory', 'neoclouds', 'growth', 'other_stocks'];
+  const preferred = [
+    'all', 'indices_macro', 'mag7', 'semis_memory', 'neoclouds', 'ai_infra',
+    'crypto_equities', 'asia_macro', 'commodities_metals', 'energy', 'agriculture',
+    'fx_rates', 'uranium', 'volatility', 'consumer', 'financials', 'biotech_glp1',
+    'meme_momentum', 'growth', 'other_stocks',
+  ];
   const seen = new Set(preferred);
   Object.keys(groups || {}).forEach((key) => {
     if (!seen.has(key)) preferred.push(key);
@@ -2254,10 +2345,16 @@ function categoryOrder(groups) {
 function groupAssetItemsByCategory(items, resolver) {
   const groups = emptyCategoryGroups();
   (items || []).forEach((item) => {
-    const category = String(resolver(item) || 'other_stocks').trim().toLowerCase() || 'other_stocks';
-    if (!groups[category]) groups[category] = { key: category, label: assetCategoryLabel(category), items: [], count: 0 };
-    groups[category].items.push(item);
-    groups[category].count += 1;
+    const categories = normalizeAssetCategories(resolver(item));
+    const safeCategories = categories.length ? categories : ['other_stocks'];
+    const seenCategories = new Set();
+    safeCategories.forEach((category) => {
+      if (seenCategories.has(category)) return;
+      seenCategories.add(category);
+      if (!groups[category]) groups[category] = { key: category, label: assetCategoryLabel(category), items: [], count: 0 };
+      groups[category].items.push(item);
+      groups[category].count += 1;
+    });
     groups.all.items.push(item);
     groups.all.count += 1;
   });
@@ -2294,8 +2391,7 @@ function renderDeskOverview(groups, scope, activeBucket, activeCategory) {
   const equityItems = (equityGroup || {}).items || [];
   if (!equityItems.length) return '';
   const categoryGroups = groupAssetItemsByCategory(equityItems, (item) => {
-    if (typeof item === 'string') return assetCategoryForCoin(item);
-    return (item || {}).asset_category || assetCategoryForCoin((item || {}).coin);
+    return itemAssetCategories(item);
   });
   const order = categoryOrder(categoryGroups).filter((key) => key !== 'all');
   if (!order.length) return '';
@@ -2852,9 +2948,7 @@ function marketMapCompactRowHtml(coin, item) {
   };
   const tradable = Boolean(safeItem.tradable);
   const modeClass = tradable ? 'signal-mode-tradable' : 'signal-mode-watch';
-  const categoryBadge = safeItem.asset_bucket === 'equity' && safeItem.asset_category_label
-    ? '<span class="review-chip">' + esc(String(safeItem.asset_category_label || 'Stock Desk').toUpperCase()) + '</span>'
-    : '';
+  const categoryBadge = assetCategoryBadgeHtml(safeItem);
   return '<div class="daily-sheet-row" data-tradable="' + (tradable ? 'true' : 'false') + '">'
     + '<div class="daily-sheet-main">'
       + '<div class="token-line"><div class="map-coin">' + esc(safeItem.coin || coin) + '</div><span class="' + modeClass + '">' + esc(surfaceModeBadge(safeItem.mode_badge, tradable)) + '</span>' + probabilityChipHtml(safeItem) + categoryBadge + '<span class="review-chip">' + esc(String(safeItem.label || 'Watching').toUpperCase()) + '</span><span class="' + biasClass(safeItem.bias) + '">' + esc(String(safeItem.bias || 'NEUTRAL')) + '</span></div>'
@@ -2976,7 +3070,7 @@ function renderMarketMapSummary(summary, marketMap) {
   }
 
   const selectedCoins = sortCoinsForBucket(selected.items || []);
-  const categoryGroups = groupAssetItemsByCategory(selectedCoins, (coin) => assetCategoryForCoin(coin));
+  const categoryGroups = groupAssetItemsByCategory(selectedCoins, (coin) => assetCategoriesForCoin(coin));
   marketMapCategory = chooseAssetCategory(marketMapCategory, categoryGroups, marketMapBucket);
   const visibleCoins = marketMapBucket === 'equity' && marketMapCategory !== 'all'
     ? sortCoinsForBucket((categoryGroups[marketMapCategory] || {}).items || [])
@@ -3132,11 +3226,11 @@ function renderActionBoard(board) {
   actionBoardBucket = chooseBucket(actionBoardBucket, groups);
   const selected = groups[actionBoardBucket] || groups.coin;
   const tradableItems = selected.tradable_items || [];
-  const categoryResolver = (item) => (item || {}).asset_category || assetCategoryForCoin((item || {}).coin);
+  const categoryResolver = (item) => itemAssetCategories(item);
   const categoryGroups = groupAssetItemsByCategory(selected.items || [], categoryResolver);
   actionBoardCategory = chooseAssetCategory(actionBoardCategory, categoryGroups, actionBoardBucket);
   const visibleTradableItems = actionBoardBucket === 'equity' && actionBoardCategory !== 'all'
-    ? tradableItems.filter((item) => categoryResolver(item) === actionBoardCategory)
+    ? tradableItems.filter((item) => normalizeAssetCategories(categoryResolver(item)).includes(actionBoardCategory))
     : tradableItems;
   const tradableCount = Number(visibleTradableItems.length || 0);
   const activeTradableCount = visibleTradableItems.filter((item) => ['OPEN_LONG', 'OPEN_SHORT', 'READY_LONG', 'READY_SHORT'].includes(String((item || {}).status || '').toUpperCase())).length;
@@ -3173,9 +3267,7 @@ function renderActionBoard(board) {
           : 'decision-card decision-card-tradable';
       const highlight = status === 'PENDING_ENTRY' ? highlightBase + ' decision-card-pending' : highlightBase;
       const shouldOpen = status === 'PENDING_ENTRY' || status === 'OPEN_LONG' || status === 'OPEN_SHORT' || status === 'READY_LONG';
-      const categoryBadge = item.asset_bucket === 'equity' && item.asset_category_label
-        ? '<span class="review-chip">' + esc(String(item.asset_category_label || 'Stock Desk').toUpperCase()) + '</span>'
-        : '';
+      const categoryBadge = assetCategoryBadgeHtml(item);
       return '<details class="' + highlight + ' decision-box"' + (shouldOpen ? ' open' : '') + '>'
         + '<summary class="decision-summary">'
           + '<div class="decision-summary-main">'

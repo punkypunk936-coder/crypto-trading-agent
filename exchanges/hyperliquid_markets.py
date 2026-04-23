@@ -164,99 +164,108 @@ _SPOT_MARKETS: Dict[str, Dict[str, Any]] = {
     },
 }
 
+TRADEXYZ_ASSET_METADATA: Dict[str, Dict[str, Any]] = {
+    "AAPL": {"display_name": "Apple", "instrument_type": "equity", "categories": ["mag7"]},
+    "ALUMINIUM": {"display_name": "Aluminium", "instrument_type": "index", "categories": ["commodities_metals"]},
+    "AMD": {"display_name": "AMD", "instrument_type": "equity", "categories": ["semis_memory"]},
+    "AMZN": {"display_name": "Amazon", "instrument_type": "equity", "categories": ["mag7"]},
+    "BABA": {"display_name": "Alibaba", "instrument_type": "equity", "categories": ["asia_macro"]},
+    "BIRD": {"display_name": "Allbirds", "instrument_type": "equity", "categories": ["growth"]},
+    "BRENTOIL": {"display_name": "Brent Oil", "instrument_type": "index", "categories": ["energy"]},
+    "BX": {"display_name": "Blackstone", "instrument_type": "equity", "categories": ["financials"]},
+    "CL": {"display_name": "Crude Oil", "instrument_type": "index", "categories": ["energy"]},
+    "COIN": {"display_name": "Coinbase", "instrument_type": "equity", "categories": ["crypto_equities"]},
+    "COPPER": {"display_name": "Copper", "instrument_type": "index", "categories": ["commodities_metals"]},
+    "CORN": {"display_name": "Corn", "instrument_type": "index", "categories": ["agriculture"]},
+    "COST": {"display_name": "Costco", "instrument_type": "equity", "categories": ["consumer"]},
+    "CRCL": {"display_name": "Circle", "instrument_type": "equity", "categories": ["crypto_equities"]},
+    "CRWV": {"display_name": "CoreWeave", "instrument_type": "equity", "categories": ["neoclouds"]},
+    "DKNG": {"display_name": "DraftKings", "instrument_type": "equity", "categories": ["consumer", "growth"]},
+    "DRAM": {"display_name": "DRAM", "instrument_type": "index", "categories": ["semis_memory"]},
+    "DXY": {"display_name": "US Dollar Index", "instrument_type": "index", "categories": ["fx_rates", "indices_macro"]},
+    "EUR": {"display_name": "Euro", "instrument_type": "index", "categories": ["fx_rates"]},
+    "EWJ": {"display_name": "Japan ETF", "instrument_type": "index", "categories": ["asia_macro", "indices_macro"]},
+    "EWY": {"display_name": "South Korea ETF", "instrument_type": "index", "categories": ["asia_macro", "indices_macro"]},
+    "GME": {"display_name": "GameStop", "instrument_type": "equity", "categories": ["meme_momentum"]},
+    "GOLD": {"display_name": "Gold", "instrument_type": "index", "categories": ["commodities_metals"]},
+    "GOOGL": {"display_name": "Alphabet", "instrument_type": "equity", "categories": ["mag7"]},
+    "HIMS": {"display_name": "Hims & Hers", "instrument_type": "equity", "categories": ["biotech_glp1", "growth"]},
+    "HOOD": {"display_name": "Robinhood", "instrument_type": "equity", "categories": ["crypto_equities"]},
+    "HYUNDAI": {"display_name": "Hyundai", "instrument_type": "equity", "categories": ["asia_macro"]},
+    "INTC": {"display_name": "Intel", "instrument_type": "equity", "categories": ["semis_memory"]},
+    "JP225": {"display_name": "Nikkei 225", "instrument_type": "index", "categories": ["asia_macro", "indices_macro"]},
+    "JPY": {"display_name": "Japanese Yen", "instrument_type": "index", "categories": ["fx_rates", "asia_macro"]},
+    "KIOXIA": {"display_name": "Kioxia", "instrument_type": "equity", "categories": ["semis_memory", "asia_macro"]},
+    "KR200": {"display_name": "KOSPI 200", "instrument_type": "index", "categories": ["asia_macro", "indices_macro"]},
+    "LITE": {"display_name": "LITE", "instrument_type": "equity", "categories": ["growth"]},
+    "LLY": {"display_name": "Eli Lilly", "instrument_type": "equity", "categories": ["biotech_glp1"]},
+    "META": {"display_name": "Meta", "instrument_type": "equity", "categories": ["mag7"]},
+    "MRVL": {"display_name": "Marvell", "instrument_type": "equity", "categories": ["semis_memory"]},
+    "MSFT": {"display_name": "Microsoft", "instrument_type": "equity", "categories": ["mag7"]},
+    "MSTR": {"display_name": "MicroStrategy", "instrument_type": "equity", "categories": ["crypto_equities"]},
+    "MU": {"display_name": "Micron", "instrument_type": "equity", "categories": ["semis_memory"]},
+    "NATGAS": {"display_name": "Natural Gas", "instrument_type": "index", "categories": ["energy"]},
+    "NFLX": {"display_name": "Netflix", "instrument_type": "equity", "categories": ["consumer", "growth"]},
+    "NVDA": {"display_name": "NVIDIA", "instrument_type": "equity", "categories": ["mag7", "semis_memory"]},
+    "ORCL": {"display_name": "Oracle", "instrument_type": "equity", "categories": ["ai_infra"]},
+    "PALLADIUM": {"display_name": "Palladium", "instrument_type": "index", "categories": ["commodities_metals"]},
+    "PLATINUM": {"display_name": "Platinum", "instrument_type": "index", "categories": ["commodities_metals"]},
+    "PLTR": {"display_name": "Palantir", "instrument_type": "equity", "categories": ["ai_infra", "growth"]},
+    "PURRDAT": {"display_name": "PurrDat", "instrument_type": "index", "categories": ["indices_macro"]},
+    "RIVN": {"display_name": "Rivian", "instrument_type": "equity", "categories": ["growth"]},
+    "RKLB": {"display_name": "Rocket Lab", "instrument_type": "equity", "categories": ["growth"]},
+    "SILVER": {"display_name": "Silver", "instrument_type": "index", "categories": ["commodities_metals"]},
+    "SKHX": {"display_name": "SK Hynix", "instrument_type": "equity", "categories": ["semis_memory", "asia_macro"]},
+    "SMSN": {"display_name": "Samsung", "instrument_type": "equity", "categories": ["semis_memory", "asia_macro"]},
+    "SNDK": {"display_name": "SanDisk", "instrument_type": "equity", "categories": ["semis_memory"]},
+    "SOFTBANK": {"display_name": "SoftBank", "instrument_type": "equity", "categories": ["asia_macro", "ai_infra"]},
+    "SP500": {"display_name": "S&P 500", "instrument_type": "index", "categories": ["indices_macro"]},
+    "TSLA": {"display_name": "Tesla", "instrument_type": "equity", "categories": ["mag7"]},
+    "TSM": {"display_name": "TSMC", "instrument_type": "equity", "categories": ["semis_memory", "asia_macro"]},
+    "TTF": {"display_name": "Dutch TTF Gas", "instrument_type": "index", "categories": ["energy"]},
+    "URANIUM": {"display_name": "Uranium", "instrument_type": "index", "categories": ["uranium"]},
+    "URNM": {"display_name": "Uranium Miners ETF", "instrument_type": "index", "categories": ["uranium"]},
+    "USAR": {"display_name": "USA Rare Earth", "instrument_type": "equity", "categories": ["uranium", "commodities_metals"]},
+    "VIX": {"display_name": "VIX", "instrument_type": "index", "categories": ["volatility", "indices_macro"]},
+    "VOL": {"display_name": "Volatility", "instrument_type": "index", "categories": ["volatility"]},
+    "WHEAT": {"display_name": "Wheat", "instrument_type": "index", "categories": ["agriculture"]},
+    "XLE": {"display_name": "Energy Select Sector SPDR", "instrument_type": "index", "categories": ["energy", "indices_macro"]},
+    "XYZ100": {"display_name": "XYZ 100", "instrument_type": "index", "categories": ["indices_macro"]},
+}
+
 _TRADEXYZ_PERP_MARKETS: Dict[str, Dict[str, Any]] = {
-    "NVDA": {
-        "venue_symbol": "xyz:NVDA",
+    coin: {
+        "venue_symbol": f"xyz:{coin}",
         "market_type": "perp",
-        "instrument_type": "equity",
+        "instrument_type": str(meta.get("instrument_type") or "equity"),
         "shortable": True,
         "paper_tradeable": True,
         "live_tradeable": True,
-        "display_name": "NVIDIA",
+        "display_name": str(meta.get("display_name") or coin),
+        "categories": list(meta.get("categories") or ["other_stocks"]),
         "dex": TRADEXYZ_DEX,
-    },
-    "INTC": {
-        "venue_symbol": "xyz:INTC",
-        "market_type": "perp",
-        "instrument_type": "equity",
-        "shortable": True,
-        "paper_tradeable": True,
-        "live_tradeable": True,
-        "display_name": "Intel",
-        "dex": TRADEXYZ_DEX,
-    },
-    "MU": {
-        "venue_symbol": "xyz:MU",
-        "market_type": "perp",
-        "instrument_type": "equity",
-        "shortable": True,
-        "paper_tradeable": True,
-        "live_tradeable": True,
-        "display_name": "Micron",
-        "dex": TRADEXYZ_DEX,
-    },
-    "SNDK": {
-        "venue_symbol": "xyz:SNDK",
-        "market_type": "perp",
-        "instrument_type": "equity",
-        "shortable": True,
-        "paper_tradeable": True,
-        "live_tradeable": True,
-        "display_name": "SanDisk",
-        "dex": TRADEXYZ_DEX,
-    },
-    "SKHX": {
-        "venue_symbol": "xyz:SKHX",
-        "market_type": "perp",
-        "instrument_type": "equity",
-        "shortable": True,
-        "paper_tradeable": True,
-        "live_tradeable": True,
-        "display_name": "SK Hynix",
-        "dex": TRADEXYZ_DEX,
-    },
-    "CRWV": {
-        "venue_symbol": "xyz:CRWV",
-        "market_type": "perp",
-        "instrument_type": "equity",
-        "shortable": True,
-        "paper_tradeable": True,
-        "live_tradeable": True,
-        "display_name": "CoreWeave",
-        "dex": TRADEXYZ_DEX,
-    },
-    "EWY": {
-        "venue_symbol": "xyz:EWY",
-        "market_type": "perp",
-        "instrument_type": "index",
-        "shortable": True,
-        "paper_tradeable": True,
-        "live_tradeable": True,
-        "display_name": "South Korea ETF",
-        "dex": TRADEXYZ_DEX,
-    },
-    "HIMS": {
-        "venue_symbol": "xyz:HIMS",
-        "market_type": "perp",
-        "instrument_type": "equity",
-        "shortable": True,
-        "paper_tradeable": True,
-        "live_tradeable": True,
-        "display_name": "Hims & Hers",
-        "dex": TRADEXYZ_DEX,
-    },
+    }
+    for coin, meta in TRADEXYZ_ASSET_METADATA.items()
 }
 
 _PREFERRED_ORDER = [
     "BTC", "ETH", "SOL", "HYPE", "TAO", "SP500", "XAU",
     "AAPL", "AMZN", "GOOGL", "META", "MSFT", "TSLA",
     "NVDA", "INTC", "MU", "SNDK", "SKHX", "CRWV", "EWY", "HIMS",
+    *[coin for coin in TRADEXYZ_ASSET_METADATA if coin not in {
+        "BTC", "ETH", "SOL", "HYPE", "TAO", "SP500", "XAU",
+        "AAPL", "AMZN", "GOOGL", "META", "MSFT", "TSLA",
+        "NVDA", "INTC", "MU", "SNDK", "SKHX", "CRWV", "EWY", "HIMS",
+    }],
 ]
 
 _TRADEXYZ_DYNAMIC_OVERRIDES: Dict[str, Dict[str, Any]] = {
-    "EWY": {"instrument_type": "index", "display_name": "South Korea ETF"},
-    "SKHX": {"instrument_type": "equity", "display_name": "SK Hynix"},
-    "CRWV": {"instrument_type": "equity", "display_name": "CoreWeave"},
+    coin: {
+        "instrument_type": str(meta.get("instrument_type") or "equity"),
+        "display_name": str(meta.get("display_name") or coin),
+        "categories": list(meta.get("categories") or ["other_stocks"]),
+    }
+    for coin, meta in TRADEXYZ_ASSET_METADATA.items()
 }
 
 
@@ -325,6 +334,9 @@ def _catalog_from_fallback() -> Dict[str, Dict[str, Any]]:
             **spec,
         }
     for coin, spec in _SPOT_MARKETS.items():
+        existing = dict(catalog.get(coin) or {})
+        if str(existing.get("dex") or "").strip() == TRADEXYZ_DEX:
+            continue
         catalog[coin] = {
             "coin": coin,
             "venue_symbol": spec["fallback_symbol"],
@@ -407,6 +419,7 @@ def get_hyperliquid_market_catalog(*, force_refresh: bool = False) -> Dict[str, 
                     "paper_tradeable": True,
                     "live_tradeable": True,
                     "display_name": str(override.get("display_name") or internal_coin),
+                    "categories": list(override.get("categories") or ["other_stocks"]),
                     "dex": TRADEXYZ_DEX,
                 }
                 continue
@@ -416,6 +429,9 @@ def get_hyperliquid_market_catalog(*, force_refresh: bool = False) -> Dict[str, 
             }
 
         for coin, spec in _SPOT_MARKETS.items():
+            existing = dict(catalog.get(coin) or {})
+            if str(existing.get("dex") or "").strip() == TRADEXYZ_DEX:
+                continue
             pair_name = str(spec["pair_name"]).upper()
             live_spec = spot_pairs.get(pair_name)
             venue_symbol = str((live_spec or {}).get("venue_symbol") or spec["fallback_symbol"]).strip()

@@ -8,7 +8,131 @@ from dataclasses import dataclass, field
 from typing import List
 from dotenv import load_dotenv
 
+from exchanges.hyperliquid_markets import TRADEXYZ_ASSET_METADATA
+
 load_dotenv()
+
+
+_BASE_EXECUTION_COINS = ["BTC", "ETH", "SOL", "HYPE", "TAO", "SP500", "XAU"]
+
+_BASE_INSTRUMENT_TYPES = {
+    "BTC": "crypto",
+    "ETH": "crypto",
+    "SOL": "crypto",
+    "HYPE": "crypto",
+    "TAO": "crypto",
+    "SP500": "index",
+    "XAU": "index",
+    "BRENT": "index",
+    "WTI": "index",
+    "CL": "index",
+}
+
+_BASE_ASSET_CATEGORY_MAP = {
+    "SP500": ["indices_macro"],
+    "XAU": ["indices_macro"],
+}
+
+_ASSET_CATEGORY_LABELS = {
+    "indices_macro": "Indices & Macro",
+    "mag7": "Mag7",
+    "semis_memory": "Semis & Memory",
+    "neoclouds": "Neoclouds",
+    "ai_infra": "AI Infra",
+    "crypto_equities": "Crypto Equities",
+    "asia_macro": "Asia Macro",
+    "commodities_metals": "Metals",
+    "energy": "Energy",
+    "agriculture": "Agriculture",
+    "fx_rates": "FX & Rates",
+    "uranium": "Uranium",
+    "volatility": "Volatility",
+    "consumer": "Consumer",
+    "financials": "Financials",
+    "biotech_glp1": "Biotech & GLP-1",
+    "meme_momentum": "Meme Momentum",
+    "growth": "Growth",
+    "other_stocks": "Other Stocks",
+}
+
+_THEME_BY_CATEGORY = {
+    "indices_macro": "US_MACRO_BETA",
+    "mag7": "MEGA_CAP_TECH",
+    "semis_memory": "SEMIS_MEMORY",
+    "neoclouds": "NEOCLOUDS",
+    "ai_infra": "AI_INFRA",
+    "crypto_equities": "CRYPTO_EQUITIES",
+    "asia_macro": "ASIA_MACRO",
+    "commodities_metals": "COMMODITIES_METALS",
+    "energy": "ENERGY_COMPLEX",
+    "agriculture": "AGRICULTURE",
+    "fx_rates": "FX_RATES",
+    "uranium": "URANIUM",
+    "volatility": "VOLATILITY",
+    "consumer": "CONSUMER_GROWTH",
+    "financials": "FINANCIALS",
+    "biotech_glp1": "BIOTECH_GLP1",
+    "meme_momentum": "MEME_MOMENTUM",
+    "growth": "US_GROWTH",
+    "other_stocks": "OTHER_STOCKS",
+}
+
+
+def _unique_coins(*groups) -> List[str]:
+    seen = set()
+    out: List[str] = []
+    for values in groups:
+        for value in values or []:
+            coin = str(value or "").upper().strip()
+            if coin and coin not in seen:
+                seen.add(coin)
+                out.append(coin)
+    return out
+
+
+def _default_analysis_coins() -> List[str]:
+    return _unique_coins(_BASE_EXECUTION_COINS, TRADEXYZ_ASSET_METADATA.keys())
+
+
+def _default_execution_coins() -> List[str]:
+    return _default_analysis_coins()
+
+
+def _default_instrument_types() -> dict:
+    instrument_types = dict(_BASE_INSTRUMENT_TYPES)
+    for coin, meta in TRADEXYZ_ASSET_METADATA.items():
+        instrument_types[str(coin).upper()] = str(meta.get("instrument_type") or "equity").strip().lower()
+    return instrument_types
+
+
+def _default_asset_category_map() -> dict:
+    category_map = {coin: list(categories) for coin, categories in _BASE_ASSET_CATEGORY_MAP.items()}
+    for coin, meta in TRADEXYZ_ASSET_METADATA.items():
+        categories = [
+            str(category or "").strip().lower()
+            for category in list(meta.get("categories") or ["other_stocks"])
+            if str(category or "").strip()
+        ]
+        category_map[str(coin).upper()] = categories or ["other_stocks"]
+    return category_map
+
+
+def _default_portfolio_theme_map() -> dict:
+    theme_map = {
+        "BTC": "CRYPTO_CORE",
+        "ETH": "CRYPTO_CORE",
+        "SOL": "CRYPTO_HIGH_BETA",
+        "HYPE": "CRYPTO_HIGH_BETA",
+        "TAO": "CRYPTO_HIGH_BETA",
+        "SP500": "US_MACRO_BETA",
+        "XAU": "DEFENSIVE_HARD_ASSET",
+        "BRENT": "ENERGY_COMPLEX",
+        "WTI": "ENERGY_COMPLEX",
+    }
+    for coin, categories in _default_asset_category_map().items():
+        primary_category = str((categories or ["other_stocks"])[0] or "other_stocks")
+        theme_map.setdefault(coin, _THEME_BY_CATEGORY.get(primary_category, primary_category.upper()))
+    return theme_map
 
 
 # ─────────────────────────────────────────────────────────
@@ -52,50 +176,19 @@ class TradingConfig:
     # Coins / instruments the agent will trade
     # Baseline execution universe. Additional watchlist symbols that are
     # supported on the active venue are auto-promoted at startup.
-    coins: List[str]            = field(default_factory=lambda: [
-        "BTC", "ETH", "SOL", "HYPE", "TAO", "SP500", "XAU"
-    ])
+    coins: List[str]            = field(default_factory=_default_execution_coins)
 
     # Broader watchlist / learning universe.
-    # These assets are analysed and shown in the dashboard even when they are
-    # not tradable on the primary execution venue.
-    analysis_coins: List[str]   = field(default_factory=lambda: [
-        "BTC", "ETH", "SOL", "HYPE", "TAO", "SP500", "XAU",
-        "AAPL", "AMZN", "GOOGL", "META", "MSFT", "TSLA",
-        "NVDA", "INTC", "MU", "SNDK", "SKHX", "CRWV", "EWY", "HIMS",
-    ])
+    # TradeXYZ-backed symbols are analysed by default and auto-promoted into
+    # the executable universe whenever the connected venue exposes them.
+    analysis_coins: List[str]   = field(default_factory=_default_analysis_coins)
 
     # ── Instrument type classification ───────────────────────────────────────
     # "crypto"  → standard crypto perp logic
     # "index"   → macro / non-crypto instrument (SP500, BRENT, WTI, etc.) —
     #             Yahoo-backed market data, macro/news-driven, smoother momentum,
     #             higher minimum hold time
-    instrument_types: dict      = field(default_factory=lambda: {
-        "BTC":   "crypto",
-        "ETH":   "crypto",
-        "SOL":   "crypto",
-        "HYPE":  "crypto",
-        "TAO":   "crypto",
-        "SP500": "index",
-        "XAU":   "index",
-        "AAPL":  "equity",
-        "AMZN":  "equity",
-        "GOOGL": "equity",
-        "META":  "equity",
-        "MSFT":  "equity",
-        "TSLA":  "equity",
-        "NVDA":  "equity",
-        "INTC":  "equity",
-        "MU":    "equity",
-        "SNDK":  "equity",
-        "SKHX":  "equity",
-        "CRWV":  "equity",
-        "EWY":   "index",
-        "HIMS":  "equity",
-        "BRENT": "index",
-        "WTI":   "index",
-        "CL":    "index",
-    })
+    instrument_types: dict      = field(default_factory=_default_instrument_types)
 
     # Indexes need a longer minimum hold — they move slower than crypto
     index_min_hold_minutes: float = 360.0   # 6h for indexes (vs 4h for crypto)
@@ -378,58 +471,10 @@ class TradingConfig:
     portfolio_theme_warning_exposure_pct: float = 0.10
     portfolio_correlation_soft_penalty: float = 0.65
     portfolio_correlation_secondary_penalty: float = 0.82
-    portfolio_theme_map: dict = field(default_factory=lambda: {
-        "BTC": "CRYPTO_CORE",
-        "ETH": "CRYPTO_CORE",
-        "SOL": "CRYPTO_HIGH_BETA",
-        "HYPE": "CRYPTO_HIGH_BETA",
-        "TAO": "CRYPTO_HIGH_BETA",
-        "SP500": "US_MACRO_BETA",
-        "XAU": "DEFENSIVE_HARD_ASSET",
-        "BRENT": "ENERGY_COMPLEX",
-        "WTI": "ENERGY_COMPLEX",
-        "AAPL": "MEGA_CAP_TECH",
-        "AMZN": "MEGA_CAP_TECH",
-        "GOOGL": "MEGA_CAP_TECH",
-        "META": "MEGA_CAP_TECH",
-        "MSFT": "MEGA_CAP_TECH",
-        "TSLA": "MEGA_CAP_TECH",
-        "NVDA": "MEGA_CAP_TECH",
-        "INTC": "SEMIS_MEMORY",
-        "MU": "SEMIS_MEMORY",
-        "SNDK": "SEMIS_MEMORY",
-        "SKHX": "SEMIS_MEMORY",
-        "CRWV": "NEOCLOUDS",
-        "EWY": "ASIA_MACRO",
-        "HIMS": "US_GROWTH",
-    })
+    portfolio_theme_map: dict = field(default_factory=_default_portfolio_theme_map)
 
-    asset_category_map: dict = field(default_factory=lambda: {
-        "SP500": "indices_macro",
-        "XAU": "indices_macro",
-        "EWY": "indices_macro",
-        "AAPL": "mag7",
-        "AMZN": "mag7",
-        "GOOGL": "mag7",
-        "META": "mag7",
-        "MSFT": "mag7",
-        "TSLA": "mag7",
-        "NVDA": "semis_memory",
-        "INTC": "semis_memory",
-        "MU": "semis_memory",
-        "SNDK": "semis_memory",
-        "SKHX": "semis_memory",
-        "CRWV": "neoclouds",
-        "HIMS": "growth",
-    })
-    asset_category_labels: dict = field(default_factory=lambda: {
-        "indices_macro": "Indices & Macro",
-        "mag7": "Mag7",
-        "semis_memory": "Semis & Memory",
-        "neoclouds": "Neoclouds",
-        "growth": "Growth",
-        "other_stocks": "Other Stocks",
-    })
+    asset_category_map: dict = field(default_factory=_default_asset_category_map)
+    asset_category_labels: dict = field(default_factory=lambda: dict(_ASSET_CATEGORY_LABELS))
 
     # ── Smarter execution tactics ───────────────────────────────────────────
     execution_passive_rescue_enabled: bool = True

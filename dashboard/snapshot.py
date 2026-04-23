@@ -73,6 +73,53 @@ def _normalize_coin_list(values: Any) -> list[str]:
     return items
 
 
+def _normalize_asset_category_values(value: Any) -> list[str]:
+    if isinstance(value, str):
+        raw_values = value.replace("|", ",").split(",")
+    elif isinstance(value, (list, tuple, set)):
+        raw_values = list(value)
+    else:
+        raw_values = [value]
+
+    categories: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_values:
+        category = str(raw or "").strip().lower()
+        if category and category not in seen:
+            seen.add(category)
+            categories.append(category)
+    return categories
+
+
+def _normalize_asset_category_map(raw: Any) -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {}
+    for key, value in dict(raw or {}).items():
+        coin = str(key or "").upper().strip()
+        if not coin:
+            continue
+        categories = _normalize_asset_category_values(value)
+        if categories:
+            out[coin] = categories
+    return out
+
+
+def _merge_asset_category_maps(*maps: Any) -> dict[str, list[str]]:
+    merged: dict[str, list[str]] = {}
+    for raw in maps:
+        normalized = _normalize_asset_category_map(raw)
+        for coin, categories in normalized.items():
+            current = list(merged.get(coin) or [])
+            seen = set(current)
+            for category in categories:
+                if category in seen:
+                    continue
+                current.append(category)
+                seen.add(category)
+            if current:
+                merged[coin] = current
+    return merged
+
+
 def _runtime_dashboard_config_defaults() -> dict:
     try:
         from config import config as runtime_config
@@ -90,11 +137,7 @@ def _runtime_dashboard_config_defaults() -> dict:
             for key, value in dict(getattr(trading, "instrument_types", {}) or {}).items()
             if str(key or "").strip()
         },
-        "asset_categories": {
-            str(key or "").upper(): str(value or "")
-            for key, value in dict(getattr(trading, "asset_category_map", {}) or {}).items()
-            if str(key or "").strip()
-        },
+        "asset_categories": _normalize_asset_category_map(getattr(trading, "asset_category_map", {}) or {}),
         "asset_category_labels": {
             str(key or "").strip().lower(): str(value or "")
             for key, value in dict(getattr(trading, "asset_category_labels", {}) or {}).items()
@@ -122,8 +165,10 @@ def _merge_dashboard_config(config: Any) -> dict:
             "asset_category_labels",
         }
     })
-    merged["coins"] = _normalize_coin_list(current.get("coins") or defaults.get("coins") or [])
-    merged["analysis_coins"] = _normalize_coin_list(current.get("analysis_coins") or defaults.get("analysis_coins") or [])
+    merged["coins"] = _normalize_coin_list((defaults.get("coins") or []) + (current.get("coins") or []))
+    merged["analysis_coins"] = _normalize_coin_list(
+        (defaults.get("analysis_coins") or []) + (current.get("analysis_coins") or [])
+    )
     merged["dynamic_analysis_coins"] = _normalize_coin_list(
         current.get("dynamic_analysis_coins") or defaults.get("dynamic_analysis_coins") or []
     )
@@ -133,12 +178,10 @@ def _merge_dashboard_config(config: Any) -> dict:
         for key, value in dict(current.get("instrument_types") or {}).items()
         if str(key or "").strip()
     })
-    merged["asset_categories"] = dict(defaults.get("asset_categories") or {})
-    merged["asset_categories"].update({
-        str(key or "").upper(): str(value or "")
-        for key, value in dict(current.get("asset_categories") or {}).items()
-        if str(key or "").strip()
-    })
+    merged["asset_categories"] = _merge_asset_category_maps(
+        defaults.get("asset_categories") or {},
+        current.get("asset_categories") or {},
+    )
     merged["asset_category_labels"] = dict(defaults.get("asset_category_labels") or {})
     merged["asset_category_labels"].update({
         str(key or "").strip().lower(): str(value or "")
@@ -270,19 +313,24 @@ def _asset_bucket(instrument_type: str) -> str:
     return "coin" if normalized == "crypto" else "equity"
 
 
-def _asset_category_for_coin(coin: str, instrument_type: str, config: dict | None) -> str:
+def _asset_categories_for_coin(coin: str, instrument_type: str, config: dict | None) -> list[str]:
     config = dict(config or {})
     category_map = dict(config.get("asset_categories") or {})
     key = str(coin or "").upper()
-    category = str(category_map.get(key) or "").strip().lower()
-    if category:
-        return category
+    categories = _normalize_asset_category_values(category_map.get(key))
+    if categories:
+        return categories
     normalized_type = str(instrument_type or "crypto").strip().lower()
     if normalized_type == "index":
-        return "indices_macro"
+        return ["indices_macro"]
     if normalized_type == "equity":
-        return "other_stocks"
-    return "crypto"
+        return ["other_stocks"]
+    return ["crypto"]
+
+
+def _asset_category_for_coin(coin: str, instrument_type: str, config: dict | None) -> str:
+    categories = _asset_categories_for_coin(coin, instrument_type, config)
+    return categories[0] if categories else "other_stocks"
 
 
 def _asset_category_label(category: str, config: dict | None) -> str:
@@ -292,6 +340,19 @@ def _asset_category_label(category: str, config: dict | None) -> str:
         "mag7": "Mag7",
         "semis_memory": "Semis & Memory",
         "neoclouds": "Neoclouds",
+        "ai_infra": "AI Infra",
+        "crypto_equities": "Crypto Equities",
+        "asia_macro": "Asia Macro",
+        "commodities_metals": "Metals",
+        "energy": "Energy",
+        "agriculture": "Agriculture",
+        "fx_rates": "FX & Rates",
+        "uranium": "Uranium",
+        "volatility": "Volatility",
+        "consumer": "Consumer",
+        "financials": "Financials",
+        "biotech_glp1": "Biotech & GLP-1",
+        "meme_momentum": "Meme Momentum",
         "growth": "Growth",
         "other_stocks": "Other Stocks",
         "crypto": "Coins",
@@ -988,12 +1049,21 @@ def action_board(
         "ARMED": 3,
         "NO_SETUP": 3,
     }
+    configured_tradeable = {
+        str(coin or "").upper().strip()
+        for coin in config.get("coins", []) or []
+        if str(coin or "").strip()
+    }
 
     for coin in sorted(item for item in tracked if item):
         sig = dict(signals.get(coin) or {})
         pos = positions_by_coin.get(coin)
         map_entry = dict(entries.get(coin) or {})
-        tradable = (sig.get("execution_mode") or "observation_only") == "tradable" or pos is not None
+        tradable = (
+            coin in configured_tradeable
+            or (sig.get("execution_mode") or "observation_only") == "tradable"
+            or pos is not None
+        )
         execution_mode = "tradable" if tradable else str(sig.get("execution_mode") or "observation_only")
         bias = str(
             sig.get("market_map_bias")
@@ -1002,8 +1072,13 @@ def action_board(
         ).upper()
         instrument_type = _instrument_type_for_coin(coin, sig, config)
         asset_bucket = _asset_bucket(instrument_type)
-        asset_category = _asset_category_for_coin(coin, instrument_type, config)
+        asset_categories = _asset_categories_for_coin(coin, instrument_type, config)
+        asset_category = asset_categories[0] if asset_categories else "other_stocks"
         asset_category_label = _asset_category_label(asset_category, config)
+        asset_category_labels = [
+            _asset_category_label(category, config)
+            for category in asset_categories
+        ]
         support = _pick_level(
             map_entry.get("supports"),
             prefer="max",
@@ -1272,7 +1347,9 @@ def action_board(
                 "instrument_type": instrument_type,
                 "asset_bucket": asset_bucket,
                 "asset_category": asset_category,
+                "asset_categories": asset_categories,
                 "asset_category_label": asset_category_label,
+                "asset_category_labels": asset_category_labels,
                 "asset_state": asset_state,
                 "asset_state_label": asset_state_label,
                 "next_unblock_reason": next_unblock,

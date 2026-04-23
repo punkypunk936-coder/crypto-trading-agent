@@ -2373,7 +2373,11 @@ def test_dashboard_snapshot_backfills_stock_desks_from_runtime_defaults() -> Non
             "positions": [],
             "signals": {},
             "mode": "dry_run",
-            "config": {},
+            "config": {
+                "analysis_coins": ["NVDA"],
+                "asset_categories": {"NVDA": "semis_memory"},
+                "instrument_types": {"NVDA": "equity"},
+            },
         },
         trades=[],
         control={"kill": {"active": False, "reason": "", "requested_at": None, "acknowledged_at": None}},
@@ -2393,8 +2397,33 @@ def test_dashboard_snapshot_backfills_stock_desks_from_runtime_defaults() -> Non
     equity_items = [item for item in snapshot["action_board"]["items"] if item["asset_bucket"] == "equity"]
     by_coin = {item["coin"]: item for item in equity_items}
     assert by_coin["TSLA"]["asset_category"] == "mag7"
-    assert by_coin["NVDA"]["asset_category"] == "semis_memory"
+    assert by_coin["TSLA"]["tradable"] is True
+    assert by_coin["NVDA"]["asset_category"] == "mag7"
+    assert by_coin["NVDA"]["tradable"] is True
+    assert by_coin["NVDA"]["asset_categories"] == ["mag7", "semis_memory"]
     assert by_coin["CRWV"]["asset_category"] == "neoclouds"
+
+
+def test_default_stock_categories_keep_mag7_complete() -> None:
+    cfg = Config()
+    mag7 = sorted(
+        coin
+        for coin, categories in cfg.trading.asset_category_map.items()
+        if "mag7" in (categories if isinstance(categories, list) else [categories])
+    )
+    assert mag7 == ["AAPL", "AMZN", "GOOGL", "META", "MSFT", "NVDA", "TSLA"]
+    missing = [
+        coin
+        for coin in hyperliquid_markets_module.TRADEXYZ_ASSET_METADATA.keys()
+        if coin not in cfg.trading.analysis_coins
+    ]
+    assert missing == []
+    missing_executable = [
+        coin
+        for coin in hyperliquid_markets_module.TRADEXYZ_ASSET_METADATA.keys()
+        if coin not in cfg.trading.coins
+    ]
+    assert missing_executable == []
 
 
 def test_dashboard_snapshot_includes_trade_logic_and_learning_summary() -> None:
@@ -3940,6 +3969,49 @@ def test_hyperliquid_market_catalog_discovers_unknown_tradexyz_equities() -> Non
         hyperliquid_markets_module._CATALOG_CACHE.update(original_cache)
 
 
+def test_hyperliquid_market_catalog_enables_full_tradexyz_catalog_and_prefers_perps() -> None:
+    original_perps = hyperliquid_markets_module._fetch_perp_names
+    original_spots = hyperliquid_markets_module._fetch_spot_pairs
+    original_cache = dict(hyperliquid_markets_module._CATALOG_CACHE)
+    try:
+        hyperliquid_markets_module._CATALOG_CACHE["ts"] = 0.0
+        hyperliquid_markets_module._CATALOG_CACHE["catalog"] = {}
+        tradexyz_symbols = {
+            f"xyz:{coin}"
+            for coin in hyperliquid_markets_module.TRADEXYZ_ASSET_METADATA.keys()
+        }
+        spot_pairs = {
+            str(spec["pair_name"]).upper(): {"venue_symbol": spec["fallback_symbol"]}
+            for spec in hyperliquid_markets_module._SPOT_MARKETS.values()
+        }
+        hyperliquid_markets_module._fetch_perp_names = (
+            lambda dex="": {"BTC", "ETH", "SPX"} if not dex else tradexyz_symbols
+        )
+        hyperliquid_markets_module._fetch_spot_pairs = lambda: spot_pairs
+        catalog = hyperliquid_markets_module.get_hyperliquid_market_catalog(force_refresh=True)
+
+        missing = [
+            coin
+            for coin in hyperliquid_markets_module.TRADEXYZ_ASSET_METADATA.keys()
+            if coin not in catalog
+        ]
+        assert missing == []
+        for coin in hyperliquid_markets_module.TRADEXYZ_ASSET_METADATA.keys():
+            assert catalog[coin]["market_type"] == "perp"
+            assert catalog[coin]["dex"] == "xyz"
+            assert catalog[coin]["shortable"] is True
+            assert catalog[coin]["live_tradeable"] is True
+        assert catalog["TSLA"]["venue_symbol"] == "xyz:TSLA"
+        assert catalog["TSLA"]["instrument_type"] == "equity"
+        assert catalog["AAPL"]["market_type"] == "perp"
+        assert catalog["NVDA"]["categories"] == ["mag7", "semis_memory"]
+    finally:
+        hyperliquid_markets_module._fetch_perp_names = original_perps
+        hyperliquid_markets_module._fetch_spot_pairs = original_spots
+        hyperliquid_markets_module._CATALOG_CACHE.clear()
+        hyperliquid_markets_module._CATALOG_CACHE.update(original_cache)
+
+
 def test_apply_dynamic_analysis_universe_auto_adds_supported_stocks() -> None:
     cfg = build_config()
     cfg.trading.dry_run = False
@@ -5360,6 +5432,8 @@ def run_all() -> None:
     print("PASS dashboard market-map snapshot")
     test_dashboard_snapshot_backfills_stock_desks_from_runtime_defaults()
     print("PASS dashboard stock desk backfill")
+    test_default_stock_categories_keep_mag7_complete()
+    print("PASS default stock category completeness")
     test_dashboard_snapshot_includes_trade_logic_and_learning_summary()
     print("PASS dashboard learning summary")
     test_dashboard_snapshot_includes_asset_dossiers_and_referee_reports()
@@ -5422,6 +5496,8 @@ def run_all() -> None:
     print("PASS Hyperliquid market catalog expansion")
     test_hyperliquid_market_catalog_discovers_unknown_tradexyz_equities()
     print("PASS Hyperliquid Trade.xyz stock discovery")
+    test_hyperliquid_market_catalog_enables_full_tradexyz_catalog_and_prefers_perps()
+    print("PASS full Trade.xyz executable catalog")
     test_apply_dynamic_analysis_universe_auto_adds_supported_stocks()
     print("PASS supported stock auto-promotion")
     test_market_universe_filters_hyperliquid_large_caps_into_scout_watchlist()
