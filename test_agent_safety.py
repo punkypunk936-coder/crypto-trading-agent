@@ -2157,6 +2157,8 @@ def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> N
     assert "Mag7" in template
     assert "prob-chip" in template
     assert "Reclaim odds" in template
+    assert "setupReasonText(actionBoard.lead" in template
+    assert "next_setup_reason" in template
     assert "🧾 Latest Lesson" not in template
     assert '<div class="asset-section-title">Support Pending</div>' not in template
 
@@ -2424,6 +2426,63 @@ def test_default_stock_categories_keep_mag7_complete() -> None:
         if coin not in cfg.trading.coins
     ]
     assert missing_executable == []
+
+
+def test_dashboard_snapshot_surfaces_exact_next_setup_blocker() -> None:
+    snapshot = build_dashboard_snapshot(
+        state={
+            "status": "online",
+            "cycle_number": 109,
+            "positions": [],
+            "signals": {
+                "XAU": {
+                    "action": "FLAT",
+                    "asset_state": "OBSERVING",
+                    "asset_state_label": "Observing",
+                    "execution_mode": "tradable",
+                    "market_map_bias": "BEARISH",
+                    "market_map_block_shorts": True,
+                    "live_price": 4675.50,
+                    "price": 4675.50,
+                    "score": 23.16,
+                    "confidence": "HIGH",
+                    "flat_reason": (
+                        "SHORT blocked by nearby demand/support 4,675.00 (0.01% away) · "
+                        "Score 23 — needs ≤35 for SHORT"
+                    ),
+                }
+            },
+            "mode": "dry_run",
+            "config": {
+                "coins": ["XAU"],
+                "analysis_coins": ["XAU"],
+                "instrument_types": {"XAU": "index"},
+                "asset_categories": {"XAU": "indices_macro"},
+            },
+        },
+        trades=[],
+        control={"kill": {"active": False, "reason": "", "requested_at": None, "acknowledged_at": None}},
+        market_map={
+            "date": "2026-04-23",
+            "updated_at": "2026-04-23 16:00:00",
+            "coins": {
+                "XAU": {
+                    "bias": "BEARISH",
+                    "daily_close_short_below": [4626.75, 4653.65],
+                    "supports": [4593.65, 4626.75, 4653.65],
+                    "resistances": [4700.00],
+                    "summary": "auto bearish map; price is sitting in mapped demand",
+                }
+            },
+        },
+        server_timestamp="2026-04-23 16:01:00",
+    )
+    lead = snapshot["action_board"]["lead"]
+    assert lead["coin"] == "XAU"
+    assert lead["status"] == "WAIT_BREAKDOWN"
+    assert "Not short yet" in lead["next_setup_reason"]
+    assert "4,653.65" in lead["next_setup_reason"]
+    assert "nearby demand/support 4,675.00" in lead["next_setup_reason"]
 
 
 def test_dashboard_snapshot_includes_trade_logic_and_learning_summary() -> None:
@@ -5434,6 +5493,8 @@ def run_all() -> None:
     print("PASS dashboard stock desk backfill")
     test_default_stock_categories_keep_mag7_complete()
     print("PASS default stock category completeness")
+    test_dashboard_snapshot_surfaces_exact_next_setup_blocker()
+    print("PASS dashboard exact next setup blocker")
     test_dashboard_snapshot_includes_trade_logic_and_learning_summary()
     print("PASS dashboard learning summary")
     test_dashboard_snapshot_includes_asset_dossiers_and_referee_reports()

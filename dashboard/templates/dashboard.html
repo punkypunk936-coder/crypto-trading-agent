@@ -257,6 +257,10 @@
     margin-top: 6px;
     font-family: var(--mono);
   }
+  #sentiment {
+    line-height: 1.45;
+    white-space: normal;
+  }
   .card-label-row {
     display: flex;
     align-items: center;
@@ -1871,6 +1875,18 @@ const surfaceModeBadge = (value, tradable=false) => {
   if (!text || text === 'PENDING') return 'WATCH';
   return text;
 };
+const setupReasonText = (item, limit=170) => {
+  const safe = item || {};
+  return shortText(
+    safe.next_setup_reason
+      || safe.execution_note
+      || safe.entry_status
+      || safe.trigger
+      || safe.headline
+      || 'Waiting for a cleaner setup.',
+    limit
+  );
+};
 const latestWinningLesson = (summary) => {
   const latest = (summary || {}).latest || null;
   if (latest && String(latest.result || '').toUpperCase() === 'WIN') return latest;
@@ -2665,6 +2681,7 @@ function fallbackSearchItem(coin) {
     status,
     label,
     headline,
+    next_setup_reason: shortText(executionNote || headline || trigger, 180),
     trigger,
     entry_status: entryStatus || executionNote,
     execution_note: executionNote,
@@ -2737,7 +2754,7 @@ function renderTickerSearch(value) {
   hint.textContent = item.coin + ': ' + trackedLine;
   result.innerHTML = '<div class="search-title">' + esc(item.coin) + ' • ' + esc(item.label || 'Watching') + '</div>'
     + '<div class="search-chip-row">' + tradableChip + statusChip + biasChip + probabilityChipHtml(item) + '</div>'
-    + '<div class="search-summary">' + esc(shortText(item.headline || item.execution_note || 'No clear read right now.', 220)) + '</div>'
+    + '<div class="search-summary">' + esc(setupReasonText(item, 220)) + '</div>'
     + '<div class="search-grid">'
       + '<div class="token-detail"><span class="token-detail-label">Current read</span><div class="token-detail-value">' + esc(item.label || 'Watching') + '</div></div>'
       + '<div class="token-detail"><span class="token-detail-label">Entry status</span><div class="token-detail-value">' + esc(shortText(item.entry_status || item.execution_note || item.mode_detail || 'Still waiting for final entry checks.', 140)) + '</div></div>'
@@ -2952,7 +2969,7 @@ function marketMapCompactRowHtml(coin, item) {
   return '<div class="daily-sheet-row" data-tradable="' + (tradable ? 'true' : 'false') + '">'
     + '<div class="daily-sheet-main">'
       + '<div class="token-line"><div class="map-coin">' + esc(safeItem.coin || coin) + '</div><span class="' + modeClass + '">' + esc(surfaceModeBadge(safeItem.mode_badge, tradable)) + '</span>' + probabilityChipHtml(safeItem) + categoryBadge + '<span class="review-chip">' + esc(String(safeItem.label || 'Watching').toUpperCase()) + '</span><span class="' + biasClass(safeItem.bias) + '">' + esc(String(safeItem.bias || 'NEUTRAL')) + '</span></div>'
-      + '<div class="token-subline">' + esc(shortText(safeItem.headline || safeItem.execution_note || safeItem.map_summary || 'Waiting for a clearer daily read.', 130)) + '</div>'
+      + '<div class="token-subline">' + esc(setupReasonText(safeItem, 150)) + '</div>'
     + '</div>'
     + '<div class="daily-sheet-stat"><div class="daily-sheet-label">Entry</div><div class="daily-sheet-value">' + esc(shortText(safeItem.entry_status || 'Still mapping structure.', 88)) + '</div></div>'
     + '<div class="daily-sheet-stat"><div class="daily-sheet-label">Trigger</div><div class="daily-sheet-value">' + esc(shortText((safeItem.trigger || 'No trigger set yet.') + (compactOddsText(safeItem) ? ' • ' + compactOddsText(safeItem) : ''), 88)) + '</div></div>'
@@ -3272,7 +3289,7 @@ function renderActionBoard(board) {
         + '<summary class="decision-summary">'
           + '<div class="decision-summary-main">'
             + '<div class="token-line"><div class="decision-coin">' + esc(item.coin) + '</div><span class="signal-mode-tradable">' + esc(item.mode_badge || 'LIVE') + '</span>' + probabilityChipHtml(item) + categoryBadge + (status === 'PENDING_ENTRY' ? '<span class="review-chip">ORDER LIVE</span>' : '') + '<span class="review-chip">' + esc(String(item.label || 'No setup').toUpperCase()) + '</span><span class="' + biasClass(item.bias) + '">' + esc(String(item.bias || 'NEUTRAL')) + '</span></div>'
-            + '<div class="token-subline">' + esc(shortText(item.headline || 'No clear edge right now.', 150)) + '</div>'
+            + '<div class="token-subline">' + esc(setupReasonText(item, 170)) + '</div>'
           + '</div>'
           + '<div class="decision-summary-side"><div class="token-preview">' + esc(shortText(item.trigger || 'Wait for a cleaner setup.', 90)) + '</div><span class="token-chevron">⌄</span></div>'
         + '</summary>'
@@ -3500,7 +3517,7 @@ async function refresh() {
     document.getElementById('wins-losses').textContent = 'Closed: ' + closedN + ' • Wins: ' + (st.wins||0) + ' • Losses: ' + (st.losses||0);
     if (actionBoard.lead) {
       document.getElementById('cycle').textContent = actionBoard.lead.coin + ' • ' + actionBoard.lead.label;
-      document.getElementById('sentiment').textContent = shortText(actionBoard.lead.trigger || actionBoard.lead.headline || 'Waiting for a cleaner setup.', 90);
+      document.getElementById('sentiment').textContent = setupReasonText(actionBoard.lead, 170);
     } else {
       document.getElementById('cycle').textContent = openN ? 'Managing trades' : 'No setup';
       document.getElementById('sentiment').textContent = openN ? 'The agent is managing open exposure.' : 'Waiting for the next clean setup.';
@@ -3541,7 +3558,7 @@ async function refresh() {
       countBadge.className = 'open-count open-count-flat';
       openCard.className = 'card';
       const leadEmpty = actionBoard.lead
-        ? '<div style="margin-top:8px;"><strong>Best setup:</strong> ' + esc(actionBoard.lead.coin + ' • ' + actionBoard.lead.label) + ' — ' + esc(shortText(actionBoard.lead.execution_note || actionBoard.lead.trigger || actionBoard.lead.headline || 'Waiting for a cleaner setup.', 130)) + '</div>'
+        ? '<div style="margin-top:8px;"><strong>Best setup:</strong> ' + esc(actionBoard.lead.coin + ' • ' + actionBoard.lead.label) + ' — ' + esc(setupReasonText(actionBoard.lead, 150)) + '</div>'
         : '<div style="margin-top:8px;">The agent is flat and waiting for a clean, high-conviction setup.</div>';
       openBody.innerHTML =
         '<div class="empty-state">' +

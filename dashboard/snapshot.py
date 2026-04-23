@@ -409,6 +409,69 @@ def _primary_reason(text: Any) -> str:
     return parts[0] if parts else ""
 
 
+def _setup_direction(status: str, action: str, bias: str) -> str:
+    status_upper = str(status or "").upper()
+    action_upper = str(action or "").upper()
+    bias_upper = str(bias or "").upper()
+    if "SHORT" in status_upper or "BREAKDOWN" in status_upper or action_upper == "SHORT" or bias_upper == "BEARISH":
+        return "short"
+    if "LONG" in status_upper or "RECLAIM" in status_upper or action_upper == "LONG" or bias_upper == "BULLISH":
+        return "long"
+    return "trade"
+
+
+def _next_setup_reason(
+    *,
+    status: str,
+    action: str,
+    bias: str,
+    entry_status: str,
+    trigger: str,
+    blocker: str,
+    execution_note: str,
+) -> str:
+    status_upper = str(status or "").upper()
+    direction = _setup_direction(status, action, bias)
+    primary_blocker = _primary_reason(blocker or execution_note)
+    context = str(entry_status or trigger or "").strip()
+    note = str(primary_blocker or execution_note or "").strip()
+
+    if status_upper.startswith("OPEN_"):
+        return _compact_sentences([
+            f"Open {direction}: {context}" if context else f"Open {direction}.",
+            execution_note,
+        ], limit=2)
+    if status_upper == "PENDING_ENTRY":
+        return _compact_sentences([
+            f"Order working: {context}" if context else "Order working.",
+            note,
+        ], limit=2)
+    if status_upper in {"READY_LONG", "READY_SHORT"}:
+        return _compact_sentences([
+            f"Ready {direction}: {context}" if context else f"Ready {direction}.",
+            note or "Final sizing and fill-quality checks still need to clear.",
+        ], limit=2)
+    if status_upper in {"WAIT_BREAKDOWN", "WAIT_RECLAIM", "WATCH_SHORT", "WATCH_LONG"}:
+        return _compact_sentences([
+            f"Not {direction} yet: {context}" if context else f"Not {direction} yet.",
+            note or "The setup still needs confirmation before the bot can trade.",
+        ], limit=2)
+    if status_upper in {"EXECUTION_BLOCKED", "DATA_QUALITY_HOLD", "PORTFOLIO_GUARD", "RISK_BLOCKED"}:
+        return _compact_sentences([
+            f"Blocked: {context}" if context else "Blocked.",
+            note,
+        ], limit=2)
+    if status_upper in {"ARMED", "WAITING_CONFIRMATION", "PASSIVE_ENTRY", "EXECUTABLE"}:
+        return _compact_sentences([
+            f"Waiting: {context}" if context else "Waiting for confirmation.",
+            note,
+        ], limit=2)
+    return _compact_sentences([
+        f"No trade: {note}" if note else "No trade: thesis is incomplete.",
+        context,
+    ], limit=2)
+
+
 def _map_blurb(text: Any) -> str:
     summary = str(text or "").strip()
     if not summary:
@@ -1323,6 +1386,16 @@ def action_board(
         else:
             risk = map_summary or ""
 
+        next_setup_reason = _next_setup_reason(
+            status=status,
+            action=action,
+            bias=bias,
+            entry_status=entry_status,
+            trigger=trigger,
+            blocker=str(sig.get("flat_reason") or sig.get("decision_reason") or blocker or ""),
+            execution_note=execution_note,
+        )
+
         if tradable:
             mode_label = "EXECUTABLE"
             mode_meta = "Executable"
@@ -1356,6 +1429,7 @@ def action_board(
                 "status": status,
                 "label": label,
                 "headline": headline,
+                "next_setup_reason": next_setup_reason,
                 "trigger": trigger,
                 "entry_status": entry_status or execution_note,
                 "execution_note": execution_note,
