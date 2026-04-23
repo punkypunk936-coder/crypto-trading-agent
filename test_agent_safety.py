@@ -2159,6 +2159,8 @@ def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> N
     assert "Reclaim odds" in template
     assert "setupReasonText(actionBoard.lead" in template
     assert "next_setup_reason" in template
+    assert "setupStanceChipHtml" in template
+    assert "Stance mix:" in template
     assert "🧾 Latest Lesson" not in template
     assert '<div class="asset-section-title">Support Pending</div>' not in template
 
@@ -2483,6 +2485,102 @@ def test_dashboard_snapshot_surfaces_exact_next_setup_blocker() -> None:
     assert "Not short yet" in lead["next_setup_reason"]
     assert "4,653.65" in lead["next_setup_reason"]
     assert "nearby demand/support 4,675.00" in lead["next_setup_reason"]
+
+
+def test_dashboard_snapshot_ignores_opposite_direction_threshold_in_blocker() -> None:
+    snapshot = build_dashboard_snapshot(
+        state={
+            "status": "online",
+            "cycle_number": 110,
+            "positions": [],
+            "signals": {
+                "UNI": {
+                    "action": "FLAT",
+                    "execution_mode": "tradable",
+                    "market_map_bias": "BEARISH",
+                    "market_map_block_shorts": True,
+                    "live_price": 3.27,
+                    "price": 3.27,
+                    "score": 38.0,
+                    "confidence": "MEDIUM",
+                    "flat_reason": "Score 38 — needs ≥65 for LONG · Regime: ABSORPTION (no clear direction)",
+                }
+            },
+            "mode": "dry_run",
+            "config": {
+                "coins": ["UNI"],
+                "analysis_coins": ["UNI"],
+                "instrument_types": {"UNI": "crypto"},
+            },
+        },
+        trades=[],
+        control={"kill": {"active": False, "reason": "", "requested_at": None, "acknowledged_at": None}},
+        market_map={
+            "date": "2026-04-23",
+            "updated_at": "2026-04-23 16:10:00",
+            "coins": {
+                "UNI": {
+                    "bias": "BEARISH",
+                    "daily_close_short_below": [3.26],
+                    "supports": [3.26],
+                    "resistances": [3.40],
+                }
+            },
+        },
+        server_timestamp="2026-04-23 16:11:00",
+    )
+    lead = snapshot["action_board"]["lead"]
+    assert lead["coin"] == "UNI"
+    assert "needs ≥65 for LONG" not in lead["next_setup_reason"]
+    assert "ABSORPTION" in lead["next_setup_reason"]
+
+
+def test_dashboard_snapshot_normalizes_directional_breakdown_wording() -> None:
+    snapshot = build_dashboard_snapshot(
+        state={
+            "status": "online",
+            "cycle_number": 111,
+            "positions": [],
+            "signals": {
+                "WLFI": {
+                    "action": "FLAT",
+                    "execution_mode": "tradable",
+                    "market_map_bias": "BEARISH",
+                    "market_map_block_shorts": True,
+                    "live_price": 0.08,
+                    "price": 0.08,
+                    "score": 42.0,
+                    "confidence": "HIGH",
+                    "flat_reason": "LONG blocked — market is breaking down through key support (PERSISTENT_BEARISH_BREAKDOWN)",
+                }
+            },
+            "mode": "dry_run",
+            "config": {
+                "coins": ["WLFI"],
+                "analysis_coins": ["WLFI"],
+                "instrument_types": {"WLFI": "crypto"},
+            },
+        },
+        trades=[],
+        control={"kill": {"active": False, "reason": "", "requested_at": None, "acknowledged_at": None}},
+        market_map={
+            "date": "2026-04-23",
+            "updated_at": "2026-04-23 16:12:00",
+            "coins": {
+                "WLFI": {
+                    "bias": "BEARISH",
+                    "daily_close_short_below": [0.08],
+                    "supports": [0.08],
+                    "resistances": [0.09],
+                }
+            },
+        },
+        server_timestamp="2026-04-23 16:13:00",
+    )
+    lead = snapshot["action_board"]["lead"]
+    assert lead["coin"] == "WLFI"
+    assert "LONG blocked" not in lead["next_setup_reason"]
+    assert "Breakdown already active" in lead["next_setup_reason"]
 
 
 def test_dashboard_snapshot_includes_trade_logic_and_learning_summary() -> None:
@@ -5495,6 +5593,10 @@ def run_all() -> None:
     print("PASS default stock category completeness")
     test_dashboard_snapshot_surfaces_exact_next_setup_blocker()
     print("PASS dashboard exact next setup blocker")
+    test_dashboard_snapshot_ignores_opposite_direction_threshold_in_blocker()
+    print("PASS dashboard directional blocker selection")
+    test_dashboard_snapshot_normalizes_directional_breakdown_wording()
+    print("PASS dashboard directional blocker wording")
     test_dashboard_snapshot_includes_trade_logic_and_learning_summary()
     print("PASS dashboard learning summary")
     test_dashboard_snapshot_includes_asset_dossiers_and_referee_reports()

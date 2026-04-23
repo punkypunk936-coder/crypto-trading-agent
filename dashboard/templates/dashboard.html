@@ -1875,6 +1875,33 @@ const surfaceModeBadge = (value, tradable=false) => {
   if (!text || text === 'PENDING') return 'WATCH';
   return text;
 };
+const setupStanceTone = (item) => {
+  const status = String(((item || {}).status) || '').trim().toUpperCase();
+  if (status.startsWith('OPEN_')) return 'LIVE';
+  if (status === 'PENDING_ENTRY') return 'WORKING';
+  if (status === 'READY_LONG' || status === 'READY_SHORT') return 'READY';
+  if (['EXECUTION_BLOCKED', 'DATA_QUALITY_HOLD', 'PORTFOLIO_GUARD', 'RISK_BLOCKED'].includes(status)) return 'BLOCKED';
+  if (['WATCH_LONG', 'WATCH_SHORT'].includes(status)) return 'WATCH';
+  if (['WAIT_RECLAIM', 'WAIT_BREAKDOWN', 'WAITING_CONFIRMATION', 'ARMED', 'PASSIVE_ENTRY'].includes(status)) return 'WAIT';
+  if (status === 'COOLDOWN') return 'COOLDOWN';
+  if (status === 'NO_SETUP') return 'FLAT';
+  return String((item || {}).label || 'WATCH').trim().toUpperCase();
+};
+const setupStanceText = (item, mode='chip') => {
+  const safe = item || {};
+  const bias = String(safe.bias || 'NEUTRAL').trim().toUpperCase();
+  const tone = setupStanceTone(safe);
+  if (mode === 'title') {
+    const biasTitle = humanizeKey(bias);
+    const toneTitle = humanizeKey(tone);
+    return bias === 'NEUTRAL' ? toneTitle : (biasTitle + ' ' + toneTitle).trim();
+  }
+  return bias === 'NEUTRAL' ? tone : (bias + ' • ' + tone);
+};
+const setupStanceChipHtml = (item) => {
+  const safe = item || {};
+  return '<span class="' + biasClass(safe.bias) + '">' + esc(setupStanceText(safe, 'chip')) + '</span>';
+};
 const setupReasonText = (item, limit=170) => {
   const safe = item || {};
   return shortText(
@@ -1886,6 +1913,20 @@ const setupReasonText = (item, limit=170) => {
       || 'Waiting for a cleaner setup.',
     limit
   );
+};
+const itemBiasMixText = (items) => {
+  const counts = { BULLISH: 0, BEARISH: 0, NEUTRAL: 0 };
+  (items || []).forEach((item) => {
+    const bias = String(((item || {}).bias) || 'NEUTRAL').toUpperCase();
+    if (bias === 'BULLISH') counts.BULLISH += 1;
+    else if (bias === 'BEARISH') counts.BEARISH += 1;
+    else counts.NEUTRAL += 1;
+  });
+  const parts = [];
+  if (counts.BULLISH) parts.push(String(counts.BULLISH) + ' bullish');
+  if (counts.BEARISH) parts.push(String(counts.BEARISH) + ' bearish');
+  if (counts.NEUTRAL) parts.push(String(counts.NEUTRAL) + ' neutral');
+  return parts.join(' • ') || 'No directional bias yet.';
 };
 const latestWinningLesson = (summary) => {
   const latest = (summary || {}).latest || null;
@@ -2738,8 +2779,7 @@ function renderTickerSearch(value) {
   const tradableChip = item.tradable
     ? '<span class="signal-mode-tradable">' + esc(item.mode_badge || 'LIVE') + '</span>'
     : '<span class="signal-mode-watch">' + esc(item.mode_badge || 'WATCH') + '</span>';
-  const biasChip = '<span class="' + biasClass(item.bias) + '">' + esc(String(item.bias || 'NEUTRAL')) + '</span>';
-  const statusChip = '<span class="review-chip">' + esc(String(item.label || 'Watching').toUpperCase()) + '</span>';
+  const stanceChip = setupStanceChipHtml(item);
   const trackedLine = item.tradable
     ? item.mode_detail || 'Executable on the active venue.'
     : item.mode_detail || 'Watching only while the setup keeps developing.';
@@ -2752,8 +2792,8 @@ function renderTickerSearch(value) {
   const missed = dossier.missed_move_context || {};
 
   hint.textContent = item.coin + ': ' + trackedLine;
-  result.innerHTML = '<div class="search-title">' + esc(item.coin) + ' • ' + esc(item.label || 'Watching') + '</div>'
-    + '<div class="search-chip-row">' + tradableChip + statusChip + biasChip + probabilityChipHtml(item) + '</div>'
+  result.innerHTML = '<div class="search-title">' + esc(item.coin) + ' • ' + esc(setupStanceText(item, 'title')) + '</div>'
+    + '<div class="search-chip-row">' + tradableChip + stanceChip + probabilityChipHtml(item) + '</div>'
     + '<div class="search-summary">' + esc(setupReasonText(item, 220)) + '</div>'
     + '<div class="search-grid">'
       + '<div class="token-detail"><span class="token-detail-label">Current read</span><div class="token-detail-value">' + esc(item.label || 'Watching') + '</div></div>'
@@ -2966,9 +3006,10 @@ function marketMapCompactRowHtml(coin, item) {
   const tradable = Boolean(safeItem.tradable);
   const modeClass = tradable ? 'signal-mode-tradable' : 'signal-mode-watch';
   const categoryBadge = assetCategoryBadgeHtml(safeItem);
+  const stanceChip = setupStanceChipHtml(safeItem);
   return '<div class="daily-sheet-row" data-tradable="' + (tradable ? 'true' : 'false') + '">'
     + '<div class="daily-sheet-main">'
-      + '<div class="token-line"><div class="map-coin">' + esc(safeItem.coin || coin) + '</div><span class="' + modeClass + '">' + esc(surfaceModeBadge(safeItem.mode_badge, tradable)) + '</span>' + probabilityChipHtml(safeItem) + categoryBadge + '<span class="review-chip">' + esc(String(safeItem.label || 'Watching').toUpperCase()) + '</span><span class="' + biasClass(safeItem.bias) + '">' + esc(String(safeItem.bias || 'NEUTRAL')) + '</span></div>'
+      + '<div class="token-line"><div class="map-coin">' + esc(safeItem.coin || coin) + '</div><span class="' + modeClass + '">' + esc(surfaceModeBadge(safeItem.mode_badge, tradable)) + '</span>' + stanceChip + probabilityChipHtml(safeItem) + categoryBadge + '</div>'
       + '<div class="token-subline">' + esc(setupReasonText(safeItem, 150)) + '</div>'
     + '</div>'
     + '<div class="daily-sheet-stat"><div class="daily-sheet-label">Entry</div><div class="daily-sheet-value">' + esc(shortText(safeItem.entry_status || 'Still mapping structure.', 88)) + '</div></div>'
@@ -3034,10 +3075,11 @@ function marketMapDetailCardHtml(coin, entry, signal, item) {
   const previewRisk = safeItem.risk
     ? shortText(safeItem.risk, 60)
     : 'Risk below ' + (shortTrigger ? fmt(shortTrigger) : '--');
+  const stanceChip = setupStanceChipHtml(safeItem);
   return '<details class="map-card" data-tradable="' + (isTradable ? 'true' : 'false') + '"' + (shouldOpen ? ' open' : '') + '>'
     + '<summary class="map-card-summary">'
       + '<div class="map-summary-main">'
-        + '<div class="token-line"><div class="map-coin">' + esc(coin) + '</div><span class="' + modeClass + '">' + esc(modeLabel) + '</span>' + probabilityChipHtml(safeItem) + '<span class="review-chip">' + esc(source === 'AUTO' ? 'AUTO MAP' : 'MANUAL') + '</span><span class="' + biasClass(entry.bias) + '">' + esc(String(entry.bias || 'NEUTRAL')) + '</span></div>'
+        + '<div class="token-line"><div class="map-coin">' + esc(coin) + '</div><span class="' + modeClass + '">' + esc(modeLabel) + '</span>' + stanceChip + probabilityChipHtml(safeItem) + '<span class="review-chip">' + esc(source === 'AUTO' ? 'AUTO MAP' : 'MANUAL') + '</span></div>'
         + '<div class="token-subline">' + esc(shortText(setupLine, 150)) + '</div>'
       + '</div>'
       + '<div class="map-summary-side"><div class="token-preview">' + esc(preview) + '<br>' + esc(previewRisk) + '</div><span class="token-chevron">⌄</span></div>'
@@ -3252,6 +3294,7 @@ function renderActionBoard(board) {
   const tradableCount = Number(visibleTradableItems.length || 0);
   const activeTradableCount = visibleTradableItems.filter((item) => ['OPEN_LONG', 'OPEN_SHORT', 'READY_LONG', 'READY_SHORT'].includes(String((item || {}).status || '').toUpperCase())).length;
   const pendingCount = visibleTradableItems.filter((item) => String((item || {}).status || '').toUpperCase() === 'PENDING_ENTRY').length;
+  const stanceMixText = itemBiasMixText(visibleTradableItems);
   const metaBits = [
     bucketLabel(actionBoardBucket),
     'Live ' + tradableCount,
@@ -3259,7 +3302,7 @@ function renderActionBoard(board) {
   if (actionBoardBucket === 'equity' && actionBoardCategory !== 'all') metaBits.push(assetCategoryLabel(actionBoardCategory));
   if (activeTradableCount > 0) metaBits.push('Actionable ' + activeTradableCount);
   if (pendingCount > 0) metaBits.push('Working orders ' + pendingCount);
-  if (lead) metaBits.push('Best setup: ' + lead.coin + ' • ' + lead.label);
+  if (lead) metaBits.push('Best setup: ' + lead.coin + ' • ' + setupStanceText(lead, 'title'));
   meta.textContent = metaBits.join(' • ');
 
   let html = renderBucketTabs(actionBoardBucket, groups, 'action');
@@ -3268,7 +3311,7 @@ function renderActionBoard(board) {
   const categoryNote = actionBoardBucket === 'equity' && actionBoardCategory !== 'all'
     ? ' Focus: ' + assetCategoryDescription(actionBoardCategory)
     : '';
-  html += '<div class="asset-bucket-note">' + esc(bucketDescription(actionBoardBucket) + categoryNote) + '</div>';
+  html += '<div class="asset-bucket-note">' + esc(bucketDescription(actionBoardBucket) + categoryNote + ' Stance mix: ' + stanceMixText + '.') + '</div>';
   html += '<div class="decision-board asset-section-stack">';
   if (visibleTradableItems.length) {
     const tradableSub = pendingCount > 0
@@ -3285,10 +3328,11 @@ function renderActionBoard(board) {
       const highlight = status === 'PENDING_ENTRY' ? highlightBase + ' decision-card-pending' : highlightBase;
       const shouldOpen = status === 'PENDING_ENTRY' || status === 'OPEN_LONG' || status === 'OPEN_SHORT' || status === 'READY_LONG';
       const categoryBadge = assetCategoryBadgeHtml(item);
+      const stanceChip = setupStanceChipHtml(item);
       return '<details class="' + highlight + ' decision-box"' + (shouldOpen ? ' open' : '') + '>'
         + '<summary class="decision-summary">'
           + '<div class="decision-summary-main">'
-            + '<div class="token-line"><div class="decision-coin">' + esc(item.coin) + '</div><span class="signal-mode-tradable">' + esc(item.mode_badge || 'LIVE') + '</span>' + probabilityChipHtml(item) + categoryBadge + (status === 'PENDING_ENTRY' ? '<span class="review-chip">ORDER LIVE</span>' : '') + '<span class="review-chip">' + esc(String(item.label || 'No setup').toUpperCase()) + '</span><span class="' + biasClass(item.bias) + '">' + esc(String(item.bias || 'NEUTRAL')) + '</span></div>'
+            + '<div class="token-line"><div class="decision-coin">' + esc(item.coin) + '</div><span class="signal-mode-tradable">' + esc(item.mode_badge || 'LIVE') + '</span>' + stanceChip + probabilityChipHtml(item) + categoryBadge + (status === 'PENDING_ENTRY' ? '<span class="review-chip">ORDER LIVE</span>' : '') + '</div>'
             + '<div class="token-subline">' + esc(setupReasonText(item, 170)) + '</div>'
           + '</div>'
           + '<div class="decision-summary-side"><div class="token-preview">' + esc(shortText(item.trigger || 'Wait for a cleaner setup.', 90)) + '</div><span class="token-chevron">⌄</span></div>'
@@ -3516,7 +3560,7 @@ async function refresh() {
     document.getElementById('trade-count').textContent = (st.win_rate || 0) + '%';
     document.getElementById('wins-losses').textContent = 'Closed: ' + closedN + ' • Wins: ' + (st.wins||0) + ' • Losses: ' + (st.losses||0);
     if (actionBoard.lead) {
-      document.getElementById('cycle').textContent = actionBoard.lead.coin + ' • ' + actionBoard.lead.label;
+      document.getElementById('cycle').textContent = actionBoard.lead.coin + ' • ' + setupStanceText(actionBoard.lead, 'title');
       document.getElementById('sentiment').textContent = setupReasonText(actionBoard.lead, 170);
     } else {
       document.getElementById('cycle').textContent = openN ? 'Managing trades' : 'No setup';
@@ -3558,7 +3602,7 @@ async function refresh() {
       countBadge.className = 'open-count open-count-flat';
       openCard.className = 'card';
       const leadEmpty = actionBoard.lead
-        ? '<div style="margin-top:8px;"><strong>Best setup:</strong> ' + esc(actionBoard.lead.coin + ' • ' + actionBoard.lead.label) + ' — ' + esc(setupReasonText(actionBoard.lead, 150)) + '</div>'
+        ? '<div style="margin-top:8px;"><strong>Best setup:</strong> ' + esc(actionBoard.lead.coin + ' • ' + setupStanceText(actionBoard.lead, 'title')) + ' — ' + esc(setupReasonText(actionBoard.lead, 150)) + '</div>'
         : '<div style="margin-top:8px;">The agent is flat and waiting for a clean, high-conviction setup.</div>';
       openBody.innerHTML =
         '<div class="empty-state">' +

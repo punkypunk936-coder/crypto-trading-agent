@@ -420,6 +420,109 @@ def _setup_direction(status: str, action: str, bias: str) -> str:
     return "trade"
 
 
+def _reason_clauses(text: Any) -> list[str]:
+    normalized = str(text or "").replace("|", "·")
+    return [str(part).strip() for part in normalized.split("·") if str(part).strip()]
+
+
+def _directional_reason_score(clause: str, direction: str) -> int:
+    text = str(clause or "").strip().lower()
+    if not text:
+        return -99
+
+    score = 0
+    if direction == "short":
+        if "short blocked" in text:
+            score += 14
+        if "breakdown" in text or "break support" in text:
+            score += 10
+        if "bullish breakout" in text or "breaking above key resistance" in text:
+            score += 9
+        if "support" in text or "demand" in text:
+            score += 7
+        if "resistance" in text or "supply" in text:
+            score += 5
+        if "needs" in text and "for short" in text:
+            score += 8
+        if "needs" in text and "for long" in text:
+            score -= 10
+    elif direction == "long":
+        if "long blocked" in text:
+            score += 14
+        if "reclaim" in text or "breakout" in text:
+            score += 10
+        if "bearish breakout" in text or "breaking below key support" in text:
+            score += 9
+        if "resistance" in text or "supply" in text:
+            score += 7
+        if "support" in text or "demand" in text:
+            score += 5
+        if "needs" in text and "for long" in text:
+            score += 8
+        if "needs" in text and "for short" in text:
+            score -= 10
+
+    generic_markers = (
+        "absorption",
+        "indecision",
+        "trend flat",
+        "ranging",
+        "macro confirmation",
+        "earnings confirmation",
+        "doji",
+        "inside bar",
+        "memory:",
+        "candles:",
+        "regime:",
+    )
+    if any(marker in text for marker in generic_markers):
+        score += 4
+
+    return score
+
+
+def _relevant_blocker_reason(text: Any, direction: str) -> str:
+    clauses = _reason_clauses(text)
+    if not clauses:
+        return ""
+
+    ranked = sorted(
+        (
+            (_directional_reason_score(clause, direction), -index, clause)
+            for index, clause in enumerate(clauses)
+        ),
+        reverse=True,
+    )
+    if ranked and ranked[0][0] > 0:
+        return ranked[0][2]
+
+    for clause in clauses:
+        lowered = clause.lower()
+        if "needs" in lowered and (
+            ("for long" in lowered and direction == "short")
+            or ("for short" in lowered and direction == "long")
+        ):
+            continue
+        return clause
+    return ""
+
+
+def _normalize_directional_blocker_reason(clause: str, direction: str) -> str:
+    text = str(clause or "").strip()
+    lowered = text.lower()
+    if direction == "short" and lowered.startswith("long blocked") and (
+        "breaking down" in lowered or "bearish breakout" in lowered
+    ):
+        remainder = text.split("—", 1)[-1].strip() if "—" in text else text
+        return f"Breakdown already active — {remainder}"
+    if direction == "long" and lowered.startswith("short blocked") and (
+        "breaking above" in lowered or "bullish breakout" in lowered
+    ):
+        remainder = text.split("—", 1)[-1].strip() if "—" in text else text
+        return f"Reclaim already active — {remainder}"
+    return text
+
+
 def _next_setup_reason(
     *,
     status: str,
@@ -432,7 +535,8 @@ def _next_setup_reason(
 ) -> str:
     status_upper = str(status or "").upper()
     direction = _setup_direction(status, action, bias)
-    primary_blocker = _primary_reason(blocker or execution_note)
+    primary_blocker = _relevant_blocker_reason(blocker or execution_note, direction) or _primary_reason(blocker or execution_note)
+    primary_blocker = _normalize_directional_blocker_reason(primary_blocker, direction)
     context = str(entry_status or trigger or "").strip()
     note = str(primary_blocker or execution_note or "").strip()
 
