@@ -1,18 +1,116 @@
 {
   "classifications": {
-    "BAD_TRADE": 11,
-    "CORRECT_PASS": 454,
-    "GOOD_TRADE": 32,
-    "MISSED_WIN": 904
+    "BAD_TRADE": 10,
+    "CORRECT_PASS": 476,
+    "GOOD_TRADE": 34,
+    "MISSED_WIN": 977
   },
   "data_dir": "/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime",
-  "decision_rows": 2010,
-  "episodes": 1749,
-  "generated_at": 1777142240,
+  "decision_rows": 2050,
+  "episodes": 1789,
+  "generated_at": 1777167560,
   "horizon_minutes": 720,
   "interval": "5m",
-  "labeled_episodes": 1401,
+  "labeled_episodes": 1497,
   "recent_missed_moves": [
+    {
+      "action": "LONG",
+      "breakout": "confirmed_bullish_breakout",
+      "coin": "AMD",
+      "interaction": "at_support",
+      "probability": 0.95,
+      "recorded_at": "2026-04-26 01:07:24",
+      "regime": "trend",
+      "risk_reward_ratio": 4.41,
+      "score": 100.0,
+      "stage": "flat_no_trade",
+      "summary": "5 analogs \u2022 win 61% \u2022 avg pnl +0.63% \u2022 avg R +0.05 \u2022 reliability 0.77",
+      "ts": 1777145844.7982998
+    },
+    {
+      "action": "LONG",
+      "breakout": "confirmed_bullish_breakout",
+      "coin": "AMD",
+      "interaction": "at_support",
+      "probability": 1.0,
+      "recorded_at": "2026-04-26 01:02:52",
+      "regime": "trend",
+      "risk_reward_ratio": 2.9,
+      "score": 100.0,
+      "stage": "flat_no_trade",
+      "summary": "uncertainty 100% is above the precision cap",
+      "ts": 1777145572.3370318
+    },
+    {
+      "action": "LONG",
+      "breakout": "confirmed_bullish_breakout",
+      "coin": "AMD",
+      "interaction": "at_support",
+      "probability": 1.0,
+      "recorded_at": "2026-04-26 00:48:27",
+      "regime": "trend",
+      "risk_reward_ratio": 2.55,
+      "score": 100.0,
+      "stage": "flat_no_trade",
+      "summary": "uncertainty 100% is above the precision cap",
+      "ts": 1777144707.121394
+    },
+    {
+      "action": "LONG",
+      "breakout": "confirmed_bullish_breakout",
+      "coin": "AMD",
+      "interaction": "at_support",
+      "probability": 1.0,
+      "recorded_at": "2026-04-26 00:43:12",
+      "regime": "trend",
+      "risk_reward_ratio": 2.45,
+      "score": 100.0,
+      "stage": "flat_no_trade",
+      "summary": "uncertainty 100% is above the precision cap",
+      "ts": 1777144392.5099368
+    },
+    {
+      "action": "LONG",
+      "breakout": "confirmed_bullish_breakout",
+      "coin": "AMD",
+      "interaction": "at_support",
+      "probability": 1.0,
+      "recorded_at": "2026-04-26 00:38:53",
+      "regime": "trend",
+      "risk_reward_ratio": 2.45,
+      "score": 100.0,
+      "stage": "flat_no_trade",
+      "summary": "uncertainty 100% is above the precision cap",
+      "ts": 1777144133.7309399
+    },
+    {
+      "action": "LONG",
+      "breakout": "confirmed_bullish_breakout",
+      "coin": "META",
+      "interaction": "at_support",
+      "probability": 0.89,
+      "recorded_at": "2026-04-25 20:19:37",
+      "regime": "mixed",
+      "risk_reward_ratio": 5.87,
+      "score": 96.0,
+      "stage": "major_catalyst_watch",
+      "summary": "embargoed after 6 LONG trades with 17% win rate",
+      "ts": 1777128577.06668
+    },
+    {
+      "action": "LONG",
+      "breakout": "confirmed_bullish_breakout",
+      "coin": "HYPE",
+      "interaction": "at_support",
+      "probability": 0.9741,
+      "recorded_at": "2026-04-25 19:51:32",
+      "regime": "breakout",
+      "risk_reward_ratio": 4.69,
+      "score": 100.0,
+      "stage": "guardrails_flat",
+      "summary": "RL tightened LONG threshold to \u226572 (ranging trap, marginal edge)",
+      "ts": 1777126892.7035909
+    },
     {
       "action": "LONG",
       "breakout": "confirmed_bullish_breakout",
@@ -30,6 +128,20 @@
     {
       "action": "LONG",
       "breakout": "confirmed_bullish_breakout",
+      "coin": "HYPE",
+      "interaction": "at_support",
+      "probability": 0.8982,
+      "recorded_at": "2026-04-25 19:46:08",
+      "regime": "breakout",
+      "risk_reward_ratio": 4.8,
+      "score": 96.55,
+      "stage": "guardrails_flat",
+      "summary": "RL tightened LONG threshold to \u226572 (ranging trap, marginal edge)",
+      "ts": 1777126568.2612638
+    },
+    {
+      "action": "LONG",
+      "breakout": "confirmed_bullish_breakout",
       "coin": "INTC",
       "interaction": "at_support",
       "probability": 0.8478,
@@ -40,125 +152,13 @@
       "stage": "major_catalyst_watch",
       "summary": "RL pause on LONG: 1 cycles left (absorption trap, marginal edge)",
       "ts": 1777126314.5843022
-    },
-    {
-      "action": "LONG",
-      "breakout": "confirmed_bullish_breakout",
-      "coin": "NVDA",
-      "interaction": "at_support",
-      "probability": 0.8976,
-      "recorded_at": "2026-04-25 19:02:22",
-      "regime": "absorption",
-      "risk_reward_ratio": 5.7,
-      "score": 98.58,
-      "stage": "position_invalidation_close",
-      "summary": "Thesis medium: Pre-event starter long allowed: catalyst 4.60, news 61, p 92%, score 58.3 vs 65 trigger. Begin 40% size before full confirmation. Thesis: platform anchor + demand commitment + earnings event + pre-event setup.",
-      "ts": 1777123942.2863019
-    },
-    {
-      "action": "LONG",
-      "breakout": "confirmed_bullish_breakout",
-      "coin": "HYPE",
-      "interaction": "at_support",
-      "probability": 0.8929,
-      "recorded_at": "2026-04-25 18:13:51",
-      "regime": "breakout",
-      "risk_reward_ratio": 2.05,
-      "score": 96.19,
-      "stage": "guardrails_flat",
-      "summary": "RL tightened LONG threshold to \u226572 (ranging trap, marginal edge)",
-      "ts": 1777121031.101838
-    },
-    {
-      "action": "LONG",
-      "breakout": "persistent_bullish_breakout",
-      "coin": "HYPE",
-      "interaction": "at_support",
-      "probability": 0.8934,
-      "recorded_at": "2026-04-25 17:40:56",
-      "regime": "breakout",
-      "risk_reward_ratio": 2.95,
-      "score": 96.22,
-      "stage": "guardrails_flat",
-      "summary": "RL tightened LONG threshold to \u226572 (ranging trap, marginal edge)",
-      "ts": 1777119056.739116
-    },
-    {
-      "action": "LONG",
-      "breakout": "confirmed_bullish_breakout",
-      "coin": "EUR",
-      "interaction": "at_support",
-      "probability": 0.9749,
-      "recorded_at": "2026-04-25 16:49:11",
-      "regime": "trend",
-      "risk_reward_ratio": 4.14,
-      "score": 100.0,
-      "stage": "flat_no_trade",
-      "summary": "5 analogs \u2022 win 60% \u2022 avg pnl +0.78% \u2022 avg R +0.65 \u2022 reliability 0.69",
-      "ts": 1777115951.1002848
-    },
-    {
-      "action": "LONG",
-      "breakout": "confirmed_bullish_breakout",
-      "coin": "EUR",
-      "interaction": "at_support",
-      "probability": 0.9748,
-      "recorded_at": "2026-04-25 16:44:19",
-      "regime": "trend",
-      "risk_reward_ratio": 4.14,
-      "score": 100.0,
-      "stage": "flat_no_trade",
-      "summary": "5 analogs \u2022 win 60% \u2022 avg pnl +0.78% \u2022 avg R +0.65 \u2022 reliability 0.69",
-      "ts": 1777115659.882748
-    },
-    {
-      "action": "LONG",
-      "breakout": "confirmed_bullish_breakout",
-      "coin": "EUR",
-      "interaction": "at_support",
-      "probability": 0.9749,
-      "recorded_at": "2026-04-25 16:40:02",
-      "regime": "trend",
-      "risk_reward_ratio": 4.14,
-      "score": 100.0,
-      "stage": "flat_no_trade",
-      "summary": "5 analogs \u2022 win 60% \u2022 avg pnl +0.78% \u2022 avg R +0.65 \u2022 reliability 0.69",
-      "ts": 1777115402.2397802
-    },
-    {
-      "action": "LONG",
-      "breakout": "confirmed_bullish_breakout",
-      "coin": "EUR",
-      "interaction": "at_support",
-      "probability": 0.9748,
-      "recorded_at": "2026-04-25 16:35:14",
-      "regime": "trend",
-      "risk_reward_ratio": 4.14,
-      "score": 100.0,
-      "stage": "flat_no_trade",
-      "summary": "5 analogs \u2022 win 60% \u2022 avg pnl +0.78% \u2022 avg R +0.65 \u2022 reliability 0.69",
-      "ts": 1777115114.670093
-    },
-    {
-      "action": "LONG",
-      "breakout": "persistent_bullish_breakout",
-      "coin": "HYPE",
-      "interaction": "at_support",
-      "probability": 0.8924,
-      "recorded_at": "2026-04-25 15:57:14",
-      "regime": "absorption",
-      "risk_reward_ratio": 1.66,
-      "score": 96.16,
-      "stage": "guardrails_flat",
-      "summary": "RL tightened LONG threshold to \u226572 (ranging trap, marginal edge)",
-      "ts": 1777112834.034362
     }
   ],
   "summary": {
-    "bad_trade_count": 11,
-    "correct_pass_count": 454,
-    "good_trade_count": 32,
-    "missed_win_count": 904
+    "bad_trade_count": 10,
+    "correct_pass_count": 476,
+    "good_trade_count": 34,
+    "missed_win_count": 977
   },
   "target_r": 0.25,
   "top_blockers": [
@@ -171,42 +171,42 @@
       "misses": 64
     },
     {
-      "blocker": "price moved too far since the conviction snapshot",
-      "misses": 58
+      "blocker": "embargoed after 6 LONG trades with 17% win rate",
+      "misses": 64
     },
     {
       "blocker": "RL tightened LONG threshold to \u226572 (ranging trap, marginal edge)",
-      "misses": 57
+      "misses": 61
     },
     {
-      "blocker": "embargoed after 6 LONG trades with 17% win rate",
-      "misses": 37
+      "blocker": "RL tightened LONG threshold to \u226569 (high uncertainty)",
+      "misses": 56
+    },
+    {
+      "blocker": "price moved too far since the conviction snapshot",
+      "misses": 54
+    },
+    {
+      "blocker": "Thesis high: daily breakout is already confirmed; higher structure remains in a downtrend; trend regime supports follow-through",
+      "misses": 36
     },
     {
       "blocker": "Thesis high: strong support defense is holding beneath price; daily breakout is already confirmed; breakout regime supports follow-through",
       "misses": 32
-    },
-    {
-      "blocker": "RL tightened LONG threshold to \u226568 (marginal edge)",
-      "misses": 30
-    },
-    {
-      "blocker": "Thesis high: daily breakout is already confirmed; higher structure remains in a downtrend; trend regime supports follow-through",
-      "misses": 28
     }
   ],
   "top_missed_assets": [
     {
       "coin": "GOOGL",
-      "misses": 188
-    },
-    {
-      "coin": "META",
-      "misses": 147
+      "misses": 208
     },
     {
       "coin": "AMZN",
-      "misses": 118
+      "misses": 156
+    },
+    {
+      "coin": "META",
+      "misses": 144
     },
     {
       "coin": "AAPL",
@@ -214,15 +214,15 @@
     },
     {
       "coin": "HYPE",
-      "misses": 61
+      "misses": 65
     },
     {
       "coin": "EUR",
-      "misses": 54
+      "misses": 55
     },
     {
       "coin": "NATGAS",
-      "misses": 37
+      "misses": 45
     },
     {
       "coin": "MSFT",
@@ -232,15 +232,15 @@
   "top_missed_families": [
     {
       "family": "GOOGL:LONG",
-      "misses": 188
-    },
-    {
-      "family": "META:LONG",
-      "misses": 147
+      "misses": 208
     },
     {
       "family": "AMZN:LONG",
-      "misses": 118
+      "misses": 156
+    },
+    {
+      "family": "META:LONG",
+      "misses": 144
     },
     {
       "family": "AAPL:LONG",
@@ -248,15 +248,15 @@
     },
     {
       "family": "HYPE:LONG",
-      "misses": 61
+      "misses": 65
     },
     {
       "family": "EUR:LONG",
-      "misses": 54
+      "misses": 55
     },
     {
       "family": "NATGAS:SHORT",
-      "misses": 37
+      "misses": 45
     },
     {
       "family": "MSFT:LONG",
@@ -265,23 +265,23 @@
   ],
   "top_missed_stages": [
     {
-      "misses": 158,
-      "stage": "flat_no_trade"
-    },
-    {
-      "misses": 141,
-      "stage": "signal_streak_wait"
-    },
-    {
-      "misses": 138,
+      "misses": 176,
       "stage": "major_catalyst_watch"
     },
     {
-      "misses": 89,
+      "misses": 164,
+      "stage": "flat_no_trade"
+    },
+    {
+      "misses": 145,
+      "stage": "signal_streak_wait"
+    },
+    {
+      "misses": 108,
       "stage": "risk_rejected"
     },
     {
-      "misses": 78,
+      "misses": 76,
       "stage": "loss_circuit_breaker"
     },
     {
@@ -289,12 +289,12 @@
       "stage": "execution_quality_block"
     },
     {
-      "misses": 59,
-      "stage": "data_reliability_block"
+      "misses": 62,
+      "stage": "guardrails_flat"
     },
     {
-      "misses": 58,
-      "stage": "guardrails_flat"
+      "misses": 59,
+      "stage": "precision_cadence_block"
     }
   ]
 }
