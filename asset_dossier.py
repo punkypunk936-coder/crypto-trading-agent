@@ -101,6 +101,13 @@ def _missed_by_coin(missed_move_report: dict | None) -> dict[str, dict]:
             continue
         slot = by_coin.setdefault(coin, {"misses": 0})
         slot.setdefault("latest", dict(item or {}))
+    replay = dict(report.get("daily_top_mover_replay") or {})
+    for item in list(replay.get("missed_top_movers") or []):
+        coin = _safe_str((item or {}).get("coin")).upper()
+        if not coin:
+            continue
+        slot = by_coin.setdefault(coin, {"misses": 0})
+        slot["daily_top_mover_replay"] = dict(item or {})
     return by_coin
 
 
@@ -237,6 +244,7 @@ def build_report(
             "missed_move_context": {
                 "miss_count": int(missed_coin.get("misses") or 0),
                 "latest": dict(missed_coin.get("latest") or {}),
+                "daily_top_mover_replay": dict(missed_coin.get("daily_top_mover_replay") or {}),
             },
             "playbook_distiller": distilled_asset,
             "llm_referee": llm,

@@ -8,12 +8,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #06080f;
-    --bg-secondary: #0b0e18;
-    --card: rgba(14, 18, 30, 0.7);
-    --card-hover: rgba(18, 23, 38, 0.85);
-    --border: rgba(255, 255, 255, 0.06);
-    --border-hover: rgba(255, 255, 255, 0.12);
+    --bg: #090a0a;
+    --bg-secondary: #101111;
+    --card: #121313;
+    --card-hover: #151717;
+    --border: rgba(235, 237, 229, 0.08);
+    --border-hover: rgba(235, 237, 229, 0.14);
     --green: #00e68a;
     --green-dim: rgba(0, 230, 138, 0.15);
     --green-glow: rgba(0, 230, 138, 0.3);
@@ -27,15 +27,15 @@
     --purple: #a78bfa;
     --purple-dim: rgba(167, 139, 250, 0.15);
     --cyan: #22d3ee;
-    --muted: rgba(255, 255, 255, 0.35);
-    --text: rgba(255, 255, 255, 0.92);
-    --text-secondary: rgba(255, 255, 255, 0.55);
+    --muted: rgba(235, 237, 229, 0.38);
+    --text: rgba(245, 246, 240, 0.93);
+    --text-secondary: rgba(235, 237, 229, 0.58);
     --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     --mono: 'JetBrains Mono', 'SF Mono', monospace;
-    --radius: 16px;
-    --radius-sm: 10px;
-    --glow-green: 0 0 30px rgba(0, 230, 138, 0.15);
-    --glow-red: 0 0 30px rgba(255, 77, 106, 0.15);
+    --radius: 8px;
+    --radius-sm: 6px;
+    --glow-green: 0 0 0 1px rgba(0, 230, 138, 0.10);
+    --glow-red: 0 0 0 1px rgba(255, 77, 106, 0.12);
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -49,43 +49,29 @@
     overflow-x: hidden;
   }
 
-  /* Animated gradient background */
   body::before {
-    content: '';
-    position: fixed;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: radial-gradient(ellipse at 20% 20%, rgba(0, 230, 138, 0.04) 0%, transparent 50%),
-                radial-gradient(ellipse at 80% 80%, rgba(91, 140, 255, 0.04) 0%, transparent 50%),
-                radial-gradient(ellipse at 50% 50%, rgba(167, 139, 250, 0.02) 0%, transparent 50%);
-    animation: bgShift 20s ease-in-out infinite;
+    content: none;
+    display: none;
     z-index: 0;
     pointer-events: none;
   }
-  @keyframes bgShift {
-    0%, 100% { transform: translate(0, 0); }
-    33% { transform: translate(-2%, 1%); }
-    66% { transform: translate(2%, -1%); }
-  }
 
   .container {
-    max-width: 1400px;
+    max-width: 1280px;
     margin: 0 auto;
-    padding: 0 20px;
+    padding: 0 16px;
     position: relative;
     z-index: 1;
   }
 
   /* ── Header ────────────────────────────── */
   header {
-    padding: 20px 0;
+    padding: 16px 0;
     display: flex;
     align-items: center;
     justify-content: space-between;
     border-bottom: 1px solid var(--border);
-    margin-bottom: 24px;
+    margin-bottom: 16px;
   }
   .logo {
     display: flex;
@@ -93,25 +79,23 @@
     gap: 12px;
   }
   .logo-icon {
-    width: 38px;
-    height: 38px;
-    border-radius: 10px;
-    background: linear-gradient(135deg, var(--green), var(--blue));
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    background: #e8ece6;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 18px;
     font-weight: 800;
     color: #000;
-    box-shadow: 0 4px 20px rgba(0, 230, 138, 0.25);
+    box-shadow: none;
   }
   .logo h1 {
     font-size: 18px;
     font-weight: 700;
-    letter-spacing: 1.5px;
-    background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.7) 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    letter-spacing: 0.5px;
+    color: var(--text);
   }
   .header-right {
     display: flex;
@@ -194,62 +178,47 @@
   /* ── Glass Cards ────────────────────────── */
   .card {
     background: var(--card);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 20px;
-    transition: all 0.3s ease;
+    padding: 14px;
+    transition: border-color 0.2s ease, background 0.2s ease;
     position: relative;
     overflow: hidden;
   }
   .card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+    content: none;
   }
   .card:hover {
     background: var(--card-hover);
     border-color: var(--border-hover);
-    transform: translateY(-1px);
   }
 
   .card-highlight {
     border-color: rgba(0, 230, 138, 0.2);
     box-shadow: var(--glow-green);
   }
-  .card-highlight::before {
-    background: linear-gradient(90deg, transparent, rgba(0, 230, 138, 0.3), transparent);
-  }
 
   .card-halt {
     border-color: rgba(255, 77, 106, 0.3);
     box-shadow: var(--glow-red);
-  }
-  .card-halt::before {
-    background: linear-gradient(90deg, transparent, rgba(255, 77, 106, 0.4), transparent);
   }
 
   .card-label {
     color: var(--text-secondary);
     font-size: 11px;
     font-weight: 600;
-    letter-spacing: 1.5px;
+    letter-spacing: 0.85px;
     text-transform: uppercase;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
     display: flex;
     align-items: center;
     gap: 8px;
   }
   .card-value {
-    font-size: 28px;
+    font-size: 24px;
     font-weight: 800;
     font-family: var(--mono);
-    letter-spacing: -0.5px;
+    letter-spacing: 0;
   }
   .card-sub {
     font-size: 12px;
@@ -353,7 +322,7 @@
   }
   .asset-section-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
     gap: 10px;
   }
   .asset-section-stack {
@@ -379,17 +348,199 @@
     font-size: 11px;
     line-height: 1.45;
   }
-  .utility-grid {
+  .call-watchlist {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .call-watchlist-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .call-watchlist-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 14px;
-    margin-top: 14px;
+    gap: 10px;
+  }
+  .call-bucket {
+    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.018);
+    border-radius: 8px;
+    padding: 10px;
+    min-width: 0;
+  }
+  .call-bucket-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .call-bucket-title {
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.7px;
+    text-transform: uppercase;
+    color: var(--text);
+  }
+  .call-bucket-count {
+    color: var(--muted);
+    font-size: 10px;
+    font-family: var(--mono);
+    white-space: nowrap;
+  }
+  .call-lanes {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .call-lane {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+  }
+  .call-lane-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 10px;
+    font-family: var(--mono);
+    letter-spacing: 0.75px;
+    text-transform: uppercase;
+  }
+  .call-lane-bullish .call-lane-title {
+    color: #9fffd1;
+  }
+  .call-lane-bearish .call-lane-title {
+    color: #ffb8c2;
+  }
+  .call-row {
+    display: grid;
+    gap: 5px;
+    border: 1px solid rgba(255,255,255,0.055);
+    background: rgba(255,255,255,0.022);
+    border-radius: 8px;
+    padding: 8px;
+    min-width: 0;
+  }
+  .call-row-bullish {
+    border-color: rgba(0,230,138,0.16);
+    background: rgba(0,230,138,0.045);
+  }
+  .call-row-bearish {
+    border-color: rgba(255,77,106,0.16);
+    background: rgba(255,77,106,0.045);
+  }
+  .call-row-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+  }
+  .call-row-symbol {
+    font-size: 13px;
+    font-weight: 800;
+    font-family: var(--mono);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .call-row-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 5px;
+  }
+  .call-row-text {
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.4;
+    min-width: 0;
+  }
+  .call-row-risk {
+    color: var(--muted);
+    font-size: 10px;
+    line-height: 1.35;
+    font-family: var(--mono);
+    min-width: 0;
+  }
+  .call-empty {
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.4;
+    border: 1px dashed rgba(255,255,255,0.08);
+    border-radius: 8px;
+    padding: 8px;
+  }
+  .call-neutral-note {
+    color: var(--muted);
+    font-size: 11px;
+    font-family: var(--mono);
+    margin-top: 8px;
+  }
+  .proactive-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .proactive-card {
+    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.02);
+    border-radius: 8px;
+    padding: 10px;
+    min-width: 0;
+  }
+  .proactive-title {
+    color: var(--muted);
+    font-size: 10px;
+    font-family: var(--mono);
+    letter-spacing: 0.75px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .proactive-main {
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1.35;
+    margin-bottom: 5px;
+  }
+  .proactive-sub {
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .proactive-list {
+    display: grid;
+    gap: 5px;
+    margin-top: 6px;
+  }
+  .proactive-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-family: var(--mono);
+  }
+  .utility-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    margin-top: 12px;
   }
   .utility-card {
     border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 14px;
+    border-radius: 8px;
     background: rgba(255,255,255,0.02);
-    padding: 14px;
+    padding: 12px;
   }
   .utility-title {
     font-size: 12px;
@@ -407,7 +558,7 @@
   }
   .map-card {
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: 8px;
     background: rgba(255,255,255,0.02);
     overflow: hidden;
   }
@@ -509,6 +660,10 @@
     font-size: 12px;
     line-height: 1.45;
   }
+  .token-subline-simple {
+    color: var(--text);
+    font-weight: 600;
+  }
   .token-preview {
     color: var(--text-secondary);
     font-size: 11px;
@@ -575,8 +730,8 @@
   .lead-callout {
     margin-bottom: 12px;
     border: 1px solid rgba(91,140,255,0.14);
-    background: rgba(91,140,255,0.06);
-    border-radius: 12px;
+    background: rgba(91,140,255,0.045);
+    border-radius: 8px;
     padding: 12px 14px;
     color: var(--text-secondary);
     font-size: 12px;
@@ -588,7 +743,7 @@
     gap: 8px;
   }
   .friction-chip {
-    border-radius: 12px;
+    border-radius: 8px;
     padding: 10px;
     border: 1px solid rgba(255,255,255,0.06);
     background: rgba(255,255,255,0.025);
@@ -700,7 +855,7 @@
     border: 1px solid rgba(255,255,255,0.08);
     background: rgba(255,255,255,0.03);
     color: var(--text);
-    border-radius: 12px;
+    border-radius: 8px;
     padding: 12px 14px;
     font-size: 13px;
     font-family: var(--mono);
@@ -720,8 +875,8 @@
   .search-result {
     border: 1px solid rgba(255,255,255,0.06);
     background: rgba(255,255,255,0.025);
-    border-radius: 14px;
-    padding: 14px;
+    border-radius: 8px;
+    padding: 12px;
   }
   .search-result-empty {
     color: var(--text-secondary);
@@ -1283,6 +1438,29 @@
     margin-top: 4px;
     font-family: var(--mono);
   }
+  .price-source-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 8px 0 12px;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(255,255,255,0.05);
+    background: rgba(255,255,255,0.025);
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.35;
+  }
+  .price-source-line strong {
+    color: var(--text-secondary);
+    font-weight: 650;
+  }
+  .price-source-warn {
+    color: var(--yellow);
+    background: rgba(255,184,77,0.08);
+    border-color: rgba(255,184,77,0.22);
+  }
 
   .pos-direction {
     display: inline-flex;
@@ -1428,14 +1606,14 @@
   .decision-card {
     border: 1px solid rgba(255,255,255,0.06);
     background: rgba(255,255,255,0.025);
-    border-radius: 14px;
+    border-radius: 8px;
   }
   .decision-card-tradable {
     background: rgba(255,255,255,0.035);
   }
   .decision-card-pending {
     border-color: rgba(255,198,92,0.26);
-    box-shadow: 0 0 20px rgba(255,198,92,0.08);
+    box-shadow: 0 0 0 1px rgba(255,198,92,0.05);
   }
   .decision-card-watch {
     background: rgba(91,140,255,0.06);
@@ -1443,11 +1621,65 @@
   }
   .decision-card-long {
     border-color: rgba(0,230,138,0.26);
-    box-shadow: 0 0 20px rgba(0,230,138,0.08);
+    box-shadow: 0 0 0 1px rgba(0,230,138,0.05);
   }
   .decision-card-short {
     border-color: rgba(255,77,106,0.26);
-    box-shadow: 0 0 20px rgba(255,77,106,0.08);
+    box-shadow: 0 0 0 1px rgba(255,77,106,0.05);
+  }
+  .decision-compact-list {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .decision-compact-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(180px, 0.9fr);
+    gap: 12px;
+    align-items: center;
+    border: 1px solid rgba(255,255,255,0.055);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.018);
+    padding: 10px 12px;
+  }
+  .decision-compact-main,
+  .decision-compact-side {
+    min-width: 0;
+  }
+  .decision-compact-side {
+    display: grid;
+    gap: 4px;
+    color: var(--text-secondary);
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.35;
+  }
+  .quiet-more {
+    margin-top: 10px;
+    border: 1px solid rgba(255,255,255,0.055);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.018);
+    padding: 10px 12px;
+  }
+  .quiet-more summary {
+    list-style: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-family: var(--mono);
+  }
+  .quiet-more summary::-webkit-details-marker {
+    display: none;
+  }
+  .event-chip {
+    color: var(--blue);
+    background: rgba(91,140,255,0.10);
+    border-color: rgba(91,140,255,0.24);
+  }
+  .event-chip-starter {
+    color: #dcfce7;
+    background: rgba(0,230,138,0.10);
+    border-color: rgba(0,230,138,0.26);
   }
   .decision-coin {
     font-size: 13px;
@@ -1662,6 +1894,9 @@
     .decision-summary {
       flex-direction: column;
     }
+    .decision-compact-row {
+      grid-template-columns: 1fr;
+    }
     .map-summary-side,
     .decision-summary-side {
       width: 100%;
@@ -1671,8 +1906,16 @@
     }
     .asset-section-grid,
     .market-map-grid,
-    .utility-grid {
+    .utility-grid,
+    .proactive-grid,
+    .call-watchlist-grid,
+    .call-lanes {
       grid-template-columns: 1fr;
+    }
+    .call-watchlist-head {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
     }
     .daily-sheet-header {
       display: none;
@@ -1701,8 +1944,8 @@
     <h1>PUNKY TRADING AGENT</h1>
   </div>
   <div class="header-right">
-    <a href="/share" target="_blank" style="padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;font-family:var(--mono);letter-spacing:0.5px;background:var(--blue-dim);color:var(--blue);border:1px solid rgba(91,140,255,0.3);text-decoration:none;transition:all 0.2s ease;">📊 Share P&amp;L</a>
-    <button class="kill-btn" id="kill-btn" onclick="handleKill()">⚠️ KILL SWITCH</button>
+    <a href="/share" target="_blank" style="padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;font-family:var(--mono);letter-spacing:0.5px;background:var(--blue-dim);color:var(--blue);border:1px solid rgba(91,140,255,0.3);text-decoration:none;transition:all 0.2s ease;">Share P&amp;L</a>
+    <button class="kill-btn" id="kill-btn" onclick="handleKill()">KILL SWITCH</button>
     <span id="mode-badge" class="badge badge-offline">OFFLINE</span>
     <span id="last-update"></span>
   </div>
@@ -1711,41 +1954,28 @@
 <!-- KPI Cards -->
 <div class="grid-4" id="kpis">
   <div class="card">
-    <div class="kpi-icon green-bg">💰</div>
+    <div class="kpi-icon green-bg">$</div>
     <div class="card-label">Portfolio</div>
     <div class="card-value" id="portfolio">$--</div>
     <div class="card-sub" id="available">Available: --</div>
   </div>
   <div class="card">
-    <div class="kpi-icon blue-bg">📊</div>
+    <div class="kpi-icon blue-bg">P/L</div>
     <div class="card-label">Total P&amp;L</div>
     <div class="card-value" id="total-pnl">$--</div>
     <div class="card-sub" id="win-rate">Win rate: --</div>
   </div>
   <div class="card">
-    <div class="kpi-icon purple-bg">🏁</div>
+    <div class="kpi-icon purple-bg">%</div>
     <div class="card-label">Win Rate</div>
     <div class="card-value" id="trade-count">--</div>
     <div class="card-sub" id="wins-losses">Closed: --</div>
   </div>
   <div class="card">
-    <div class="kpi-icon yellow-bg">🎯</div>
+    <div class="kpi-icon yellow-bg">→</div>
     <div class="card-label">Next Setup</div>
     <div class="card-value" id="cycle">--</div>
     <div class="card-sub" id="sentiment">Waiting for the next clean setup...</div>
-  </div>
-</div>
-
-<div class="full-width">
-  <div class="card">
-    <div class="card-label">🏆 Performance</div>
-    <div id="stats-body">
-      <div class="stat-row"><span class="stat-label">Best trade</span><span class="stat-value" id="stat-best">--</span></div>
-      <div class="stat-row"><span class="stat-label">Worst trade</span><span class="stat-value" id="stat-worst">--</span></div>
-      <div class="stat-row"><span class="stat-label">Average win</span><span class="stat-value" id="stat-avgwin">--</span></div>
-      <div class="stat-row"><span class="stat-label">Average loss</span><span class="stat-value" id="stat-avgloss">--</span></div>
-      <div class="stat-row"><span class="stat-label">Today</span><span class="stat-value" id="stat-daily-pnl">--</span></div>
-    </div>
   </div>
 </div>
 
@@ -1759,7 +1989,7 @@
     </div>
     <div id="open-trades-body">
       <div class="empty-state">
-        <div class="empty-icon">📭</div>
+        <div class="empty-icon">--</div>
         FLAT — no open positions
       </div>
     </div>
@@ -1767,34 +1997,73 @@
 </div>
 
 <div class="full-width">
+  <div class="card quick-lookup-card" id="lookup-card">
+    <div class="card-label">Asset Lookup</div>
+    <div class="search-shell">
+      <div class="search-row">
+        <input
+          id="ticker-search-input"
+          class="search-input"
+          type="text"
+          placeholder="Search ticker..."
+          autocomplete="off"
+          list="ticker-search-options"
+          oninput="handleTickerSearch(this.value)"
+        />
+        <datalist id="ticker-search-options"></datalist>
+      </div>
+      <div class="search-hint" id="ticker-search-hint">Fast thesis lookup</div>
+      <div id="ticker-search-result" class="search-result">
+        <div class="search-result-empty">No ticker selected.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Action Board -->
+<div class="full-width">
+  <div class="card">
+    <div class="card-label">Action Board</div>
+    <div class="card-sub" id="action-board-meta">Waiting for first cycle...</div>
+    <div id="signals-body">
+      <div class="empty-state">Waiting for first cycle...</div>
+    </div>
+  </div>
+</div>
+
+<!-- Proactive Desk -->
+<div class="full-width">
+  <div class="card">
+    <div class="card-label">Proactive Desk</div>
+    <div class="card-sub" id="proactive-meta">Waiting for proactive research...</div>
+    <div id="proactive-body">
+      <div class="empty-state">Scout book will populate after the next cycle.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Daily View -->
+<div class="full-width">
+  <details class="card details-card" id="daily-panel">
+    <summary class="card-label">Daily View</summary>
+    <div class="card-label-row">
+      <div class="map-meta" id="market-map-meta">Waiting for daily view...</div>
+      <div class="review-actions">
+        <button class="tool-btn" onclick="editMarketMap()">EDIT LEVELS</button>
+      </div>
+    </div>
+    <div id="market-map-body">
+      <div class="empty-state">Building live daily view...</div>
+    </div>
+  </details>
+</div>
+
+<div class="full-width">
   <details class="card details-card" id="tools-panel">
-    <summary class="card-label">🧰 Lookup Tools</summary>
+    <summary class="card-label">Advanced Tools</summary>
     <div class="utility-grid">
       <div class="utility-card">
-        <div class="utility-title">Ticker Search</div>
-        <div class="utility-sub">Type any tracked ticker to pull the agent's current read instantly.</div>
-        <div class="search-shell">
-          <div class="search-row">
-            <input
-              id="ticker-search-input"
-              class="search-input"
-              type="text"
-              placeholder="Search BTC, HYPE, GOOGL, TAO..."
-              autocomplete="off"
-              list="ticker-search-options"
-              oninput="handleTickerSearch(this.value)"
-            />
-            <datalist id="ticker-search-options"></datalist>
-          </div>
-          <div class="search-hint" id="ticker-search-hint">Try a live ticker from the active universe or scout watchlist.</div>
-          <div id="ticker-search-result" class="search-result">
-            <div class="search-result-empty">Start typing a ticker and the dashboard will pull the agent's current thesis, trigger, and risk view for that market.</div>
-          </div>
-        </div>
-      </div>
-      <div class="utility-card">
         <div class="utility-title">Trade.xyz Volume</div>
-        <div class="utility-sub">Paste a wallet to check Hyperliquid fills against the live <span style="font-family:var(--mono);">dex=xyz</span> market universe.</div>
         <div class="volume-shell">
           <div class="volume-actions">
             <input
@@ -1807,9 +2076,9 @@
             />
             <button class="tool-btn" id="tradexyz-check-btn" onclick="lookupTradexyzVolume()">CHECK VOLUME</button>
           </div>
-          <div id="tradexyz-status" class="volume-status">Volume checks run against Hyperliquid’s native fill history and then filter down to the current Trade.xyz market set.</div>
+          <div id="tradexyz-status" class="volume-status">Wallet volume snapshot is idle.</div>
           <div id="tradexyz-result" class="search-result">
-            <div class="search-result-empty">No wallet checked yet. Once you paste an address, the dashboard will show total Trade.xyz volume, fill count, and top traded markets.</div>
+            <div class="search-result-empty">No wallet checked yet.</div>
           </div>
         </div>
       </div>
@@ -1817,36 +2086,22 @@
   </details>
 </div>
 
-<!-- Action Board -->
 <div class="full-width">
-  <div class="card">
-    <div class="card-label">🎯 Action Board</div>
-    <div class="card-sub" id="action-board-meta">Waiting for first cycle...</div>
-    <div id="signals-body">
-      <div class="empty-state">Waiting for first cycle...</div>
+  <details class="card details-card" id="performance-panel">
+    <summary class="card-label">Performance</summary>
+    <div id="stats-body">
+      <div class="stat-row"><span class="stat-label">Best trade</span><span class="stat-value" id="stat-best">--</span></div>
+      <div class="stat-row"><span class="stat-label">Worst trade</span><span class="stat-value" id="stat-worst">--</span></div>
+      <div class="stat-row"><span class="stat-label">Average win</span><span class="stat-value" id="stat-avgwin">--</span></div>
+      <div class="stat-row"><span class="stat-label">Average loss</span><span class="stat-value" id="stat-avgloss">--</span></div>
+      <div class="stat-row"><span class="stat-label">Today</span><span class="stat-value" id="stat-daily-pnl">--</span></div>
     </div>
-  </div>
-</div>
-
-<!-- Daily View -->
-<div class="full-width">
-  <div class="card">
-    <div class="card-label-row">
-      <div class="card-label">🗺️ Daily View</div>
-      <div class="review-actions">
-        <button class="tool-btn" onclick="editMarketMap()">EDIT LEVELS</button>
-      </div>
-    </div>
-    <div class="map-meta" id="market-map-meta">Waiting for daily view...</div>
-    <div id="market-map-body">
-      <div class="empty-state">Building live daily view...</div>
-    </div>
-  </div>
+  </details>
 </div>
 
 <div class="full-width">
   <details class="card details-card" id="learning-panel">
-    <summary class="card-label">🧠 Agent Learning <span class="muted" style="font-size:10px;margin-left:4px;" id="review-meta">Waiting for learning stats...</span></summary>
+    <summary class="card-label">Agent Learning <span class="muted" style="font-size:10px;margin-left:4px;" id="review-meta">Waiting for learning stats...</span></summary>
     <div id="review-body">
       <div class="empty-state">No lessons absorbed yet</div>
     </div>
@@ -1858,7 +2113,7 @@
   <div class="card" style="padding-bottom:8px;">
     <div class="card-label expand-toggle" onclick="toggleTrades()">
       <span class="expand-arrow" id="trades-arrow">▶</span>
-      📋 Closed Trades
+      Closed Trades
       <span class="muted" style="font-size:10px;margin-left:4px;" id="closed-count-label"></span>
     </div>
     <div id="trades-wrap" style="display:none;overflow-x:auto;">
@@ -1897,6 +2152,31 @@ const esc  = (v) => String(v == null ? '' : v)
 const shortText = (v, max=120) => {
   const text = String(v == null ? '' : v).trim();
   return text.length > max ? text.slice(0, max - 1) + '…' : text;
+};
+const priceSourceParts = (item) => {
+  const data = item || {};
+  const source = String(data.price_source_label || data.price_source || '').trim();
+  const reference = Number(data.reference_price || 0);
+  const deviationRaw = data.price_deviation_pct;
+  const deviation = deviationRaw == null ? null : Number(deviationRaw);
+  const parts = [];
+  if (source) parts.push(source);
+  if (reference > 0) parts.push('Ref ' + formatUsd(reference));
+  if (Number.isFinite(deviation)) parts.push('Δ ' + fmtP(deviation));
+  return parts;
+};
+const priceSourceHtml = (item) => {
+  const parts = priceSourceParts(item);
+  const status = String((item || {}).price_status || '').toUpperCase();
+  const warning = String((item || {}).price_warning || '').trim();
+  if (!parts.length && !warning) return '';
+  const clsName = (status === 'CHECK' || status === 'REFERENCE_MISSING')
+    ? 'price-source-line price-source-warn'
+    : 'price-source-line';
+  const text = parts.length ? parts.join(' • ') : 'Reference check unavailable';
+  return '<div class="' + clsName + '"><strong>Price source:</strong> ' + esc(text)
+    + (warning ? ' • ' + esc(shortText(warning, 120)) : '')
+    + '</div>';
 };
 const levelMove = (current, level) => {
   const cur = Number(current || 0);
@@ -1990,14 +2270,23 @@ const reviewBreakdownHtml = (label, values) => {
 const surfaceModeMeta = (value, tradable=false) => {
   const text = String(value || '').trim();
   if (tradable) return text || 'Executable';
-  if (!text || text.toLowerCase() === 'support pending') return 'Watching only';
+  if (!text || text.toLowerCase() === 'support pending') return 'Tracking only';
   return text;
 };
 const surfaceModeBadge = (value, tradable=false) => {
   const text = String(value || '').trim().toUpperCase();
   if (tradable) return text || 'EXEC';
-  if (!text || text === 'PENDING') return 'WATCH';
+  if (!text || text === 'PENDING' || text === 'WATCH') return 'TRACK';
   return text;
+};
+const setupCallSide = (item) => {
+  const safe = item || {};
+  const status = String(safe.status || '').trim().toUpperCase();
+  const bias = String(safe.bias || '').trim().toUpperCase();
+  const action = String(safe.candidate_action || safe.final_action || safe.action || '').trim().toUpperCase();
+  if (status.includes('SHORT') || action === 'SHORT' || bias === 'BEARISH') return 'bearish';
+  if (status.includes('LONG') || action === 'LONG' || bias === 'BULLISH') return 'bullish';
+  return 'neutral';
 };
 const setupStanceTone = (item) => {
   const status = String(((item || {}).status) || '').trim().toUpperCase();
@@ -2012,19 +2301,16 @@ const setupStanceTone = (item) => {
   return String((item || {}).label || 'WATCH').trim().toUpperCase();
 };
 const setupStanceText = (item, mode='chip') => {
-  const safe = item || {};
-  const bias = String(safe.bias || 'NEUTRAL').trim().toUpperCase();
-  const tone = setupStanceTone(safe);
-  if (mode === 'title') {
-    const biasTitle = humanizeKey(bias);
-    const toneTitle = humanizeKey(tone);
-    return bias === 'NEUTRAL' ? toneTitle : (biasTitle + ' ' + toneTitle).trim();
-  }
-  return bias === 'NEUTRAL' ? tone : (bias + ' • ' + tone);
+  const side = setupCallSide(item);
+  if (side === 'bullish') return mode === 'title' ? 'Bullish call' : 'BULLISH CALL';
+  if (side === 'bearish') return mode === 'title' ? 'Bearish call' : 'BEARISH CALL';
+  return mode === 'title' ? 'Neutral' : 'NEUTRAL';
 };
 const setupStanceChipHtml = (item) => {
   const safe = item || {};
-  return '<span class="' + biasClass(safe.bias) + '">' + esc(setupStanceText(safe, 'chip')) + '</span>';
+  const side = setupCallSide(safe);
+  const tone = side === 'bullish' ? 'BULLISH' : side === 'bearish' ? 'BEARISH' : 'NEUTRAL';
+  return '<span class="' + biasClass(tone) + '">' + esc(setupStanceText(safe, 'chip')) + '</span>';
 };
 const setupReasonText = (item, limit=170) => {
   const safe = item || {};
@@ -2035,6 +2321,128 @@ const setupReasonText = (item, limit=170) => {
       || safe.trigger
       || safe.headline
       || 'Waiting for a cleaner setup.',
+    limit
+  );
+};
+const cleanSentence = (value) => String(value == null ? '' : value)
+  .replace(/\s+/g, ' ')
+  .trim();
+const extractCatalystTerms = (value, limit=3) => {
+  const text = cleanSentence(value);
+  const markerMatch = text.match(/(?:Thesis|Catalyst):\s*([^|.]+)/i);
+  if (!markerMatch) return '';
+  return markerMatch[1]
+    .replace(/\band\b/gi, '+')
+    .split('+')
+    .map((term) => cleanSentence(term).replace(/^[,;:-]+|[,;:-]+$/g, ''))
+    .filter((term) => term && term.length <= 48)
+    .slice(0, limit)
+    .join(' + ');
+};
+const plainTradeReason = (value, mode='open', limit=86) => {
+  const text = cleanSentence(value);
+  if (!text) return mode === 'hold' ? 'Thesis still valid.' : 'No opening thesis recorded.';
+  const lower = text.toLowerCase();
+  const catalysts = extractCatalystTerms(text);
+  if (mode === 'hold') {
+    if (catalysts) return shortText('Catalysts intact: ' + catalysts + '.', limit);
+    if (lower.includes('thesis stayed intact') || lower.includes('thesis stays valid')) return 'Thesis still valid.';
+  }
+  if (lower.includes('pre-event starter')) return shortText('Pre-event starter: ' + (catalysts || 'catalyst stack active') + '.', limit);
+  if (lower.includes('support defense') || lower.includes('at support')) return shortText('Support held; ' + (catalysts || 'starter risk allowed') + '.', limit);
+  if (lower.includes('breakout') || lower.includes('reclaim')) return shortText('Breakout/reclaim confirmed; ' + (catalysts || 'momentum active') + '.', limit);
+  if (lower.includes('breakdown')) return shortText('Breakdown confirmed; ' + (catalysts || 'risk active') + '.', limit);
+  if (lower.includes('top of book drifted')) return 'Price drifted, thesis intact.';
+  return shortText(text.split('|')[0].replace(/^Thesis\s+\w+:\s*/i, '').trim(), limit);
+};
+const levelLabel = (label) => {
+  const key = String(label || '').toUpperCase();
+  if (key === 'SL') return 'Stop';
+  if (key === 'TP') return 'Target';
+  if (key === 'BREAK') return 'Break';
+  return key.charAt(0) + key.slice(1).toLowerCase();
+};
+const levelTokensFromText = (value) => {
+  const text = String(value == null ? '' : value);
+  const tokens = [];
+  const pattern = /(SL|TP|Limit|Entry|Trigger|Reclaim|Break|Lose)\s+[-+]?\d[\d,]*(?:\.\d+)?/gi;
+  let match = pattern.exec(text);
+  while (match) {
+    tokens.push(levelLabel(match[1]) + ' ' + match[0].replace(match[1], '').trim());
+    match = pattern.exec(text);
+  }
+  return tokens;
+};
+const stripLevelMath = (value) => cleanSentence(value)
+  .replace(/\s*\([^)]*\)/g, '')
+  .replace(/^Live\s+[-+]?\d[\d,]*(?:\.\d+)?\s*[;•]\s*/i, '')
+  .replace(/\s*[;•]\s*/g, ' / ');
+const simpleLevelText = (value, fallback='Level forming', limit=74) => {
+  const tokens = levelTokensFromText(value);
+  if (tokens.length) return shortText(tokens.join(' / '), limit);
+  const cleaned = stripLevelMath(value);
+  return shortText(cleaned || fallback, limit);
+};
+const simpleActionText = (item) => {
+  const status = String((item || {}).status || '').toUpperCase();
+  if (status === 'OPEN_LONG') return 'Holding long';
+  if (status === 'OPEN_SHORT') return 'Holding short';
+  if (status === 'PENDING_ENTRY') return 'Order working';
+  if (status === 'READY_LONG') return 'Ready to buy';
+  if (status === 'READY_SHORT') return 'Ready to short';
+  if (status === 'WATCH_LONG' || status === 'WAIT_RECLAIM') return 'Watching long';
+  if (status === 'WATCH_SHORT' || status === 'WAIT_BREAKDOWN') return 'Watching short';
+  if (['EXECUTION_BLOCKED', 'DATA_QUALITY_HOLD', 'PORTFOLIO_GUARD', 'RISK_BLOCKED'].includes(status)) return 'Blocked';
+  if (status === 'COOLDOWN') return 'Cooling off';
+  return setupStanceText(item, 'title');
+};
+const simpleNextText = (item, limit=76) => {
+  const safe = item || {};
+  const status = String(safe.status || '').toUpperCase();
+  const level = simpleLevelText(safe.trigger || safe.entry_status, 'Level forming', 54);
+  if (status === 'OPEN_LONG' || status === 'OPEN_SHORT') return shortText('Hold: ' + level, limit);
+  if (status === 'PENDING_ENTRY') return shortText('Working: ' + level, limit);
+  if (status === 'READY_LONG') return shortText('Buy if: ' + level, limit);
+  if (status === 'READY_SHORT') return shortText('Short if: ' + level, limit);
+  if (status === 'WATCH_LONG' || status === 'WAIT_RECLAIM') return shortText('Needs: ' + level, limit);
+  if (status === 'WATCH_SHORT' || status === 'WAIT_BREAKDOWN') return shortText('Needs: ' + level, limit);
+  if (status === 'COOLDOWN') return 'Cooling off.';
+  return shortText(level || setupReasonText(safe, limit), limit);
+};
+const simpleRiskText = (item, limit=70) => {
+  const risk = simpleLevelText((item || {}).risk || '', '', limit);
+  if (risk) return risk.replace(/^Lose\s/i, 'Wrong below ').replace(/^Reclaim\s/i, 'Wrong above ');
+  return shortText(simpleLevelText((item || {}).trigger || '', 'Risk forming', limit), limit);
+};
+const simpleInvalidationText = (item, limit=78) => {
+  const safe = item || {};
+  const direct = cleanSentence(safe.invalidation_short || safe.invalidation || '');
+  if (direct) {
+    return shortText(
+      direct
+        .replace(/\s*\([^)]*\)/g, '')
+        .replace(/\.$/, ''),
+      limit
+    );
+  }
+  const risk = simpleRiskText(safe, limit)
+    .replace(/^Wrong below\s/i, 'Invalid below ')
+    .replace(/^Wrong above\s/i, 'Invalid above ')
+    .replace(/^Lose\s/i, 'Invalid below ')
+    .replace(/^Reclaim\s/i, 'Invalid above ');
+  return shortText(risk || 'Invalidation forming', limit);
+};
+const simpleThesisText = (item, limit=84) => {
+  const safe = item || {};
+  return plainTradeReason(
+    safe.current_logic_short
+      || safe.entry_logic_short
+      || safe.headline
+      || safe.next_setup_reason
+      || safe.execution_note
+      || safe.map_summary
+      || '',
+    String(safe.status || '').toUpperCase().startsWith('OPEN_') ? 'hold' : 'open',
     limit
   );
 };
@@ -2049,12 +2457,8 @@ const whyLeadText = (item, limit=170) => {
   );
 };
 const leadSummaryText = (item, limit=220) => {
-  const why = whyLeadText(item, 140);
-  const blocker = setupReasonText(item, 160);
-  if (why && blocker && why.toLowerCase() !== blocker.toLowerCase()) {
-    return shortText(why + ' • ' + blocker, limit);
-  }
-  return shortText(why || blocker || 'Waiting for the next clean setup.', limit);
+  if (!item) return 'Waiting for the next clean setup.';
+  return shortText(simpleNextText(item, 86) + ' • ' + simpleInvalidationText(item, 76) + ' • ' + simpleThesisText(item, 76), limit);
 };
 const frictionStateLabel = (status) => {
   const key = String(status || 'wait').toLowerCase();
@@ -2086,12 +2490,129 @@ const catalystRailHtml = (item) => {
     }).join('')
     + '</div></div>';
 };
+const eventChipHtml = (item) => {
+  const safe = item || {};
+  const starterActive = Boolean(safe.conviction_entry_active);
+  const starterSize = Number(safe.conviction_entry_size_multiplier || 0);
+  if (starterActive) {
+    const label = safe.conviction_entry_event ? 'EVENT STARTER' : 'STARTER';
+    const sizeText = starterSize > 0 ? ' ' + Math.round(starterSize * 100) + '%' : '';
+    return '<span class="review-chip event-chip-starter">' + esc(label + sizeText) + '</span>';
+  }
+  const eventScore = Number(safe.news_event_score || 0);
+  const catalystScore = Number(safe.news_catalyst_score || 0);
+  if (eventScore >= 3 || safe.news_event_summary) {
+    return '<span class="review-chip event-chip">EVENT</span>';
+  }
+  if (catalystScore >= 3 || safe.news_catalyst_summary) {
+    return '<span class="review-chip event-chip">CATALYST</span>';
+  }
+  return '';
+};
+const actionCompactRowHtml = (item) => {
+  const status = String((item || {}).status || 'NO_SETUP').toUpperCase();
+  const modeClass = item.tradable ? 'signal-mode-tradable' : 'signal-mode-watch';
+  return '<div class="decision-compact-row">'
+    + '<div class="decision-compact-main">'
+      + '<div class="token-line"><div class="decision-coin">' + esc(item.coin) + '</div><span class="' + modeClass + '">' + esc(surfaceModeBadge(item.mode_badge, item.tradable)) + '</span>' + setupStanceChipHtml(item) + probabilityChipHtml(item) + eventChipHtml(item) + assetCategoryBadgeHtml(item) + (status === 'PENDING_ENTRY' ? '<span class="review-chip">ORDER LIVE</span>' : '') + '</div>'
+      + '<div class="token-subline token-subline-simple">' + esc(simpleThesisText(item, 84)) + '</div>'
+    + '</div>'
+    + '<div class="decision-compact-side">'
+      + '<div>' + esc(simpleNextText(item, 78)) + '</div>'
+      + '<div>' + esc(simpleInvalidationText(item, 72)) + '</div>'
+    + '</div>'
+  + '</div>';
+};
+const callImportanceScore = (item) => {
+  const safe = item || {};
+  const status = String(safe.status || '').toUpperCase();
+  let score = 0;
+  if (status.startsWith('OPEN_')) score += 80;
+  if (status === 'PENDING_ENTRY') score += 72;
+  if (status === 'READY_LONG' || status === 'READY_SHORT') score += 64;
+  if (status === 'WATCH_LONG' || status === 'WATCH_SHORT' || status === 'WAIT_RECLAIM' || status === 'WAIT_BREAKDOWN') score += 42;
+  if (safe.tradable) score += 12;
+  score += Math.max(0, Math.min(30, Number(safe.probability_pct || 0) - 45));
+  score += Math.min(18, Math.abs(Number(safe.score || 50) - 50) / 2);
+  score += Math.min(18, Number(safe.news_event_score || safe.news_catalyst_score || 0) * 3);
+  if (safe.conviction_entry_active) score += 14;
+  return score;
+};
+const sortCallItems = (items) => {
+  return Array.from(items || []).sort((a, b) => {
+    const delta = callImportanceScore(b) - callImportanceScore(a);
+    if (delta) return delta;
+    return String((a || {}).coin || '').localeCompare(String((b || {}).coin || ''));
+  });
+};
+const callWatchlistRowHtml = (item, side) => {
+  const safe = item || {};
+  const modeClass = safe.tradable ? 'signal-mode-tradable' : 'signal-mode-watch';
+  const status = String(safe.status || '').toUpperCase();
+  const statusText = status.startsWith('OPEN_')
+    ? 'LIVE'
+    : status === 'PENDING_ENTRY'
+      ? 'ORDER'
+      : surfaceModeBadge(safe.mode_badge, safe.tradable);
+  const meta = [
+    '<span class="' + modeClass + '">' + esc(statusText) + '</span>',
+    eventChipHtml(safe),
+  ].filter(Boolean).join('');
+  return '<div class="call-row call-row-' + esc(side) + '">'
+    + '<div class="call-row-top">'
+      + '<div class="call-row-symbol">' + esc(safe.coin || '--') + '</div>'
+      + '<div class="call-row-meta">' + meta + '</div>'
+    + '</div>'
+    + '<div class="call-row-text">' + esc(simpleNextText(safe, 78)) + '</div>'
+    + '<div class="call-row-risk">' + esc(simpleInvalidationText(safe, 62)) + '</div>'
+  + '</div>';
+};
+const renderCallLane = (items, side, label) => {
+  const visible = sortCallItems(items).slice(0, 5);
+  const hidden = Math.max(0, Number((items || []).length) - visible.length);
+  return '<div class="call-lane call-lane-' + esc(side) + '">'
+    + '<div class="call-lane-title"><span>' + esc(label) + '</span><span>' + esc(String((items || []).length)) + '</span></div>'
+    + (visible.length ? visible.map((item) => callWatchlistRowHtml(item, side)).join('') : '<div class="call-empty">No clear call right now.</div>')
+    + (hidden ? '<div class="call-neutral-note">+' + esc(String(hidden)) + ' more lower-priority names</div>' : '')
+  + '</div>';
+};
+const renderCallBucket = (bucket, items) => {
+  const bucketItems = (items || []).filter((item) => (item.asset_bucket || assetBucketForCoin(item.coin)) === bucket);
+  const bullish = bucketItems.filter((item) => setupCallSide(item) === 'bullish');
+  const bearish = bucketItems.filter((item) => setupCallSide(item) === 'bearish');
+  const neutralCount = bucketItems.length - bullish.length - bearish.length;
+  return '<div class="call-bucket">'
+    + '<div class="call-bucket-top">'
+      + '<div class="call-bucket-title">' + esc(bucketLabel(bucket)) + '</div>'
+      + '<div class="call-bucket-count">' + esc(String(bucketItems.length)) + ' tracked</div>'
+    + '</div>'
+    + '<div class="call-lanes">'
+      + renderCallLane(bullish, 'bullish', 'Bullish')
+      + renderCallLane(bearish, 'bearish', 'Bearish')
+    + '</div>'
+    + (neutralCount > 0 ? '<div class="call-neutral-note">' + esc(String(neutralCount)) + ' neutral / no strong call</div>' : '')
+  + '</div>';
+};
+const renderCallWatchlist = (items) => {
+  const safeItems = Array.isArray(items) ? items.filter((item) => item && item.coin) : [];
+  if (!safeItems.length) return '';
+  return '<div class="call-watchlist">'
+    + '<div class="call-watchlist-head">'
+      + '<div class="asset-section-title">Watchlist</div>'
+      + '<div class="asset-section-sub">Bullish and bearish calls. Only the next level is shown.</div>'
+    + '</div>'
+    + '<div class="call-watchlist-grid">'
+      + renderCallBucket('coin', safeItems)
+      + renderCallBucket('equity', safeItems)
+    + '</div>'
+  + '</div>';
+};
 const itemBiasMixText = (items) => {
   const counts = { BULLISH: 0, BEARISH: 0, NEUTRAL: 0 };
   (items || []).forEach((item) => {
-    const bias = String(((item || {}).bias) || 'NEUTRAL').toUpperCase();
-    if (bias === 'BULLISH') counts.BULLISH += 1;
-    else if (bias === 'BEARISH') counts.BEARISH += 1;
+    const side = setupCallSide(item);
+    if (side === 'bullish') counts.BULLISH += 1;
+    else if (side === 'bearish') counts.BEARISH += 1;
     else counts.NEUTRAL += 1;
   });
   const parts = [];
@@ -2113,7 +2634,7 @@ const latestWinSummaryText = (lesson) => {
   const direction = String(lesson.direction || '').trim().toUpperCase();
   if (coin) parts.push(coin);
   if (direction) parts.push(direction);
-  const lessonText = shortText(lesson.lesson || lesson.close_logic || lesson.open_logic || 'Clean win logged.', 110);
+  const lessonText = shortText(lesson.lesson || lesson.close_logic || plainTradeReason(lesson.open_logic || 'Clean win logged.', 'open', 70), 90);
   const headline = parts.join(' ');
   return headline + ' ' + fmtD(Number(lesson.pnl_usd || 0)) + (lessonText ? ' • ' + lessonText : '');
 };
@@ -2348,6 +2869,7 @@ let latestAssetDossiers = { assets: {}, summary: {} };
 let latestMissedMoveReport = { summary: {} };
 let latestLLMRefereeReport = { verdicts: {} };
 let latestPlaybookDistillerReport = { summary: {}, assets: {} };
+let latestProactiveTraderReport = { summary: {} };
 let currentTickerSearchQuery = '';
 let tradexyzLookupBusy = false;
 let refreshRequest = null;
@@ -2788,12 +3310,16 @@ function fallbackSearchItem(coin) {
   const support = pickLevel(mapEntry.supports, signal.market_map_nearest_support, 'max');
   const resistance = pickLevel(mapEntry.resistances, signal.market_map_nearest_resistance, 'min');
   const livePrice = Number(signal.live_price || signal.price || 0);
+  const priceDiagnostics = signal.price_diagnostics || (position ? position.price_diagnostics : {}) || {};
 
   let status = 'NO_SETUP';
   let label = 'Watching';
   let headline = shortText(signal.flat_reason || signal.decision_reason || signal.market_map_summary || mapEntry.summary || 'Tracked by the agent, but it is not surfacing a live setup yet.', 180);
   let trigger = 'Wait for a clearer thesis.';
   let entryStatus = '';
+  let entryLogicShort = '';
+  let currentLogicShort = '';
+  let invalidation = '';
   let executionNote = tradable
     ? 'This market can execute on the active venue once the thesis, sizing, and fills all clear.'
     : 'This market is being watched, but venue support or live market quality is not ready enough yet.';
@@ -2803,9 +3329,12 @@ function fallbackSearchItem(coin) {
     const liveReference = livePrice > 0 ? livePrice : Number(position.current_price || 0);
     status = direction === 'SHORT' ? 'OPEN_SHORT' : 'OPEN_LONG';
     label = 'In ' + direction;
-    headline = shortText(position.current_logic || position.entry_logic || 'Trade is live and under active management.', 180);
+    entryLogicShort = position.entry_logic_short || plainTradeReason(position.entry_logic || '', 'open', 86);
+    currentLogicShort = position.current_logic_short || plainTradeReason(position.current_logic || position.entry_logic || '', 'hold', 86);
+    headline = currentLogicShort || 'Trade is live.';
     entryStatus = entryStatusLine(liveReference, Number(position.entry_price || 0), 'entry');
     trigger = stopTargetLine(liveReference, Number(position.stop_loss || 0), Number(position.take_profit || 0)) || 'Trade is already open.';
+    invalidation = (direction === 'SHORT' ? 'Invalid above ' : 'Invalid below ') + fmt(Number(position.stop_loss || 0));
     executionNote = 'Position is already open and under active management.';
   } else if (assetState === 'PENDING_ENTRY') {
     status = 'PENDING_ENTRY';
@@ -2875,6 +3404,9 @@ function fallbackSearchItem(coin) {
   } else if (status.includes('SHORT') && resistance) {
     risk = numericLevel('Reclaim', resistance, livePrice) || ('Reclaim ' + fmt(resistance));
   }
+  if (!invalidation && risk) {
+    invalidation = simpleInvalidationText({ risk }, 90);
+  }
   const probability = setupProbabilityPayload({
     signal,
     status,
@@ -2893,8 +3425,8 @@ function fallbackSearchItem(coin) {
   return {
     coin: ticker,
     tradable,
-    mode_badge: tradable ? 'EXEC' : 'WATCH',
-    mode_meta: tradable ? 'Executable' : 'Watching only',
+    mode_badge: tradable ? 'EXEC' : 'TRACK',
+    mode_meta: tradable ? 'Executable' : 'Tracking only',
     mode_detail: tradable
       ? 'This market can execute on the active venue, but the bot still needs final entry checks to clear.'
       : 'The agent is tracking this market and waiting for clearer confirmation before it becomes actionable.',
@@ -2906,14 +3438,28 @@ function fallbackSearchItem(coin) {
     entry_status: entryStatus || executionNote,
     execution_note: executionNote,
     risk,
+    invalidation,
+    invalidation_short: invalidation,
     bias,
     map_summary: shortText(mapEntry.summary || mapEntry.notes || signal.market_map_summary || '', 140),
+    entry_logic_short: entryLogicShort,
+    current_logic_short: currentLogicShort,
     friction_stack: [],
     catalyst_rail: [],
     why_this_lead: shortText(probability.probability_detail || probability.probability_text || executionNote || headline, 160),
     confidence: String(signal.confidence || 'LOW').toUpperCase(),
     score: Number(signal.score || 50),
     tracked,
+    live_price: livePrice,
+    price_diagnostics: priceDiagnostics,
+    price_source: signal.price_source || (position ? position.price_source : '') || priceDiagnostics.price_source || '',
+    price_source_label: signal.price_source_label || (position ? position.price_source_label : '') || priceDiagnostics.price_source_label || '',
+    venue_symbol: signal.venue_symbol || (position ? position.venue_symbol : '') || priceDiagnostics.venue_symbol || '',
+    reference_price: signal.reference_price || (position ? position.reference_price : 0) || priceDiagnostics.reference_price || 0,
+    reference_source: signal.reference_source || (position ? position.reference_source : '') || priceDiagnostics.reference_source || '',
+    price_deviation_pct: signal.price_deviation_pct ?? (position ? position.price_deviation_pct : priceDiagnostics.price_deviation_pct),
+    price_status: signal.price_status || (position ? position.price_status : '') || priceDiagnostics.price_status || '',
+    price_warning: signal.price_warning || (position ? position.price_warning : '') || priceDiagnostics.price_warning || '',
     ...probability,
   };
 }
@@ -2943,7 +3489,7 @@ function renderTickerSearch(value) {
 
   if (!normalized) {
     hint.textContent = 'Try a live ticker from the active universe or scout watchlist.';
-    result.innerHTML = "<div class=\"search-result-empty\">Start typing a ticker and the dashboard will pull the agent's current thesis, trigger, and risk view for that market.</div>";
+    result.innerHTML = "<div class=\"search-result-empty\">Start typing a ticker and the dashboard will pull the thesis, trigger, and invalidation.</div>";
     return;
   }
 
@@ -2960,39 +3506,31 @@ function renderTickerSearch(value) {
 
   const tradableChip = item.tradable
     ? '<span class="signal-mode-tradable">' + esc(item.mode_badge || 'LIVE') + '</span>'
-    : '<span class="signal-mode-watch">' + esc(item.mode_badge || 'WATCH') + '</span>';
+    : '<span class="signal-mode-watch">' + esc(surfaceModeBadge(item.mode_badge, false)) + '</span>';
   const stanceChip = setupStanceChipHtml(item);
   const trackedLine = item.tradable
     ? item.mode_detail || 'Executable on the active venue.'
-    : item.mode_detail || 'Watching only while the setup keeps developing.';
+    : item.mode_detail || 'Tracking only while the setup keeps developing.';
   const matchNote = found.match && found.match !== 'exact'
     ? 'Matched from ' + found.match + ' search on ' + item.coin + '.'
     : 'Exact live dashboard read for ' + item.coin + '.';
   const dossier = assetDossierForCoin(item.coin) || {};
-  const dossierBody = dossier.dossier || {};
-  const referee = item.llm_referee || refereeVerdictForCoin(item.coin) || {};
   const missed = dossier.missed_move_context || {};
 
   hint.textContent = item.coin + ': ' + trackedLine;
   result.innerHTML = '<div class="search-title">' + esc(item.coin) + ' • ' + esc(setupStanceText(item, 'title')) + '</div>'
     + '<div class="search-chip-row">' + tradableChip + stanceChip + probabilityChipHtml(item) + '</div>'
-    + '<div class="search-summary">' + esc(setupReasonText(item, 220)) + '</div>'
-    + '<div class="search-summary"><strong>Why this lead:</strong> ' + esc(whyLeadText(item, 200)) + '</div>'
+    + '<div class="search-summary"><strong>Next:</strong> ' + esc(simpleNextText(item, 110)) + '</div>'
+    + '<div class="search-summary"><strong>Why:</strong> ' + esc(simpleThesisText(item, 110)) + '</div>'
+    + priceSourceHtml(item)
     + '<div class="search-grid">'
-      + '<div class="token-detail"><span class="token-detail-label">Current read</span><div class="token-detail-value">' + esc(item.label || 'Watching') + '</div></div>'
-      + '<div class="token-detail"><span class="token-detail-label">Entry status</span><div class="token-detail-value">' + esc(shortText(item.entry_status || item.execution_note || item.mode_detail || 'Still waiting for final entry checks.', 140)) + '</div></div>'
-      + '<div class="token-detail"><span class="token-detail-label">Trigger</span><div class="token-detail-value">' + esc(shortText(item.trigger || 'Wait for a cleaner setup.', 140)) + '</div></div>'
-      + '<div class="token-detail"><span class="token-detail-label">Odds</span><div class="token-detail-value">' + esc(shortText(item.probability_detail || item.probability_text || 'No odds yet.', 140)) + '</div></div>'
-      + '<div class="token-detail"><span class="token-detail-label">Risk</span><div class="token-detail-value">' + esc(shortText(item.risk || item.map_summary || 'Stay patient until the map and order-flow align.', 140)) + '</div></div>'
+      + '<div class="token-detail"><span class="token-detail-label">Call</span><div class="token-detail-value">' + esc(simpleActionText(item)) + '</div></div>'
+      + '<div class="token-detail"><span class="token-detail-label">Level</span><div class="token-detail-value">' + esc(simpleNextText(item, 96)) + '</div></div>'
+      + '<div class="token-detail"><span class="token-detail-label">Invalid if</span><div class="token-detail-value">' + esc(simpleInvalidationText(item, 96)) + '</div></div>'
+      + '<div class="token-detail"><span class="token-detail-label">Lane</span><div class="token-detail-value">' + esc(surfaceModeMeta(item.mode_meta, item.tradable)) + '</div></div>'
     + '</div>'
-    + frictionStackHtml(item)
-    + catalystRailHtml(item)
-    + (dossierBody.current_read ? '<div class="search-summary"><strong>Dossier read:</strong> ' + esc(shortText(dossierBody.current_read, 180)) + '</div>' : '')
-    + (dossierBody.playbook ? '<div class="search-summary"><strong>Playbook:</strong> ' + esc(shortText(dossierBody.playbook, 180)) + '</div>' : '')
-    + (referee.summary ? '<div class="search-summary"><strong>Referee:</strong> ' + esc(shortText(referee.summary, 180)) + (referee.verdict ? ' • ' + esc(String(referee.verdict)) : '') + '</div>' : '')
-    + ((missed.miss_count || 0) > 0 ? '<div class="search-summary"><strong>Missed-move pressure:</strong> ' + esc(String(missed.miss_count)) + ' recent skipped winner(s) on this ticker.</div>' : '')
-    + (item.map_summary ? '<div class="search-summary"><strong>Daily view:</strong> ' + esc(shortText(item.map_summary, 180)) + '</div>' : '')
-    + '<div class="search-summary"><strong>Execution lane:</strong> ' + esc(surfaceModeMeta(item.mode_meta, item.tradable)) + ' • <strong>Lookup:</strong> ' + esc(matchNote) + '</div>';
+    + ((missed.miss_count || 0) > 0 ? '<div class="search-summary"><strong>Replay:</strong> ' + esc(String(missed.miss_count)) + ' recent missed winner(s).</div>' : '')
+    + '<div class="search-summary"><strong>Lookup:</strong> ' + esc(matchNote) + '</div>';
 }
 
 function handleTickerSearch(value) {
@@ -3180,13 +3718,13 @@ function marketMapCompactRowHtml(coin, item) {
   const safeItem = item || {
     coin,
     tradable: false,
-    mode_badge: 'WATCH',
-    label: 'Watching',
+    mode_badge: 'TRACK',
+    label: 'Tracking',
     bias: 'NEUTRAL',
     headline: 'Waiting for a clearer daily read.',
     entry_status: 'Still mapping structure.',
     trigger: 'No trigger set yet.',
-    risk: 'Risk line still forming.',
+    risk: 'Invalidation still forming.',
   };
   const tradable = Boolean(safeItem.tradable);
   const modeClass = tradable ? 'signal-mode-tradable' : 'signal-mode-watch';
@@ -3194,12 +3732,12 @@ function marketMapCompactRowHtml(coin, item) {
   const stanceChip = setupStanceChipHtml(safeItem);
   return '<div class="daily-sheet-row" data-tradable="' + (tradable ? 'true' : 'false') + '">'
     + '<div class="daily-sheet-main">'
-      + '<div class="token-line"><div class="map-coin">' + esc(safeItem.coin || coin) + '</div><span class="' + modeClass + '">' + esc(surfaceModeBadge(safeItem.mode_badge, tradable)) + '</span>' + stanceChip + probabilityChipHtml(safeItem) + categoryBadge + '</div>'
-      + '<div class="token-subline">' + esc(setupReasonText(safeItem, 150)) + '</div>'
+      + '<div class="token-line"><div class="map-coin">' + esc(safeItem.coin || coin) + '</div><span class="' + modeClass + '">' + esc(surfaceModeBadge(safeItem.mode_badge, tradable)) + '</span>' + stanceChip + probabilityChipHtml(safeItem) + eventChipHtml(safeItem) + categoryBadge + '</div>'
+      + '<div class="token-subline token-subline-simple">' + esc(simpleThesisText(safeItem, 84)) + '</div>'
     + '</div>'
-    + '<div class="daily-sheet-stat"><div class="daily-sheet-label">Entry</div><div class="daily-sheet-value">' + esc(shortText(safeItem.entry_status || 'Still mapping structure.', 88)) + '</div></div>'
-    + '<div class="daily-sheet-stat"><div class="daily-sheet-label">Trigger</div><div class="daily-sheet-value">' + esc(shortText((safeItem.trigger || 'No trigger set yet.') + (compactOddsText(safeItem) ? ' • ' + compactOddsText(safeItem) : ''), 88)) + '</div></div>'
-    + '<div class="daily-sheet-stat"><div class="daily-sheet-label">Risk</div><div class="daily-sheet-value">' + esc(shortText(safeItem.risk || 'Risk line still forming.', 88)) + '</div></div>'
+    + '<div class="daily-sheet-stat"><div class="daily-sheet-label">Now</div><div class="daily-sheet-value">' + esc(simpleActionText(safeItem)) + '</div></div>'
+    + '<div class="daily-sheet-stat"><div class="daily-sheet-label">Next</div><div class="daily-sheet-value">' + esc(simpleNextText(safeItem, 88)) + '</div></div>'
+    + '<div class="daily-sheet-stat"><div class="daily-sheet-label">Inval</div><div class="daily-sheet-value">' + esc(simpleInvalidationText(safeItem, 88)) + '</div></div>'
   + '</div>';
 }
 
@@ -3211,7 +3749,7 @@ function marketMapDetailCardHtml(coin, entry, signal, item) {
   const modeClass = isTradable ? 'signal-mode-tradable' : 'signal-mode-watch';
   const modeNote = isTradable
     ? 'Executable on the active venue, but still needs a qualified thesis and clean execution.'
-    : 'Watching only until the reclaim, breakdown, and live market quality line up cleanly.';
+    : 'Tracking only until the reclaim, breakdown, and live market quality line up cleanly.';
   const signalAction = String(safeSignal.action || 'FLAT').toUpperCase();
   const signalState = String(safeSignal.asset_state || '').toUpperCase();
   const shouldOpen = isTradable && (signalAction !== 'FLAT' || signalState === 'PENDING_ENTRY');
@@ -3309,7 +3847,7 @@ function renderMarketMapSummary(summary, marketMap) {
   meta.textContent = metaBits.join(' • ');
 
   if (!coins.length && !Object.keys(entries).length) {
-    body.innerHTML = '<div class="empty-state"><div class="empty-icon">🗺️</div>No daily market map yet. Add BTC / ETH / SOL key levels so the agent can anchor its thesis to your higher-timeframe view.</div>';
+    body.innerHTML = '<div class="empty-state"><div class="empty-icon">--</div>No daily market map yet.</div>';
     return;
   }
 
@@ -3354,7 +3892,7 @@ function renderMarketMapSummary(summary, marketMap) {
     + (globalNotes ? '<div class="daily-briefing-line"><div class="daily-briefing-label">Today</div><div class="daily-briefing-text">' + esc(shortText(globalNotes, 180)) + '</div></div>' : '')
     + '</div>';
 
-  html += '<details class="card details-card daily-levels-panel"><summary class="asset-section-header"><div><div class="asset-section-title">Open Level Sheet</div><div class="asset-section-sub">All tracked assets, entry, trigger, risk, and full map notes for this desk.</div></div><div class="asset-section-sub">' + esc(String(visibleCoins.length) + ' tracked • ' + String(tradableCount) + ' executable') + '</div></summary><div class="daily-sheet">'
+  html += '<details class="card details-card daily-levels-panel"><summary class="asset-section-header"><div><div class="asset-section-title">Open Level Sheet</div><div class="asset-section-sub">All tracked assets, entry, trigger, invalidation, and full map notes for this desk.</div></div><div class="asset-section-sub">' + esc(String(visibleCoins.length) + ' tracked • ' + String(tradableCount) + ' executable') + '</div></summary><div class="daily-sheet">'
     + '<div class="daily-sheet-header"><div>Asset</div><div>Entry</div><div>Trigger</div><div>Risk</div></div>'
     + visibleCoins.map((coin) => marketMapCompactRowHtml(coin, itemByCoin[coin])).join('')
     + '</div><div class="daily-levels-separator">Full setup notes</div><div class="market-map-grid daily-levels-detail-grid">'
@@ -3418,9 +3956,9 @@ function renderLearningSummary(summary, trades) {
   if (latest) {
     html += '<div class="review-summary-box">'
       + '<div class="card-label-row"><div class="card-label">Latest Closed Trade</div><div class="' + (latest.result === 'WIN' ? 'green' : latest.result === 'LOSS' ? 'red' : 'muted') + '">' + esc(String(latest.coin || '')) + ' ' + esc(String(latest.direction || '')) + ' • ' + fmtD(Number(latest.pnl_usd || 0)) + '</div></div>'
-      + '<div class="review-notes"><strong>Opened because:</strong> ' + esc(shortText(latest.open_logic || 'No opening logic recorded', 180)) + '</div>'
-      + '<div class="review-notes"><strong>Closed because:</strong> ' + esc(shortText(latest.close_logic || 'No closing logic recorded', 180)) + '</div>'
-      + '<div class="review-notes"><strong>Lesson:</strong> ' + esc(shortText(latest.lesson || 'No lesson recorded yet.', 220)) + '</div>'
+      + '<div class="review-notes"><strong>Opened because:</strong> ' + esc(plainTradeReason(latest.open_logic || 'No opening logic recorded', 'open', 86)) + '</div>'
+      + '<div class="review-notes"><strong>Closed because:</strong> ' + esc(shortText(latest.close_logic || 'No closing logic recorded', 110)) + '</div>'
+      + '<div class="review-notes"><strong>Lesson:</strong> ' + esc(shortText(latest.lesson || 'No lesson recorded yet.', 120)) + '</div>'
       + '</div>';
   }
 
@@ -3450,9 +3988,9 @@ function renderLatestLesson(summary) {
   const pnlClass = pnl > 0 ? 'green' : pnl < 0 ? 'red' : 'muted';
   body.innerHTML = '<div class="review-summary-box">'
     + '<div class="card-label-row"><div class="card-label">Most recent close</div><div class="' + pnlClass + '">' + esc(String(latest.coin || '')) + ' ' + esc(String(latest.direction || '')) + ' • ' + fmtD(pnl) + '</div></div>'
-    + '<div class="review-notes"><strong>Opened because:</strong> ' + esc(shortText(latest.open_logic || 'No opening logic recorded.', 180)) + '</div>'
-    + '<div class="review-notes"><strong>Closed because:</strong> ' + esc(shortText(latest.close_logic || 'No closing logic recorded.', 180)) + '</div>'
-    + '<div class="review-notes"><strong>Lesson:</strong> ' + esc(shortText(latest.lesson || 'No lesson recorded yet.', 220)) + '</div>'
+    + '<div class="review-notes"><strong>Opened because:</strong> ' + esc(plainTradeReason(latest.open_logic || 'No opening logic recorded.', 'open', 86)) + '</div>'
+    + '<div class="review-notes"><strong>Closed because:</strong> ' + esc(shortText(latest.close_logic || 'No closing logic recorded.', 110)) + '</div>'
+    + '<div class="review-notes"><strong>Lesson:</strong> ' + esc(shortText(latest.lesson || 'No lesson recorded yet.', 120)) + '</div>'
     + '</div>';
 }
 
@@ -3480,6 +4018,9 @@ function renderActionBoard(board) {
   const tradableCount = Number(visibleTradableItems.length || 0);
   const activeTradableCount = visibleTradableItems.filter((item) => ['OPEN_LONG', 'OPEN_SHORT', 'READY_LONG', 'READY_SHORT'].includes(String((item || {}).status || '').toUpperCase())).length;
   const pendingCount = visibleTradableItems.filter((item) => String((item || {}).status || '').toUpperCase() === 'PENDING_ENTRY').length;
+  const visibleLimit = actionBoardBucket === 'equity' ? 8 : 10;
+  const primaryTradableItems = visibleTradableItems.slice(0, visibleLimit);
+  const hiddenTradableItems = visibleTradableItems.slice(visibleLimit);
   const stanceMixText = itemBiasMixText(visibleTradableItems);
   const metaBits = [
     bucketLabel(actionBoardBucket),
@@ -3488,26 +4029,27 @@ function renderActionBoard(board) {
   if (actionBoardBucket === 'equity' && actionBoardCategory !== 'all') metaBits.push(assetCategoryLabel(actionBoardCategory));
   if (activeTradableCount > 0) metaBits.push('Actionable ' + activeTradableCount);
   if (pendingCount > 0) metaBits.push('Working orders ' + pendingCount);
-  if (visibleLead) metaBits.push('Best setup: ' + visibleLead.coin + ' • ' + setupStanceText(visibleLead, 'title'));
+  if (visibleLead) metaBits.push('Lead: ' + visibleLead.coin + ' • ' + setupStanceText(visibleLead, 'title'));
   meta.textContent = metaBits.join(' • ');
 
-  let html = renderBucketTabs(actionBoardBucket, groups, 'action');
+  let html = renderCallWatchlist(allItems);
+  html += renderBucketTabs(actionBoardBucket, groups, 'action');
   html += renderDeskOverview(groups, 'action', actionBoardBucket, actionBoardCategory);
   html += renderCategoryTabs(actionBoardCategory, categoryGroups, 'action', actionBoardBucket);
   const categoryNote = actionBoardBucket === 'equity' && actionBoardCategory !== 'all'
     ? ' Focus: ' + assetCategoryDescription(actionBoardCategory)
     : '';
-  html += '<div class="asset-bucket-note">' + esc(bucketDescription(actionBoardBucket) + categoryNote + ' Stance mix: ' + stanceMixText + '.') + '</div>';
+  html += '<div class="asset-bucket-note">' + esc('Calls are grouped by direction. Top executable setups are below.' + categoryNote) + '</div>';
   if (visibleLead) {
-    html += '<div class="lead-callout"><strong>Why this lead:</strong> ' + esc(whyLeadText(visibleLead, 210)) + '</div>';
+    html += '<div class="lead-callout"><strong>Lead:</strong> ' + esc(visibleLead.coin + ' - ' + simpleNextText(visibleLead, 88)) + '<br><strong>Inval:</strong> ' + esc(simpleInvalidationText(visibleLead, 92)) + '<br><strong>Why:</strong> ' + esc(simpleThesisText(visibleLead, 92)) + '</div>';
   }
   html += '<div class="decision-board asset-section-stack">';
   if (visibleTradableItems.length) {
     const tradableSub = pendingCount > 0
-      ? 'These names can execute now. Some entries are already working passively while the bot waits for fills or a clean escalation.'
-      : 'These names can execute now as soon as the thesis and final fill checks align.';
+      ? 'Working orders stay expanded.'
+      : 'Highest-priority setups only.';
     html += '<div><div class="asset-section-header"><div class="asset-section-title">Executable Now</div><div class="asset-section-sub">' + esc(tradableSub) + '</div></div><div class="asset-section-grid">'
-    + visibleTradableItems.map((item) => {
+    + primaryTradableItems.map((item) => {
       const status = String(item.status || 'NO_SETUP');
       const highlightBase = status.includes('LONG')
         ? 'decision-card decision-card-tradable decision-card-long'
@@ -3515,38 +4057,91 @@ function renderActionBoard(board) {
           ? 'decision-card decision-card-tradable decision-card-short'
           : 'decision-card decision-card-tradable';
       const highlight = status === 'PENDING_ENTRY' ? highlightBase + ' decision-card-pending' : highlightBase;
-      const shouldOpen = status === 'PENDING_ENTRY' || status === 'OPEN_LONG' || status === 'OPEN_SHORT' || status === 'READY_LONG';
+      const shouldOpen = status === 'PENDING_ENTRY' || status === 'OPEN_LONG' || status === 'OPEN_SHORT';
       const categoryBadge = assetCategoryBadgeHtml(item);
       const stanceChip = setupStanceChipHtml(item);
       return '<details class="' + highlight + ' decision-box"' + (shouldOpen ? ' open' : '') + '>'
         + '<summary class="decision-summary">'
           + '<div class="decision-summary-main">'
-            + '<div class="token-line"><div class="decision-coin">' + esc(item.coin) + '</div><span class="signal-mode-tradable">' + esc(item.mode_badge || 'LIVE') + '</span>' + stanceChip + probabilityChipHtml(item) + categoryBadge + (status === 'PENDING_ENTRY' ? '<span class="review-chip">ORDER LIVE</span>' : '') + '</div>'
-            + '<div class="token-subline">' + esc(setupReasonText(item, 170)) + '</div>'
+            + '<div class="token-line"><div class="decision-coin">' + esc(item.coin) + '</div><span class="signal-mode-tradable">' + esc(item.mode_badge || 'LIVE') + '</span>' + stanceChip + probabilityChipHtml(item) + eventChipHtml(item) + categoryBadge + (status === 'PENDING_ENTRY' ? '<span class="review-chip">ORDER LIVE</span>' : '') + '</div>'
+            + '<div class="token-subline token-subline-simple">' + esc(simpleThesisText(item, 88)) + '</div>'
           + '</div>'
-          + '<div class="decision-summary-side"><div class="token-preview">' + esc(shortText(item.trigger || 'Wait for a cleaner setup.', 90)) + '</div><span class="token-chevron">⌄</span></div>'
+          + '<div class="decision-summary-side"><div class="token-preview">' + esc(simpleNextText(item, 76)) + '<br>' + esc(simpleInvalidationText(item, 68)) + '</div><span class="token-chevron">⌄</span></div>'
         + '</summary>'
         + '<div class="decision-body">'
           + '<div class="token-detail-grid">'
-            + '<div class="token-detail"><span class="token-detail-label">Entry status</span><div class="token-detail-value">' + esc(shortText(item.entry_status || item.execution_note || item.mode_detail || 'Still waiting for final entry checks.', 150)) + '</div></div>'
-            + '<div class="token-detail"><span class="token-detail-label">Trigger</span><div class="token-detail-value">' + esc(shortText(item.trigger || 'Wait for a cleaner setup.', 120)) + '</div></div>'
-            + '<div class="token-detail"><span class="token-detail-label">Odds</span><div class="token-detail-value">' + esc(shortText(item.probability_detail || item.probability_text || 'No odds yet.', 140)) + '</div></div>'
-            + '<div class="token-detail"><span class="token-detail-label">Risk</span><div class="token-detail-value">' + esc(shortText(item.risk || item.map_summary || 'Stay patient until the map and order-flow align.', 120)) + '</div></div>'
-            + '<div class="token-detail"><span class="token-detail-label">Execution lane</span><div class="token-detail-value">' + esc(surfaceModeMeta(item.mode_meta, true)) + '</div></div>'
+            + '<div class="token-detail"><span class="token-detail-label">Now</span><div class="token-detail-value">' + esc(simpleActionText(item)) + '</div></div>'
+            + '<div class="token-detail"><span class="token-detail-label">Next</span><div class="token-detail-value">' + esc(simpleNextText(item, 96)) + '</div></div>'
+            + '<div class="token-detail"><span class="token-detail-label">Invalid if</span><div class="token-detail-value">' + esc(simpleInvalidationText(item, 92)) + '</div></div>'
+            + '<div class="token-detail"><span class="token-detail-label">Why</span><div class="token-detail-value">' + esc(simpleThesisText(item, 96)) + '</div></div>'
           + '</div>'
-          + '<div class="decision-rl-note"><strong>Why it ranks:</strong> ' + esc(whyLeadText(item, 180)) + '</div>'
-          + frictionStackHtml(item)
-          + catalystRailHtml(item)
-          + (item.map_summary ? '<div class="decision-rl-note"><strong>Daily view:</strong> ' + esc(shortText(item.map_summary, 130)) + '</div>' : '')
+          + priceSourceHtml(item)
         + '</div>'
       + '</details>';
     }).join('')
-    + '</div></div>';
+    + '</div>'
+    + (hiddenTradableItems.length
+      ? '<details class="quiet-more"><summary>Show ' + esc(String(hiddenTradableItems.length)) + ' more executable names</summary><div class="decision-compact-list">' + hiddenTradableItems.map(actionCompactRowHtml).join('') + '</div></details>'
+      : '')
+    + '</div>';
   } else {
     html += '<div class="empty-state">No executable assets are active in this desk right now. Use the daily view below for the compact watchlist and levels.</div>';
   }
   html += '</div>';
   body.innerHTML = html;
+}
+
+function proactiveCallText(call) {
+  if (!call) return 'No call yet';
+  const side = String(call.direction || '').toUpperCase() === 'SHORT' ? 'Bearish' : 'Bullish';
+  const score = Number(call.scout_score || 0);
+  return String(call.coin || '--') + ' • ' + side + (score > 0 ? ' • ' + score.toFixed(0) : '');
+}
+
+function proactiveRows(items, emptyText) {
+  const visible = Array.isArray(items) ? items.slice(0, 4) : [];
+  if (!visible.length) return '<div class="proactive-sub">' + esc(emptyText || 'Nothing ranked yet.') + '</div>';
+  return '<div class="proactive-list">' + visible.map((item) => {
+    const left = item.coin ? String(item.coin) + ' ' + String(item.direction || '') : String(item.source || '--') + ' -> ' + String(item.target || '--');
+    const right = item.reason ? shortText(item.reason, 34) : (item.size_usd ? ('$' + fmt(item.size_usd, 0)) : (item.scout_score ? Number(item.scout_score).toFixed(0) : (item.score ? Number(item.score).toFixed(0) : '')));
+    return '<div class="proactive-row"><span>' + esc(left) + '</span><span>' + esc(right) + '</span></div>';
+  }).join('') + '</div>';
+}
+
+function renderProactiveDesk(report) {
+  const meta = document.getElementById('proactive-meta');
+  const body = document.getElementById('proactive-body');
+  if (!meta || !body) return;
+  const safe = report || {};
+  if (safe.enabled === false) {
+    meta.textContent = 'Proactive research disabled.';
+    body.innerHTML = '<div class="empty-state">Proactive trader report is disabled.</div>';
+    return;
+  }
+  const summary = safe.summary || {};
+  const scout = safe.morning_scout_book || {};
+  const basket = safe.starter_basket_optimizer || {};
+  const execution = safe.starter_execution || {};
+  const read = safe.read_through_engine || {};
+  const forecast = safe.forecast_calibration || {};
+  const top = summary.top_call || ((scout.summary || {}).top_call) || null;
+  const forecastSummary = forecast.summary || {};
+  const executionSummary = execution.summary || {};
+  meta.textContent = [
+    'Theses ' + String(summary.active_thesis_count || 0),
+    'Starters ' + String(summary.starter_plan_count || 0),
+    'Opened ' + String(executionSummary.opened_count || 0),
+    'Read-through ' + String(summary.read_through_count || 0),
+    forecastSummary.calibration_note || ''
+  ].filter(Boolean).join(' • ');
+  body.innerHTML = '<div class="proactive-grid">'
+    + '<div class="proactive-card"><div class="proactive-title">Morning Scout Book</div><div class="proactive-main">' + esc(proactiveCallText(top)) + '</div><div class="proactive-sub">' + esc(shortText((top || {}).why || 'Ranked pre-market style calls across tokens and equities.', 130)) + '</div>' + proactiveRows((scout.bullish_calls || []).concat(scout.bearish_calls || []), 'No directional scout calls yet.') + '</div>'
+    + '<div class="proactive-card"><div class="proactive-title">Starter Basket</div><div class="proactive-main">' + esc(String(((basket.summary || {}).allocation_count) || 0)) + ' planned starter(s)</div><div class="proactive-sub">' + esc('$' + fmt(((basket.summary || {}).planned_usd) || 0, 0) + ' planned inside event-risk budget') + '</div>' + proactiveRows(basket.allocations || [], 'No starter allocations right now.') + '</div>'
+    + '<div class="proactive-card"><div class="proactive-title">Read-Through</div><div class="proactive-main">' + esc(String(((read.summary || {}).impact_count) || 0)) + ' linked impact(s)</div><div class="proactive-sub">' + esc(shortText(((read.summary || {}).top_line) || 'No strong cross-asset read-through yet.', 140)) + '</div>' + proactiveRows(read.top_impacts || [], 'No linked impacts yet.') + '</div>'
+    + '<div class="proactive-card"><div class="proactive-title">Thesis Ledger</div><div class="proactive-main">' + esc(String(summary.active_thesis_count || 0)) + ' active thesis record(s)</div><div class="proactive-sub">Each proactive setup now carries why-now, expected surprise, invalidation, and bull/base/bear cases.</div></div>'
+    + '<div class="proactive-card"><div class="proactive-title">Forecast Calibration</div><div class="proactive-main">' + esc(String((forecastSummary.open_count || 0))) + ' open forecast(s)</div><div class="proactive-sub">' + esc(forecastSummary.calibration_note || 'Collecting forecasts.') + '</div></div>'
+    + '<div class="proactive-card"><div class="proactive-title">Starter Execution</div><div class="proactive-main">' + esc(String(executionSummary.opened_count || 0)) + ' opened / ' + esc(String(executionSummary.attempted_count || 0)) + ' attempted</div><div class="proactive-sub">' + esc('$' + fmt(executionSummary.opened_usd || 0, 0) + ' deployed through capped event-risk execution') + '</div>' + proactiveRows((execution.opened || []).concat(execution.skipped || []), 'No starter execution this cycle.') + '</div>'
+  + '</div>';
 }
 
 async function postJson(path, payload) {
@@ -3708,6 +4303,7 @@ async function refresh() {
     latestMissedMoveReport = data.missed_move_report || { summary: {} };
     latestLLMRefereeReport = data.llm_referee_report || { verdicts: {} };
     latestPlaybookDistillerReport = data.playbook_distiller_report || { summary: {}, assets: {} };
+    latestProactiveTraderReport = data.proactive_trader_report || { summary: {} };
     const actionBoard = data.action_board || { items: [], lead: null };
     latestActionBoard = actionBoard;
 
@@ -3737,11 +4333,11 @@ async function refresh() {
 
     const killBtn = document.getElementById('kill-btn');
     if (latestControl && latestControl.kill && latestControl.kill.active) {
-      killBtn.textContent = '🛑 KILL ACTIVE — CLICK TO CLEAR';
+      killBtn.textContent = 'KILL ACTIVE — CLICK TO CLEAR';
       killBtn.className = 'kill-btn confirming';
       killConfirm = false;
     } else if (!killConfirm) {
-      killBtn.textContent = '⚠️ KILL SWITCH';
+      killBtn.textContent = 'KILL SWITCH';
       killBtn.className = 'kill-btn';
       killBtn.disabled = false;
     }
@@ -3788,14 +4384,16 @@ async function refresh() {
           '<div><div class="pos-meta">Direction</div><div class="pos-val"><span class="pos-direction ' + dirCls + '">' + arrow + ' ' + p.direction + '</span></div></div>' +
           '<div><div class="pos-meta">Entry</div><div class="pos-val">$' + fmt(p.entry_price) + '</div></div>' +
           '<div><div class="pos-meta">Current</div><div class="pos-val ' + pnlCls + '">$' + fmt(p.current_price) + '</div></div>' +
-          '<div><div class="pos-meta">Stop Loss</div><div class="pos-val red">$' + fmt(p.stop_loss) + '</div></div>' +
+          '<div><div class="pos-meta">Invalid If</div><div class="pos-val red">$' + fmt(p.stop_loss) + '</div></div>' +
           '<div><div class="pos-meta">Take Profit</div><div class="pos-val green">$' + fmt(p.take_profit) + '</div></div>' +
           '<div><div class="pos-meta">Margin</div><div class="pos-val">$' + fmt(p.size_usd, 0) + '</div></div>' +
           '<div><div class="pos-meta">Notional</div><div class="pos-val blue">$' + fmt(p.size_usd * (s.leverage || 2), 0) + '</div></div>' +
           '<div><div class="pos-meta">Unrealised P&L</div><div class="pos-val ' + pnlCls + '" style="font-size:16px;">' + fmtD(p.unrealised_pnl) + '<span style="font-size:12px;opacity:0.7;margin-left:4px;">(' + (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%)</span></div></div>' +
         '</div>' +
-        '<div class="signal-reason"><strong>Opened because:</strong> ' + esc(shortText(p.entry_logic || 'No opening logic recorded.', 180)) + '</div>' +
-        '<div class="signal-reason"><strong>Holding because:</strong> ' + esc(shortText(p.current_logic || 'Holding while the thesis stays valid.', 180)) + '</div>';
+        priceSourceHtml(p) +
+        '<div class="signal-reason"><strong>Invalid if:</strong> ' + esc(simpleInvalidationText(p, 92)) + '</div>' +
+        '<div class="signal-reason"><strong>Opened because:</strong> ' + esc(p.entry_logic_short || plainTradeReason(p.entry_logic || 'No opening logic recorded.', 'open', 86)) + '</div>' +
+        '<div class="signal-reason"><strong>Holding because:</strong> ' + esc(p.current_logic_short || plainTradeReason(p.current_logic || 'Holding while the thesis stays valid.', 'hold', 86)) + '</div>';
       }).join('');
     } else {
       countBadge.textContent = '0';
@@ -3806,13 +4404,14 @@ async function refresh() {
         : '<div style="margin-top:8px;">The agent is flat and waiting for a clean, high-conviction setup.</div>';
       openBody.innerHTML =
         '<div class="empty-state">' +
-          '<div class="empty-icon">📭</div>' +
+          '<div class="empty-icon">--</div>' +
           '<div><strong>FLAT — no open positions</strong></div>' +
           leadEmpty +
         '</div>';
     }
 
     renderActionBoard(actionBoard);
+    renderProactiveDesk(latestProactiveTraderReport);
     updateTickerSearchOptions();
     const searchInput = document.getElementById('ticker-search-input');
     renderTickerSearch(searchInput ? searchInput.value : currentTickerSearchQuery);
@@ -3846,9 +4445,9 @@ async function refresh() {
           '<td class="muted" style="font-size:11px;">' + ((t.closed_at||'').slice(0,16)||'open') + '</td>' +
           '<td class="' + pnlCls + '">' + fmtD(pnl) + '</td>' +
           '<td class="' + pnlCls + '">' + fmtP(pnlPct) + '</td>' +
-          '<td class="muted" style="font-size:11px;max-width:220px;">' + esc(shortText(t.open_logic || 'No opening logic recorded.', 150)) + '</td>' +
-          '<td class="muted" style="font-size:11px;max-width:220px;">' + esc(shortText(t.close_logic || (t.exit_reason || '--'), 150)) + '</td>' +
-          '<td class="muted" style="font-size:11px;max-width:240px;">' + esc(shortText(t.agent_lesson || 'No lesson recorded yet.', 170)) + '</td>' +
+          '<td class="muted" style="font-size:11px;max-width:220px;">' + esc(plainTradeReason(t.open_logic || 'No opening logic recorded.', 'open', 86)) + '</td>' +
+          '<td class="muted" style="font-size:11px;max-width:220px;">' + esc(shortText(t.close_logic || (t.exit_reason || '--'), 100)) + '</td>' +
+          '<td class="muted" style="font-size:11px;max-width:240px;">' + esc(shortText(t.agent_lesson || 'No lesson recorded yet.', 110)) + '</td>' +
         '</tr>';
       }).join('');
     } else {
@@ -3898,26 +4497,26 @@ function handleKill() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ active: false, reason: 'Operator cleared kill switch' })
     }).then(r => r.json()).then(() => {
-      btn.textContent = '✅ Kill cleared';
+      btn.textContent = 'Kill cleared';
       btn.className = 'kill-btn';
       setTimeout(() => {
-        btn.textContent = '⚠️ KILL SWITCH';
+        btn.textContent = 'KILL SWITCH';
         btn.disabled = false;
       }, 3000);
     }).catch(() => {
-      btn.textContent = '❌ Clear failed';
+      btn.textContent = 'Clear failed';
       btn.disabled = false;
-      setTimeout(() => { btn.textContent = '🛑 KILL ACTIVE — CLICK TO CLEAR'; btn.className = 'kill-btn confirming'; }, 3000);
+      setTimeout(() => { btn.textContent = 'KILL ACTIVE — CLICK TO CLEAR'; btn.className = 'kill-btn confirming'; }, 3000);
     });
     return;
   }
   if (!killConfirm) {
     killConfirm = true;
-    btn.textContent = '🚨 CONFIRM: CLOSE ALL & STOP';
+    btn.textContent = 'CONFIRM: CLOSE ALL & STOP';
     btn.className = 'kill-btn confirming';
     setTimeout(() => {
       killConfirm = false;
-      btn.textContent = '⚠️ KILL SWITCH';
+      btn.textContent = 'KILL SWITCH';
       btn.className = 'kill-btn';
     }, 5000);
     return;
@@ -3929,18 +4528,18 @@ function handleKill() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ reason: 'Dashboard kill switch activated' })
   }).then(r => r.json()).then(d => {
-    btn.textContent = '✅ Kill signal sent';
+    btn.textContent = 'Kill signal sent';
     btn.className = 'kill-btn';
     setTimeout(() => {
-      btn.textContent = '⚠️ KILL SWITCH';
+      btn.textContent = 'KILL SWITCH';
       btn.disabled = false;
       killConfirm = false;
     }, 10000);
   }).catch(e => {
-    btn.textContent = '❌ Failed — try again';
+    btn.textContent = 'Failed — try again';
     btn.disabled = false;
     killConfirm = false;
-    setTimeout(() => { btn.textContent = '⚠️ KILL SWITCH'; btn.className = 'kill-btn'; }, 3000);
+    setTimeout(() => { btn.textContent = 'KILL SWITCH'; btn.className = 'kill-btn'; }, 3000);
   });
 }
 

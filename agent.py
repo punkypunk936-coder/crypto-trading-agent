@@ -27,6 +27,7 @@ import math
 import time
 import sys
 import json
+import re
 from pathlib import Path
 from types import SimpleNamespace
 from typing import List, Optional, Dict
@@ -42,6 +43,7 @@ from paths import (
     LLM_REFEREE_REPORT_JSON,
     MISSED_MOVE_REPORT_JSON,
     PLAYBOOK_DISTILLER_REPORT_JSON,
+    PROACTIVE_TRADER_REPORT_JSON,
     STATE_JSON,
     TRADE_REVIEWS_JSON,
     TRADES_CSV,
@@ -60,12 +62,13 @@ import execution_coach
 import feature_store
 import llm_referee
 from logger import get_logger
-from data.market_data import completed_candle_frame, fetch_candles, get_current_price
+from data.market_data import completed_candle_frame, fetch_candles, get_current_price, get_price_diagnostics
 import hosted_state_sync
 import market_map
 import missed_move_lab
 import playbook_distiller
 import portfolio_guard
+import proactive_intelligence
 import trade_dataset
 import trade_logger
 import trade_review
@@ -129,6 +132,8 @@ class TradingAgent:
         self._last_signals: Dict[str, dict] = {}
         self._last_power_status: Dict[str, object] = {}
         self._orderbook_history: Dict[str, List[dict]] = {}
+        self._last_proactive_execution: Dict[str, object] = {}
+        self._proactive_starter_attempt_ts: Dict[str, float] = {}
         self._tradable_coins = [coin.upper() for coin in cfg.trading.coins]
         self._tradable_coin_set = set(self._tradable_coins)
         self._dynamic_analysis_coins = [
@@ -356,6 +361,11 @@ class TradingAgent:
             return True, ""
         action = str(getattr(signal, "action", "") or "").upper()
         if action not in {"LONG", "SHORT"}:
+            return True, ""
+
+        thesis = dict(getattr(signal, "thesis", {}) or {})
+        conviction_entry = dict(thesis.get("conviction_entry") or {})
+        if conviction_entry.get("active") and getattr(self.cfg.trading, "conviction_entry_bypass_precision_cadence", True):
             return True, ""
 
         self._prune_precision_entry_history()
@@ -620,25 +630,25 @@ class TradingAgent:
             if coin.upper() not in active_universe:
                 log.warning(f"[{coin}] Skipping restored pending order outside active trade universe")
                 continue
-            self.order_mgr.restore_pending_order(
-                PendingOrder(
-                    coin=coin,
-                    direction=order.get("direction", ""),
-                    limit_price=float(order.get("limit_price", 0.0) or 0.0),
-                    size_coin=float(order.get("size_coin", 0.0) or 0.0),
-                    size_usd=float(order.get("size_usd", 0.0) or 0.0),
-                    stop_loss=float(order.get("stop_loss", 0.0) or 0.0),
-                    take_profit=float(order.get("take_profit", 0.0) or 0.0),
-                    signal_score=float(order.get("signal_score", 0.0) or 0.0),
-                    exchange=order.get("exchange", ""),
-                    exchange_order_id=order.get("exchange_order_id", ""),
-                    cycles_waiting=int(order.get("cycles_waiting", 0) or 0),
-                    reprice_count=int(order.get("reprice_count", 0) or 0),
-                    reason=order.get("reason", "re_entry"),
-                    placed_at=float(order.get("placed_at", time.time()) or time.time()),
-                    metadata=order.get("metadata", {}) or {},
-                )
+            restored_order = PendingOrder(
+                coin=coin,
+                direction=order.get("direction", ""),
+                limit_price=float(order.get("limit_price", 0.0) or 0.0),
+                size_coin=float(order.get("size_coin", 0.0) or 0.0),
+                size_usd=float(order.get("size_usd", 0.0) or 0.0),
+                stop_loss=float(order.get("stop_loss", 0.0) or 0.0),
+                take_profit=float(order.get("take_profit", 0.0) or 0.0),
+                signal_score=float(order.get("signal_score", 0.0) or 0.0),
+                exchange=order.get("exchange", ""),
+                exchange_order_id=order.get("exchange_order_id", ""),
+                cycles_waiting=int(order.get("cycles_waiting", 0) or 0),
+                reprice_count=int(order.get("reprice_count", 0) or 0),
+                reason=order.get("reason", "re_entry"),
+                placed_at=float(order.get("placed_at", time.time()) or time.time()),
+                metadata=order.get("metadata", {}) or {},
             )
+            self.order_mgr.restore_pending_order(restored_order)
+            self._restore_exchange_pending_limit(restored_order)
 
         for coin, watch in checkpoint.get("reentry_watches", {}).items():
             if coin.upper() not in active_universe:
@@ -866,6 +876,8 @@ class TradingAgent:
             except Exception as e:
                 log.error(f"[{coin}] Unexpected error: {e}", exc_info=True)
 
+        self._execute_proactive_starter_basket(portfolio_usd, sentiment)
+
         # 8. Summary + write state.json for dashboard
         log.info("\n" + self.risk.summary(portfolio_usd))
         log.info(self.order_mgr.summary())
@@ -1066,6 +1078,12 @@ class TradingAgent:
         # Store signal for dashboard + memory (enriched with new intelligence)
         trade_plan = dict(getattr(signal, "trade_plan", {}) or {})
         thesis = dict(getattr(signal, "thesis", {}) or {})
+        conviction_entry = dict(thesis.get("conviction_entry") or {})
+        price_diagnostics = get_price_diagnostics(
+            coin,
+            venue_price=live_price,
+            max_deviation_pct=getattr(self.cfg.trading, "data_reliability_max_reference_deviation_pct", 2.0),
+        )
         self._last_signals[coin] = {
             "action":          signal.action,
             "decision":        signal.action,
@@ -1074,6 +1092,16 @@ class TradingAgent:
             "price":           signal.price,
             "analysis_price":  analysis_price,
             "live_price":      live_price,
+            "price_diagnostics": price_diagnostics,
+            "price_source":    price_diagnostics.get("price_source", ""),
+            "price_source_label": price_diagnostics.get("price_source_label", ""),
+            "venue_symbol":    price_diagnostics.get("venue_symbol", ""),
+            "venue_price":     price_diagnostics.get("venue_price", 0.0),
+            "reference_price": price_diagnostics.get("reference_price", 0.0),
+            "reference_source": price_diagnostics.get("reference_source", ""),
+            "price_deviation_pct": price_diagnostics.get("price_deviation_pct"),
+            "price_status":    price_diagnostics.get("price_status", "UNKNOWN"),
+            "price_warning":   price_diagnostics.get("price_warning", ""),
             "using_closed_candles": bool(getattr(self.cfg.trading, "use_closed_candles_for_conviction", True)),
             "reason":          signal.reason,
             "flat_reason":     signal.flat_reason,
@@ -1091,6 +1119,19 @@ class TradingAgent:
             "news_articles":  news_signal.article_count if news_signal and news_signal.valid else 0,
             "news_catalyst_score": getattr(news_signal, "catalyst_score", 0.0) if news_signal and news_signal.valid else 0.0,
             "news_catalyst_summary": getattr(news_signal, "catalyst_summary", "") if news_signal and news_signal.valid else "",
+            "news_catalyst_tags": getattr(news_signal, "catalyst_tags", []) if news_signal and news_signal.valid else [],
+            "news_event_score": getattr(news_signal, "event_score", 0.0) if news_signal and news_signal.valid else 0.0,
+            "news_event_summary": getattr(news_signal, "event_summary", "") if news_signal and news_signal.valid else "",
+            "news_event_tags": getattr(news_signal, "event_tags", []) if news_signal and news_signal.valid else [],
+            "official_event_score": getattr(news_signal, "official_event_score", 0.0) if news_signal and news_signal.valid else 0.0,
+            "official_event_summary": getattr(news_signal, "official_event_summary", "") if news_signal and news_signal.valid else "",
+            "sec_event_score": getattr(news_signal, "sec_event_score", 0.0) if news_signal and news_signal.valid else 0.0,
+            "sec_event_summary": getattr(news_signal, "sec_event_summary", "") if news_signal and news_signal.valid else "",
+            "options_implied_move_pct": getattr(news_signal, "options_implied_move_pct", 0.0) if news_signal and news_signal.valid else 0.0,
+            "options_summary": getattr(news_signal, "options_summary", "") if news_signal and news_signal.valid else "",
+            "analyst_revision_score": getattr(news_signal, "analyst_revision_score", 0.0) if news_signal and news_signal.valid else 0.0,
+            "analyst_revision_summary": getattr(news_signal, "analyst_revision_summary", "") if news_signal and news_signal.valid else "",
+            "event_feed": getattr(news_signal, "event_feed", {}) if news_signal and news_signal.valid else {},
             "narrative_summary": getattr(narrative_signal, "summary", "") if narrative_signal else "",
             "narrative_event_risk_active": bool(getattr(narrative_signal, "event_risk_active", False)) if narrative_signal else False,
             "narrative_event_name": getattr(narrative_signal, "event_name", "") if narrative_signal else "",
@@ -1194,6 +1235,12 @@ class TradingAgent:
             "thesis_summary":  thesis.get("summary", ""),
             "thesis_reasons":  thesis.get("reasons", []),
             "thesis_blockers": thesis.get("blockers", []),
+            "conviction_entry": conviction_entry,
+            "conviction_entry_active": bool(conviction_entry.get("active", False)),
+            "conviction_entry_style": conviction_entry.get("style", ""),
+            "conviction_entry_reason": conviction_entry.get("reason", ""),
+            "conviction_entry_size_multiplier": conviction_entry.get("size_multiplier", 1.0),
+            "conviction_entry_event": bool(conviction_entry.get("event_conviction", False)),
             "thesis":          thesis,
             "expectancy_probability": getattr(signal, "expectancy", {}).get("probability", 0.50),
             "expectancy_expected_r": getattr(signal, "expectancy", {}).get("expected_r", 0.0),
@@ -1227,6 +1274,11 @@ class TradingAgent:
             "portfolio_theme": "",
             "portfolio_guard_summary": "",
             "portfolio_guard_size_multiplier": 1.0,
+            "event_budget": {},
+            "event_budget_summary": "",
+            "event_budget_size_multiplier": 1.0,
+            "event_budget_total_exposure_pct": 0.0,
+            "event_budget_theme_exposure_pct": 0.0,
             "asset_state": "OBSERVING",
             "asset_state_label": "Observing",
             "next_unblock_reason": "",
@@ -1466,6 +1518,9 @@ class TradingAgent:
                 )
 
         # ── RL directional guardrails ─────────────────────────
+        event_starter_candidate = bool(
+            conviction_entry.get("active") and conviction_entry.get("event_conviction")
+        )
         if signal.action in ("LONG", "SHORT"):
             guard = long_guard if signal.action == "LONG" else short_guard
             self._last_signals[coin]["rl_active_guard"] = guard
@@ -1474,6 +1529,7 @@ class TradingAgent:
             self._last_signals[coin]["rl_guard_reasons"] = guard.get("reasons", [])
             self._last_signals[coin]["rl_hard_block"] = guard.get("hard_block", False)
             self._last_signals[coin]["rl_hard_block_reason"] = guard.get("hard_block_reason", "")
+            self._last_signals[coin]["rl_event_starter_bypass"] = False
 
             if guard.get("hard_block", False):
                 block_reason = str(guard.get("hard_block_reason", "") or f"RL embargo on {signal.action}")
@@ -1481,6 +1537,13 @@ class TradingAgent:
                 signal.action = "FLAT"
                 signal.flat_reason = block_reason
                 signal.reason = block_reason
+            elif event_starter_candidate:
+                if guard.get("pause_cycles", 0) > 0 or float(guard.get("threshold_boost", 0.0) or 0.0) > 0:
+                    self._last_signals[coin]["rl_event_starter_bypass"] = True
+                    log.info(
+                        f"[{coin}] 🧠 Event starter notes RL guard but keeps tiny pre-event exposure "
+                        f"({', '.join(guard.get('reasons', [])) or 'historical caution'})"
+                    )
             elif guard.get("pause_cycles", 0) > 0:
                 pause_reason = (
                     f"RL pause on {signal.action}: {guard['pause_cycles']} cycles left"
@@ -1742,7 +1805,10 @@ class TradingAgent:
                 streak = {"action": signal.action, "count": 1}
             self._signal_streak[coin] = streak
 
+            conviction_entry = dict((getattr(signal, "thesis", {}) or {}).get("conviction_entry") or {})
             required_streak = self.cfg.trading.signal_streak_required
+            if conviction_entry.get("active") and getattr(self.cfg.trading, "conviction_entry_bypass_signal_streak", True):
+                required_streak = 1
             if streak["count"] < required_streak:
                 self._last_signals[coin]["streak_confirmation_remaining"] = max(0, required_streak - streak["count"])
                 log.info(
@@ -1782,6 +1848,7 @@ class TradingAgent:
 
         # ── Pull RL stats to inform position sizing ────────────────────────
         # Risk-check & size the order (conviction + RL win-rate aware)
+        conviction_entry = dict((getattr(signal, "thesis", {}) or {}).get("conviction_entry") or {})
         order = self.risk.compute_order(
             coin              = coin,
             direction         = signal.action,
@@ -1797,6 +1864,7 @@ class TradingAgent:
             expected_r        = float((getattr(signal, "expectancy", {}) or {}).get("expected_r", 0.0) or 0.0),
             uncertainty       = float((getattr(signal, "expectancy", {}) or {}).get("uncertainty", 0.50) or 0.50),
             thesis_conviction = float((getattr(signal, "thesis", {}) or {}).get("conviction_score", signal.score) or signal.score),
+            sizing_multiplier = float(conviction_entry.get("size_multiplier", 1.0) or 1.0),
         )
 
         if not order.approved:
@@ -1811,6 +1879,7 @@ class TradingAgent:
             )
             return
 
+        event_starter = bool(conviction_entry.get("active") and conviction_entry.get("event_conviction"))
         portfolio_theme_guard = portfolio_guard.assess_correlation(
             self.cfg.trading,
             coin=coin,
@@ -1820,6 +1889,7 @@ class TradingAgent:
             proposed_size_usd=float(getattr(order, "size_usd", 0.0) or 0.0),
             open_positions=list(self.risk.positions.values()),
             pending_orders=list(self.order_mgr.pending_orders.values()),
+            event_starter=event_starter,
         )
         self._last_signals[coin]["portfolio_guard"] = portfolio_theme_guard
         self._last_signals[coin]["portfolio_theme"] = portfolio_theme_guard.get("theme", "")
@@ -1828,6 +1898,11 @@ class TradingAgent:
         self._last_signals[coin]["portfolio_guard_related_coins"] = portfolio_theme_guard.get("related_coins", [])
         self._last_signals[coin]["portfolio_guard_blockers"] = portfolio_theme_guard.get("blockers", [])
         self._last_signals[coin]["portfolio_guard_warnings"] = portfolio_theme_guard.get("warnings", [])
+        self._last_signals[coin]["event_budget"] = portfolio_theme_guard.get("event_budget", {})
+        self._last_signals[coin]["event_budget_summary"] = portfolio_theme_guard.get("event_budget_summary", "")
+        self._last_signals[coin]["event_budget_size_multiplier"] = portfolio_theme_guard.get("event_budget_size_multiplier", 1.0)
+        self._last_signals[coin]["event_budget_total_exposure_pct"] = portfolio_theme_guard.get("event_budget_total_exposure_pct", 0.0)
+        self._last_signals[coin]["event_budget_theme_exposure_pct"] = portfolio_theme_guard.get("event_budget_theme_exposure_pct", 0.0)
 
         if getattr(self.cfg.trading, "portfolio_correlation_guard_enabled", True):
             if not portfolio_theme_guard.get("permitted", True):
@@ -1852,24 +1927,32 @@ class TradingAgent:
                 original_size_usd = float(getattr(order, "size_usd", 0.0) or 0.0)
                 trimmed_size_usd = original_size_usd * size_multiplier
                 if trimmed_size_usd < float(self.cfg.trading.min_trade_usd or 0.0):
-                    reason = (
-                        f"{portfolio_theme_guard.get('theme', 'theme')} exposure trim would shrink the trade "
-                        f"below the ${self.cfg.trading.min_trade_usd:.0f} minimum"
-                    )
-                    log.info(f"[{coin}] 🧺 Portfolio trim keeps trade flat: {reason}")
-                    signal.action = "FLAT"
-                    signal.flat_reason = reason
-                    signal.reason = reason
-                    self._sync_signal_snapshot(coin, signal)
-                    self._record_decision_snapshot(
-                        coin,
-                        portfolio_usd=portfolio_usd,
-                        stage="portfolio_correlation_block",
-                        signal=signal,
-                        current_position=current_pos,
-                        blocked=True,
-                    )
-                    return
+                    min_trade_usd = float(self.cfg.trading.min_trade_usd or 0.0)
+                    if event_starter and original_size_usd >= min_trade_usd:
+                        trimmed_size_usd = min_trade_usd
+                        log.info(
+                            f"[{coin}] 🧺 Portfolio trim floors event starter to "
+                            f"${trimmed_size_usd:.2f}: {portfolio_theme_guard.get('summary', '')}"
+                        )
+                    else:
+                        reason = (
+                            f"{portfolio_theme_guard.get('theme', 'theme')} exposure trim would shrink the trade "
+                            f"below the ${self.cfg.trading.min_trade_usd:.0f} minimum"
+                        )
+                        log.info(f"[{coin}] 🧺 Portfolio trim keeps trade flat: {reason}")
+                        signal.action = "FLAT"
+                        signal.flat_reason = reason
+                        signal.reason = reason
+                        self._sync_signal_snapshot(coin, signal)
+                        self._record_decision_snapshot(
+                            coin,
+                            portfolio_usd=portfolio_usd,
+                            stage="portfolio_correlation_block",
+                            signal=signal,
+                            current_position=current_pos,
+                            blocked=True,
+                        )
+                        return
                 order.size_usd = trimmed_size_usd
                 order.size_coin = trimmed_size_usd / max(float(getattr(order, "price", signal.price) or signal.price), 1e-9)
                 self._last_signals[coin]["portfolio_guard_summary"] = (
@@ -2033,6 +2116,7 @@ class TradingAgent:
         thesis = dict(getattr(signal, "thesis", {}) or {})
         expectancy = dict(getattr(signal, "expectancy", {}) or {})
         execution_plan = dict(getattr(signal, "execution_plan", {}) or {})
+        conviction_entry = dict(thesis.get("conviction_entry") or {})
         snap = self._last_signals[coin]
         snap.update({
             "action": signal.action,
@@ -2063,6 +2147,12 @@ class TradingAgent:
             "thesis_summary": thesis.get("summary", snap.get("thesis_summary", "")),
             "thesis_reasons": thesis.get("reasons", snap.get("thesis_reasons", [])),
             "thesis_blockers": thesis.get("blockers", snap.get("thesis_blockers", [])),
+            "conviction_entry": conviction_entry,
+            "conviction_entry_active": bool(conviction_entry.get("active", False)),
+            "conviction_entry_style": conviction_entry.get("style", snap.get("conviction_entry_style", "")),
+            "conviction_entry_reason": conviction_entry.get("reason", snap.get("conviction_entry_reason", "")),
+            "conviction_entry_size_multiplier": conviction_entry.get("size_multiplier", snap.get("conviction_entry_size_multiplier", 1.0)),
+            "conviction_entry_event": bool(conviction_entry.get("event_conviction", snap.get("conviction_entry_event", False))),
             "thesis": thesis,
             "expectancy_probability": expectancy.get("probability", snap.get("expectancy_probability", 0.50)),
             "expectancy_expected_r": expectancy.get("expected_r", snap.get("expectancy_expected_r", 0.0)),
@@ -2127,11 +2217,22 @@ class TradingAgent:
                 signal.thesis["analog_summary"] = analog.get("summary", "")
                 signal.thesis["analog_verdict"] = analog.get("verdict", "INSUFFICIENT")
             if not blended_expectancy.get("permitted", True):
-                flat_reason = str(blended_expectancy.get("summary", "") or analog.get("summary", "") or "historical analogs do not support the setup")
-                log.info(f"[{coin}] 🧠 Analog gate keeps {signal.action} flat: {flat_reason}")
-                signal.action = "FLAT"
-                signal.flat_reason = flat_reason
-                signal.reason = flat_reason
+                conviction_entry = dict((getattr(signal, "thesis", {}) or {}).get("conviction_entry") or {})
+                analog_hard_adverse = bool(analog.get("hard_block", False) and analog.get("adverse", False))
+                if conviction_entry.get("active") and conviction_entry.get("bypass_precision", False) and not analog_hard_adverse:
+                    blended_expectancy["permitted"] = True
+                    blended_expectancy["blockers"] = []
+                    signal.expectancy = blended_expectancy
+                    log.info(
+                        f"[{coin}] Event starter overrides analog uncertainty gate; "
+                        f"history is noted but not hard-adverse"
+                    )
+                else:
+                    flat_reason = str(blended_expectancy.get("summary", "") or analog.get("summary", "") or "historical analogs do not support the setup")
+                    log.info(f"[{coin}] 🧠 Analog gate keeps {signal.action} flat: {flat_reason}")
+                    signal.action = "FLAT"
+                    signal.flat_reason = flat_reason
+                    signal.reason = flat_reason
             else:
                 self._apply_precision_analog_guard(
                     coin,
@@ -2160,6 +2261,13 @@ class TradingAgent:
         min_samples = int(getattr(self.cfg.trading, "precision_min_analog_samples", 3) or 3)
         min_reliability = float(getattr(self.cfg.trading, "precision_min_analog_reliability", 0.50) or 0.50)
         min_win_rate = float(getattr(self.cfg.trading, "precision_min_analog_win_rate", 0.60) or 0.60)
+        conviction_entry = dict((getattr(signal, "thesis", {}) or {}).get("conviction_entry") or {})
+        if (
+            conviction_entry.get("active")
+            and conviction_entry.get("bypass_precision", False)
+            and not (hard_block and adverse)
+        ):
+            return
 
         if hard_block:
             reason = summary or "historical analogs hard-block the setup"
@@ -2673,8 +2781,32 @@ class TradingAgent:
             "market_regime": sig.get("market_regime", "RANGING"),
             "dominant_regime": sig.get("dominant_regime", "MIXED"),
             "instrument_type": sig.get("instrument_type", "crypto"),
+            "price_diagnostics": sig.get("price_diagnostics", {}),
+            "price_source": sig.get("price_source", ""),
+            "price_source_label": sig.get("price_source_label", ""),
+            "venue_symbol": sig.get("venue_symbol", ""),
+            "venue_price": sig.get("venue_price", 0.0),
+            "reference_price": sig.get("reference_price", 0.0),
+            "reference_source": sig.get("reference_source", ""),
+            "price_deviation_pct": sig.get("price_deviation_pct"),
+            "price_status": sig.get("price_status", "UNKNOWN"),
+            "price_warning": sig.get("price_warning", ""),
             "news_score": sig.get("news_score", 50.0),
             "news_velocity": sig.get("news_velocity", "LOW"),
+            "news_catalyst_score": sig.get("news_catalyst_score", 0.0),
+            "news_catalyst_summary": sig.get("news_catalyst_summary", ""),
+            "news_catalyst_tags": sig.get("news_catalyst_tags", []),
+            "news_event_score": sig.get("news_event_score", 0.0),
+            "news_event_summary": sig.get("news_event_summary", ""),
+            "news_event_tags": sig.get("news_event_tags", []),
+            "official_event_score": sig.get("official_event_score", 0.0),
+            "official_event_summary": sig.get("official_event_summary", ""),
+            "sec_event_score": sig.get("sec_event_score", 0.0),
+            "sec_event_summary": sig.get("sec_event_summary", ""),
+            "options_implied_move_pct": sig.get("options_implied_move_pct", 0.0),
+            "options_summary": sig.get("options_summary", ""),
+            "analyst_revision_score": sig.get("analyst_revision_score", 0.0),
+            "analyst_revision_summary": sig.get("analyst_revision_summary", ""),
             "candle_score": sig.get("candle_score", 50.0),
             "candle_trend": sig.get("candle_trend", "FLAT"),
             "foc_score": sig.get("foc_score", 50.0),
@@ -2735,6 +2867,15 @@ class TradingAgent:
             "portfolio_theme": sig.get("portfolio_theme", ""),
             "portfolio_guard_summary": sig.get("portfolio_guard_summary", ""),
             "portfolio_guard_size_multiplier": sig.get("portfolio_guard_size_multiplier", 1.0),
+            "event_budget": sig.get("event_budget", {}),
+            "event_budget_summary": sig.get("event_budget_summary", ""),
+            "event_budget_size_multiplier": sig.get("event_budget_size_multiplier", 1.0),
+            "event_budget_total_exposure_pct": sig.get("event_budget_total_exposure_pct", 0.0),
+            "event_budget_theme_exposure_pct": sig.get("event_budget_theme_exposure_pct", 0.0),
+            "event_risk_budget_active": bool(sig.get("conviction_entry_event", False)),
+            "conviction_entry": sig.get("conviction_entry", {}),
+            "conviction_entry_active": sig.get("conviction_entry_active", False),
+            "conviction_entry_event": sig.get("conviction_entry_event", False),
             "operator_review_guard": sig.get("operator_review_guard", {}),
             "trade_plan": trade_plan,
             "thesis": sig.get("thesis", {}),
@@ -2759,6 +2900,59 @@ class TradingAgent:
             "conviction_tier": getattr(order, "conviction_tier", ""),
             "conviction_pct": getattr(order, "conviction_pct", 0.0),
         }
+
+    @staticmethod
+    def _extract_catalyst_terms(text: str, limit: int = 3) -> str:
+        raw = str(text or "")
+        for marker in ("Thesis:", "Catalyst:"):
+            if marker not in raw:
+                continue
+            fragment = raw.split(marker, 1)[1]
+            fragment = fragment.split("|", 1)[0].split(".", 1)[0]
+            terms = [
+                re.sub(r"\s+", " ", term.strip(" .;:-")).strip()
+                for term in fragment.replace(" and ", "+").split("+")
+            ]
+            terms = [term for term in terms if term and len(term) <= 48]
+            if terms:
+                return " + ".join(terms[:limit])
+        return ""
+
+    @classmethod
+    def _concise_trade_reason(cls, text: str, *, holding: bool = False) -> str:
+        raw = re.sub(r"\s+", " ", str(text or "").strip())
+        if not raw:
+            return "Thesis still valid." if holding else "No opening logic recorded."
+        lower = raw.lower()
+        catalysts = cls._extract_catalyst_terms(raw)
+        if holding:
+            if catalysts:
+                return f"Catalysts intact: {catalysts}."
+            if "thesis stayed intact" in lower or "thesis stays valid" in lower:
+                return "Thesis still valid."
+        if "pre-event starter" in lower:
+            return f"Pre-event starter: {catalysts or 'catalyst stack active'}."
+        if "support defense" in lower or "at support" in lower:
+            return f"Support held; {catalysts or 'starter risk allowed'}."
+        if "breakout" in lower or "reclaim" in lower:
+            return f"Breakout/reclaim confirmed; {catalysts or 'momentum active'}."
+        if "breakdown" in lower:
+            return f"Breakdown confirmed; {catalysts or 'risk active'}."
+        if "top of book drifted" in lower:
+            return "Price drifted, thesis intact."
+        first_clause = raw.split("|", 1)[0].split(".", 1)[0].strip(" .")
+        first_clause = re.sub(r"^Thesis\s+\w+:\s*", "", first_clause, flags=re.IGNORECASE)
+        if len(first_clause) > 92:
+            first_clause = first_clause[:91].rstrip() + "..."
+        return first_clause or ("Thesis still valid." if holding else "Opening thesis recorded.")
+
+    @staticmethod
+    def _invalidation_text(direction: str, stop_price: float) -> str:
+        stop = float(stop_price or 0.0)
+        if stop <= 0:
+            return "Invalidation level missing."
+        side = "above" if str(direction or "").upper() == "SHORT" else "below"
+        return f"Invalid {side} ${stop:,.2f}."
 
     @staticmethod
     def _signed_move(direction: str, start: float, end: float) -> float:
@@ -2963,6 +3157,428 @@ class TradingAgent:
                     f"{signal.action} failed on {ex.name} for {coin}: No result returned"
                 )
         return False
+
+    def _build_proactive_runtime_state(self, portfolio_usd: float, sentiment: dict) -> dict:
+        positions_out = []
+        for coin, pos in self.risk.positions.items():
+            entry_context = dict((getattr(pos, "metadata", {}) or {}).get("entry_context", {}) or {})
+            positions_out.append({
+                "coin": coin,
+                "direction": pos.direction,
+                "entry_price": pos.entry_price,
+                "size_usd": pos.size_usd,
+                "entry_context": entry_context,
+            })
+
+        pending_out = []
+        for coin, pending in self.order_mgr.pending_orders.items():
+            entry_context = dict((getattr(pending, "metadata", {}) or {}).get("entry_context", {}) or {})
+            pending_out.append({
+                "coin": coin,
+                "direction": pending.direction,
+                "limit_price": pending.limit_price,
+                "size_usd": pending.size_usd,
+                "entry_context": entry_context,
+            })
+
+        return {
+            "status": "running",
+            "mode": "dry_run" if self.cfg.is_dry_run else "live",
+            "cycle_number": self._cycle,
+            "portfolio_usd": round(float(portfolio_usd or 0.0), 2),
+            "available_usd": round(self.risk.available_capital(float(portfolio_usd or 0.0)), 2),
+            "positions": positions_out,
+            "pending_orders": pending_out,
+            "signals": getattr(self, "_last_signals", {}),
+            "sentiment": sentiment or {},
+            "config": {
+                "instrument_types": self.cfg.trading.instrument_types,
+                "asset_categories": getattr(self.cfg.trading, "asset_category_map", {}),
+                "portfolio_theme_map": getattr(self.cfg.trading, "portfolio_theme_map", {}),
+            },
+        }
+
+    def _build_proactive_market_map(self) -> dict:
+        signals = getattr(self, "_last_signals", {}) or {}
+        return market_map.build_effective_market_map(
+            self._analysis_coins,
+            current_prices={
+                coin: float((sig or {}).get("live_price") or (sig or {}).get("price") or 0.0)
+                for coin, sig in signals.items()
+            },
+            closed_prices={
+                coin: float((sig or {}).get("analysis_price") or (sig or {}).get("price") or 0.0)
+                for coin, sig in signals.items()
+            },
+        )
+
+    def _starter_trade_plan(self, coin: str, direction: str, price: float, snapshot: dict) -> dict:
+        trade_plan = dict((snapshot or {}).get("trade_plan") or {})
+        stop = float((snapshot or {}).get("planned_stop_loss") or trade_plan.get("stop_loss") or 0.0)
+        take_profit = float((snapshot or {}).get("planned_take_profit") or trade_plan.get("take_profit") or 0.0)
+        stop_pct = max(0.001, float(getattr(self.cfg.trading, "stop_loss_pct", 0.10) or 0.10))
+        target_pct = max(0.001, float(getattr(self.cfg.trading, "take_profit_pct", 0.50) or 0.50))
+
+        if direction == "LONG":
+            if stop <= 0 or stop >= price:
+                stop = price * (1.0 - stop_pct)
+            if take_profit <= price:
+                take_profit = price * (1.0 + target_pct)
+            risk_per_unit = max(0.0, price - stop)
+            reward_per_unit = max(0.0, take_profit - price)
+        else:
+            if stop <= price:
+                stop = price * (1.0 + stop_pct)
+            if take_profit <= 0 or take_profit >= price:
+                take_profit = price * (1.0 - target_pct)
+            risk_per_unit = max(0.0, stop - price)
+            reward_per_unit = max(0.0, price - take_profit)
+
+        trade_plan.update({
+            "entry_price": round(price, 6),
+            "stop_loss": round(stop, 6),
+            "take_profit": round(take_profit, 6),
+            "risk_per_unit": round(risk_per_unit, 6),
+            "reward_per_unit": round(reward_per_unit, 6),
+            "risk_pct": round(risk_per_unit / max(price, 1e-9) * 100.0, 3),
+            "reward_pct": round(reward_per_unit / max(price, 1e-9) * 100.0, 3),
+            "risk_reward_ratio": round(reward_per_unit / max(risk_per_unit, 1e-9), 3),
+            "stop_basis": trade_plan.get("stop_basis") or "proactive event-starter stop",
+            "target_basis": trade_plan.get("target_basis") or "proactive event-starter target",
+        })
+        return trade_plan
+
+    def _proactive_starter_skip_reason(self, allocation: dict, portfolio_usd: float) -> str:
+        coin = str((allocation or {}).get("coin") or "").upper()
+        direction = str((allocation or {}).get("direction") or "").upper()
+        if not coin or direction not in {"LONG", "SHORT"}:
+            return "allocation is missing a tradable direction"
+        if coin not in self._tradable_coin_set:
+            return "asset is not in the executable universe"
+        if self.risk.has_position(coin):
+            return "position already open"
+        if self.order_mgr.has_pending(coin):
+            return "limit order already pending"
+        if self.risk.is_trading_halted():
+            return "loss circuit breaker is active"
+        if direction == "SHORT" and not hyperliquid_supports_shorts(coin):
+            return "venue is long-only for this asset"
+        if (
+            getattr(self.cfg.trading, "enforce_active_venue_markets", True)
+            and is_hyperliquid_supported(coin)
+            and not hyperliquid_market_is_active(coin)
+        ):
+            return "venue market is inactive"
+
+        snapshot = dict(self._last_signals.get(coin, {}) or {})
+        hard_block_stages = {
+            str(stage or "").strip()
+            for stage in getattr(self.cfg.trading, "proactive_starter_execution_hard_block_stages", [])
+            if str(stage or "").strip()
+        }
+        stage = str(snapshot.get("decision_stage") or "").strip()
+        if stage in hard_block_stages:
+            return f"hard guardrail stage is active: {stage}"
+
+        min_score = float(getattr(self.cfg.trading, "proactive_starter_execution_min_score", 60.0) or 60.0)
+        if float((allocation or {}).get("scout_score") or 0.0) < min_score:
+            return f"scout score is below execution minimum {min_score:.0f}"
+
+        cooldown_seconds = float(getattr(self.cfg.trading, "proactive_starter_execution_cooldown_minutes", 240.0) or 240.0) * 60.0
+        last_attempt = float(self._proactive_starter_attempt_ts.get(coin, 0.0) or 0.0)
+        if last_attempt and cooldown_seconds > 0 and (time.time() - last_attempt) < cooldown_seconds:
+            minutes_left = max(1, int(math.ceil((cooldown_seconds - (time.time() - last_attempt)) / 60.0)))
+            return f"starter attempt cooldown has ~{minutes_left}m left"
+
+        if portfolio_usd <= 0:
+            return "portfolio value unavailable"
+        return ""
+
+    def _execute_proactive_starter_basket(self, portfolio_usd: float, sentiment: dict) -> dict:
+        if not getattr(self.cfg.trading, "proactive_starter_execution_enabled", True):
+            self._last_proactive_execution = {
+                "enabled": False,
+                "summary": {"reason": "proactive starter execution disabled"},
+            }
+            return self._last_proactive_execution
+
+        if not getattr(self.cfg.trading, "starter_basket_optimizer_enabled", True):
+            self._last_proactive_execution = {
+                "enabled": False,
+                "summary": {"reason": "starter basket optimizer disabled"},
+            }
+            return self._last_proactive_execution
+
+        execution = {
+            "enabled": True,
+            "updated_at": datetime.now().isoformat(timespec="seconds"),
+            "mode": "dry_run" if self.cfg.is_dry_run else "live",
+            "attempts": [],
+            "opened": [],
+            "skipped": [],
+            "budget": {},
+            "summary": {
+                "attempted_count": 0,
+                "opened_count": 0,
+                "skipped_count": 0,
+                "opened_usd": 0.0,
+            },
+        }
+
+        try:
+            state = self._build_proactive_runtime_state(portfolio_usd, sentiment)
+            market_map_data = self._build_proactive_market_map()
+            report = proactive_intelligence.build_and_save_report(
+                state=state,
+                market_map=market_map_data,
+                config=self.cfg.trading,
+                data_dir=DATA_DIR,
+            )
+        except Exception as exc:
+            execution["summary"]["reason"] = f"proactive report build failed: {exc}"
+            self._last_proactive_execution = execution
+            log.warning("Proactive starter execution skipped: %s", exc)
+            return execution
+
+        basket = dict((report or {}).get("starter_basket_optimizer") or {})
+        allocations = list(basket.get("allocations") or [])
+        execution["budget"] = dict(basket.get("budget") or {})
+        max_per_cycle = max(0, int(getattr(self.cfg.trading, "proactive_starter_execution_max_per_cycle", 3) or 3))
+        min_trade = max(
+            float(getattr(self.cfg.trading, "min_trade_usd", 0.0) or 0.0),
+            float(getattr(self.cfg.trading, "event_risk_budget_min_trade_usd", 0.0) or 0.0),
+        )
+
+        if not allocations or max_per_cycle <= 0:
+            execution["summary"].update({
+                "skipped_count": len(allocations),
+                "reason": "no starter allocations ready" if not allocations else "cycle execution limit is zero",
+            })
+            self._last_proactive_execution = execution
+            return execution
+
+        for allocation in allocations:
+            coin = str((allocation or {}).get("coin") or "").upper()
+            direction = str((allocation or {}).get("direction") or "").upper()
+            if execution["summary"]["attempted_count"] >= max_per_cycle:
+                execution["skipped"].append({"coin": coin, "reason": "per-cycle starter limit reached"})
+                continue
+
+            skip_reason = self._proactive_starter_skip_reason(allocation, portfolio_usd)
+            if skip_reason:
+                execution["skipped"].append({"coin": coin, "direction": direction, "reason": skip_reason})
+                continue
+
+            snapshot = dict(self._last_signals.get(coin, {}) or {})
+            price = float(
+                snapshot.get("live_price")
+                or snapshot.get("price")
+                or snapshot.get("analysis_price")
+                or get_current_price(coin)
+                or 0.0
+            )
+            if price <= 0:
+                execution["skipped"].append({"coin": coin, "direction": direction, "reason": "live price unavailable"})
+                continue
+
+            desired_size = float((allocation or {}).get("size_usd") or 0.0)
+            desired_size = min(
+                desired_size,
+                float(getattr(self.cfg.trading, "max_trade_usd", desired_size) or desired_size),
+                float(portfolio_usd or 0.0) * float(getattr(self.cfg.trading, "max_position_pct", 1.0) or 1.0),
+                self.risk.available_capital(float(portfolio_usd or 0.0)),
+            )
+            if desired_size < min_trade:
+                execution["skipped"].append({
+                    "coin": coin,
+                    "direction": direction,
+                    "reason": f"starter size ${desired_size:.0f} is below minimum ${min_trade:.0f}",
+                })
+                continue
+
+            instrument_type = str(snapshot.get("instrument_type") or self.cfg.trading.instrument_types.get(coin) or hyperliquid_instrument_type(coin) or "crypto")
+            guard = portfolio_guard.assess_correlation(
+                self.cfg.trading,
+                coin=coin,
+                direction=direction,
+                instrument_type=instrument_type,
+                portfolio_usd=float(portfolio_usd or 0.0),
+                proposed_size_usd=desired_size,
+                open_positions=list(self.risk.positions.values()),
+                pending_orders=list(self.order_mgr.pending_orders.values()),
+                event_starter=True,
+            )
+            if not guard.get("permitted", True):
+                execution["skipped"].append({
+                    "coin": coin,
+                    "direction": direction,
+                    "reason": guard.get("summary", "event-risk guard blocked starter"),
+                    "portfolio_guard": guard,
+                })
+                continue
+
+            size_multiplier = float(guard.get("size_multiplier", 1.0) or 1.0)
+            final_size = desired_size * max(0.0, min(1.0, size_multiplier))
+            if final_size < min_trade:
+                execution["skipped"].append({
+                    "coin": coin,
+                    "direction": direction,
+                    "reason": f"event-risk trim reduced starter below ${min_trade:.0f}",
+                    "portfolio_guard": guard,
+                })
+                continue
+
+            trade_plan = self._starter_trade_plan(coin, direction, price, snapshot)
+            thesis = dict(snapshot.get("thesis") or {})
+            thesis.update({
+                "candidate_action": direction,
+                "state": "PROACTIVE_STARTER",
+                "permitted": True,
+                "quality": snapshot.get("thesis_quality", "MEDIUM"),
+                "conviction_score": float((allocation or {}).get("scout_score") or snapshot.get("score") or 60.0),
+                "summary": (allocation or {}).get("why") or snapshot.get("thesis_summary") or "Proactive starter basket allocation.",
+                "conviction_entry": {
+                    "active": True,
+                    "style": "proactive_starter_basket",
+                    "event_conviction": True,
+                    "bypass_precision": True,
+                    "size_multiplier": round(final_size / max(desired_size, 1e-9), 4),
+                    "reason": "starter basket owns a small pre-event thesis inside event-risk budget",
+                },
+            })
+            expectancy = dict(snapshot.get("expectancy") or {})
+            expectancy.update({
+                "probability": float((allocation or {}).get("probability") or snapshot.get("expectancy_probability") or 0.55),
+                "expected_r": float(snapshot.get("expectancy_expected_r") or 0.15),
+                "uncertainty": float(snapshot.get("expectancy_uncertainty") or 0.55),
+                "score": float((allocation or {}).get("scout_score") or snapshot.get("score") or 60.0),
+                "summary": "Pre-event starter forecast tracked by forecast calibration.",
+            })
+            signal = SimpleNamespace(
+                coin=coin,
+                action=direction,
+                score=float((allocation or {}).get("scout_score") or snapshot.get("score") or 60.0),
+                confidence=snapshot.get("confidence") or "MEDIUM",
+                price=price,
+                reason=(allocation or {}).get("why") or "Proactive starter basket entry.",
+                flat_reason="",
+                stop_loss_price=float(trade_plan.get("stop_loss") or 0.0),
+                take_profit_price=float(trade_plan.get("take_profit") or 0.0),
+                instrument_type=instrument_type,
+                trade_plan=trade_plan,
+                thesis=thesis,
+                expectancy=expectancy,
+                execution_plan={
+                    "mode": "market",
+                    "source": "proactive_starter_basket",
+                    "reason": "own small pre-event starter allocation",
+                },
+            )
+
+            updated_snapshot = dict(snapshot)
+            updated_snapshot.update({
+                "action": direction,
+                "decision": direction,
+                "score": signal.score,
+                "confidence": signal.confidence,
+                "price": price,
+                "live_price": price,
+                **get_price_diagnostics(
+                    coin,
+                    venue_price=price,
+                    max_deviation_pct=getattr(self.cfg.trading, "data_reliability_max_reference_deviation_pct", 2.0),
+                ),
+                "instrument_type": instrument_type,
+                "decision_reason": signal.reason,
+                "execution_mode": "tradable",
+                "portfolio_guard": guard,
+                "portfolio_theme": guard.get("theme", ""),
+                "portfolio_guard_summary": guard.get("summary", ""),
+                "portfolio_guard_size_multiplier": guard.get("size_multiplier", 1.0),
+                "event_budget": guard.get("event_budget", {}),
+                "event_budget_summary": guard.get("event_budget_summary", ""),
+                "event_budget_size_multiplier": guard.get("event_budget_size_multiplier", 1.0),
+                "event_budget_total_exposure_pct": guard.get("event_budget_total_exposure_pct", 0.0),
+                "event_budget_theme_exposure_pct": guard.get("event_budget_theme_exposure_pct", 0.0),
+                "event_risk_budget_active": True,
+                "conviction_entry": thesis["conviction_entry"],
+                "conviction_entry_active": True,
+                "conviction_entry_event": True,
+                "proactive_starter": True,
+                "proactive_starter_allocation": dict(allocation or {}),
+                "trade_plan": trade_plan,
+                "thesis": thesis,
+                "expectancy": expectancy,
+            })
+            self._last_signals[coin] = updated_snapshot
+            self._sync_signal_snapshot(coin, signal)
+
+            if self._apply_llm_referee(coin, signal, current_position=""):
+                self._proactive_starter_attempt_ts[coin] = time.time()
+                execution["skipped"].append({"coin": coin, "direction": direction, "reason": "LLM referee blocked proactive starter"})
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="proactive_starter_llm_block",
+                    signal=signal,
+                    blocked=True,
+                )
+                continue
+
+            order = OrderRequest(
+                coin=coin,
+                direction=direction,
+                size_usd=final_size,
+                size_coin=final_size / max(price, 1e-9),
+                price=price,
+                stop_loss=signal.stop_loss_price,
+                take_profit=signal.take_profit_price,
+                leverage=self.cfg.trading.leverage,
+                approved=True,
+                conviction_tier="PROACTIVE_EVENT_STARTER",
+                conviction_pct=signal.score,
+                is_scale_in=False,
+            )
+            execution["summary"]["attempted_count"] += 1
+            execution["attempts"].append({
+                "coin": coin,
+                "direction": direction,
+                "size_usd": round(final_size, 2),
+                "theme": guard.get("theme", ""),
+                "scout_score": signal.score,
+                "portfolio_guard": guard,
+            })
+            self._proactive_starter_attempt_ts[coin] = time.time()
+            log.info(
+                f"[{coin}] 🧭 Proactive starter executing: {direction} "
+                f"${final_size:.2f} via starter basket | {guard.get('summary', '')}"
+            )
+            executed = self._execute_order(coin, signal, order)
+            self._record_decision_snapshot(
+                coin,
+                portfolio_usd=portfolio_usd,
+                stage="proactive_starter_opened" if executed else "proactive_starter_failed",
+                signal=signal,
+                executed=bool(executed),
+                blocked=not bool(executed),
+            )
+            if executed:
+                opened = {
+                    "coin": coin,
+                    "direction": direction,
+                    "size_usd": round(final_size, 2),
+                    "theme": guard.get("theme", ""),
+                    "scout_score": signal.score,
+                }
+                execution["opened"].append(opened)
+                execution["summary"]["opened_count"] += 1
+                execution["summary"]["opened_usd"] = round(float(execution["summary"]["opened_usd"]) + final_size, 2)
+            else:
+                execution["skipped"].append({"coin": coin, "direction": direction, "reason": "market execution failed"})
+
+        execution["summary"]["skipped_count"] = len(execution["skipped"])
+        self._last_proactive_execution = execution
+        return execution
 
     def _place_limit_order(self, coin: str, direction: str, limit_price: float,
                            size_usd: float, sl: float, tp: float,
@@ -3911,6 +4527,23 @@ class TradingAgent:
                 return ex
         return None
 
+    def _restore_exchange_pending_limit(self, order: PendingOrder):
+        ex = self._get_exchange_by_name(order.exchange)
+        restore = getattr(ex, "restore_limit_order", None) if ex else None
+        if not callable(restore):
+            return
+        try:
+            restore(
+                order_id=order.exchange_order_id or "",
+                coin=order.coin,
+                direction=order.direction,
+                size_coin=order.size_coin,
+                limit_price=order.limit_price,
+                size_usd=order.size_usd,
+            )
+        except Exception as exc:
+            log.warning(f"[{order.coin}] Could not restore pending limit on {ex.name}: {exc}")
+
     def _eligible_exchanges(self, coin: str) -> List[BaseExchange]:
         return [ex for ex in self.exchanges if coin in ex.supported_coins()]
 
@@ -3939,6 +4572,11 @@ class TradingAgent:
         positions_out = []
         for coin, p in self.risk.positions.items():
             price = get_current_price(coin) or p.entry_price
+            price_diagnostics = get_price_diagnostics(
+                coin,
+                venue_price=price,
+                max_deviation_pct=getattr(self.cfg.trading, "data_reliability_max_reference_deviation_pct", 2.0),
+            )
             if p.direction == "LONG":
                 upnl = (price - p.entry_price) / p.entry_price * p.size_usd
             else:
@@ -3954,19 +4592,49 @@ class TradingAgent:
                 "size_usd":      p.size_usd,
                 "unrealised_pnl":round(upnl, 2),
                 "opened_at":     getattr(p, "opened_at", None),
+                "invalidation":  self._invalidation_text(p.direction, p.stop_loss),
+                "invalidation_short": self._invalidation_text(p.direction, p.stop_loss),
+                "price_diagnostics": price_diagnostics,
+                "price_source":   price_diagnostics.get("price_source", ""),
+                "price_source_label": price_diagnostics.get("price_source_label", ""),
+                "venue_symbol":   price_diagnostics.get("venue_symbol", ""),
+                "venue_price":    price_diagnostics.get("venue_price", 0.0),
+                "reference_price": price_diagnostics.get("reference_price", 0.0),
+                "reference_source": price_diagnostics.get("reference_source", ""),
+                "price_deviation_pct": price_diagnostics.get("price_deviation_pct"),
+                "price_status":   price_diagnostics.get("price_status", "UNKNOWN"),
+                "price_warning":  price_diagnostics.get("price_warning", ""),
             })
 
         pending_out = []
         for coin, o in self.order_mgr.pending_orders.items():
+            price_diagnostics = get_price_diagnostics(
+                coin,
+                venue_price=get_current_price(coin) or o.limit_price,
+                max_deviation_pct=getattr(self.cfg.trading, "data_reliability_max_reference_deviation_pct", 2.0),
+            )
             pending_out.append({
                 "coin":        coin,
                 "direction":   o.direction,
                 "limit_price": o.limit_price,
                 "size_usd":    o.size_usd,
+                "stop_loss":   o.stop_loss,
+                "take_profit": o.take_profit,
+                "invalidation": self._invalidation_text(o.direction, o.stop_loss),
+                "invalidation_short": self._invalidation_text(o.direction, o.stop_loss),
                 "cycles_waiting": o.cycles_waiting,
                 "reprice_count": getattr(o, "reprice_count", 0),
                 "reason": getattr(o, "reason", ""),
                 "max_cycles":  15,
+                "price_diagnostics": price_diagnostics,
+                "price_source": price_diagnostics.get("price_source", ""),
+                "price_source_label": price_diagnostics.get("price_source_label", ""),
+                "venue_symbol": price_diagnostics.get("venue_symbol", ""),
+                "reference_price": price_diagnostics.get("reference_price", 0.0),
+                "reference_source": price_diagnostics.get("reference_source", ""),
+                "price_deviation_pct": price_diagnostics.get("price_deviation_pct"),
+                "price_status": price_diagnostics.get("price_status", "UNKNOWN"),
+                "price_warning": price_diagnostics.get("price_warning", ""),
             })
 
         # Enrich positions with hold-time and anti-whipsaw data
@@ -4001,6 +4669,11 @@ class TradingAgent:
                     sig.get("decision_reason")
                     or sig.get("thesis_summary", "")
                     or ""
+                )
+                p_out["entry_logic_short"] = self._concise_trade_reason(p_out.get("entry_logic", ""))
+                p_out["current_logic_short"] = self._concise_trade_reason(
+                    p_out.get("current_logic", ""),
+                    holding=True,
                 )
 
         state = {
@@ -4039,6 +4712,7 @@ class TradingAgent:
                 "instrument_types":      self.cfg.trading.instrument_types,
                 "asset_categories":      getattr(self.cfg.trading, "asset_category_map", {}),
                 "asset_category_labels": getattr(self.cfg.trading, "asset_category_labels", {}),
+                "portfolio_theme_map":   getattr(self.cfg.trading, "portfolio_theme_map", {}),
             },
         }
 
@@ -4134,6 +4808,37 @@ class TradingAgent:
                 except Exception:
                     asset_dossier_data = {}
 
+        proactive_trader_data = {}
+        try:
+            proactive_trader_data = proactive_intelligence.build_and_save_report(
+                state=state,
+                market_map=market_map_data,
+                config=self.cfg.trading,
+                data_dir=DATA_DIR,
+            )
+        except Exception as e:
+            log.debug(f"proactive_trader_report.json write failed: {e}")
+            if PROACTIVE_TRADER_REPORT_JSON.exists():
+                try:
+                    proactive_trader_data = json.loads(PROACTIVE_TRADER_REPORT_JSON.read_text())
+                except Exception:
+                    proactive_trader_data = {}
+        if self._last_proactive_execution:
+            proactive_trader_data = dict(proactive_trader_data or {})
+            proactive_trader_data["starter_execution"] = dict(self._last_proactive_execution or {})
+            proactive_summary = dict(proactive_trader_data.get("summary") or {})
+            execution_summary = dict((self._last_proactive_execution or {}).get("summary") or {})
+            proactive_summary.update({
+                "starter_execution_opened_count": execution_summary.get("opened_count", 0),
+                "starter_execution_opened_usd": execution_summary.get("opened_usd", 0.0),
+                "starter_execution_attempted_count": execution_summary.get("attempted_count", 0),
+            })
+            proactive_trader_data["summary"] = proactive_summary
+            try:
+                PROACTIVE_TRADER_REPORT_JSON.write_text(json.dumps(proactive_trader_data, indent=2))
+            except Exception as e:
+                log.debug(f"proactive_trader_report.json execution annotate failed: {e}")
+
         control_data = default_control()
         control_path = CONTROL_JSON
         if control_path.exists():
@@ -4156,6 +4861,7 @@ class TradingAgent:
             asset_dossiers=asset_dossier_data,
             llm_referee_report=llm_referee_report_data,
             playbook_distiller_report=playbook_distiller_report_data,
+            proactive_trader_report=proactive_trader_data,
         )
         try:
             DASHBOARD_SNAPSHOT_JSON.write_text(json.dumps(snapshot, indent=2))

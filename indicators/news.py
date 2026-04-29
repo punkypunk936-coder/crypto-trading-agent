@@ -31,13 +31,15 @@ from __future__ import annotations
 
 import time
 import re
+from datetime import date, datetime, timezone
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict
+from typing import Iterable, List, Optional, Dict
 import copy
 import xml.etree.ElementTree as ET
 import requests
 
 from logger import get_logger
+from indicators import equity_event_feeds
 
 log = get_logger("news")
 
@@ -58,8 +60,11 @@ REQUEST_HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7
 # Instruments routed to macro / equity news instead of CryptoPanic.
 INDEX_INSTRUMENTS = {
     "SP500", "XAU", "BRENT", "WTI", "CL", "NDX", "DJI", "VIX",
-    "AAPL", "AMZN", "GOOGL", "META", "MSFT", "TSLA",
-    "NVDA", "INTC", "MU", "SNDK", "SKHX", "CRWV", "EWY", "HIMS",
+    "AAPL", "AMD", "AMZN", "BABA", "BIRD", "BX", "COIN", "COST", "CRCL",
+    "CRWV", "DKNG", "DRAM", "EWJ", "EWY", "GME", "GOOGL", "HIMS", "HOOD",
+    "HYUNDAI", "INTC", "KIOXIA", "LITE", "LLY", "META", "MRVL", "MSFT",
+    "MSTR", "MU", "NFLX", "NVDA", "ORCL", "PLTR", "RIVN", "RKLB", "SKHX",
+    "SMSN", "SNDK", "SOFTBANK", "TSLA", "TSM", "URNM", "USAR", "XLE",
 }
 
 # ── Macro / equity keyword weights ────────────────────────────────────────────
@@ -202,14 +207,116 @@ EQUITY_DISTRIBUTION_EXPANSION_KEYWORDS = (
     "distribution",
 )
 
+EQUITY_AI_DEMAND_KEYWORDS = (
+    "ai demand",
+    "agentic ai",
+    "data center demand",
+    "server demand",
+    "cpu demand",
+    "gpu demand",
+    "accelerator demand",
+    "inference demand",
+    "training demand",
+    "strong cloud demand",
+    "backlog",
+    "design win",
+    "sold out",
+    "supply constrained",
+    "capacity tight",
+    "hbm shortage",
+    "memory shortage",
+)
+
+EQUITY_AI_SUPPLY_EXPANSION_KEYWORDS = (
+    "capacity expansion",
+    "fab expansion",
+    "production ramp",
+    "volume ramp",
+    "yield improvement",
+    "yields improve",
+    "packaging capacity",
+    "advanced packaging",
+    "wafer allocation",
+    "server cpu",
+    "data center cpu",
+)
+
+EQUITY_AI_DEMAND_RISK_KEYWORDS: Dict[str, float] = {
+    "delay": 10,
+    "pushout": 14,
+    "inventory correction": 18,
+    "weak server demand": 18,
+    "weak pc demand": 16,
+    "pricing pressure": 16,
+    "oversupply": 18,
+    "yield issue": 18,
+    "manufacturing issue": 16,
+}
+
+EQUITY_EARNINGS_EVENT_KEYWORDS = (
+    "earnings",
+    "earnings call",
+    "earnings calendar",
+    "earnings report",
+    "reports earnings",
+    "quarterly results",
+    "q1 results",
+    "q2 results",
+    "q3 results",
+    "q4 results",
+    "results after the bell",
+    "after the bell",
+    "after market close",
+    "after the market closes",
+    "guidance",
+    "outlook",
+)
+
+EQUITY_PRE_EVENT_SETUP_KEYWORDS = (
+    "ahead of earnings",
+    "earnings preview",
+    "set to report",
+    "scheduled to report",
+    "expected to report",
+    "projected to post",
+    "before earnings",
+    "heading into earnings",
+    "into earnings",
+    "reports after the close",
+    "reports after close",
+    "reports quarterly",
+)
+
+EQUITY_ANALYST_CONVICTION_KEYWORDS = (
+    "raises price target",
+    "price target raised",
+    "boosts price target",
+    "upgrades",
+    "upgraded",
+    "upgrade",
+    "buy rating",
+    "overweight rating",
+    "outperform rating",
+    "positive catalyst",
+    "bullish call",
+)
+
 CATALYST_TAG_LABELS: Dict[str, str] = {
     "platform_anchor": "platform anchor",
+    "calendar_event": "earnings calendar",
     "partner_attached": "partner attached",
     "strategic_deal": "strategic deal",
     "capital_commitment": "capital commitment",
     "demand_commitment": "demand commitment",
     "capacity_lock_in": "capacity lock-in",
     "distribution_expand": "distribution expansion",
+    "earnings_event": "earnings event",
+    "pre_event_setup": "pre-event setup",
+    "analyst_conviction": "analyst conviction",
+    "official_ir_event": "official IR event",
+    "sec_filing": "SEC filing flow",
+    "options_implied_move": "options implied move",
+    "analyst_revision": "analyst revision",
 }
 
 # Bullish/bearish keyword weights
@@ -266,6 +373,18 @@ class NewsSignal:
     catalyst_score: float = 0.0
     catalyst_summary: str = ""
     catalyst_tags: List[str] = field(default_factory=list)
+    event_score: float = 0.0
+    event_summary: str = ""
+    event_tags: List[str] = field(default_factory=list)
+    official_event_score: float = 0.0
+    official_event_summary: str = ""
+    sec_event_score: float = 0.0
+    sec_event_summary: str = ""
+    options_implied_move_pct: float = 0.0
+    options_summary: str = ""
+    analyst_revision_score: float = 0.0
+    analyst_revision_summary: str = ""
+    event_feed: Dict[str, object] = field(default_factory=dict)
 
 
 @dataclass
@@ -285,6 +404,7 @@ CRYPTO_NEWS_QUERIES: Dict[str, str] = {
     "ETH": "Ethereum OR ETH crypto",
     "SOL": "Solana OR SOL crypto",
     "HYPE": "Hyperliquid OR HYPE token OR Hyperliquid protocol",
+    "MON": "MON token OR Monad OR Monad crypto",
     "TAO": "Bittensor OR TAO token",
 }
 
@@ -292,18 +412,18 @@ MACRO_NEWS_QUERIES: Dict[str, str] = {
     "SP500": "S&P 500 OR SPX OR US stocks OR Wall Street",
     "XAU": "gold OR XAU OR bullion OR treasury yields",
     "AAPL": "Apple stock OR AAPL earnings OR iPhone demand",
-    "AMZN": "Amazon OR AMZN OR AWS OR Anthropic OR Trainium OR Bedrock",
-    "GOOGL": "Alphabet OR GOOGL OR Google Cloud OR Gemini OR Waymo OR Vertex AI",
-    "META": "Meta stock OR META earnings OR ad revenue OR AI spend",
+    "AMZN": "Amazon OR AMZN OR AWS OR Anthropic OR Trainium OR Bedrock OR earnings",
+    "GOOGL": "Alphabet OR GOOGL OR Google Cloud OR Gemini OR Waymo OR Vertex AI OR earnings",
+    "META": "Meta stock OR META earnings OR ad revenue OR AI spend OR Llama OR Meta AI",
     "MSFT": "Microsoft OR MSFT OR Azure OR OpenAI OR Copilot OR Foundry",
     "TSLA": "Tesla stock OR TSLA deliveries OR EV demand",
     "NVDA": "NVIDIA OR NVDA OR Blackwell OR GPU demand OR data center spend",
-    "INTC": "Intel OR INTC OR foundry OR AI PC OR Gaudi",
-    "MU": "Micron OR MU OR memory pricing OR HBM demand OR DRAM",
-    "SNDK": "SanDisk OR SNDK OR NAND pricing OR flash memory",
-    "SKHX": "SK Hynix OR SKHX OR HBM memory OR South Korea semiconductors",
-    "CRWV": "CoreWeave OR CRWV OR neocloud OR GPU cloud OR AI infrastructure",
-    "EWY": "EWY OR South Korea ETF OR Samsung OR SK Hynix OR Korea equities",
+    "INTC": "Intel OR INTC OR foundry OR 18A OR Xeon OR Gaudi OR AI PC OR server CPU demand OR data center CPU",
+    "MU": "Micron OR MU OR memory pricing OR HBM demand OR HBM3E OR DRAM OR data center memory",
+    "SNDK": "SanDisk OR SNDK OR NAND pricing OR flash memory OR SSD demand OR enterprise storage",
+    "SKHX": "SK Hynix OR SKHX OR HBM memory OR HBM3E OR DRAM OR South Korea semiconductors",
+    "CRWV": "CoreWeave OR CRWV OR neocloud OR GPU cloud OR AI infrastructure OR capacity expansion",
+    "EWY": "EWY OR South Korea ETF OR Samsung OR SK Hynix OR Korea equities OR semiconductor exports",
     "BRENT": "Brent crude OR oil OR OPEC",
     "WTI": "WTI crude OR oil OR OPEC",
     "CL": "WTI crude OR oil OR OPEC",
@@ -340,21 +460,65 @@ ASSET_NEWS_PROFILES: Dict[str, Dict[str, List[str]]] = {
         "strong_context": ["google cloud", "gcp", "vertex ai", "gemini", "waymo", "tpu"],
         "partner_context": ["anthropic"],
     },
-    "META": {"primary": ["meta"], "context": ["facebook", "instagram", "whatsapp", "reels"]},
+    "META": {
+        "primary": ["meta"],
+        "context": [
+            "facebook", "instagram", "whatsapp", "threads", "reels",
+            "meta ai", "llama", "reality labs", "ad revenue", "ai spend",
+        ],
+        "strong_context": ["meta ai", "llama", "ai capex", "ad demand", "reels", "threads"],
+        "partner_context": ["nvidia", "nvda"],
+    },
     "MSFT": {
         "primary": ["microsoft", "msft"],
         "context": ["azure", "copilot", "windows", "office", "satya nadella", "openai", "chatgpt", "foundry"],
         "strong_context": ["azure", "azure ai", "azure openai", "foundry"],
         "partner_context": ["openai", "chatgpt"],
     },
-    "TSLA": {"primary": ["tesla", "tsla"], "context": ["musk", "deliveries", "robotaxi", "ev"]},
-    "NVDA": {"primary": ["nvidia", "nvda"], "context": ["blackwell", "gpu", "data center", "ai chip", "cuda"]},
-    "INTC": {"primary": ["intel", "intc"], "context": ["foundry", "xeon", "gaudi", "chipmaker"]},
-    "MU": {"primary": ["micron", "mu"], "context": ["dram", "nand", "hbm", "memory"]},
-    "SNDK": {"primary": ["sandisk", "sndk"], "context": ["nand", "flash memory", "storage"]},
-    "SKHX": {"primary": ["sk hynix", "skhx"], "context": ["hbm", "dram", "memory", "south korea chip"]},
-    "CRWV": {"primary": ["coreweave", "crwv"], "context": ["gpu cloud", "neocloud", "ai infrastructure", "data center"]},
-    "EWY": {"primary": ["ewy", "south korea etf"], "context": ["samsung", "sk hynix", "korea equities"]},
+    "TSLA": {
+        "primary": ["tesla", "tsla"],
+        "context": ["musk", "deliveries", "robotaxi", "ev", "dojo", "energy storage"],
+        "strong_context": ["robotaxi", "full self-driving", "fsd", "dojo", "energy storage"],
+    },
+    "NVDA": {
+        "primary": ["nvidia", "nvda"],
+        "context": ["blackwell", "gpu", "data center", "ai chip", "cuda", "h200", "gb200"],
+        "strong_context": ["blackwell", "data center", "gpu demand", "ai infrastructure", "cuda", "gb200"],
+        "partner_context": ["coreweave", "openai", "microsoft", "aws", "amazon", "meta"],
+    },
+    "INTC": {
+        "primary": ["intel", "intc"],
+        "context": ["foundry", "xeon", "gaudi", "chipmaker", "18a", "cpu", "server cpu", "data center"],
+        "strong_context": ["foundry", "18a", "xeon", "gaudi", "server cpu", "data center", "ai pc"],
+        "partner_context": ["aws", "amazon", "microsoft", "openai", "anthropic"],
+    },
+    "MU": {
+        "primary": ["micron", "mu"],
+        "context": ["dram", "nand", "hbm", "memory", "hbm3e", "data center memory"],
+        "strong_context": ["hbm", "hbm3e", "dram pricing", "memory pricing", "data center memory"],
+    },
+    "SNDK": {
+        "primary": ["sandisk", "sndk"],
+        "context": ["nand", "flash memory", "storage", "ssd", "enterprise flash"],
+        "strong_context": ["nand pricing", "flash pricing", "enterprise ssd", "storage demand"],
+    },
+    "SKHX": {
+        "primary": ["sk hynix", "skhx"],
+        "context": ["hbm", "dram", "memory", "south korea chip", "hbm3e"],
+        "strong_context": ["hbm", "hbm3e", "dram", "memory pricing", "ai memory"],
+        "partner_context": ["nvidia", "nvda", "samsung"],
+    },
+    "CRWV": {
+        "primary": ["coreweave", "crwv"],
+        "context": ["gpu cloud", "neocloud", "ai infrastructure", "data center", "hyperscaler"],
+        "strong_context": ["gpu cloud", "neocloud", "ai infrastructure", "data center", "capacity"],
+        "partner_context": ["nvidia", "openai", "microsoft"],
+    },
+    "EWY": {
+        "primary": ["ewy", "south korea etf"],
+        "context": ["samsung", "sk hynix", "korea equities", "memory", "semiconductors"],
+        "strong_context": ["samsung", "sk hynix", "memory", "semiconductors", "exports"],
+    },
     "HIMS": {"primary": ["hims", "hims & hers", "hims and hers"], "context": ["telehealth", "glp-1", "weight loss", "subscription"]},
     "BRENT": {"primary": ["brent", "oil"], "context": ["opec", "crude"]},
     "WTI": {"primary": ["wti", "oil"], "context": ["opec", "crude"]},
@@ -364,7 +528,91 @@ ASSET_NEWS_PROFILES: Dict[str, Dict[str, List[str]]] = {
     "VIX": {"primary": ["vix", "volatility index"], "context": ["stock market volatility"]},
 }
 
+EQUITY_EVENT_CALENDAR: Dict[str, List[Dict[str, str]]] = {
+    "AMZN": [
+        {
+            "company": "Amazon",
+            "label": "Q1 2026 earnings",
+            "date": "2026-04-29",
+            "timing": "after market close, with the call at 2:30 p.m. PT / 5:30 p.m. ET",
+            "focus": "AWS, Bedrock, Trainium, Anthropic-linked AI workloads, retail margins",
+            "source": "Amazon Investor Relations",
+        }
+    ],
+    "META": [
+        {
+            "company": "Meta Platforms",
+            "label": "Q1 2026 earnings",
+            "date": "2026-04-29",
+            "timing": "after market close, with the call at 2:30 p.m. PT / 5:30 p.m. ET",
+            "focus": "ad demand, Reels, Meta AI, Llama, AI capex, Reality Labs",
+            "source": "Meta Investor Relations",
+        }
+    ],
+    "GOOGL": [
+        {
+            "company": "Alphabet",
+            "label": "Q1 2026 earnings",
+            "date": "2026-04-29",
+            "timing": "expected after market close / 5:30 p.m. ET window",
+            "focus": "Search ads, Google Cloud, Gemini, Vertex AI, TPU capacity, Waymo",
+            "source": "Alphabet investor calendar watch",
+            "expected": "true",
+        }
+    ],
+}
+
 RELEVANCE_THRESHOLD = 0.35
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _format_event_day(event_day: date) -> str:
+    return f"{event_day.strftime('%B')} {event_day.day}, {event_day.year}"
+
+
+def _calendar_event_headlines(coin: str, now: Optional[datetime] = None) -> List[str]:
+    coin = str(coin or "").upper()
+    events = EQUITY_EVENT_CALENDAR.get(coin, [])
+    if not events:
+        return []
+
+    now_dt = now or _utc_now()
+    if now_dt.tzinfo is None:
+        now_dt = now_dt.replace(tzinfo=timezone.utc)
+    today = now_dt.date()
+
+    headlines: List[str] = []
+    for event in events:
+        try:
+            event_day = date.fromisoformat(str(event.get("date") or ""))
+        except ValueError:
+            continue
+        days_until = (event_day - today).days
+        if days_until < -1 or days_until > 10:
+            continue
+        if days_until == 0:
+            window = "today"
+        elif days_until == 1:
+            window = "tomorrow"
+        elif days_until > 1:
+            window = f"in {days_until} days"
+        else:
+            window = "just reported"
+        company = str(event.get("company") or coin).strip()
+        label = str(event.get("label") or "earnings").strip()
+        timing = str(event.get("timing") or "").strip()
+        focus = str(event.get("focus") or "").strip()
+        certainty = "expected " if str(event.get("expected") or "").lower() == "true" else ""
+        timing_text = f" {timing}" if timing else ""
+        focus_text = f"; ahead of earnings focus includes {focus}" if focus else ""
+        headlines.append(
+            f"{company} {certainty}{label} calendar: set to report {window} on "
+            f"{_format_event_day(event_day)}{timing_text}{focus_text}"
+        )
+    return headlines
 
 
 def _backoff_active(key: str) -> bool:
@@ -419,11 +667,29 @@ def _parse_rss_titles(content: bytes, limit: int = 20) -> List[str]:
     return titles
 
 
-def _fetch_google_news_headlines(query: str, *, limit: int = 20) -> List[str]:
-    params = {"q": f"{query} when:1d", "hl": "en-US", "gl": "US", "ceid": "US:en"}
+def _fetch_google_news_headlines(query: str, *, limit: int = 20, days: int = 1) -> List[str]:
+    lookback_days = max(1, int(days or 1))
+    params = {"q": f"{query} when:{lookback_days}d", "hl": "en-US", "gl": "US", "ceid": "US:en"}
     resp = requests.get(GOOGLE_NEWS_RSS_URL, params=params, timeout=8, headers=REQUEST_HEADERS)
     resp.raise_for_status()
     return _parse_rss_titles(resp.content, limit=limit)
+
+
+def _dedupe_headlines(headlines: Iterable[str], *, limit: int = 40) -> List[str]:
+    seen: set[str] = set()
+    out: List[str] = []
+    for title in headlines or []:
+        clean = re.sub(r"\s+", " ", str(title or "")).strip()
+        if not clean:
+            continue
+        key = re.sub(r"[^a-z0-9]+", " ", clean.lower()).strip()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(clean)
+        if len(out) >= limit:
+            break
+    return out
 
 
 def _token_present(text: str, token: str) -> bool:
@@ -472,7 +738,7 @@ def _headline_relevance(title: str, coin: str) -> float:
 
 def _equity_catalyst_checklist(title: str, coin: str) -> CatalystChecklist:
     coin = str(coin or "").upper()
-    if coin not in {"AAPL", "AMZN", "GOOGL", "META", "MSFT", "TSLA", "NVDA", "INTC", "MU", "SNDK", "SKHX", "CRWV", "EWY", "HIMS"}:
+    if coin not in INDEX_INSTRUMENTS or coin in {"SP500", "XAU", "BRENT", "WTI", "CL", "NDX", "DJI", "VIX"}:
         return CatalystChecklist()
 
     lower = str(title or "").lower()
@@ -503,16 +769,53 @@ def _equity_catalyst_checklist(title: str, coin: str) -> CatalystChecklist:
     if any(keyword in lower for keyword in EQUITY_DEMAND_COMMITMENT_KEYWORDS):
         tags.append("demand_commitment")
         score += 1.25
+    if any(keyword in lower for keyword in EQUITY_AI_DEMAND_KEYWORDS):
+        if "demand_commitment" not in tags:
+            tags.append("demand_commitment")
+        score += 1.0
     if any(keyword in lower for keyword in EQUITY_CAPACITY_LOCKIN_KEYWORDS):
         tags.append("capacity_lock_in")
         score += 1.0
+    if any(keyword in lower for keyword in EQUITY_AI_SUPPLY_EXPANSION_KEYWORDS):
+        if "capacity_lock_in" not in tags:
+            tags.append("capacity_lock_in")
+        score += 0.75
     if any(keyword in lower for keyword in EQUITY_DISTRIBUTION_EXPANSION_KEYWORDS):
         tags.append("distribution_expand")
         score += 0.75
+    if "earnings calendar" in lower or "set to report" in lower or "expected q1" in lower:
+        tags.append("calendar_event")
+        score += 1.10
+    if any(keyword in lower for keyword in EQUITY_EARNINGS_EVENT_KEYWORDS):
+        tags.append("earnings_event")
+        score += 0.90
+    if any(keyword in lower for keyword in EQUITY_PRE_EVENT_SETUP_KEYWORDS):
+        tags.append("pre_event_setup")
+        score += 1.20
+    if any(keyword in lower for keyword in EQUITY_ANALYST_CONVICTION_KEYWORDS):
+        tags.append("analyst_conviction")
+        score += 0.85
+    if "official ir" in lower or "official investor relations" in lower or "investor relations confirms" in lower:
+        tags.append("official_ir_event")
+        score += 1.10
+    if "sec filing monitor" in lower or "form 8-k" in lower or "form 10-q" in lower or "form 10-k" in lower:
+        tags.append("sec_filing")
+        score += 0.75
+    if "implied move" in lower or "atm straddle" in lower or "options market prices" in lower:
+        tags.append("options_implied_move")
+        score += 0.80
+    if "analyst revision feed" in lower or "eps revisions" in lower or "revenue revisions" in lower:
+        tags.append("analyst_revision")
+        score += 0.90
 
     summary = ""
     if tags:
-        summary = " + ".join(CATALYST_TAG_LABELS[tag] for tag in tags[:4])
+        deduped_tags = []
+        for tag in tags:
+            if tag not in deduped_tags:
+                deduped_tags.append(tag)
+        tags = deduped_tags
+        summary = " + ".join(CATALYST_TAG_LABELS[tag] for tag in tags[:5])
 
     return CatalystChecklist(
         score=round(score, 2),
@@ -579,6 +882,12 @@ def _fetch_macro_news(coin: str) -> NewsSignal:
         "XAU":   "GC=F",
         "AAPL":  "AAPL",
         "AMZN":  "AMZN",
+        "AMD":   "AMD",
+        "BABA":  "BABA",
+        "BX":    "BX",
+        "COIN":  "COIN",
+        "COST":  "COST",
+        "CRCL":  "CRCL",
         "GOOGL": "GOOGL",
         "META":  "META",
         "MSFT":  "MSFT",
@@ -588,6 +897,17 @@ def _fetch_macro_news(coin: str) -> NewsSignal:
         "MU":    "MU",
         "SNDK":  "SNDK",
         "CRWV":  "CRWV",
+        "HIMS":  "HIMS",
+        "HOOD":  "HOOD",
+        "LLY":   "LLY",
+        "MRVL":  "MRVL",
+        "MSTR":  "MSTR",
+        "NFLX":  "NFLX",
+        "ORCL":  "ORCL",
+        "PLTR":  "PLTR",
+        "RIVN":  "RIVN",
+        "RKLB":  "RKLB",
+        "TSM":   "TSM",
         "EWY":   "EWY",
         "BRENT": "BZ=F",
         "WTI":   "CL=F",
@@ -596,12 +916,25 @@ def _fetch_macro_news(coin: str) -> NewsSignal:
         "DJI":   "^DJI",
         "VIX":   "^VIX",
     }
-    ticker = TICKER_MAP.get(coin.upper(), "^GSPC")
+    ticker = TICKER_MAP.get(coin.upper(), coin.upper())
 
     headlines: List[str] = []
     errors: List[str] = []
     yahoo_key = f"macro:yahoo:{coin.upper()}"
     google_key = f"macro:google:{coin.upper()}"
+    event_feed = None
+    now_dt = _utc_now()
+    try:
+        # Keep feed adapters on the same request transport so news tests and
+        # runtime backoff controls observe one network surface.
+        equity_event_feeds.requests = requests
+        event_feed = equity_event_feeds.get_equity_event_feed(
+            coin.upper(),
+            calendar_events=EQUITY_EVENT_CALENDAR.get(coin.upper(), []),
+            now=now_dt,
+        )
+    except Exception as e:
+        errors.append(f"Event feeds: {e}")
 
     if not _backoff_active(yahoo_key):
         try:
@@ -615,15 +948,26 @@ def _fetch_macro_news(coin: str) -> NewsSignal:
             errors.append(f"Yahoo RSS: {e}")
             _set_backoff(yahoo_key)
 
-    if not headlines and not _backoff_active(google_key):
+    google_headlines: List[str] = []
+    if not _backoff_active(google_key):
         query = MACRO_NEWS_QUERIES.get(coin.upper(), f"{coin} markets")
         try:
-            headlines = _fetch_google_news_headlines(query, limit=20)
-            if headlines:
+            google_headlines.extend(_fetch_google_news_headlines(query, limit=20, days=1))
+            if coin.upper() in ASSET_NEWS_PROFILES and coin.upper() not in {"SP500", "XAU", "BRENT", "WTI", "CL", "NDX", "DJI", "VIX"}:
+                catalyst_query = (
+                    f"{query} OR earnings OR guidance OR analyst upgrade OR AI demand "
+                    f"OR data center demand OR CPU demand"
+                )
+                google_headlines.extend(_fetch_google_news_headlines(catalyst_query, limit=20, days=7))
+            if google_headlines:
                 _clear_backoff(google_key)
         except Exception as e:
             errors.append(f"Google News: {e}")
             _set_backoff(google_key)
+
+    calendar_headlines = _calendar_event_headlines(coin, now=now_dt)
+    event_feed_headlines = list(getattr(event_feed, "headlines", []) or [])
+    headlines = _dedupe_headlines([*event_feed_headlines, *calendar_headlines, *headlines, *google_headlines], limit=45)
 
     if not headlines:
         error = " | ".join(errors) if errors else "no macro headlines returned"
@@ -650,7 +994,25 @@ def _fetch_macro_news(coin: str) -> NewsSignal:
         scores.append(weighted_score)
         weighted.append((title, weighted_score, relevance))
 
+    if event_feed and getattr(event_feed, "tags", None):
+        feed_tags = [tag for tag in getattr(event_feed, "tags", []) if tag in CATALYST_TAG_LABELS]
+        existing_tags = list(best_catalyst.tags)
+        for tag in feed_tags:
+            if tag not in existing_tags:
+                existing_tags.append(tag)
+        feed_bonus = (
+            float(getattr(event_feed, "official_event_score", 0.0) or 0.0)
+            + float(getattr(event_feed, "sec_event_score", 0.0) or 0.0)
+            + (0.8 if float(getattr(event_feed, "options_implied_move_pct", 0.0) or 0.0) > 0 else 0.0)
+            + max(0.0, float(getattr(event_feed, "analyst_revision_score", 0.0) or 0.0)) * 0.35
+        )
+        best_catalyst.score = round(best_catalyst.score + feed_bonus, 2)
+        best_catalyst.tags = existing_tags
+        best_catalyst.summary = " + ".join(CATALYST_TAG_LABELS[tag] for tag in existing_tags[:6])
+
     raw = sum(scores) / len(scores) if scores else 0.0
+    if event_feed and getattr(event_feed, "analyst_revision_score", 0.0):
+        raw += max(-8.0, min(10.0, float(getattr(event_feed, "analyst_revision_score", 0.0) or 0.0) * 1.6))
     indicator_score = (raw + 100) / 2   # map -100…+100 → 0…100
 
     count = len(relevant_headlines)
@@ -659,6 +1021,21 @@ def _fetch_macro_news(coin: str) -> NewsSignal:
 
     top = sorted(weighted, key=lambda x: abs(x[1]), reverse=True)
     top_headlines = [headline for headline, _, _ in top[:3]]
+    event_tag_set = {
+        "calendar_event",
+        "earnings_event",
+        "pre_event_setup",
+        "analyst_conviction",
+        "official_ir_event",
+        "sec_filing",
+        "options_implied_move",
+        "analyst_revision",
+    }
+    event_tags = [tag for tag in best_catalyst.tags if tag in event_tag_set]
+    event_score = best_catalyst.score if event_tags else 0.0
+    event_summary = " + ".join(CATALYST_TAG_LABELS[tag] for tag in event_tags[:4])
+    if event_score >= 4.0 and raw >= -6.0:
+        indicator_score = max(indicator_score, 61.0)
 
     log.info(
         f"[{coin}] Macro news: {count} headlines | raw={raw:+.1f} | "
@@ -681,6 +1058,18 @@ def _fetch_macro_news(coin: str) -> NewsSignal:
         catalyst_score = best_catalyst.score,
         catalyst_summary = best_catalyst.summary,
         catalyst_tags = best_catalyst.tags,
+        event_score = round(event_score, 2),
+        event_summary = event_summary,
+        event_tags = event_tags,
+        official_event_score = round(float(getattr(event_feed, "official_event_score", 0.0) or 0.0), 2) if event_feed else 0.0,
+        official_event_summary = getattr(event_feed, "official_event_summary", "") if event_feed else "",
+        sec_event_score = round(float(getattr(event_feed, "sec_event_score", 0.0) or 0.0), 2) if event_feed else 0.0,
+        sec_event_summary = getattr(event_feed, "sec_event_summary", "") if event_feed else "",
+        options_implied_move_pct = round(float(getattr(event_feed, "options_implied_move_pct", 0.0) or 0.0), 2) if event_feed else 0.0,
+        options_summary = getattr(event_feed, "options_summary", "") if event_feed else "",
+        analyst_revision_score = round(float(getattr(event_feed, "analyst_revision_score", 0.0) or 0.0), 2) if event_feed else 0.0,
+        analyst_revision_summary = getattr(event_feed, "analyst_revision_summary", "") if event_feed else "",
+        event_feed = event_feed.as_dict() if event_feed else {},
     )
 
 
@@ -708,13 +1097,30 @@ def _score_macro_headline(title: str, coin: str = "") -> float:
         for kw, weight in GOLD_BEARISH_KEYWORDS.items():
             if kw in lower:
                 score -= weight
-    if coin.upper() in {"AAPL", "AMZN", "GOOGL", "META", "MSFT", "TSLA", "NVDA", "INTC", "MU", "SNDK", "SKHX", "CRWV", "EWY", "HIMS"}:
+    if coin.upper() in INDEX_INSTRUMENTS and coin.upper() not in {"SP500", "XAU", "BRENT", "WTI", "CL", "NDX", "DJI", "VIX"}:
         for kw, weight in EQUITY_BULLISH_KEYWORDS.items():
             if kw in lower:
                 score += weight
         for kw, weight in EQUITY_BEARISH_KEYWORDS.items():
             if kw in lower:
                 score -= weight
+        for kw in EQUITY_AI_DEMAND_KEYWORDS:
+            if kw in lower:
+                score += 16
+        for kw in EQUITY_AI_SUPPLY_EXPANSION_KEYWORDS:
+            if kw in lower:
+                score += 12
+        for kw, weight in EQUITY_AI_DEMAND_RISK_KEYWORDS.items():
+            if kw in lower:
+                score -= weight
+        if any(kw in lower for kw in EQUITY_EARNINGS_EVENT_KEYWORDS):
+            score += 8
+        if any(kw in lower for kw in EQUITY_PRE_EVENT_SETUP_KEYWORDS):
+            score += 12
+        if any(kw in lower for kw in EQUITY_ANALYST_CONVICTION_KEYWORDS):
+            score += 14
+        if "earnings calendar" in lower or "set to report" in lower:
+            score += 6
     # S&P specific boost
     if coin.upper() == "SP500" and any(t in lower for t in ["s&p", "s&p 500", "spx", "sp500", "dow", "nasdaq"]):
         score *= 1.2
@@ -736,7 +1142,7 @@ def _score_macro_headline(title: str, coin: str = "") -> float:
         score *= 1.15
     if coin.upper() == "NVDA" and any(t in lower for t in ["nvidia", "nvda", "gpu", "blackwell", "cuda", "data center"]):
         score *= 1.15
-    if coin.upper() == "INTC" and any(t in lower for t in ["intel", "intc", "foundry", "gaudi", "ai pc"]):
+    if coin.upper() == "INTC" and any(t in lower for t in ["intel", "intc", "foundry", "gaudi", "ai pc", "xeon", "server cpu", "data center cpu"]):
         score *= 1.15
     if coin.upper() == "MU" and any(t in lower for t in ["micron", "mu", "dram", "nand", "hbm", "memory"]):
         score *= 1.15

@@ -109,6 +109,7 @@ class RiskManager:
         expected_r: float | None = None,
         uncertainty: float | None = None,
         thesis_conviction: float | None = None,
+        sizing_multiplier: float | None = None,
     ) -> OrderRequest:
         """
         Conviction-aware order sizing.
@@ -199,6 +200,10 @@ class RiskManager:
         # RL pattern boost: further reward recognized winning patterns
         total_factor = confidence_factor * (1.0 + rl_boost + rl_pattern_boost - euphoria_penalty)
         total_factor = max(base_floor * 0.80, min(total_factor, 1.10))
+
+        starter_multiplier = float(sizing_multiplier if sizing_multiplier is not None else 1.0)
+        starter_multiplier = max(0.10, min(starter_multiplier, 1.0))
+        total_factor *= starter_multiplier
 
         size_usd = min(max_trade_usd * total_factor, self.cfg.max_trade_usd)
 
@@ -298,6 +303,9 @@ class RiskManager:
         size_coin = size_usd / current_price if current_price > 0 else 0.0
 
         sizing_parts = [f"conv={confidence_factor*100:.0f}%"]
+        if starter_multiplier < 0.999:
+            sizing_parts.append(f"starter={starter_multiplier*100:.0f}%")
+            conviction_tier = f"{conviction_tier}_STARTER"
         sizing_parts.append(f"p={probability*100:.0f}%")
         sizing_parts.append(f"ev={expectancy_r:+.2f}R")
         sizing_parts.append(f"u={uncertainty_level*100:.0f}%")

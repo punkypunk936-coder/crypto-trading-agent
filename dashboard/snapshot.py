@@ -643,6 +643,26 @@ def _stop_target_text(current_price: float, stop_price: float | None, target_pri
     return " • ".join(parts)
 
 
+def _invalidation_text(
+    *,
+    status: str,
+    action: str,
+    bias: str,
+    stop_price: float | None = None,
+    support: float | None = None,
+    resistance: float | None = None,
+    current_price: float = 0.0,
+) -> str:
+    direction = _setup_direction(status, action, bias)
+    if direction == "long":
+        level = _safe_float(stop_price) or _safe_float(support)
+        return _numeric_level_text("Invalid below", level, current_price)
+    if direction == "short":
+        level = _safe_float(stop_price) or _safe_float(resistance)
+        return _numeric_level_text("Invalid above", level, current_price)
+    return ""
+
+
 def _clip_text(text: Any, limit: int = 120) -> str:
     cleaned = " ".join(str(text or "").split())
     if len(cleaned) <= limit:
@@ -855,10 +875,16 @@ def _build_catalyst_rail(sig: dict) -> list[dict[str, str]]:
     rail: list[dict[str, str]] = []
     catalyst_score = _safe_float(sig.get("news_catalyst_score"))
     catalyst_summary = str(sig.get("news_catalyst_summary") or "").strip()
+    event_score = _safe_float(sig.get("news_event_score"))
+    event_summary = str(sig.get("news_event_summary") or "").strip()
     news_headline = str(sig.get("news_headline") or "").strip()
     narrative_summary = str(sig.get("narrative_summary") or "").strip()
     event_name = str(sig.get("narrative_event_name") or "").strip()
     event_risk_active = bool(sig.get("narrative_event_risk_active"))
+    implied_move = _safe_float(sig.get("options_implied_move_pct"))
+    analyst_revision = _safe_float(sig.get("analyst_revision_score"))
+    analyst_summary = str(sig.get("analyst_revision_summary") or "").strip()
+    event_budget_summary = str(sig.get("event_budget_summary") or "").strip()
     if catalyst_score >= 3.0 or catalyst_summary:
         catalyst_text = catalyst_summary or news_headline or "fresh catalyst support is still present"
         label = "Catalyst"
@@ -871,6 +897,13 @@ def _build_catalyst_rail(sig: dict) -> list[dict[str, str]]:
             "tone": "support" if catalyst_score >= 2.0 else "watch",
             "text": _clip_text(catalyst_text, 120),
         })
+    if event_score >= 3.0 or event_summary:
+        event_text = event_summary or news_headline or "known event window is active"
+        rail.append({
+            "label": "Event",
+            "tone": "support" if event_score >= 4.0 else "watch",
+            "text": _clip_text(event_text, 100),
+        })
     if event_name or event_risk_active:
         event_parts = [event_name or "Event risk"]
         timing = _event_time_blurb(sig.get("narrative_minutes_to_event"))
@@ -880,6 +913,24 @@ def _build_catalyst_rail(sig: dict) -> list[dict[str, str]]:
             "label": "Event",
             "tone": "risk" if event_risk_active else "watch",
             "text": _clip_text(" ".join(event_parts), 90),
+        })
+    if implied_move > 0 and len(rail) < 3:
+        rail.append({
+            "label": "Move",
+            "tone": "watch",
+            "text": _clip_text(str(sig.get("options_summary") or f"Options price about {implied_move:.1f}% move"), 95),
+        })
+    if abs(analyst_revision) >= 0.75 and analyst_summary and len(rail) < 3:
+        rail.append({
+            "label": "Revisions",
+            "tone": "support" if analyst_revision > 0 else "risk",
+            "text": _clip_text(analyst_summary, 95),
+        })
+    if event_budget_summary and bool(sig.get("conviction_entry_event")) and len(rail) < 3:
+        rail.append({
+            "label": "Budget",
+            "tone": "watch",
+            "text": _clip_text(event_budget_summary, 90),
         })
     narrative_text = narrative_summary or news_headline
     if narrative_text and not _contains_any(
@@ -1634,6 +1685,8 @@ def action_board(
 
         execution_note = ""
         entry_status = ""
+        trade_plan = dict(sig.get("trade_plan") or {})
+        planned_stop = _safe_float(sig.get("planned_stop_loss") or trade_plan.get("stop_loss"))
 
         if pos:
             direction = str(pos.get("direction") or "").upper() or action
@@ -1812,6 +1865,19 @@ def action_board(
             risk = _numeric_level_text("Reclaim", resistance, live_anchor) or f"Reclaim {resistance:,.2f}"
         else:
             risk = map_summary or ""
+        if pos:
+            stop_for_invalidation = _safe_float(pos.get("stop_loss"))
+        else:
+            stop_for_invalidation = planned_stop
+        invalidation = _invalidation_text(
+            status=status,
+            action=action,
+            bias=bias,
+            stop_price=stop_for_invalidation,
+            support=support,
+            resistance=resistance,
+            current_price=live_anchor,
+        )
 
         next_setup_reason = _next_setup_reason(
             status=status,
@@ -1848,6 +1914,30 @@ def action_board(
             mode_detail=mode_detail,
         )
         catalyst_rail = _build_catalyst_rail(sig)
+        conviction_entry = dict(sig.get("conviction_entry") or {})
+        conviction_entry_active = bool(
+            sig.get("conviction_entry_active")
+            or conviction_entry.get("active")
+        )
+        conviction_entry_style = str(
+            sig.get("conviction_entry_style")
+            or conviction_entry.get("style")
+            or ""
+        ).strip()
+        conviction_entry_reason = str(
+            sig.get("conviction_entry_reason")
+            or conviction_entry.get("reason")
+            or conviction_entry.get("summary")
+            or ""
+        ).strip()
+        conviction_entry_size_multiplier = _safe_float(
+            sig.get("conviction_entry_size_multiplier")
+            or conviction_entry.get("size_multiplier")
+        )
+        conviction_entry_event = bool(
+            sig.get("conviction_entry_event")
+            or conviction_entry.get("event_conviction")
+        )
         why_this_lead = _build_why_this_lead(
             sig=sig,
             status=status,
@@ -1877,6 +1967,16 @@ def action_board(
                 "asset_state": asset_state,
                 "asset_state_label": asset_state_label,
                 "next_unblock_reason": next_unblock,
+                "price_diagnostics": dict(sig.get("price_diagnostics") or {}),
+                "price_source": str(sig.get("price_source") or ""),
+                "price_source_label": str(sig.get("price_source_label") or ""),
+                "venue_symbol": str(sig.get("venue_symbol") or ""),
+                "venue_price": _safe_float(sig.get("venue_price")),
+                "reference_price": _safe_float(sig.get("reference_price")),
+                "reference_source": str(sig.get("reference_source") or ""),
+                "price_deviation_pct": sig.get("price_deviation_pct"),
+                "price_status": str(sig.get("price_status") or ""),
+                "price_warning": str(sig.get("price_warning") or ""),
                 "status": status,
                 "label": label,
                 "headline": headline,
@@ -1885,9 +1985,34 @@ def action_board(
                 "entry_status": entry_status or execution_note,
                 "execution_note": execution_note,
                 "risk": risk,
+                "invalidation": invalidation,
+                "invalidation_short": invalidation,
+                "planned_stop_loss": round(stop_for_invalidation, 6) if stop_for_invalidation else 0.0,
                 "map_summary": map_summary,
                 "friction_stack": friction_stack,
                 "catalyst_rail": catalyst_rail,
+                "news_catalyst_score": _safe_float(sig.get("news_catalyst_score")),
+                "news_catalyst_summary": str(sig.get("news_catalyst_summary") or ""),
+                "news_event_score": _safe_float(sig.get("news_event_score")),
+                "news_event_summary": str(sig.get("news_event_summary") or ""),
+                "news_event_tags": list(sig.get("news_event_tags") or []),
+                "official_event_score": _safe_float(sig.get("official_event_score")),
+                "official_event_summary": str(sig.get("official_event_summary") or ""),
+                "sec_event_score": _safe_float(sig.get("sec_event_score")),
+                "sec_event_summary": str(sig.get("sec_event_summary") or ""),
+                "options_implied_move_pct": _safe_float(sig.get("options_implied_move_pct")),
+                "options_summary": str(sig.get("options_summary") or ""),
+                "analyst_revision_score": _safe_float(sig.get("analyst_revision_score")),
+                "analyst_revision_summary": str(sig.get("analyst_revision_summary") or ""),
+                "event_budget_summary": str(sig.get("event_budget_summary") or ""),
+                "event_budget_size_multiplier": _safe_float(sig.get("event_budget_size_multiplier") or 1.0),
+                "event_budget_total_exposure_pct": _safe_float(sig.get("event_budget_total_exposure_pct")),
+                "event_budget_theme_exposure_pct": _safe_float(sig.get("event_budget_theme_exposure_pct")),
+                "conviction_entry_active": conviction_entry_active,
+                "conviction_entry_style": conviction_entry_style,
+                "conviction_entry_reason": conviction_entry_reason,
+                "conviction_entry_size_multiplier": round(conviction_entry_size_multiplier, 4),
+                "conviction_entry_event": conviction_entry_event,
                 "why_this_lead": why_this_lead,
                 "confidence": confidence,
                 "score": round(score, 1),
@@ -2280,6 +2405,7 @@ def build_dashboard_snapshot(
     asset_dossiers: Any = None,
     llm_referee_report: Any = None,
     playbook_distiller_report: Any = None,
+    proactive_trader_report: Any = None,
     *,
     server_timestamp: str | None = None,
 ) -> dict:
@@ -2305,6 +2431,7 @@ def build_dashboard_snapshot(
         "asset_dossiers": dict(asset_dossiers or {}),
         "llm_referee_report": dict(llm_referee_report or {}),
         "playbook_distiller_report": dict(playbook_distiller_report or {}),
+        "proactive_trader_report": dict(proactive_trader_report or {}),
         "runtime": runtime_status(shaped_state),
         "server_time": server_timestamp or server_time(),
     }

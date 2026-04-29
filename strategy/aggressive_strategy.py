@@ -71,9 +71,12 @@ class AggressiveStrategy:
         trade_plan = dict(trade_plan or {})
         blockers: List[str] = []
         bullish = action == "LONG"
+        conviction_entry = dict(thesis.get("conviction_entry") or {})
 
         if self._coin_direction_embargoed(coin, action):
             blockers.append(f"{coin} {action} is embargoed until its recent edge improves")
+        if conviction_entry.get("active") and conviction_entry.get("bypass_precision", False) and not blockers:
+            return True, ""
 
         confidence_rank = self._label_rank(confidence, ("LOW", "MEDIUM", "HIGH"))
         min_confidence_rank = self._label_rank(
@@ -161,6 +164,373 @@ class AggressiveStrategy:
         if blockers:
             return False, blockers[0]
         return True, ""
+
+    @staticmethod
+    def _same_direction_breakout_live(action: str, orderbook_signal) -> bool:
+        breakout_state = str(getattr(orderbook_signal, "breakout_state", "NONE") or "NONE").upper()
+        if action == "LONG":
+            return breakout_state in {
+                "PROBING_BULLISH_BREAKOUT",
+                "CONFIRMED_BULLISH_BREAKOUT",
+                "PERSISTENT_BULLISH_BREAKOUT",
+            }
+        if action == "SHORT":
+            return breakout_state in {
+                "PROBING_BEARISH_BREAKDOWN",
+                "CONFIRMED_BEARISH_BREAKDOWN",
+                "PERSISTENT_BEARISH_BREAKDOWN",
+            }
+        return False
+
+    @staticmethod
+    def _catalyst_tags(news_signal) -> set[str]:
+        tags: set[str] = set()
+        for raw in list(getattr(news_signal, "catalyst_tags", []) or []) + list(getattr(news_signal, "event_tags", []) or []):
+            text = str(raw or "").strip()
+            if text:
+                tags.add(text)
+        return tags
+
+    def _event_conviction_active(
+        self,
+        *,
+        instrument_type: str,
+        action: str,
+        news_signal=None,
+    ) -> bool:
+        if str(instrument_type or "crypto").lower() != "equity":
+            return False
+        if str(action or "").upper() != "LONG":
+            return False
+        if not news_signal or not getattr(news_signal, "valid", False):
+            return False
+        tags = self._catalyst_tags(news_signal)
+        catalyst_tags = {
+            "calendar_event",
+            "earnings_event",
+            "pre_event_setup",
+            "analyst_conviction",
+            "demand_commitment",
+            "capacity_lock_in",
+            "strategic_deal",
+            "official_ir_event",
+            "sec_filing",
+            "options_implied_move",
+            "analyst_revision",
+        }
+        if not (tags & catalyst_tags):
+            return False
+        news_score = float(getattr(news_signal, "score", 50.0) or 50.0)
+        catalyst_score = float(getattr(news_signal, "catalyst_score", 0.0) or 0.0)
+        min_news = float(getattr(self.tcfg, "conviction_entry_event_min_news_score", 60.0) or 60.0)
+        min_catalyst = float(getattr(self.tcfg, "conviction_entry_event_min_catalyst_score", 4.0) or 4.0)
+        return news_score >= min_news and catalyst_score >= min_catalyst
+
+    def _conviction_probe_candidate(
+        self,
+        *,
+        instrument_type: str,
+        action: str,
+        raw_score: float,
+        news_signal=None,
+        narrative_signal=None,
+        orderbook_signal=None,
+        market_map_signal=None,
+    ) -> dict:
+        candidate = {"active": False, "candidate_action": str(action or "FLAT").upper(), "summary": "", "trigger_gap_points": 0.0}
+        if not getattr(self.tcfg, "conviction_entry_enabled", True):
+            return candidate
+        if str(action or "").upper() in {"LONG", "SHORT"}:
+            return candidate
+        instrument = str(instrument_type or "crypto").lower()
+        if instrument == "index":
+            return candidate
+        if not news_signal or not getattr(news_signal, "valid", False):
+            return candidate
+
+        news_score = float(getattr(news_signal, "score", 50.0) or 50.0)
+        article_count = int(getattr(news_signal, "article_count", 0) or 0)
+        catalyst_score = float(getattr(news_signal, "catalyst_score", 0.0) or 0.0)
+        velocity = str(getattr(news_signal, "velocity", "LOW") or "LOW").upper()
+        if article_count <= 0:
+            return candidate
+
+        min_news = float(getattr(self.tcfg, "conviction_entry_min_news_score", 58.0) or 58.0)
+        min_catalyst = float(getattr(self.tcfg, "conviction_entry_min_catalyst_score", 3.0) or 3.0)
+        score_buffer = float(getattr(self.tcfg, "conviction_entry_score_buffer", 6.0) or 6.0)
+        market_bias = str(getattr(market_map_signal, "bias", "NEUTRAL") or "NEUTRAL").upper()
+        narrative_bias = str(getattr(narrative_signal, "headline_bias", "NEUTRAL") or "NEUTRAL").upper()
+        bullish_breakout_live = self._same_direction_breakout_live("LONG", orderbook_signal)
+        bearish_breakout_live = self._same_direction_breakout_live("SHORT", orderbook_signal)
+        long_gap = max(0.0, float(self.tcfg.signal_long_threshold) - float(raw_score or 0.0))
+        short_gap = max(0.0, float(raw_score or 0.0) - float(self.tcfg.signal_short_threshold))
+        event_long = self._event_conviction_active(
+            instrument_type=instrument_type,
+            action="LONG",
+            news_signal=news_signal,
+        )
+        event_score_buffer = float(
+            getattr(self.tcfg, "conviction_entry_event_score_buffer", score_buffer) or score_buffer
+        )
+        long_score_buffer = event_score_buffer if event_long else score_buffer
+
+        if instrument == "equity":
+            catalyst_ready = catalyst_score >= min_catalyst or event_long
+        else:
+            catalyst_ready = velocity in {"HIGH", "EXTREME"} and abs(news_score - 50.0) >= 14.0
+        if not catalyst_ready:
+            return candidate
+
+        if long_gap <= long_score_buffer and news_score >= min_news:
+            long_blocked = bool(getattr(narrative_signal, "block_longs", False))
+            long_blocked = long_blocked or bool(
+                market_map_signal
+                and getattr(market_map_signal, "block_longs", False)
+                and not bullish_breakout_live
+                and not bool(getattr(market_map_signal, "live_above_reclaim_levels", []))
+                and not event_long
+            )
+            long_blocked = long_blocked or bool(
+                orderbook_signal
+                and getattr(orderbook_signal, "block_longs", False)
+                and not bullish_breakout_live
+                and not event_long
+            )
+            if not long_blocked and (
+                event_long
+                or
+                narrative_bias == "BULLISH"
+                or market_bias == "BULLISH"
+                or bullish_breakout_live
+                or long_gap <= max(2.0, score_buffer / 2.0)
+            ):
+                candidate.update({
+                    "active": True,
+                    "candidate_action": "LONG",
+                    "summary": (
+                        (
+                            f"Pre-event conviction scout: score {raw_score:.1f} is {long_gap:.1f} pts below the "
+                            f"{float(self.tcfg.signal_long_threshold):.0f} long trigger, but catalyst {catalyst_score:.2f} "
+                            f"and news {news_score:.0f} justify a starter before full price confirmation."
+                        )
+                        if event_long else
+                        (
+                            f"Conviction scout: score {raw_score:.1f} is {long_gap:.1f} pts below the "
+                            f"{float(self.tcfg.signal_long_threshold):.0f} long trigger with catalyst {catalyst_score:.2f} "
+                            f"and news {news_score:.0f}."
+                        )
+                    ),
+                    "trigger_gap_points": round(long_gap, 2),
+                })
+                return candidate
+
+        bearish_news_floor = 100.0 - min_news
+        if short_gap <= score_buffer and news_score <= bearish_news_floor:
+            short_blocked = bool(getattr(narrative_signal, "block_shorts", False))
+            short_blocked = short_blocked or bool(
+                market_map_signal
+                and getattr(market_map_signal, "block_shorts", False)
+                and not bearish_breakout_live
+                and not bool(getattr(market_map_signal, "live_below_breakdown_levels", []))
+            )
+            short_blocked = short_blocked or bool(
+                orderbook_signal
+                and getattr(orderbook_signal, "block_shorts", False)
+                and not bearish_breakout_live
+            )
+            if not short_blocked and (
+                narrative_bias == "BEARISH"
+                or market_bias == "BEARISH"
+                or bearish_breakout_live
+                or short_gap <= max(2.0, score_buffer / 2.0)
+            ):
+                candidate.update({
+                    "active": True,
+                    "candidate_action": "SHORT",
+                    "summary": (
+                        f"Conviction scout: score {raw_score:.1f} is {short_gap:.1f} pts above the "
+                        f"{float(self.tcfg.signal_short_threshold):.0f} short trigger with news {news_score:.0f}."
+                    ),
+                    "trigger_gap_points": round(short_gap, 2),
+                })
+        return candidate
+
+    def _build_conviction_entry(
+        self,
+        *,
+        coin: str,
+        instrument_type: str,
+        action: str,
+        score: float,
+        thesis: Dict | None = None,
+        expectancy: Dict | None = None,
+        news_signal=None,
+        narrative_signal=None,
+        orderbook_signal=None,
+        market_map_signal=None,
+    ) -> dict:
+        entry = {
+            "active": False,
+            "direction": str(action or "").upper(),
+            "style": "",
+            "size_multiplier": 1.0,
+            "summary": "",
+            "reason": "",
+            "blockers": [],
+            "bypass_precision": False,
+        }
+        if not getattr(self.tcfg, "conviction_entry_enabled", True):
+            return entry
+        action = str(action or "").upper()
+        if action not in {"LONG", "SHORT"}:
+            return entry
+        instrument = str(instrument_type or "crypto").lower()
+        if instrument == "index":
+            return entry
+        if not news_signal or not getattr(news_signal, "valid", False):
+            return entry
+
+        thesis = dict(thesis or {})
+        expectancy = dict(expectancy or {})
+        bullish = action == "LONG"
+        min_news = float(getattr(self.tcfg, "conviction_entry_min_news_score", 58.0) or 58.0)
+        min_catalyst = float(getattr(self.tcfg, "conviction_entry_min_catalyst_score", 3.0) or 3.0)
+        score_buffer = float(getattr(self.tcfg, "conviction_entry_score_buffer", 6.0) or 6.0)
+        news_score = float(getattr(news_signal, "score", 50.0) or 50.0)
+        article_count = int(getattr(news_signal, "article_count", 0) or 0)
+        catalyst_score = float(getattr(news_signal, "catalyst_score", 0.0) or 0.0)
+        catalyst_summary = str(getattr(news_signal, "catalyst_summary", "") or "").strip()
+        velocity = str(getattr(news_signal, "velocity", "LOW") or "LOW").upper()
+        market_bias = str(getattr(market_map_signal, "bias", "NEUTRAL") or "NEUTRAL").upper()
+        narrative_bias = str(getattr(narrative_signal, "headline_bias", "NEUTRAL") or "NEUTRAL").upper()
+        same_direction_breakout_live = self._same_direction_breakout_live(action, orderbook_signal)
+        trigger_threshold = float(self.tcfg.signal_long_threshold if bullish else self.tcfg.signal_short_threshold)
+        trigger_gap_points = max(0.0, (trigger_threshold - score) if bullish else (score - trigger_threshold))
+        event_conviction = self._event_conviction_active(
+            instrument_type=instrument_type,
+            action=action,
+            news_signal=news_signal,
+        )
+        event_score_buffer = float(
+            getattr(self.tcfg, "conviction_entry_event_score_buffer", score_buffer) or score_buffer
+        )
+        effective_score_buffer = event_score_buffer if event_conviction else score_buffer
+        blockers: List[str] = []
+
+        if article_count <= 0:
+            blockers.append("no asset-specific headline flow is active")
+        if instrument == "equity" and catalyst_score < min_catalyst and not event_conviction:
+            blockers.append(f"catalyst score {catalyst_score:.2f} is below the starter floor")
+        if bullish and news_score < min_news:
+            blockers.append(f"news score {news_score:.0f} is below the bullish starter floor")
+        if (not bullish) and news_score > (100.0 - min_news):
+            blockers.append(f"news score {news_score:.0f} is not bearish enough for a starter short")
+        if trigger_gap_points > effective_score_buffer:
+            blockers.append(f"score is still {trigger_gap_points:.1f} pts away from the trigger")
+
+        if bullish:
+            if getattr(narrative_signal, "block_longs", False):
+                blockers.append("headline flow still blocks longs")
+            if orderbook_signal and getattr(orderbook_signal, "block_longs", False) and not same_direction_breakout_live and not event_conviction:
+                blockers.append("orderbook still shows active overhead supply")
+            if market_map_signal and getattr(market_map_signal, "block_longs", False):
+                live_reclaim = bool(getattr(market_map_signal, "live_above_reclaim_levels", []))
+                if not (same_direction_breakout_live or live_reclaim or event_conviction):
+                    blockers.append("daily map still warns against longs here")
+        else:
+            if getattr(narrative_signal, "block_shorts", False):
+                blockers.append("headline flow still blocks shorts")
+            if orderbook_signal and getattr(orderbook_signal, "block_shorts", False) and not same_direction_breakout_live:
+                blockers.append("orderbook still shows active demand under price")
+            if market_map_signal and getattr(market_map_signal, "block_shorts", False):
+                live_breakdown = bool(getattr(market_map_signal, "live_below_breakdown_levels", []))
+                if not (same_direction_breakout_live or live_breakdown):
+                    blockers.append("daily map still warns against shorts here")
+
+        alignment = float(thesis.get("alignment_points", 0.0) or 0.0)
+        conflicts = float(thesis.get("conflict_points", 0.0) or 0.0)
+        probability = float(expectancy.get("probability", 0.0) or 0.0)
+        expectancy_score = float(expectancy.get("score", 0.0) or 0.0)
+        uncertainty = float(expectancy.get("uncertainty", 1.0) or 1.0)
+        catalyst_extreme = catalyst_score >= (min_catalyst + 1.0) or velocity == "EXTREME"
+        min_alignment = float(getattr(self.tcfg, "conviction_entry_min_alignment_points", 3.0) or 3.0)
+        max_conflicts = float(getattr(self.tcfg, "conviction_entry_max_conflict_points", 1.5) or 1.5)
+        probability_floor = float(getattr(self.tcfg, "conviction_entry_min_probability", 0.56) or 0.56)
+        expectancy_floor = float(getattr(self.tcfg, "conviction_entry_min_expectancy_score", 54.0) or 54.0)
+        uncertainty_cap = float(getattr(self.tcfg, "conviction_entry_max_uncertainty", 0.46) or 0.46)
+        if event_conviction:
+            min_alignment = float(getattr(self.tcfg, "conviction_entry_event_min_alignment_points", 1.0) or 1.0)
+            max_conflicts = float(getattr(self.tcfg, "conviction_entry_event_max_conflict_points", 2.75) or 2.75)
+            probability_floor = float(getattr(self.tcfg, "conviction_entry_event_min_probability", 0.51) or 0.51)
+            expectancy_floor = float(getattr(self.tcfg, "conviction_entry_event_min_expectancy_score", 46.0) or 46.0)
+            uncertainty_cap = float(getattr(self.tcfg, "conviction_entry_event_max_uncertainty", 0.58) or 0.58)
+        if catalyst_extreme:
+            min_alignment -= 0.5
+            max_conflicts += 0.25
+            probability_floor -= 0.02
+            expectancy_floor -= 2.0
+            uncertainty_cap += 0.02
+
+        if alignment < min_alignment:
+            blockers.append(f"alignment {alignment:.1f} is below the starter floor")
+        if conflicts > max_conflicts:
+            blockers.append(f"conflicts {conflicts:.1f} are too high for a starter")
+        if probability < probability_floor:
+            blockers.append(f"win probability {probability * 100:.0f}% is below the starter floor")
+        if expectancy_score < expectancy_floor:
+            blockers.append(f"expectancy score {expectancy_score:.0f} is below the starter floor")
+        if uncertainty > uncertainty_cap:
+            blockers.append(f"uncertainty {uncertainty * 100:.0f}% is above the starter cap")
+        if blockers:
+            entry["blockers"] = blockers[:4]
+            return entry
+
+        base_size = float(
+            getattr(
+                self.tcfg,
+                "conviction_entry_event_size_multiplier" if event_conviction else "conviction_entry_size_multiplier",
+                0.35 if event_conviction else 0.45,
+            )
+            or (0.35 if event_conviction else 0.45)
+        )
+        size_bonus = max(
+            0.0,
+            min(
+                0.14 if event_conviction else 0.18,
+                max(0.0, catalyst_score - min_catalyst) * 0.06
+                + max(0.0, probability - probability_floor) * 0.30
+                + (0.04 if same_direction_breakout_live else 0.0),
+            ),
+        )
+        if event_conviction:
+            max_size = float(getattr(self.tcfg, "conviction_entry_event_max_size_multiplier", 0.46) or 0.46)
+            uncertainty_penalty = max(0.0, uncertainty - (uncertainty_cap * 0.75)) * 0.35
+            conflict_penalty = max(0.0, conflicts - (max_conflicts * 0.65)) * 0.05
+            size_multiplier = max(0.18, min(max_size, base_size + size_bonus - uncertainty_penalty - conflict_penalty))
+        else:
+            size_multiplier = max(0.20, min(0.72, base_size + size_bonus))
+        catalyst_text = f"catalyst {catalyst_score:.2f}" if catalyst_score > 0 else f"headline flow {news_score:.0f}"
+        direction_text = "long" if bullish else "short"
+        summary = (
+            f"{'Pre-event starter' if event_conviction else 'Starter'} {direction_text} allowed: {catalyst_text}, news {news_score:.0f}, "
+            f"p {probability * 100:.0f}%, score {score:.1f} vs {trigger_threshold:.0f} trigger. "
+            f"Begin {size_multiplier * 100:.0f}% size before full confirmation."
+        )
+        if catalyst_summary:
+            summary += f" Thesis: {catalyst_summary}."
+
+        entry.update({
+            "active": True,
+            "direction": action,
+            "style": "EVENT_STARTER" if event_conviction else "STARTER",
+            "size_multiplier": round(size_multiplier, 4),
+            "summary": summary,
+            "reason": summary,
+            "blockers": [],
+            "bypass_precision": bool(getattr(self.tcfg, "conviction_entry_precision_override_enabled", True)),
+            "event_conviction": bool(event_conviction),
+        })
+        return entry
 
     @staticmethod
     def _bullish_candle_context(patterns) -> bool:
@@ -334,6 +704,7 @@ class AggressiveStrategy:
         orderbook_signal=None,
         market_map_signal=None,
         narrative_signal=None,
+        instrument_type: str = "crypto",
         trade_plan: Dict | None = None,
     ) -> dict:
         thesis = {
@@ -397,10 +768,22 @@ class AggressiveStrategy:
         market_map_breakout_override = (
             bullish and self._market_map_supports_breakout_long_override(market_map_signal, breakout_state)
         )
+        event_conviction = self._event_conviction_active(
+            instrument_type=instrument_type,
+            action=action,
+            news_signal=news_signal,
+        )
 
         if support_defense_long:
             alignment += 1.5
             reasons.append("strong support defense is holding beneath price")
+        if event_conviction:
+            alignment += 2.25
+            reasons.append("pre-event catalyst flow supports taking starter risk before full price confirmation")
+            catalyst_tags = self._catalyst_tags(news_signal)
+            if catalyst_tags & {"demand_commitment", "capacity_lock_in", "strategic_deal"}:
+                alignment += 0.75
+                reasons.append("demand/supply catalyst is directly tied to the equity theme")
 
         if confirmed_breakout:
             alignment += 2.0
@@ -434,6 +817,9 @@ class AggressiveStrategy:
                 if support_defense_long:
                     alignment += 1.0
                     reasons.append("support-defense setup allows a range low reclaim before full breakout confirmation")
+                elif event_conviction:
+                    conflicts += 0.25
+                    reasons.append("higher structure is ranging, but the event catalyst justifies starter risk")
                 else:
                     blockers.append("higher structure is still ranging")
         else:
@@ -458,7 +844,11 @@ class AggressiveStrategy:
             reasons.append(f"{dominant_regime.lower()} regime supports follow-through")
         elif dominant_regime in {"ABSORPTION", "MIXED"}:
             if getattr(self.tcfg, "thesis_block_on_range_conditions", True) and not (confirmed_breakout or persistent_breakout):
-                blockers.append(f"{dominant_regime.lower()} regime is too indecisive for a fresh trade")
+                if event_conviction:
+                    conflicts += 0.25
+                    reasons.append(f"{dominant_regime.lower()} regime is not ideal, but catalyst conviction keeps the starter alive")
+                else:
+                    blockers.append(f"{dominant_regime.lower()} regime is too indecisive for a fresh trade")
             else:
                 conflicts += 0.5
         elif dominant_regime == "MEAN_REV":
@@ -489,7 +879,11 @@ class AggressiveStrategy:
                 reasons.append("recent candles still lean the other way")
 
             if indecision and not (confirmed_breakout or persistent_breakout):
-                blockers.append("recent candles are still indecisive")
+                if event_conviction:
+                    conflicts += 0.25
+                    reasons.append("candles are indecisive, but pre-event catalyst flow is carrying the starter thesis")
+                else:
+                    blockers.append("recent candles are still indecisive")
 
         if news_signal and getattr(news_signal, "valid", False) and getattr(news_signal, "article_count", 0) > 0:
             news_score = float(getattr(news_signal, "score", 50.0) or 50.0)
@@ -513,7 +907,11 @@ class AggressiveStrategy:
             orderbook_score = float(getattr(orderbook_signal, "score", 50.0) or 50.0)
             if bullish:
                 if getattr(orderbook_signal, "block_longs", False) and not (confirmed_breakout or persistent_breakout):
-                    blockers.append("overhead supply/resistance is still active")
+                    if event_conviction:
+                        conflicts += 0.75
+                        reasons.append("overhead supply is active, so the event entry must stay starter-sized")
+                    else:
+                        blockers.append("overhead supply/resistance is still active")
                 elif support_defense_long:
                     alignment += 1.5
                     reasons.append("orderbook is aggressively defending support for longs")
@@ -544,13 +942,21 @@ class AggressiveStrategy:
                 reasons.append("ask wall persistence is absorbing buyers above price")
 
             if level_interaction == "RANGE_COMPRESSION" and getattr(self.tcfg, "thesis_block_on_range_conditions", True) and not (confirmed_breakout or persistent_breakout):
-                blockers.append("price is compressed between nearby support and resistance")
+                if event_conviction:
+                    conflicts += 0.75
+                    reasons.append("range compression is active, so the event thesis must stay starter-sized")
+                else:
+                    blockers.append("price is compressed between nearby support and resistance")
 
         if market_map_signal and getattr(market_map_signal, "valid", False):
             market_bias = str(getattr(market_map_signal, "bias", "NEUTRAL") or "NEUTRAL").upper()
             if bullish:
                 if getattr(market_map_signal, "block_longs", False) and not market_map_breakout_override:
-                    blockers.append("daily market map still warns against longs here")
+                    if event_conviction:
+                        conflicts += 0.5
+                        reasons.append("daily map has not fully confirmed, so the event thesis stays small")
+                    else:
+                        blockers.append("daily market map still warns against longs here")
                 elif getattr(market_map_signal, "block_longs", False) and market_map_breakout_override:
                     conflicts += 0.35
                     reasons.append("mapped supply is overhead, but breakout reclaim is overriding it")
@@ -620,6 +1026,9 @@ class AggressiveStrategy:
         elif support_defense_long and score_buffer >= 0.5:
             alignment += 0.75
             reasons.append("support-defense reclaim can trigger closer to the threshold")
+        elif event_conviction and score_buffer >= -float(getattr(self.tcfg, "conviction_entry_event_score_buffer", 16.0) or 16.0):
+            alignment += 0.50
+            reasons.append("pre-event catalyst allows a starter below the normal trigger")
         elif not (confirmed_breakout or persistent_breakout):
             blockers.append("score only barely crossed the trigger without enough thesis buffer")
 
@@ -666,6 +1075,7 @@ class AggressiveStrategy:
             "support_defense_long": bool(support_defense_long),
             "confirmed_breakout": bool(confirmed_breakout),
             "persistent_breakout": bool(persistent_breakout),
+            "event_conviction": bool(event_conviction),
             "alignment_points": round(alignment, 2),
             "conflict_points": round(conflicts, 2),
             "conviction_score": round(conviction_score, 2),
@@ -1554,6 +1964,23 @@ class AggressiveStrategy:
                 )
                 log.info(f"[{tech.coin}] Support-defense long archetype activated")
 
+        threshold_action = action
+        conviction_probe = {"active": False, "candidate_action": action, "summary": ""}
+        candidate_action = action
+        if action == "FLAT":
+            conviction_probe = self._conviction_probe_candidate(
+                instrument_type=instrument_type,
+                action=action,
+                raw_score=raw_score,
+                news_signal=news_signal,
+                narrative_signal=narrative_signal,
+                orderbook_signal=orderbook_signal,
+                market_map_signal=market_map_signal,
+            )
+            if conviction_probe.get("active"):
+                candidate_action = str(conviction_probe.get("candidate_action", "FLAT") or "FLAT").upper()
+                log.info(f"[{tech.coin}] {conviction_probe.get('summary', '')}")
+
         # ── 16. Confidence ───────────────────────────────────────────────────
         distance = abs(raw_score - 50.0)
         confidence = "HIGH" if distance >= 20 else "MEDIUM" if distance >= 10 else "LOW"
@@ -1574,9 +2001,9 @@ class AggressiveStrategy:
         }
         execution_plan = {}
         thesis = {
-            "candidate_action": action,
+            "candidate_action": candidate_action,
             "state": "NO_TRADE",
-            "permitted": action in ("LONG", "SHORT"),
+            "permitted": candidate_action in ("LONG", "SHORT"),
             "quality": confidence,
             "archetype": "NONE",
             "support_defense_long": False,
@@ -1590,7 +2017,7 @@ class AggressiveStrategy:
             "blockers": [],
         }
         thesis_guard_reason = ""
-        candidate_action = action
+        starter_override_required = False
         if tech.price > 0 and candidate_action != "FLAT":
             if getattr(self.tcfg, "dynamic_trade_planning", True):
                 trade_plan = self._build_trade_plan(
@@ -1606,7 +2033,7 @@ class AggressiveStrategy:
                 sl_price = float(trade_plan.get("stop_loss", 0.0) or 0.0)
                 tp_price = float(trade_plan.get("take_profit", 0.0) or 0.0)
             if sl_price <= 0 or tp_price <= 0:
-                if action == "LONG":
+                if candidate_action == "LONG":
                     sl_price = tech.price * (1 - self.tcfg.stop_loss_pct)
                     tp_price = tech.price * (1 + self.tcfg.take_profit_pct)
                 else:
@@ -1638,6 +2065,7 @@ class AggressiveStrategy:
                 orderbook_signal=orderbook_signal,
                 market_map_signal=market_map_signal,
                 narrative_signal=narrative_signal,
+                instrument_type=instrument_type,
                 trade_plan=trade_plan,
             )
             expectancy = self._derive_expectancy_profile(
@@ -1653,8 +2081,62 @@ class AggressiveStrategy:
                 narrative_signal=narrative_signal,
                 current_position=current_position,
             )
+            conviction_entry = self._build_conviction_entry(
+                coin=tech.coin,
+                instrument_type=instrument_type,
+                action=candidate_action,
+                score=raw_score,
+                thesis=thesis,
+                expectancy=expectancy,
+                news_signal=news_signal,
+                narrative_signal=narrative_signal,
+                orderbook_signal=orderbook_signal,
+                market_map_signal=market_map_signal,
+            )
+            thesis["conviction_entry"] = conviction_entry
+            expectancy["conviction_entry"] = conviction_entry
             confidence = str(expectancy.get("quality", confidence) or confidence).upper()
-            if not expectancy.get("permitted", False):
+            precision_allowed, precision_reason = self._passes_precision_mode(
+                coin=tech.coin,
+                action=candidate_action,
+                confidence=confidence,
+                thesis=thesis,
+                expectancy=expectancy,
+                trade_plan=trade_plan,
+                orderbook_signal=orderbook_signal,
+                market_map_signal=market_map_signal,
+            )
+            regular_gates_clear = bool(thesis.get("permitted", False)) and bool(expectancy.get("permitted", False)) and precision_allowed
+            starter_override_required = bool(conviction_entry.get("active")) and (
+                threshold_action != candidate_action or not regular_gates_clear
+            )
+            if starter_override_required:
+                action = candidate_action
+                thesis_guard_reason = str(conviction_entry.get("summary", "") or "")
+                thesis["state"] = "CONVICTION_ENTRY"
+                thesis["permitted"] = True
+                if str(thesis.get("quality", "LOW") or "LOW").upper() == "LOW":
+                    thesis["quality"] = "MEDIUM"
+                thesis["summary"] = thesis_guard_reason or str(thesis.get("summary", "") or "")
+                thesis["reasons"] = [thesis_guard_reason] + [item for item in list(thesis.get("reasons", []) or []) if item != thesis_guard_reason][:5]
+                thesis["blockers"] = []
+                thesis["precision_blocked"] = False
+                thesis["precision_summary"] = precision_reason if not precision_allowed else ""
+                expectancy["permitted"] = True
+                if str(expectancy.get("quality", "LOW") or "LOW").upper() == "LOW":
+                    expectancy["quality"] = "MEDIUM"
+                expectancy["summary"] = thesis_guard_reason or str(expectancy.get("summary", "") or "")
+                expectancy["blockers"] = []
+                execution_plan = self._build_execution_plan(
+                    action=candidate_action,
+                    entry_price=float(trade_plan.get("entry_price", tech.price) or tech.price),
+                    trade_plan=trade_plan,
+                    expectancy=expectancy,
+                    orderbook_signal=orderbook_signal,
+                )
+                execution_plan["starter_size_multiplier"] = float(conviction_entry.get("size_multiplier", 1.0) or 1.0)
+                execution_plan["reason"] = thesis_guard_reason or execution_plan.get("reason", "starter conviction entry")
+            elif not expectancy.get("permitted", False):
                 action = "FLAT"
                 thesis_guard_reason = str(expectancy.get("summary", "") or "")
                 sl_price = 0.0
@@ -1669,16 +2151,6 @@ class AggressiveStrategy:
                 trade_plan = {}
                 execution_plan = {}
             else:
-                precision_allowed, precision_reason = self._passes_precision_mode(
-                    coin=tech.coin,
-                    action=candidate_action,
-                    confidence=confidence,
-                    thesis=thesis,
-                    expectancy=expectancy,
-                    trade_plan=trade_plan,
-                    orderbook_signal=orderbook_signal,
-                    market_map_signal=market_map_signal,
-                )
                 if not precision_allowed:
                     action = "FLAT"
                     thesis_guard_reason = precision_reason
@@ -1698,6 +2170,7 @@ class AggressiveStrategy:
                         expectancy=expectancy,
                         orderbook_signal=orderbook_signal,
                     )
+                    action = candidate_action
         elif candidate_action == "FLAT":
             thesis["permitted"] = False
             thesis["quality"] = "LOW"
@@ -1754,7 +2227,7 @@ class AggressiveStrategy:
             # Index-specific
             if instrument_type == "index":
                 flat_parts.append("Index: waiting for macro confirmation")
-            elif instrument_type == "equity":
+            elif instrument_type == "equity" and not thesis_guard_reason:
                 reclaim_confirmed = bool(getattr(market_map_signal, "above_reclaim_levels", [])) if market_map_signal else False
                 live_reclaim = bool(getattr(market_map_signal, "live_above_reclaim_levels", [])) if market_map_signal else False
                 breakout_state = str(getattr(orderbook_signal, "breakout_state", "NONE") or "NONE").upper()
@@ -1764,15 +2237,11 @@ class AggressiveStrategy:
                     "PERSISTENT_BULLISH_BREAKOUT",
                 }
                 if reclaim_confirmed and not live_reclaim:
-                    flat_parts.append(
-                        "Equity spot: prior reclaim slipped back below the trigger; waiting for price to hold above reclaim again"
-                    )
+                    flat_parts.append("Equity spot: prior reclaim slipped back below the trigger; price has to hold above it again")
                 elif reclaim_confirmed or bullish_breakout_live:
-                    flat_parts.append(
-                        "Equity spot: reclaim is on the board; waiting for cleaner continuation, pullback quality, or earnings confirmation"
-                    )
+                    flat_parts.append("Equity spot: breakout pressure is live, but the follow-through is still not clean enough")
                 else:
-                    flat_parts.append("Equity spot: waiting for reclaim / earnings-quality confirmation")
+                    flat_parts.append("Equity spot: catalyst is live, but price has not earned the entry yet")
 
             if orderbook_guard_reason and orderbook_guard_reason not in flat_parts:
                 flat_parts.insert(0, orderbook_guard_reason)

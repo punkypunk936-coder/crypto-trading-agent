@@ -14,6 +14,7 @@ import sys
 import tempfile
 import time
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
@@ -41,8 +42,10 @@ import narrative as narrative_module
 import portfolio_guard as portfolio_guard_module
 import playbook_distiller as playbook_distiller_module
 import precision_lab as precision_lab_module
+import proactive_intelligence as proactive_intelligence_module
 import promotion_gate as promotion_gate_module
 from data import market_data as market_data_module
+from indicators import equity_event_feeds as equity_event_feeds_module
 from indicators import news as news_module
 from indicators import orderbook_levels as orderbook_levels_module
 import trade_dataset as trade_dataset_module
@@ -171,6 +174,50 @@ def test_checkpoint_recovery() -> None:
         assert "BTC" in restarted.risk.positions, "position should restore from checkpoint in dry-run"
     checkpoint_module.checkpoint_manager = original_manager
     agent_module.checkpoint_manager = original_manager
+
+
+def test_checkpoint_recovery_rehydrates_dry_run_pending_limits() -> None:
+    cfg = build_config()
+    original_manager = checkpoint_module.checkpoint_manager
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / "checkpoints.db"
+        temp_manager = checkpoint_module.CheckpointManager(db_path=str(db_path))
+        checkpoint_module.checkpoint_manager = temp_manager
+        agent_module.checkpoint_manager = temp_manager
+        try:
+            ex = DryRunExchange(starting_balance_usd=1000.0)
+            ex.connect()
+            live = TradingAgent(cfg, [ex])
+            result = ex.limit_buy("BTC", 0.001, 69000.0)
+            live.order_mgr.register_limit_order(
+                PendingOrder(
+                    coin="BTC",
+                    direction="LONG",
+                    limit_price=69000.0,
+                    size_coin=0.001,
+                    size_usd=69.0,
+                    stop_loss=63000.0,
+                    take_profit=78000.0,
+                    signal_score=66.0,
+                    exchange=ex.name,
+                    exchange_order_id=result.order_id,
+                    reason="initial_limit",
+                )
+            )
+            live._last_portfolio_usd = 1000.0
+            live._last_available_usd = 931.0
+            live._save_checkpoint()
+
+            ex_restarted = DryRunExchange(starting_balance_usd=1000.0)
+            ex_restarted.connect()
+            restarted = TradingAgent(cfg, [ex_restarted])
+
+            assert restarted.order_mgr.has_pending("BTC"), "agent pending book should restore from checkpoint"
+            assert result.order_id in ex_restarted._pending_limits, "dry-run exchange should rehydrate restored pending limits"
+            assert not ex_restarted.get_order_status("BTC", "missing-order").filled
+        finally:
+            checkpoint_module.checkpoint_manager = original_manager
+            agent_module.checkpoint_manager = original_manager
 
 
 def test_execute_order_stops_after_first_success() -> None:
@@ -931,9 +978,15 @@ def test_crypto_news_falls_back_to_google_when_cryptopanic_is_unavailable() -> N
     original_get = news_module.requests.get
     original_cache = dict(news_module._cache)
     original_backoff = dict(news_module._source_backoff)
+    original_calendar = news_module._calendar_event_headlines
+    original_event_feed = news_module.equity_event_feeds.get_equity_event_feed
     try:
         news_module._cache.clear()
         news_module._source_backoff.clear()
+        news_module._calendar_event_headlines = lambda *args, **kwargs: []
+        news_module.equity_event_feeds.get_equity_event_feed = (
+            lambda coin, **_kwargs: equity_event_feeds_module.EquityEventFeed(coin=str(coin).upper())
+        )
 
         def fake_get(url, params=None, **kwargs):
             if "cryptopanic.com" in url:
@@ -958,6 +1011,8 @@ def test_crypto_news_falls_back_to_google_when_cryptopanic_is_unavailable() -> N
         assert any("breakout" in title.lower() for title in signal.top_headlines)
     finally:
         news_module.requests.get = original_get
+        news_module._calendar_event_headlines = original_calendar
+        news_module.equity_event_feeds.get_equity_event_feed = original_event_feed
         news_module._cache.clear()
         news_module._cache.update(original_cache)
         news_module._source_backoff.clear()
@@ -979,9 +1034,15 @@ def test_macro_news_filters_irrelevant_cross_ticker_headlines() -> None:
     original_get = news_module.requests.get
     original_cache = dict(news_module._cache)
     original_backoff = dict(news_module._source_backoff)
+    original_calendar = news_module._calendar_event_headlines
+    original_event_feed = news_module.equity_event_feeds.get_equity_event_feed
     try:
         news_module._cache.clear()
         news_module._source_backoff.clear()
+        news_module._calendar_event_headlines = lambda *args, **kwargs: []
+        news_module.equity_event_feeds.get_equity_event_feed = (
+            lambda coin, **_kwargs: equity_event_feeds_module.EquityEventFeed(coin=str(coin).upper())
+        )
 
         def fake_get(url, params=None, **kwargs):
             if "feeds.finance.yahoo.com" in url:
@@ -1006,6 +1067,8 @@ def test_macro_news_filters_irrelevant_cross_ticker_headlines() -> None:
         assert signal.score > 50.0
     finally:
         news_module.requests.get = original_get
+        news_module._calendar_event_headlines = original_calendar
+        news_module.equity_event_feeds.get_equity_event_feed = original_event_feed
         news_module._cache.clear()
         news_module._cache.update(original_cache)
         news_module._source_backoff.clear()
@@ -1027,9 +1090,15 @@ def test_macro_news_returns_neutral_when_no_asset_specific_headlines_exist() -> 
     original_get = news_module.requests.get
     original_cache = dict(news_module._cache)
     original_backoff = dict(news_module._source_backoff)
+    original_calendar = news_module._calendar_event_headlines
+    original_event_feed = news_module.equity_event_feeds.get_equity_event_feed
     try:
         news_module._cache.clear()
         news_module._source_backoff.clear()
+        news_module._calendar_event_headlines = lambda *args, **kwargs: []
+        news_module.equity_event_feeds.get_equity_event_feed = (
+            lambda coin, **_kwargs: equity_event_feeds_module.EquityEventFeed(coin=str(coin).upper())
+        )
 
         def fake_get(url, params=None, **kwargs):
             if "feeds.finance.yahoo.com" in url:
@@ -1054,6 +1123,8 @@ def test_macro_news_returns_neutral_when_no_asset_specific_headlines_exist() -> 
         assert "asset-specific" in signal.error
     finally:
         news_module.requests.get = original_get
+        news_module._calendar_event_headlines = original_calendar
+        news_module.equity_event_feeds.get_equity_event_feed = original_event_feed
         news_module._cache.clear()
         news_module._cache.update(original_cache)
         news_module._source_backoff.clear()
@@ -1075,9 +1146,15 @@ def test_macro_news_recognizes_major_platform_customer_catalyst() -> None:
     original_get = news_module.requests.get
     original_cache = dict(news_module._cache)
     original_backoff = dict(news_module._source_backoff)
+    original_calendar = news_module._calendar_event_headlines
+    original_event_feed = news_module.equity_event_feeds.get_equity_event_feed
     try:
         news_module._cache.clear()
         news_module._source_backoff.clear()
+        news_module._calendar_event_headlines = lambda *args, **kwargs: []
+        news_module.equity_event_feeds.get_equity_event_feed = (
+            lambda coin, **_kwargs: equity_event_feeds_module.EquityEventFeed(coin=str(coin).upper())
+        )
 
         def fake_get(url, params=None, **kwargs):
             if "feeds.finance.yahoo.com" in url:
@@ -1104,6 +1181,322 @@ def test_macro_news_recognizes_major_platform_customer_catalyst() -> None:
         assert "demand commitment" in signal.catalyst_summary
     finally:
         news_module.requests.get = original_get
+        news_module._calendar_event_headlines = original_calendar
+        news_module.equity_event_feeds.get_equity_event_feed = original_event_feed
+        news_module._cache.clear()
+        news_module._cache.update(original_cache)
+        news_module._source_backoff.clear()
+        news_module._source_backoff.update(original_backoff)
+
+
+def test_macro_news_merges_pre_event_intc_catalyst_flow() -> None:
+    class _Resp:
+        def __init__(self, status_code: int, *, content: bytes = b""):
+            self.status_code = status_code
+            self.content = content
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise requests.HTTPError(f"{self.status_code} boom")
+
+    import requests
+
+    original_get = news_module.requests.get
+    original_cache = dict(news_module._cache)
+    original_backoff = dict(news_module._source_backoff)
+    try:
+        news_module._cache.clear()
+        news_module._source_backoff.clear()
+
+        def fake_get(url, params=None, **kwargs):
+            if "feeds.finance.yahoo.com" in url:
+                return _Resp(
+                    200,
+                    content=(
+                        b'<?xml version="1.0"?><rss><channel>'
+                        b"<item><title>Apple services revenue holds steady before earnings</title></item>"
+                        b"</channel></rss>"
+                    ),
+                )
+            if "news.google.com" in url:
+                return _Resp(
+                    200,
+                    content=(
+                        b'<?xml version="1.0"?><rss><channel>'
+                        b"<item><title>Intel shares climb ahead of earnings as server CPU demand and Xeon backlog improve</title></item>"
+                        b"</channel></rss>"
+                    ),
+                )
+            raise AssertionError(f"unexpected url {url}")
+
+        news_module.requests.get = fake_get
+        signal = news_module.get_news_signal("INTC", auth_token="")
+        assert signal.valid is True
+        assert signal.article_count == 1
+        assert signal.top_headlines == [
+            "Intel shares climb ahead of earnings as server CPU demand and Xeon backlog improve"
+        ]
+        assert signal.score >= 60.0
+        assert signal.catalyst_score >= 4.0
+        assert "pre-event setup" in signal.catalyst_summary
+        assert "earnings_event" in signal.event_tags
+        assert "pre_event_setup" in signal.event_tags
+    finally:
+        news_module.requests.get = original_get
+        news_module._cache.clear()
+        news_module._cache.update(original_cache)
+        news_module._source_backoff.clear()
+        news_module._source_backoff.update(original_backoff)
+
+
+def test_equity_event_feed_collects_ir_sec_options_and_analyst_revisions() -> None:
+    class _Resp:
+        def __init__(self, status_code: int, *, json_payload=None, text: str = ""):
+            self.status_code = status_code
+            self._json_payload = json_payload or {}
+            self.text = text
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise RuntimeError(f"{self.status_code} boom")
+
+        def json(self):
+            return self._json_payload
+
+    original_get = equity_event_feeds_module.requests.get
+    original_cache = dict(equity_event_feeds_module._feed_cache)
+    try:
+        equity_event_feeds_module._feed_cache.clear()
+
+        def fake_get(url, params=None, **kwargs):
+            url_text = str(url)
+            if "ir.aboutamazon.com" in url_text:
+                return _Resp(
+                    200,
+                    text="Q1 2026 Amazon.com Inc. Earnings Conference Call April 29, 2026 02:30 PM PT",
+                )
+            if "data.sec.gov/submissions" in url_text:
+                return _Resp(
+                    200,
+                    json_payload={
+                        "filings": {
+                            "recent": {
+                                "form": ["8-K"],
+                                "filingDate": ["2026-04-20"],
+                                "accessionNumber": ["0001018724-26-000111"],
+                                "primaryDocument": ["amzn-20260420.htm"],
+                                "acceptanceDateTime": ["2026-04-20T16:03:00.000Z"],
+                            }
+                        }
+                    },
+                )
+            if "query2.finance.yahoo.com/v7/finance/options" in url_text:
+                return _Resp(
+                    200,
+                    json_payload={
+                        "optionChain": {
+                            "result": [{
+                                "quote": {"regularMarketPrice": 100.0},
+                                "expirationDates": [1777507200],
+                                "options": [{
+                                    "calls": [{"strike": 100.0, "bid": 2.0, "ask": 2.4, "expiration": 1777507200}],
+                                    "puts": [{"strike": 100.0, "bid": 1.8, "ask": 2.2, "expiration": 1777507200}],
+                                }],
+                            }]
+                        }
+                    },
+                )
+            if "query2.finance.yahoo.com/v10/finance/quoteSummary" in url_text:
+                return _Resp(
+                    200,
+                    json_payload={
+                        "quoteSummary": {
+                            "result": [{
+                                "earningsTrend": {
+                                    "trend": [{
+                                        "period": "0q",
+                                        "earningsEstimate": {"upLast30days": 4, "downLast30days": 1},
+                                        "revenueEstimate": {"upLast30days": 3, "downLast30days": 0},
+                                    }]
+                                },
+                                "recommendationTrend": {"trend": [{"strongBuy": 10, "buy": 20, "hold": 8, "sell": 1, "strongSell": 0}]},
+                                "financialData": {
+                                    "targetMeanPrice": {"raw": 118.0},
+                                    "currentPrice": {"raw": 100.0},
+                                },
+                            }]
+                        }
+                    },
+                )
+            raise AssertionError(f"unexpected url {url}")
+
+        equity_event_feeds_module.requests.get = fake_get
+        feed = equity_event_feeds_module.get_equity_event_feed(
+            "AMZN",
+            calendar_events=[{
+                "company": "Amazon",
+                "label": "Q1 2026 earnings",
+                "date": "2026-04-29",
+                "timing": "after market close",
+                "source": "Amazon Investor Relations",
+            }],
+            now=datetime(2026, 4, 26, tzinfo=timezone.utc),
+        )
+        assert feed.valid is True
+        assert "official_ir_event" in feed.tags
+        assert "sec_filing" in feed.tags
+        assert "options_implied_move" in feed.tags
+        assert "analyst_revision" in feed.tags
+        assert feed.options_implied_move_pct == 4.2
+        assert feed.analyst_revision_score > 0
+        assert any("official IR" in headline for headline in feed.headlines)
+    finally:
+        equity_event_feeds_module.requests.get = original_get
+        equity_event_feeds_module._feed_cache.clear()
+        equity_event_feeds_module._feed_cache.update(original_cache)
+
+
+def test_equity_event_feed_uses_nasdaq_fallback_when_yahoo_is_unavailable() -> None:
+    class _Resp:
+        def __init__(self, status_code: int, *, json_payload=None):
+            self.status_code = status_code
+            self._json_payload = json_payload or {}
+            self.text = ""
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise RuntimeError(f"{self.status_code} boom")
+
+        def json(self):
+            return self._json_payload
+
+    original_get = equity_event_feeds_module.requests.get
+    original_cache = dict(equity_event_feeds_module._feed_cache)
+    try:
+        equity_event_feeds_module._feed_cache.clear()
+
+        def fake_get(url, params=None, **kwargs):
+            url_text = str(url)
+            if "query2.finance.yahoo.com" in url_text:
+                return _Resp(401)
+            if "api.nasdaq.com/api/quote/AMZN/option-chain" in url_text:
+                return _Resp(
+                    200,
+                    json_payload={
+                        "data": {
+                            "lastTrade": "LAST TRADE: $100.00 (AS OF APR 23, 2026)",
+                            "table": {
+                                "rows": [
+                                    {"expirygroup": "April 30, 2026"},
+                                    {
+                                        "expirygroup": "",
+                                        "expiryDate": "Apr 30",
+                                        "strike": "100.00",
+                                        "c_Bid": "2.00",
+                                        "c_Ask": "2.40",
+                                        "c_Last": "2.10",
+                                        "p_Bid": "1.80",
+                                        "p_Ask": "2.20",
+                                        "p_Last": "2.00",
+                                    },
+                                ]
+                            },
+                        }
+                    },
+                )
+            if "api.nasdaq.com/api/analyst/AMZN/earnings-forecast" in url_text:
+                return _Resp(
+                    200,
+                    json_payload={
+                        "data": {
+                            "quarterlyForecast": {
+                                "rows": [{
+                                    "fiscalEnd": "Mar 2026",
+                                    "up": 3,
+                                    "down": 1,
+                                    "noOfEstimates": 12,
+                                }]
+                            }
+                        }
+                    },
+                )
+            if "api.nasdaq.com/api/analyst/AMZN/targetprice" in url_text:
+                return _Resp(
+                    200,
+                    json_payload={
+                        "data": {
+                            "consensusOverview": {
+                                "priceTarget": 120.0,
+                                "buy": 22,
+                                "hold": 5,
+                                "sell": 1,
+                            }
+                        }
+                    },
+                )
+            raise AssertionError(f"unexpected url {url}")
+
+        equity_event_feeds_module.requests.get = fake_get
+        feed = equity_event_feeds_module.get_equity_event_feed(
+            "AMZN",
+            calendar_events=[],
+            now=datetime(2026, 4, 26, tzinfo=timezone.utc),
+        )
+        assert feed.options_implied_move_pct == 4.2
+        assert "Nasdaq" in feed.options_summary
+        assert feed.analyst_revision_score > 0
+        assert "Nasdaq EPS revisions" in feed.analyst_revision_summary
+        assert "options_implied_move" in feed.tags
+        assert "analyst_revision" in feed.tags
+    finally:
+        equity_event_feeds_module.requests.get = original_get
+        equity_event_feeds_module._feed_cache.clear()
+        equity_event_feeds_module._feed_cache.update(original_cache)
+
+
+def test_macro_news_adds_upcoming_mag7_earnings_calendar_when_feeds_are_sparse() -> None:
+    class _Resp:
+        def __init__(self, status_code: int, *, content: bytes = b""):
+            self.status_code = status_code
+            self.content = content
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise requests.HTTPError(f"{self.status_code} boom")
+
+    import requests
+
+    original_get = news_module.requests.get
+    original_cache = dict(news_module._cache)
+    original_backoff = dict(news_module._source_backoff)
+    original_now = news_module._utc_now
+    try:
+        news_module._cache.clear()
+        news_module._source_backoff.clear()
+        news_module._utc_now = lambda: datetime(2026, 4, 24, tzinfo=timezone.utc)
+
+        def fake_get(url, params=None, **kwargs):
+            if "feeds.finance.yahoo.com" in url or "news.google.com" in url:
+                return _Resp(404)
+            raise AssertionError(f"unexpected url {url}")
+
+        news_module.requests.get = fake_get
+        for coin in ("GOOGL", "META", "AMZN"):
+            news_module._cache.clear()
+            news_module._source_backoff.clear()
+            signal = news_module.get_news_signal(coin, auth_token="")
+            assert signal.valid is True
+            assert signal.article_count >= 1
+            assert signal.score >= 60.0
+            assert signal.catalyst_score >= 4.0
+            assert signal.top_headlines
+            assert "calendar" in signal.top_headlines[0].lower()
+            assert "calendar_event" in signal.catalyst_tags
+            assert "earnings_event" in signal.event_tags
+            assert "pre_event_setup" in signal.event_tags
+    finally:
+        news_module.requests.get = original_get
+        news_module._utc_now = original_now
         news_module._cache.clear()
         news_module._cache.update(original_cache)
         news_module._source_backoff.clear()
@@ -1241,6 +1634,87 @@ def test_stale_hyperliquid_candles_are_rejected_for_supported_market() -> None:
         market_data_module._cache.update(original_cache)
 
 
+def test_price_diagnostics_label_trade_xyz_and_flag_reference_spread() -> None:
+    original_supported = market_data_module.is_hyperliquid_supported
+    original_resolve = market_data_module.resolve_hyperliquid_symbol
+    original_dex = market_data_module.get_hyperliquid_market_dex
+    original_reference = market_data_module.get_reference_price_yahoo
+
+    try:
+        market_data_module.is_hyperliquid_supported = lambda _coin: True
+        market_data_module.resolve_hyperliquid_symbol = lambda _coin: "@268"
+        market_data_module.get_hyperliquid_market_dex = lambda _coin: "xyz"
+        market_data_module.get_reference_price_yahoo = lambda _coin: 100.0
+
+        diag = market_data_module.get_price_diagnostics("AAPL", venue_price=103.5, max_deviation_pct=2.0)
+        assert diag["price_source"] == "Trade.xyz allMids"
+        assert diag["price_source_label"] == "Trade.xyz @268"
+        assert diag["reference_source"] == "Yahoo Finance"
+        assert diag["price_status"] == "CHECK"
+        assert diag["price_deviation_pct"] == 3.5
+        assert "AAPL venue price" in diag["price_warning"]
+    finally:
+        market_data_module.is_hyperliquid_supported = original_supported
+        market_data_module.resolve_hyperliquid_symbol = original_resolve
+        market_data_module.get_hyperliquid_market_dex = original_dex
+        market_data_module.get_reference_price_yahoo = original_reference
+
+
+def test_reference_quote_does_not_replace_executable_price_cache() -> None:
+    original_supported = market_data_module.is_hyperliquid_supported
+    original_resolve = market_data_module.resolve_hyperliquid_symbol
+    original_dex = market_data_module.get_hyperliquid_market_dex
+    original_reference = market_data_module.get_reference_price_yahoo
+    original_price_cache = dict(market_data_module._price_cache)
+    original_reference_cache = dict(market_data_module._reference_price_cache)
+
+    try:
+        market_data_module._price_cache.clear()
+        market_data_module._reference_price_cache.clear()
+        market_data_module._cache_price("GOOGL", 350.0)
+        market_data_module.is_hyperliquid_supported = lambda _coin: True
+        market_data_module.resolve_hyperliquid_symbol = lambda _coin: "@266"
+        market_data_module.get_hyperliquid_market_dex = lambda _coin: "xyz"
+        market_data_module.get_reference_price_yahoo = lambda _coin: 348.0
+
+        diag = market_data_module.get_price_diagnostics("GOOGL", venue_price=351.0, max_deviation_pct=2.0)
+        assert diag["reference_price"] == 348.0
+        assert market_data_module._get_cached_price("GOOGL") == 350.0
+    finally:
+        market_data_module.is_hyperliquid_supported = original_supported
+        market_data_module.resolve_hyperliquid_symbol = original_resolve
+        market_data_module.get_hyperliquid_market_dex = original_dex
+        market_data_module.get_reference_price_yahoo = original_reference
+        market_data_module._price_cache.clear()
+        market_data_module._price_cache.update(original_price_cache)
+        market_data_module._reference_price_cache.clear()
+        market_data_module._reference_price_cache.update(original_reference_cache)
+
+
+def test_data_reliability_warns_without_blocking_wide_reference_price_spread() -> None:
+    cfg = build_config()
+    cfg.trading.data_reliability_max_reference_deviation_pct = 2.0
+    snap = {
+        "execution_mode": "tradable",
+        "instrument_type": "equity",
+        "action": "LONG",
+        "using_closed_candles": True,
+        "analysis_price": 100.0,
+        "live_price": 100.2,
+        "price_deviation_pct": 3.25,
+        "market_map_available": True,
+        "orderbook_valid": True,
+        "orderbook_feed_age_seconds": 1.0,
+        "orderbook_feed_snapshot_count": cfg.trading.data_reliability_min_orderbook_snapshots,
+    }
+
+    reliability = data_reliability_module.assess_reliability(cfg.trading, snap)
+    assert reliability["permitted"] is True
+    assert reliability["blockers"] == []
+    assert "venue price is +3.25% away from the reference quote" in reliability["issues"]
+    assert reliability["reference_deviation_pct"] == 3.25
+
+
 def test_thesis_gate_blocks_high_score_range_compression_setup() -> None:
     cfg = build_config()
     strategy = AggressiveStrategy(cfg.trading, cfg.indicators)
@@ -1349,6 +1823,157 @@ def test_expectancy_gate_rejects_thin_edge_setup() -> None:
 
     assert expectancy["permitted"] is False
     assert expectancy["blockers"], "thin-edge setup should explain why expectancy failed"
+
+
+def test_strategy_allows_pre_event_equity_starter_below_trigger() -> None:
+    cfg = build_config()
+    strategy = AggressiveStrategy(cfg.trading, cfg.indicators)
+
+    news_signal = SimpleNamespace(
+        valid=True,
+        score=66.0,
+        article_count=1,
+        velocity="LOW",
+        catalyst_score=4.6,
+        catalyst_summary="platform anchor + demand commitment + earnings event + pre-event setup",
+        catalyst_tags=["platform_anchor", "demand_commitment", "earnings_event", "pre_event_setup"],
+        event_tags=["earnings_event", "pre_event_setup"],
+    )
+    narrative_signal = SimpleNamespace(headline_bias="NEUTRAL", block_longs=False, block_shorts=False)
+    orderbook_signal = SimpleNamespace(
+        valid=True,
+        score=49.0,
+        block_longs=True,
+        block_shorts=False,
+        breakout_state="NONE",
+        intracycle_breakout_state="NONE",
+    )
+    market_map_signal = SimpleNamespace(
+        valid=True,
+        bias="NEUTRAL",
+        block_longs=True,
+        block_shorts=False,
+        live_above_reclaim_levels=[],
+        live_below_breakdown_levels=[],
+    )
+
+    probe = strategy._conviction_probe_candidate(
+        instrument_type="equity",
+        action="FLAT",
+        raw_score=53.0,
+        news_signal=news_signal,
+        narrative_signal=narrative_signal,
+        orderbook_signal=orderbook_signal,
+        market_map_signal=market_map_signal,
+    )
+    assert probe["active"] is True
+    assert probe["candidate_action"] == "LONG"
+
+    entry = strategy._build_conviction_entry(
+        coin="INTC",
+        instrument_type="equity",
+        action="LONG",
+        score=53.0,
+        thesis={"alignment_points": 1.0, "conflict_points": 2.5},
+        expectancy={"probability": 0.52, "score": 47.0, "uncertainty": 0.57},
+        news_signal=news_signal,
+        narrative_signal=narrative_signal,
+        orderbook_signal=orderbook_signal,
+        market_map_signal=market_map_signal,
+    )
+    assert entry["active"] is True
+    assert entry["style"] == "EVENT_STARTER"
+    assert entry["event_conviction"] is True
+    assert 0.20 <= entry["size_multiplier"] <= 0.58
+
+
+def test_strategy_allows_mag7_earnings_calendar_starters_when_conviction_is_shaky() -> None:
+    class _Resp:
+        def __init__(self, status_code: int, *, content: bytes = b""):
+            self.status_code = status_code
+            self.content = content
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise requests.HTTPError(f"{self.status_code} boom")
+
+    import requests
+
+    cfg = build_config()
+    strategy = AggressiveStrategy(cfg.trading, cfg.indicators)
+    narrative_signal = SimpleNamespace(headline_bias="NEUTRAL", block_longs=False, block_shorts=False)
+    orderbook_signal = SimpleNamespace(
+        valid=True,
+        score=49.0,
+        block_longs=True,
+        block_shorts=False,
+        breakout_state="NONE",
+        intracycle_breakout_state="NONE",
+    )
+    market_map_signal = SimpleNamespace(
+        valid=True,
+        bias="NEUTRAL",
+        block_longs=True,
+        block_shorts=False,
+        live_above_reclaim_levels=[],
+        live_below_breakdown_levels=[],
+    )
+
+    original_get = news_module.requests.get
+    original_cache = dict(news_module._cache)
+    original_backoff = dict(news_module._source_backoff)
+    original_now = news_module._utc_now
+    try:
+        news_module._cache.clear()
+        news_module._source_backoff.clear()
+        news_module._utc_now = lambda: datetime(2026, 4, 24, tzinfo=timezone.utc)
+
+        def fake_get(url, params=None, **kwargs):
+            if "feeds.finance.yahoo.com" in url or "news.google.com" in url:
+                return _Resp(404)
+            raise AssertionError(f"unexpected url {url}")
+
+        news_module.requests.get = fake_get
+        for coin in ("GOOGL", "META", "AMZN"):
+            news_module._cache.clear()
+            news_module._source_backoff.clear()
+            news_signal = news_module.get_news_signal(coin, auth_token="")
+            shaky_pre_event_score = 46.5
+            probe = strategy._conviction_probe_candidate(
+                instrument_type="equity",
+                action="FLAT",
+                raw_score=shaky_pre_event_score,
+                news_signal=news_signal,
+                narrative_signal=narrative_signal,
+                orderbook_signal=orderbook_signal,
+                market_map_signal=market_map_signal,
+            )
+            assert probe["active"] is True
+            assert probe["candidate_action"] == "LONG"
+
+            entry = strategy._build_conviction_entry(
+                coin=coin,
+                instrument_type="equity",
+                action="LONG",
+                score=shaky_pre_event_score,
+                thesis={"alignment_points": 1.0, "conflict_points": 3.45},
+                expectancy={"probability": 0.52, "score": 47.0, "uncertainty": 0.59},
+                news_signal=news_signal,
+                narrative_signal=narrative_signal,
+                orderbook_signal=orderbook_signal,
+                market_map_signal=market_map_signal,
+            )
+            assert entry["active"] is True
+            assert entry["style"] == "EVENT_STARTER"
+            assert entry["event_conviction"] is True
+            assert 0.18 <= entry["size_multiplier"] <= cfg.trading.conviction_entry_event_max_size_multiplier
+    finally:
+        news_module.requests.get = original_get
+        news_module._utc_now = original_now
+        news_module._cache.clear()
+        news_module._cache.update(original_cache)
+        news_module._source_backoff.clear()
+        news_module._source_backoff.update(original_backoff)
 
 
 def test_execution_plan_prefers_limit_entry_on_defended_support() -> None:
@@ -2210,14 +2835,31 @@ def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> N
     assert "Reclaim odds" in template
     assert "next_setup_reason" in template
     assert "setupStanceChipHtml" in template
-    assert "Stance mix:" in template
-    assert "Why this lead:" in template
+    assert "Watchlist" in template
+    assert "renderCallWatchlist" in template
+    assert "BULLISH CALL" in template
+    assert "BEARISH CALL" in template
+    assert "Only the next level is shown" in template
+    assert "simpleNextText" in template
+    assert "simpleThesisText" in template
+    assert "simpleInvalidationText" in template
+    assert "Invalid if" in template
+    assert "Opened because:" in template
+    assert "Holding because:" in template
+    assert "Proactive Desk" in template
+    assert "renderProactiveDesk" in template
+    assert "Morning Scout Book" in template
+    assert "Starter Basket" in template
+    assert "Starter Execution" in template
+    assert "Forecast Calibration" in template
+    assert "<strong>Lead:</strong>" in template
     assert "friction-stack" in template
     assert "catalyst-rail" in template
     assert "leadSummaryText(actionBoard.lead" in template
     assert "AbortController" in template
     assert "scheduleRefresh(" in template
     assert "setInterval(refresh, 10000);" not in template
+    assert "Watching only" not in template
     assert "🧾 Latest Lesson" not in template
     assert '<div class="asset-section-title">Support Pending</div>' not in template
 
@@ -2485,6 +3127,207 @@ def test_default_stock_categories_keep_mag7_complete() -> None:
         if coin not in cfg.trading.coins
     ]
     assert missing_executable == []
+
+
+def test_default_crypto_category_includes_mon() -> None:
+    cfg = Config()
+    assert "MON" in cfg.trading.coins
+    assert "MON" in cfg.trading.analysis_coins
+    assert cfg.trading.instrument_types["MON"] == "crypto"
+    assert cfg.trading.asset_category_map["MON"] == ["crypto"]
+    assert cfg.trading.portfolio_theme_map["MON"] == "CRYPTO_HIGH_BETA"
+    catalog = hyperliquid_markets_module._catalog_from_fallback()
+    assert catalog["MON"]["instrument_type"] == "crypto"
+    assert catalog["MON"]["market_type"] == "perp"
+
+
+def test_proactive_intelligence_builds_full_research_stack() -> None:
+    state = {
+        "portfolio_usd": 10000.0,
+        "positions": [],
+        "pending_orders": [],
+        "config": {
+            "instrument_types": {
+                "INTC": "equity",
+                "AMD": "equity",
+                "NVDA": "equity",
+                "MON": "crypto",
+            },
+            "asset_categories": {
+                "INTC": ["semis_memory"],
+                "AMD": ["semis_memory"],
+                "NVDA": ["mag7", "semis_memory"],
+                "MON": ["crypto"],
+            },
+            "portfolio_theme_map": {
+                "INTC": "SEMIS_MEMORY",
+                "AMD": "SEMIS_MEMORY",
+                "NVDA": "MEGA_CAP_TECH",
+                "MON": "CRYPTO_HIGH_BETA",
+            },
+        },
+        "signals": {
+            "INTC": {
+                "action": "FLAT",
+                "market_map_bias": "BULLISH",
+                "score": 64.0,
+                "live_price": 40.0,
+                "news_event_score": 4.2,
+                "news_catalyst_score": 4.0,
+                "news_event_summary": "earnings setup",
+                "analyst_revision_score": 1.5,
+                "expectancy_probability": 0.61,
+            },
+            "AMD": {
+                "action": "FLAT",
+                "market_map_bias": "BULLISH",
+                "score": 58.0,
+                "live_price": 180.0,
+                "news_catalyst_score": 2.5,
+                "expectancy_probability": 0.56,
+            },
+            "NVDA": {
+                "action": "FLAT",
+                "market_map_bias": "BULLISH",
+                "score": 57.0,
+                "live_price": 120.0,
+                "news_catalyst_score": 2.1,
+            },
+            "MON": {
+                "action": "LONG",
+                "score": 66.0,
+                "live_price": 4.2,
+                "expectancy_probability": 0.59,
+            },
+        },
+    }
+    market_map = {
+        "coins": {
+            "INTC": {"bias": "BULLISH", "supports": [38.0], "resistances": [42.0]},
+            "AMD": {"bias": "BULLISH"},
+            "NVDA": {"bias": "BULLISH"},
+            "MON": {"bias": "BULLISH"},
+        }
+    }
+    cfg = build_config()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        report = proactive_intelligence_module.build_and_save_report(
+            state=state,
+            market_map=market_map,
+            config=cfg.trading,
+            data_dir=Path(tmpdir),
+        )
+        assert report["enabled"] is True
+        assert report["thesis_ledger"]["summary"]["active_count"] >= 3
+        assert report["morning_scout_book"]["summary"]["top_call"]["coin"] == "INTC"
+        assert report["read_through_engine"]["summary"]["impact_count"] >= 1
+        assert report["starter_basket_optimizer"]["summary"]["allocation_count"] >= 1
+        assert report["forecast_calibration"]["summary"]["open_count"] >= 1
+        assert (Path(tmpdir) / "thesis_ledger.jsonl").exists()
+        assert (Path(tmpdir) / "forecast_ledger.jsonl").exists()
+
+
+def test_proactive_starter_execution_opens_capped_event_orders() -> None:
+    cfg = build_config()
+    cfg.trading.coins = ["GOOGL", "META", "AMZN"]
+    cfg.trading.analysis_coins = ["GOOGL", "META", "AMZN"]
+    cfg.trading.instrument_types.update({"GOOGL": "equity", "META": "equity", "AMZN": "equity"})
+    cfg.trading.asset_category_map.update({
+        "GOOGL": ["mag7"],
+        "META": ["mag7"],
+        "AMZN": ["mag7"],
+    })
+    cfg.trading.portfolio_theme_map.update({
+        "GOOGL": "MEGA_CAP_TECH",
+        "META": "MEGA_CAP_TECH",
+        "AMZN": "MEGA_CAP_TECH",
+    })
+    cfg.trading.max_trade_usd = 1000.0
+    cfg.trading.max_position_pct = 0.10
+    cfg.trading.min_trade_usd = 100.0
+    cfg.trading.event_risk_budget_min_trade_usd = 100.0
+    cfg.trading.event_risk_budget_max_portfolio_pct = 0.05
+    cfg.trading.event_risk_budget_max_theme_pct = 0.04
+    cfg.trading.event_risk_budget_max_single_pct = 0.02
+    cfg.trading.event_risk_budget_strict_caps = True
+    cfg.trading.proactive_starter_execution_enabled = True
+    cfg.trading.proactive_starter_execution_max_per_cycle = 3
+    cfg.trading.proactive_starter_execution_min_score = 58.0
+    cfg.trading.proactive_starter_execution_cooldown_minutes = 0.0
+    cfg.trading.decision_dataset_enabled = False
+    cfg.trading.feature_store_enabled = False
+
+    exchange = DryRunExchange(starting_balance_usd=10000.0, supported_symbols=["GOOGL", "META", "AMZN"])
+    agent = TradingAgent(cfg, [exchange])
+    agent.risk.positions = {}
+    agent.order_mgr.pending_orders = {}
+    agent._tradable_coins = ["GOOGL", "META", "AMZN"]
+    agent._tradable_coin_set = set(agent._tradable_coins)
+    agent._analysis_coins = list(agent._tradable_coins)
+    agent._last_signals = {}
+    for coin in agent._analysis_coins:
+        agent._last_signals[coin] = {
+            "action": "FLAT",
+            "decision": "FLAT",
+            "score": 64.0,
+            "confidence": "MEDIUM",
+            "price": 100.0,
+            "live_price": 100.0,
+            "analysis_price": 100.0,
+            "instrument_type": "equity",
+            "asset_categories": ["mag7"],
+            "market_map_bias": "BULLISH",
+            "news_event_score": 4.2,
+            "news_catalyst_score": 4.0,
+            "official_event_score": 3.0,
+            "analyst_revision_score": 1.5,
+            "expectancy_probability": 0.61,
+            "decision_stage": "major_catalyst_watch",
+            "planned_stop_loss": 92.0,
+            "planned_take_profit": 118.0,
+            "trade_plan": {"stop_loss": 92.0, "take_profit": 118.0, "risk_reward_ratio": 2.25},
+        }
+
+    opened_orders = []
+
+    def fake_execute(coin, signal, order):
+        opened_orders.append(order)
+        agent.risk.record_open(
+            order,
+            exchange="UnitTest",
+            metadata={"entry_context": agent._build_entry_context(coin, signal, order, entry_type="proactive_starter")},
+        )
+        return True
+
+    original_data_dir = agent_module.DATA_DIR
+    agent._execute_order = fake_execute
+    with tempfile.TemporaryDirectory() as tmpdir:
+        try:
+            agent_module.DATA_DIR = Path(tmpdir)
+            execution = agent._execute_proactive_starter_basket(10000.0, {"signal_score": 50.0})
+        finally:
+            agent_module.DATA_DIR = original_data_dir
+
+    assert execution["summary"]["opened_count"] == 2
+    assert len(opened_orders) == 2
+    assert sum(order.size_usd for order in opened_orders) <= 400.01
+    assert all(order.size_usd <= 200.01 for order in opened_orders)
+    assert all(
+        (pos.metadata.get("entry_context") or {}).get("event_risk_budget_active")
+        for pos in agent.risk.positions.values()
+    )
+
+
+def test_dashboard_snapshot_includes_proactive_trader_report() -> None:
+    snapshot = build_dashboard_snapshot(
+        {"signals": {}, "positions": [], "config": {}, "cycle_number": 1},
+        [],
+        proactive_trader_report={
+            "summary": {"active_thesis_count": 2},
+            "morning_scout_book": {"summary": {"starter_count": 1}},
+        },
+    )
+    assert snapshot["proactive_trader_report"]["summary"]["active_thesis_count"] == 2
 
 
 def test_dashboard_snapshot_surfaces_exact_next_setup_blocker() -> None:
@@ -2822,6 +3665,7 @@ def test_dashboard_action_board_shows_reclaim_watch_not_wait_reclaim_after_confi
     assert lead["probability_text"] == "Reclaim odds 56%"
     assert "prior reclaim already printed" in lead["probability_detail"].lower()
     assert lead["risk"] == "Lose 250.00 (-3.03 / -1.20%)"
+    assert lead["invalidation"] == "Invalid below 250.00 (-3.03 / -1.20%)"
     assert "slipped back below the trigger" in lead["execution_note"].lower()
 
 
@@ -2882,6 +3726,7 @@ def test_dashboard_action_board_uses_major_catalyst_watch_label_and_unblock_reas
     assert lead["probability_label"] == "Reclaim odds"
     assert "major catalyst still supports the move" in lead["probability_detail"].lower()
     assert lead["risk"] == "Lose 250.00 (-3.03 / -1.20%)"
+    assert lead["invalidation"] == "Invalid below 250.00 (-3.03 / -1.20%)"
     assert "hold back above 253.36" in lead["execution_note"].lower()
     assert lead["mode_badge"] == "EXEC"
     assert lead["mode_label"] == "EXECUTABLE"
@@ -2923,6 +3768,14 @@ def test_dashboard_action_board_builds_friction_stack_catalyst_rail_and_lead_rea
                     "orderbook_breakout_state": "CONFIRMED_BULLISH_BREAKOUT",
                     "news_catalyst_score": 3.75,
                     "news_catalyst_summary": "platform anchor + partner attached + demand commitment",
+                    "news_event_score": 3.75,
+                    "news_event_summary": "earnings event + pre-event setup",
+                    "news_event_tags": ["earnings_event", "pre_event_setup"],
+                    "conviction_entry_active": True,
+                    "conviction_entry_style": "EVENT_STARTER",
+                    "conviction_entry_reason": "Pre-event starter long allowed before full confirmation.",
+                    "conviction_entry_size_multiplier": 0.35,
+                    "conviction_entry_event": True,
                     "narrative_event_name": "AMZN earnings",
                     "narrative_minutes_to_event": 55,
                     "narrative_event_risk_active": True,
@@ -2959,6 +3812,10 @@ def test_dashboard_action_board_builds_friction_stack_catalyst_rail_and_lead_rea
     assert catalyst_rail
     assert catalyst_rail[0]["label"] == "Catalyst"
     assert any(item["label"] == "Event" for item in catalyst_rail)
+    assert lead["news_event_score"] == 3.75
+    assert lead["conviction_entry_active"] is True
+    assert lead["conviction_entry_style"] == "EVENT_STARTER"
+    assert lead["conviction_entry_size_multiplier"] == 0.35
     assert "catalyst" in lead["why_this_lead"].lower()
     assert "reclaim" in lead["why_this_lead"].lower()
 
@@ -3868,6 +4725,161 @@ def test_portfolio_guard_blocks_theme_stacking_and_trims_secondary_exposure() ->
     assert trimmed["permitted"] is True
     assert trimmed["size_multiplier"] < 1.0
 
+    earnings_starter_blocked = portfolio_guard_module.assess_correlation(
+        cfg.trading,
+        coin="META",
+        direction="LONG",
+        instrument_type="equity",
+        portfolio_usd=10000.0,
+        proposed_size_usd=250.0,
+        open_positions=[OpenPosition("GOOGL", "LONG", 339.0, 175.0, 0.5, 335.0, 350.0)],
+        pending_orders=[
+            PendingOrder(
+                coin="AMZN",
+                direction="LONG",
+                limit_price=255.0,
+                size_coin=1.0,
+                size_usd=255.0,
+                stop_loss=250.0,
+                take_profit=270.0,
+                signal_score=66.0,
+            )
+        ],
+    )
+    assert earnings_starter_blocked["permitted"] is False
+
+    earnings_starter_allowed = portfolio_guard_module.assess_correlation(
+        cfg.trading,
+        coin="META",
+        direction="LONG",
+        instrument_type="equity",
+        portfolio_usd=10000.0,
+        proposed_size_usd=250.0,
+        open_positions=[OpenPosition("GOOGL", "LONG", 339.0, 175.0, 0.5, 335.0, 350.0)],
+        pending_orders=[
+            PendingOrder(
+                coin="AMZN",
+                direction="LONG",
+                limit_price=255.0,
+                size_coin=1.0,
+                size_usd=255.0,
+                stop_loss=250.0,
+                take_profit=270.0,
+                signal_score=66.0,
+            )
+        ],
+        event_starter=True,
+    )
+    assert earnings_starter_allowed["permitted"] is True
+    assert earnings_starter_allowed["size_multiplier"] < trimmed["size_multiplier"]
+    assert "extra scout slot" in earnings_starter_allowed["summary"]
+
+    crowded_earnings_starter_allowed = portfolio_guard_module.assess_correlation(
+        cfg.trading,
+        coin="META",
+        direction="LONG",
+        instrument_type="equity",
+        portfolio_usd=10000.0,
+        proposed_size_usd=250.0,
+        open_positions=[
+            OpenPosition("GOOGL", "LONG", 339.0, 175.0, 0.5, 335.0, 350.0),
+            OpenPosition("MSFT", "LONG", 514.0, 317.0, 0.62, 505.0, 535.0),
+        ],
+        pending_orders=[
+            PendingOrder(
+                coin="AMZN",
+                direction="LONG",
+                limit_price=255.0,
+                size_coin=1.0,
+                size_usd=255.0,
+                stop_loss=250.0,
+                take_profit=270.0,
+                signal_score=66.0,
+            )
+        ],
+        event_starter=True,
+    )
+    assert crowded_earnings_starter_allowed["permitted"] is True
+    assert crowded_earnings_starter_allowed["size_multiplier"] < earnings_starter_allowed["size_multiplier"]
+
+
+def test_event_risk_budget_trims_and_blocks_crowded_pre_event_starters() -> None:
+    cfg = build_config()
+    cfg.trading.event_risk_budget_max_portfolio_pct = 0.05
+    cfg.trading.event_risk_budget_max_theme_pct = 0.04
+    cfg.trading.event_risk_budget_max_single_pct = 0.02
+    event_metadata = {
+        "entry_context": {
+            "instrument_type": "equity",
+            "conviction_entry_event": True,
+            "news_event_score": 4.5,
+            "news_event_tags": ["official_ir_event", "analyst_revision"],
+        }
+    }
+    existing = [
+        OpenPosition(
+            "GOOGL",
+            "LONG",
+            180.0,
+            200.0,
+            1.1,
+            172.0,
+            196.0,
+            metadata=event_metadata,
+        )
+    ]
+    trimmed = portfolio_guard_module.assess_correlation(
+        cfg.trading,
+        coin="META",
+        direction="LONG",
+        instrument_type="equity",
+        portfolio_usd=10000.0,
+        proposed_size_usd=600.0,
+        open_positions=existing,
+        pending_orders=[],
+        event_starter=True,
+    )
+    assert trimmed["permitted"] is True
+    assert trimmed["event_budget"]["active"] is True
+    assert trimmed["event_budget_size_multiplier"] <= 0.334
+    assert trimmed["size_multiplier"] < 1.0
+    assert "event risk" in " ".join(trimmed["warnings"]).lower()
+
+    full = portfolio_guard_module.assess_correlation(
+        cfg.trading,
+        coin="AMZN",
+        direction="LONG",
+        instrument_type="equity",
+        portfolio_usd=10000.0,
+        proposed_size_usd=150.0,
+        open_positions=[
+            OpenPosition(
+                "GOOGL",
+                "LONG",
+                180.0,
+                250.0,
+                1.3,
+                172.0,
+                196.0,
+                metadata=event_metadata,
+            ),
+            OpenPosition(
+                "META",
+                "LONG",
+                640.0,
+                250.0,
+                0.4,
+                620.0,
+                700.0,
+                metadata=event_metadata,
+            ),
+        ],
+        pending_orders=[],
+        event_starter=True,
+    )
+    assert full["permitted"] is False
+    assert "event risk" in full["summary"].lower()
+
 
 def test_background_orderbook_feed_enriches_signal_with_persistence_history() -> None:
     class FakeFeed:
@@ -4140,9 +5152,11 @@ def test_orderbook_reader_uses_hyperliquid_l2_snapshot() -> None:
     original_post = orderbook_levels_module.requests.post
     original_supported = orderbook_levels_module.is_hyperliquid_supported
     original_resolve = orderbook_levels_module.resolve_hyperliquid_symbol
+    original_dex = orderbook_levels_module.get_hyperliquid_market_dex
     try:
         orderbook_levels_module.is_hyperliquid_supported = lambda _coin: True
         orderbook_levels_module.resolve_hyperliquid_symbol = lambda _coin: "@268"
+        orderbook_levels_module.get_hyperliquid_market_dex = lambda _coin: "xyz"
 
         def fake_post(url, json=None, timeout=0):
             captured["url"] = url
@@ -4157,11 +5171,12 @@ def test_orderbook_reader_uses_hyperliquid_l2_snapshot() -> None:
         assert snapshot.best_ask == 101.0
         assert snapshot.bid_notional == 250.0
         assert snapshot.ask_notional == 303.0
-        assert captured["json"] == {"type": "l2Book", "coin": "@268"}
+        assert captured["json"] == {"type": "l2Book", "coin": "@268", "dex": "xyz"}
     finally:
         orderbook_levels_module.requests.post = original_post
         orderbook_levels_module.is_hyperliquid_supported = original_supported
         orderbook_levels_module.resolve_hyperliquid_symbol = original_resolve
+        orderbook_levels_module.get_hyperliquid_market_dex = original_dex
 
 
 def test_dry_run_blocks_short_on_long_only_spot_symbol() -> None:
@@ -4729,6 +5744,71 @@ def test_missed_move_lab_surfaces_recent_blockers() -> None:
             missed_move_lab_module.precision_lab._label_episode = original_label
 
 
+def test_missed_move_lab_builds_daily_top_mover_replay() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        data_dir = Path(tmpdir)
+        now = time.time()
+
+        def row(decision_id: str, ts: float, price: float, *, blocked: bool, stage: str) -> dict:
+            return {
+                "decision_id": decision_id,
+                "coin": "INTC",
+                "stage": stage,
+                "candidate_action": "LONG",
+                "final_action": "FLAT" if blocked else "LONG",
+                "blocked": blocked,
+                "executed": False,
+                "pending_limit": False,
+                "decision_reason": "waiting for post-event confirmation" if blocked else "tracking move",
+                "recorded_at_ts": ts,
+                "signal_snapshot": {
+                    "live_price": price,
+                    "planned_risk_pct": 1.0,
+                    "planned_reward_pct": 3.0,
+                    "planned_risk_reward_ratio": 3.0,
+                    "expectancy_probability": 0.58,
+                    "expectancy_uncertainty": 0.34,
+                    "expectancy_score": 62.0,
+                    "confidence": "MEDIUM",
+                    "thesis_quality": "MEDIUM",
+                    "instrument_type": "equity",
+                    "news_catalyst_score": 4.2,
+                    "news_event_score": 4.0,
+                    "conviction_entry_event": False,
+                    "flat_reason": "waiting for post-event confirmation" if blocked else "",
+                },
+            }
+
+        (data_dir / "decision_dataset.jsonl").write_text(
+            "\n".join(
+                json.dumps(item)
+                for item in [
+                    row("1", now - 6 * 3600, 20.0, blocked=True, stage="precision_cadence_block"),
+                    row("2", now - 60, 25.0, blocked=False, stage="analysis"),
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        original_label = missed_move_lab_module.precision_lab._label_episode
+        try:
+            missed_move_lab_module.precision_lab._label_episode = lambda row, **_kwargs: {**row, "outcome": 1}
+            report = missed_move_lab_module.build_report(
+                data_dir=data_dir,
+                target_r=0.25,
+                horizon_minutes=720,
+                interval="5m",
+                dedupe_minutes=30,
+            )
+            replay = report["daily_top_mover_replay"]
+            assert replay["top_movers"][0]["coin"] == "INTC"
+            assert replay["top_movers"][0]["move_pct"] == 25.0
+            assert replay["missed_top_movers"][0]["coin"] == "INTC"
+            assert "confirmation" in replay["missed_top_movers"][0]["summary"]
+        finally:
+            missed_move_lab_module.precision_lab._label_episode = original_label
+
+
 def test_challenger_model_reports_when_shadow_is_ready() -> None:
     cfg = build_config()
     cfg.trading.challenger_min_labeled_decisions = 4
@@ -5129,6 +6209,130 @@ def test_agent_apply_analog_context_can_flatten_bad_setup() -> None:
     assert "hard-blocked" in signal.flat_reason
     assert live._last_signals["BTC"]["analog_hard_block"] is True
     assert live._last_signals["BTC"]["analog_verdict"] == "HARD_BLOCK"
+
+
+def test_precision_analog_guard_allows_event_starter_when_history_is_not_adverse() -> None:
+    cfg = build_config()
+    cfg.trading.precision_mode_enabled = True
+    exchange = DryRunExchange(starting_balance_usd=1000.0)
+    live = TradingAgent(cfg, [exchange])
+    live._last_signals["GOOGL"] = {
+        "analog_sample_size": 5,
+        "analog_reliability": 0.69,
+        "analog_win_rate": 0.62,
+        "analog_hard_block": True,
+        "analog_adverse": False,
+        "analog_summary": "5 analogs with 62% win rate and positive average R",
+    }
+    signal = SimpleNamespace(
+        action="LONG",
+        score=65.1,
+        confidence="HIGH",
+        flat_reason="",
+        reason="pre-event catalyst flow",
+        thesis={
+            "quality": "MEDIUM",
+            "support_defense_long": True,
+            "confirmed_breakout": True,
+            "conviction_entry": {
+                "active": True,
+                "bypass_precision": True,
+                "event_conviction": True,
+                "style": "EVENT_STARTER",
+            },
+        },
+        expectancy={
+            "probability": 0.52,
+            "expected_r": 0.28,
+            "uncertainty": 0.57,
+            "score": 47.0,
+        },
+        trade_plan={"risk_reward_ratio": 2.1},
+    )
+    live._apply_precision_analog_guard(
+        "GOOGL",
+        signal,
+        orderbook_signal=SimpleNamespace(valid=True, score=67.0, breakout_state="CONFIRMED_BULLISH_BREAKOUT"),
+        market_map_signal=SimpleNamespace(valid=True, favor_longs=True),
+    )
+    assert signal.action == "LONG"
+    assert signal.flat_reason == ""
+
+
+def test_analog_uncertainty_gate_allows_event_starter_when_not_hard_adverse() -> None:
+    cfg = build_config()
+    cfg.trading.precision_mode_enabled = True
+    live = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=1000.0)])
+    live._last_signals["META"] = {"coin": "META", "action": "LONG"}
+
+    class StubAnalogEngine:
+        def evaluate(self, coin, action, signal_snapshot):
+            return {
+                "enabled": True,
+                "verdict": "MIXED",
+                "sample_size": 5,
+                "avg_similarity": 0.74,
+                "reliability": 0.64,
+                "win_rate": 0.55,
+                "avg_pnl_pct": 0.1,
+                "avg_captured_r": 0.05,
+                "supportive": False,
+                "adverse": False,
+                "hard_block": False,
+                "score_adjustment": 0.0,
+                "probability_adjustment": 0.0,
+                "expected_r_adjustment": 0.0,
+                "uncertainty_adjustment": 0.08,
+                "summary": "mixed analogs increase uncertainty",
+                "top_matches": [],
+            }
+
+        def blend_expectancy(self, expectancy, analog, same_direction_position=False):
+            payload = dict(expectancy)
+            payload.update({
+                "permitted": False,
+                "score": 47.0,
+                "probability": 0.89,
+                "expected_r": 0.30,
+                "uncertainty": 0.51,
+                "summary": "uncertainty 0.51 is above 0.42",
+                "blockers": ["uncertainty 0.51 is above 0.42"],
+                "reasons": [],
+            })
+            return payload
+
+    signal = SimpleNamespace(
+        action="LONG",
+        score=51.1,
+        confidence="LOW",
+        flat_reason="",
+        reason="pre-event catalyst flow",
+        thesis={
+            "candidate_action": "LONG",
+            "conviction_entry": {
+                "active": True,
+                "bypass_precision": True,
+                "event_conviction": True,
+                "style": "EVENT_STARTER",
+            },
+        },
+        expectancy={
+            "probability": 0.89,
+            "expected_r": 0.22,
+            "uncertainty": 0.43,
+            "score": 48.0,
+            "permitted": True,
+        },
+        trade_plan={"risk_reward_ratio": 2.0},
+    )
+
+    live._analog_engine = StubAnalogEngine()
+    live._apply_analog_context("META", signal, None)
+
+    assert signal.action == "LONG"
+    assert signal.flat_reason == ""
+    assert signal.expectancy["permitted"] is True
+    assert signal.expectancy["blockers"] == []
 
 
 def test_precision_mode_blocks_embargoed_coin_direction() -> None:
@@ -5622,6 +6826,8 @@ def test_dashboard_snapshot_includes_playbook_distiller_report() -> None:
 def run_all() -> None:
     test_checkpoint_recovery()
     print("PASS checkpoint recovery")
+    test_checkpoint_recovery_rehydrates_dry_run_pending_limits()
+    print("PASS dry-run pending limit recovery")
     test_execute_order_stops_after_first_success()
     print("PASS single-exchange execution")
     test_checkpoint_recovery_skips_unsupported_state()
@@ -5660,6 +6866,14 @@ def run_all() -> None:
     print("PASS macro news neutral fallback")
     test_macro_news_recognizes_major_platform_customer_catalyst()
     print("PASS macro news catalyst checklist")
+    test_macro_news_merges_pre_event_intc_catalyst_flow()
+    print("PASS macro news pre-event INTC catalyst")
+    test_equity_event_feed_collects_ir_sec_options_and_analyst_revisions()
+    print("PASS equity event feed bundle")
+    test_equity_event_feed_uses_nasdaq_fallback_when_yahoo_is_unavailable()
+    print("PASS equity event feed Nasdaq fallback")
+    test_macro_news_adds_upcoming_mag7_earnings_calendar_when_feeds_are_sparse()
+    print("PASS macro news MAG7 earnings calendar")
     test_narrative_signal_boosts_major_catalyst_and_blocks_fading_it()
     print("PASS narrative catalyst boost")
     test_market_data_reuses_stale_yahoo_candles_when_live_fetch_fails()
@@ -5668,10 +6882,18 @@ def run_all() -> None:
     print("PASS Hyperliquid-only candle path")
     test_stale_hyperliquid_candles_are_rejected_for_supported_market()
     print("PASS stale Hyperliquid candle rejection")
+    test_price_diagnostics_label_trade_xyz_and_flag_reference_spread()
+    print("PASS price diagnostics source label")
+    test_reference_quote_does_not_replace_executable_price_cache()
+    print("PASS reference quote cache isolation")
     test_thesis_gate_blocks_high_score_range_compression_setup()
     print("PASS thesis no-trade gate")
     test_expectancy_gate_rejects_thin_edge_setup()
     print("PASS expectancy gate")
+    test_strategy_allows_pre_event_equity_starter_below_trigger()
+    print("PASS pre-event equity starter")
+    test_strategy_allows_mag7_earnings_calendar_starters_when_conviction_is_shaky()
+    print("PASS MAG7 earnings calendar starters")
     test_execution_plan_prefers_limit_entry_on_defended_support()
     print("PASS planned limit execution")
     test_agent_uses_completed_candles_for_conviction_but_live_price_for_execution()
@@ -5726,6 +6948,14 @@ def run_all() -> None:
     print("PASS dashboard stock desk backfill")
     test_default_stock_categories_keep_mag7_complete()
     print("PASS default stock category completeness")
+    test_default_crypto_category_includes_mon()
+    print("PASS default crypto category includes MON")
+    test_proactive_intelligence_builds_full_research_stack()
+    print("PASS proactive intelligence research stack")
+    test_proactive_starter_execution_opens_capped_event_orders()
+    print("PASS proactive starter execution caps")
+    test_dashboard_snapshot_includes_proactive_trader_report()
+    print("PASS proactive dashboard snapshot")
     test_dashboard_snapshot_surfaces_exact_next_setup_blocker()
     print("PASS dashboard exact next setup blocker")
     test_dashboard_snapshot_ignores_opposite_direction_threshold_in_blocker()
@@ -5774,8 +7004,12 @@ def run_all() -> None:
     print("PASS major catalyst asset state")
     test_data_reliability_blocks_stale_incoherent_setup()
     print("PASS data reliability gate")
+    test_data_reliability_warns_without_blocking_wide_reference_price_spread()
+    print("PASS reference spread reliability warning")
     test_portfolio_guard_blocks_theme_stacking_and_trims_secondary_exposure()
     print("PASS portfolio correlation guard")
+    test_event_risk_budget_trims_and_blocks_crowded_pre_event_starters()
+    print("PASS event risk budget")
     test_background_orderbook_feed_enriches_signal_with_persistence_history()
     print("PASS background orderbook persistence history")
     test_background_orderbook_feed_detects_intracycle_breakout_between_agent_cycles()
@@ -5818,6 +7052,8 @@ def run_all() -> None:
     print("PASS decision review lab")
     test_missed_move_lab_surfaces_recent_blockers()
     print("PASS missed move lab")
+    test_missed_move_lab_builds_daily_top_mover_replay()
+    print("PASS missed move daily top-mover replay")
     test_challenger_model_reports_when_shadow_is_ready()
     print("PASS challenger model")
     test_asset_dossier_builds_focus_assets_and_referee_context()
@@ -5838,6 +7074,10 @@ def run_all() -> None:
     print("PASS historical analog engine")
     test_agent_apply_analog_context_can_flatten_bad_setup()
     print("PASS analog integration flattening")
+    test_precision_analog_guard_allows_event_starter_when_history_is_not_adverse()
+    print("PASS event starter analog bypass")
+    test_analog_uncertainty_gate_allows_event_starter_when_not_hard_adverse()
+    print("PASS event starter analog uncertainty bypass")
     test_precision_mode_blocks_embargoed_coin_direction()
     print("PASS precision-mode embargo")
     test_precision_mode_allows_elite_breakout_long()

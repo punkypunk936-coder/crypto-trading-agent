@@ -34,9 +34,12 @@ LIGHTER_API_BASE_URL = "https://mainnet.zklighter.elliot.ai"
 # Simple in-memory cache: coin → (timestamp_fetched, DataFrame)
 _cache: dict = {}
 _price_cache: dict = {}
+_reference_price_cache: dict = {}
 CACHE_TTL_SECONDS = 60   # re-fetch after 60 s
 STALE_CACHE_TTL_SECONDS = 1800
 STALE_PRICE_TTL_SECONDS = 900
+REFERENCE_PRICE_TTL_SECONDS = 60
+DEFAULT_REFERENCE_MAX_DEVIATION_PCT = 2.0
 
 
 def _hyperliquid_max_candle_staleness_seconds(coin: str, interval: str) -> int:
@@ -76,6 +79,29 @@ def _cache_price(key: str, price: float) -> None:
 
 def _get_cached_price(key: str, *, max_age_seconds: int = STALE_PRICE_TTL_SECONDS) -> Optional[float]:
     cached = _price_cache.get(key)
+    if not cached:
+        return None
+    ts, price = cached
+    if time.time() - float(ts or 0.0) > max_age_seconds:
+        return None
+    try:
+        value = float(price or 0.0)
+    except Exception:
+        return None
+    return value if value > 0 else None
+
+
+def _cache_reference_price(key: str, price: float) -> None:
+    if price and price > 0:
+        _reference_price_cache[key] = (time.time(), float(price))
+
+
+def _get_cached_reference_price(
+    key: str,
+    *,
+    max_age_seconds: int = REFERENCE_PRICE_TTL_SECONDS,
+) -> Optional[float]:
+    cached = _reference_price_cache.get(key)
     if not cached:
         return None
     ts, price = cached
@@ -530,6 +556,108 @@ def get_current_price(coin: str) -> Optional[float]:
     if coin_upper in INDEX_YAHOO_MAP:
         return _get_index_price_yahoo(coin_upper)
     return None
+
+
+def get_reference_price_yahoo(coin: str) -> Optional[float]:
+    """
+    Fetch a reference quote without touching the executable venue price cache.
+
+    Equity markets can execute on Hyperliquid/Trade.xyz while the operator
+    naturally compares them against a public equity quote. Keep that comparison
+    in a separate cache so a Yahoo reference never silently replaces the venue
+    price used for execution.
+    """
+    coin_upper = str(coin or "").upper().strip()
+    yf_ticker = INDEX_YAHOO_MAP.get(coin_upper) or EQUITY_YAHOO_MAP.get(coin_upper)
+    if not yf_ticker:
+        return None
+
+    cache_key = f"{coin_upper}:yahoo_reference"
+    cached = _get_cached_reference_price(cache_key)
+    if cached is not None:
+        return cached
+
+    url = (
+        f"https://query1.finance.yahoo.com/v8/finance/chart/{yf_ticker}"
+        f"?interval=1m&range=1d&includePrePost=true"
+    )
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        resp = requests.get(url, headers=headers, timeout=8)
+        resp.raise_for_status()
+        data = resp.json()
+        result = data["chart"]["result"][0]
+        closes = result["indicators"]["quote"][0]["close"]
+        price = next((float(c) for c in reversed(closes) if c), None)
+        if price and price > 0:
+            _cache_reference_price(cache_key, price)
+            return price
+        log.warning(f"[{coin_upper}] Yahoo reference quote returned no valid price")
+        return None
+    except Exception as e:
+        log.debug(f"[{coin_upper}] Yahoo reference quote fetch failed: {e}")
+        return _get_cached_reference_price(cache_key, max_age_seconds=STALE_PRICE_TTL_SECONDS)
+
+
+def get_price_diagnostics(
+    coin: str,
+    *,
+    venue_price: Optional[float] = None,
+    max_deviation_pct: float = DEFAULT_REFERENCE_MAX_DEVIATION_PCT,
+) -> dict:
+    """Return source, venue symbol, and reference-price health for UI/state."""
+    coin_upper = str(coin or "").upper().strip()
+    if not coin_upper:
+        return {
+            "price_status": "UNKNOWN",
+            "price_source": "",
+            "price_source_label": "Unknown source",
+            "price_warning": "Missing symbol for price diagnostics.",
+        }
+
+    supported = is_hyperliquid_supported(coin_upper)
+    hl_coin = resolve_hyperliquid_symbol(coin_upper) if supported else ""
+    dex = get_hyperliquid_market_dex(coin_upper) if supported else ""
+    venue_name = "Trade.xyz" if str(dex or "").lower() == "xyz" else "Hyperliquid"
+    source = f"{venue_name} allMids" if supported else "Yahoo Finance"
+    source_label = f"{venue_name} {hl_coin}".strip() if supported else "Yahoo Finance"
+
+    price = None
+    try:
+        price = float(venue_price or 0.0)
+    except Exception:
+        price = 0.0
+    if price <= 0:
+        price = get_current_price(coin_upper) if supported or coin_upper in INDEX_YAHOO_MAP else None
+
+    reference_price = get_reference_price_yahoo(coin_upper)
+    deviation_pct = None
+    status = "OK"
+    warning = ""
+    if price and reference_price:
+        deviation_pct = (float(price) - float(reference_price)) / float(reference_price) * 100.0
+        if abs(deviation_pct) > float(max_deviation_pct or DEFAULT_REFERENCE_MAX_DEVIATION_PCT):
+            status = "CHECK"
+            warning = (
+                f"{coin_upper} venue price is {deviation_pct:+.2f}% away from "
+                f"Yahoo reference."
+            )
+    elif supported and coin_upper in EQUITY_YAHOO_MAP:
+        status = "REFERENCE_MISSING"
+        warning = "Yahoo reference quote unavailable; showing executable venue price only."
+
+    return {
+        "price_status": status,
+        "price_source": source,
+        "price_source_label": source_label,
+        "venue": venue_name if supported else "Yahoo Finance",
+        "venue_symbol": hl_coin,
+        "venue_price": round(float(price), 6) if price else 0.0,
+        "reference_price": round(float(reference_price), 6) if reference_price else 0.0,
+        "reference_source": "Yahoo Finance" if reference_price else "",
+        "price_deviation_pct": round(float(deviation_pct), 4) if deviation_pct is not None else None,
+        "price_warning": warning,
+    }
 
 
 def _get_index_price_yahoo(coin: str, *, override_ticker: str | None = None) -> Optional[float]:

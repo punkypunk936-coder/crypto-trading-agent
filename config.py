@@ -13,13 +13,14 @@ from exchanges.hyperliquid_markets import TRADEXYZ_ASSET_METADATA
 load_dotenv()
 
 
-_BASE_EXECUTION_COINS = ["BTC", "ETH", "SOL", "HYPE", "TAO", "SP500", "XAU"]
+_BASE_EXECUTION_COINS = ["BTC", "ETH", "SOL", "HYPE", "MON", "TAO", "SP500", "XAU"]
 
 _BASE_INSTRUMENT_TYPES = {
     "BTC": "crypto",
     "ETH": "crypto",
     "SOL": "crypto",
     "HYPE": "crypto",
+    "MON": "crypto",
     "TAO": "crypto",
     "SP500": "index",
     "XAU": "index",
@@ -29,11 +30,18 @@ _BASE_INSTRUMENT_TYPES = {
 }
 
 _BASE_ASSET_CATEGORY_MAP = {
+    "BTC": ["crypto"],
+    "ETH": ["crypto"],
+    "SOL": ["crypto"],
+    "HYPE": ["crypto"],
+    "MON": ["crypto"],
+    "TAO": ["crypto"],
     "SP500": ["indices_macro"],
     "XAU": ["indices_macro"],
 }
 
 _ASSET_CATEGORY_LABELS = {
+    "crypto": "Coins",
     "indices_macro": "Indices & Macro",
     "mag7": "Mag7",
     "semis_memory": "Semis & Memory",
@@ -56,6 +64,7 @@ _ASSET_CATEGORY_LABELS = {
 }
 
 _THEME_BY_CATEGORY = {
+    "crypto": "CRYPTO_BETA",
     "indices_macro": "US_MACRO_BETA",
     "mag7": "MEGA_CAP_TECH",
     "semis_memory": "SEMIS_MEMORY",
@@ -123,6 +132,7 @@ def _default_portfolio_theme_map() -> dict:
         "ETH": "CRYPTO_CORE",
         "SOL": "CRYPTO_HIGH_BETA",
         "HYPE": "CRYPTO_HIGH_BETA",
+        "MON": "CRYPTO_HIGH_BETA",
         "TAO": "CRYPTO_HIGH_BETA",
         "SP500": "US_MACRO_BETA",
         "XAU": "DEFENSIVE_HARD_ASSET",
@@ -322,6 +332,43 @@ class TradingConfig:
     support_defense_map_override_enabled: bool = True
     support_defense_expectancy_bonus: float = 0.05
 
+    # ── Early conviction entries ─────────────────────────
+    # Lets the agent take smaller, thesis-backed starter positions before the
+    # full reclaim / breakout confirmation is obvious, instead of missing the
+    # move while waiting for precision mode perfection.
+    conviction_entry_enabled: bool = True
+    conviction_entry_score_buffer: float = 6.0
+    conviction_entry_min_news_score: float = 58.0
+    conviction_entry_min_catalyst_score: float = 3.0
+    conviction_entry_min_alignment_points: float = 3.0
+    conviction_entry_max_conflict_points: float = 1.5
+    conviction_entry_min_probability: float = 0.56
+    conviction_entry_min_expectancy_score: float = 54.0
+    conviction_entry_max_uncertainty: float = 0.46
+    conviction_entry_size_multiplier: float = 0.45
+    conviction_entry_precision_override_enabled: bool = True
+    conviction_entry_bypass_signal_streak: bool = True
+    conviction_entry_bypass_precision_cadence: bool = True
+    conviction_entry_event_score_buffer: float = 22.0
+    conviction_entry_event_min_news_score: float = 60.0
+    conviction_entry_event_min_catalyst_score: float = 4.0
+    conviction_entry_event_min_alignment_points: float = 1.0
+    conviction_entry_event_max_conflict_points: float = 3.75
+    conviction_entry_event_min_probability: float = 0.51
+    conviction_entry_event_min_expectancy_score: float = 46.0
+    conviction_entry_event_max_uncertainty: float = 0.62
+    conviction_entry_event_size_multiplier: float = 0.30
+    conviction_entry_event_max_size_multiplier: float = 0.46
+
+    # ── Official event intelligence feeds ────────────────────
+    official_event_feed_enabled: bool = True
+    official_event_feed_cache_seconds: int = 1800
+    official_ir_calendar_sync_enabled: bool = True
+    sec_filing_feed_enabled: bool = True
+    sec_filing_feed_lookback_days: int = 21
+    options_implied_move_feed_enabled: bool = True
+    analyst_revision_feed_enabled: bool = True
+
     # ── Thesis invalidation ladder ───────────────────────
     early_invalidation_minutes: float = 90.0
     early_invalidation_adverse_r: float = 0.55
@@ -463,15 +510,25 @@ class TradingConfig:
     data_reliability_max_live_analysis_gap_pct: float = 0.90
     data_reliability_min_news_articles: int = 1
     data_reliability_min_orderbook_snapshots: int = 3
+    data_reliability_max_reference_deviation_pct: float = 2.0
 
     # ── Portfolio correlation guard ─────────────────────────────────────────
     portfolio_correlation_guard_enabled: bool = True
     portfolio_theme_max_positions: int = 2
+    portfolio_theme_event_starter_extra_slots: int = 2
     portfolio_theme_max_same_direction_exposure_pct: float = 0.18
     portfolio_theme_warning_exposure_pct: float = 0.10
     portfolio_correlation_soft_penalty: float = 0.65
     portfolio_correlation_secondary_penalty: float = 0.82
+    portfolio_correlation_event_starter_extra_penalty: float = 0.40
     portfolio_theme_map: dict = field(default_factory=_default_portfolio_theme_map)
+    event_risk_budget_enabled: bool = True
+    event_risk_budget_max_portfolio_pct: float = 0.10
+    event_risk_budget_max_theme_pct: float = 0.08
+    event_risk_budget_max_single_pct: float = 0.02
+    event_risk_budget_soft_penalty_pct: float = 0.65
+    event_risk_budget_min_trade_usd: float = 100.0
+    event_risk_budget_strict_caps: bool = True
 
     asset_category_map: dict = field(default_factory=_default_asset_category_map)
     asset_category_labels: dict = field(default_factory=lambda: dict(_ASSET_CATEGORY_LABELS))
@@ -530,6 +587,32 @@ class TradingConfig:
     playbook_distiller_min_samples: int = 3
     playbook_distiller_min_win_rate: float = 0.55
     playbook_distiller_max_losing_win_rate: float = 0.45
+    proactive_trader_enabled: bool = True
+    thesis_ledger_enabled: bool = True
+    morning_scout_book_enabled: bool = True
+    read_through_engine_enabled: bool = True
+    starter_basket_optimizer_enabled: bool = True
+    forecast_calibration_enabled: bool = True
+    morning_scout_max_names: int = 14
+    proactive_starter_basket_max_names: int = 6
+    proactive_starter_min_conviction: float = 58.0
+    proactive_forecast_horizon_hours: float = 24.0
+    proactive_forecast_max_open: int = 60
+    proactive_report_max_theses: int = 24
+    proactive_starter_execution_enabled: bool = field(
+        default_factory=lambda: os.getenv("PROACTIVE_STARTER_EXECUTION_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+    )
+    proactive_starter_execution_max_per_cycle: int = 3
+    proactive_starter_execution_min_score: float = 60.0
+    proactive_starter_execution_cooldown_minutes: float = 240.0
+    proactive_starter_execution_hard_block_stages: List[str] = field(default_factory=lambda: [
+        "data_reliability_block",
+        "execution_coach_skip",
+        "llm_referee_block",
+        "long_only_short_block",
+        "loss_circuit_breaker",
+        "portfolio_correlation_block",
+    ])
 
     # ── Visual chart confirmation ────────────────────────
     # When enabled, borderline signals (score 38–62) are confirmed by

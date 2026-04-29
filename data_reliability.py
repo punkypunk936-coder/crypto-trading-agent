@@ -57,6 +57,16 @@ def assess_reliability(trading_cfg, signal_snapshot: Mapping[str, Any] | None) -
         if tradable and action in {"LONG", "SHORT"}:
             blockers.append("price moved too far since the conviction snapshot")
 
+    reference_deviation_pct = _safe_float(snap.get("price_deviation_pct"))
+    max_reference_deviation_pct = float(
+        getattr(trading_cfg, "data_reliability_max_reference_deviation_pct", 2.0) or 2.0
+    )
+    if abs(reference_deviation_pct) > max_reference_deviation_pct:
+        score -= 14.0
+        issues.append(
+            f"venue price is {reference_deviation_pct:+.2f}% away from the reference quote"
+        )
+
     if getattr(trading_cfg, "use_daily_market_map", True) and not bool(snap.get("market_map_available", False)):
         score -= 10.0
         issues.append("daily market map is missing")
@@ -115,4 +125,5 @@ def assess_reliability(trading_cfg, signal_snapshot: Mapping[str, Any] | None) -
         "issues": issues[:4],
         "blockers": blockers[:4],
         "price_gap_pct": round(price_gap_pct, 4),
+        "reference_deviation_pct": round(reference_deviation_pct, 4),
     }

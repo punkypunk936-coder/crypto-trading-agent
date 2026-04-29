@@ -29,6 +29,11 @@ NUMERIC_FEATURE_KEYS = (
     "news_score",
     "news_articles",
     "news_catalyst_score",
+    "news_event_score",
+    "official_event_score",
+    "sec_event_score",
+    "options_implied_move_pct",
+    "analyst_revision_score",
     "narrative_score_adjustment",
     "narrative_uncertainty_delta",
     "memory_adj",
@@ -90,6 +95,10 @@ NUMERIC_FEATURE_KEYS = (
     "data_reliability_score",
     "data_reliability_price_gap_pct",
     "portfolio_guard_size_multiplier",
+    "event_budget_size_multiplier",
+    "event_budget_total_exposure_pct",
+    "event_budget_theme_exposure_pct",
+    "conviction_entry_size_multiplier",
     "same_direction_exposure_pct",
     "total_theme_exposure_pct",
     "llm_referee_confidence_score",
@@ -117,6 +126,8 @@ BOOL_FEATURE_KEYS = (
     "llm_referee_used",
     "llm_referee_blocked",
     "execution_coach_used",
+    "conviction_entry_active",
+    "conviction_entry_event",
 )
 
 CATEGORICAL_FEATURE_KEYS = (
@@ -152,6 +163,7 @@ CATEGORICAL_FEATURE_KEYS = (
     "decision_stage",
     "data_reliability_quality",
     "portfolio_theme",
+    "conviction_entry_style",
     "llm_referee_verdict",
     "llm_referee_sentiment_bias",
 )
@@ -163,6 +175,8 @@ TEXT_FEATURE_KEYS = (
     "thesis_summary",
     "expectancy_summary",
     "news_catalyst_summary",
+    "news_event_summary",
+    "conviction_entry_reason",
     "execution_quality_summary",
     "execution_coach_summary",
     "market_map_summary",

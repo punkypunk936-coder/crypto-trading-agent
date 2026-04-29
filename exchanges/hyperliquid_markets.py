@@ -71,6 +71,15 @@ _PERP_MARKETS: Dict[str, Dict[str, Any]] = {
         "live_tradeable": True,
         "display_name": "HYPE",
     },
+    "MON": {
+        "venue_symbol": "MON",
+        "market_type": "perp",
+        "instrument_type": "crypto",
+        "shortable": True,
+        "paper_tradeable": True,
+        "live_tradeable": True,
+        "display_name": "MON",
+    },
     "TAO": {
         "venue_symbol": "TAO",
         "market_type": "perp",
@@ -249,11 +258,11 @@ _TRADEXYZ_PERP_MARKETS: Dict[str, Dict[str, Any]] = {
 }
 
 _PREFERRED_ORDER = [
-    "BTC", "ETH", "SOL", "HYPE", "TAO", "SP500", "XAU",
+    "BTC", "ETH", "SOL", "HYPE", "MON", "TAO", "SP500", "XAU",
     "AAPL", "AMZN", "GOOGL", "META", "MSFT", "TSLA",
     "NVDA", "INTC", "MU", "SNDK", "SKHX", "CRWV", "EWY", "HIMS",
     *[coin for coin in TRADEXYZ_ASSET_METADATA if coin not in {
-        "BTC", "ETH", "SOL", "HYPE", "TAO", "SP500", "XAU",
+        "BTC", "ETH", "SOL", "HYPE", "MON", "TAO", "SP500", "XAU",
         "AAPL", "AMZN", "GOOGL", "META", "MSFT", "TSLA",
         "NVDA", "INTC", "MU", "SNDK", "SKHX", "CRWV", "EWY", "HIMS",
     }],

@@ -192,6 +192,7 @@ def build_asset_state(
     tradable = _safe_str(snap.get("execution_mode"), "observation_only") == "tradable"
     reliability = dict(snap.get("data_reliability") or {})
     execution_quality = dict(snap.get("execution_quality") or {})
+    conviction_entry = dict(snap.get("conviction_entry") or (snap.get("thesis") or {}).get("conviction_entry") or {})
     next_unblock = ""
     state = "OBSERVING"
     label = "Observing"
@@ -270,6 +271,13 @@ def build_asset_state(
         next_unblock = _safe_str(
             snap.get("mode_detail"),
             "The venue is not allowing execution on this market yet.",
+        )
+    elif action in {"LONG", "SHORT"} and bool(snap.get("thesis_permitted", False)) and bool(conviction_entry.get("active", False)):
+        state = "EARLY_CONVICTION"
+        label = "Starter long" if action == "LONG" else "Starter short"
+        next_unblock = _safe_str(
+            conviction_entry.get("reason") or conviction_entry.get("summary"),
+            "Starter conviction is live. The bot can begin smaller while waiting for full confirmation.",
         )
     elif action in {"LONG", "SHORT"} and bool(snap.get("thesis_permitted", False)):
         state = "EXECUTABLE"

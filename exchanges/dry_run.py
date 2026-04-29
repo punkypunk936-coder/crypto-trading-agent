@@ -131,8 +131,10 @@ class DryRunExchange(BaseExchange):
         """Check if a limit order should be considered filled by comparing to live price."""
         pending = self._pending_limits.get(order_id)
         if not pending:
-            # Already filled or cancelled
-            return LimitOrderStatus(order_id=order_id, coin=coin, filled=True)
+            # A paper exchange restart can lose in-memory limit state while the
+            # agent checkpoint still has the pending order. Do not fake a fill
+            # unless this exchange can actually simulate it.
+            return LimitOrderStatus(order_id=order_id, coin=coin, filled=False)
 
         if pending["coin"] != coin:
             return LimitOrderStatus(order_id=order_id, coin=coin)
@@ -177,6 +179,40 @@ class DryRunExchange(BaseExchange):
             )
 
         return LimitOrderStatus(order_id=order_id, coin=coin, filled=False)
+
+    def restore_limit_order(
+        self,
+        *,
+        order_id: str,
+        coin: str,
+        direction: str,
+        size_coin: float,
+        limit_price: float,
+        size_usd: float = 0.0,
+    ) -> bool:
+        """Rehydrate a pending paper limit order from the agent checkpoint."""
+        coin = str(coin or "").upper()
+        direction = str(direction or "").upper()
+        if not order_id or coin not in self._supported_symbols or direction not in {"LONG", "SHORT"}:
+            return False
+        self._pending_limits[order_id] = {
+            "coin": coin,
+            "direction": direction,
+            "limit_price": float(limit_price or 0.0),
+            "size_coin": float(size_coin or 0.0),
+            "size_usd": float(size_usd or 0.0) or float(size_coin or 0.0) * float(limit_price or 0.0),
+            "placed_at": time.time(),
+        }
+        try:
+            suffix = int(str(order_id).rsplit("-", 1)[-1])
+            self.order_count = max(self.order_count, suffix)
+        except Exception:
+            pass
+        log.info(
+            f"[DRY RUN] [{coin}] Restored pending limit {direction}: "
+            f"{float(size_coin or 0.0):.6f} @ ${float(limit_price or 0.0):.2f} (id={order_id})"
+        )
+        return True
 
     def cancel_order(self, coin: str, order_id: str) -> bool:
         """Cancel a pending limit order."""
