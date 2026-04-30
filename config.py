@@ -266,6 +266,20 @@ class TradingConfig:
     expectancy_news_bonus: float = 0.04
     trailing_stop_enabled: bool   = True
     trailing_stop_pct: float      = 0.12   # 12% trailing stop (locks profits as price runs)
+    thesis_runner_enabled: bool = True
+    thesis_runner_min_conviction_score: float = 64.0
+    thesis_runner_min_event_score: float = 2.75
+    thesis_runner_min_catalyst_score: float = 3.0
+    thesis_runner_min_hold_minutes: float = 1440.0
+    thesis_runner_defer_take_profit: bool = True
+    thesis_runner_defer_trailing_stop_minutes: float = 720.0
+    thesis_runner_take_profit_extension_pct: float = 0.06
+    thesis_runner_take_profit_extension_r: float = 1.15
+    thesis_runner_decay_discount: float = 24.0
+    thesis_runner_max_flat_cycles: int = 12
+    thesis_runner_defer_soft_reversal: bool = True
+    ath_runner_enabled: bool = True
+
     use_orderbook_levels: bool    = True   # Live L2 + daily key-level intelligence for venue-backed assets
     orderbook_depth_limit: int    = 120
     orderbook_daily_lookback: int = 120
@@ -605,6 +619,16 @@ class TradingConfig:
     proactive_starter_execution_max_per_cycle: int = 3
     proactive_starter_execution_min_score: float = 60.0
     proactive_starter_execution_cooldown_minutes: float = 240.0
+    pair_trade_book_enabled: bool = True
+    pair_trade_execution_enabled: bool = True
+    pair_trade_max_notional_pct: float = 0.015
+    pair_trade_hedge_ratio: float = 0.35
+    pair_trade_max_pairs: int = 2
+    pair_trade_min_equity_score: float = 63.0
+    pair_trade_min_crypto_score: float = 58.0
+    pair_trade_crypto_hedge_candidates: List[str] = field(default_factory=lambda: [
+        "BTC", "ETH", "SOL", "HYPE", "MON",
+    ])
     proactive_starter_execution_hard_block_stages: List[str] = field(default_factory=lambda: [
         "data_reliability_block",
         "execution_coach_skip",

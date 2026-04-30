@@ -585,6 +585,127 @@ def build_starter_basket(
     }
 
 
+def build_pair_trade_book(
+    state: dict,
+    scout_book: dict,
+    *,
+    config: Any = None,
+) -> dict:
+    if not _cfg_value(config, "pair_trade_book_enabled", True):
+        return {"enabled": False, "pairs": [], "hedge_allocations": [], "summary": {"reason": "pair trade book disabled"}}
+
+    portfolio_usd = max(0.0, _safe_float((state or {}).get("portfolio_usd")))
+    if portfolio_usd <= 0:
+        return {"enabled": True, "pairs": [], "hedge_allocations": [], "summary": {"reason": "portfolio value unavailable"}}
+
+    max_pairs = max(0, int(_cfg_value(config, "pair_trade_max_pairs", 2) or 2))
+    if max_pairs <= 0:
+        return {"enabled": True, "pairs": [], "hedge_allocations": [], "summary": {"reason": "pair limit is zero"}}
+
+    min_equity_score = _safe_float(_cfg_value(config, "pair_trade_min_equity_score", 63.0), 63.0)
+    min_crypto_score = _safe_float(_cfg_value(config, "pair_trade_min_crypto_score", 58.0), 58.0)
+    pair_cap = portfolio_usd * _safe_float(_cfg_value(config, "pair_trade_max_notional_pct", 0.015), 0.015)
+    hedge_ratio = max(0.10, min(1.0, _safe_float(_cfg_value(config, "pair_trade_hedge_ratio", 0.35), 0.35)))
+    min_trade = max(
+        _safe_float(_cfg_value(config, "min_trade_usd", 0.0), 0.0),
+        _safe_float(_cfg_value(config, "event_risk_budget_min_trade_usd", 0.0), 0.0),
+    )
+    if pair_cap < min_trade:
+        return {
+            "enabled": True,
+            "pairs": [],
+            "hedge_allocations": [],
+            "summary": {"reason": f"pair cap ${pair_cap:.0f} is below minimum ${min_trade:.0f}"},
+        }
+
+    allowed_crypto = {
+        _safe_str(item).upper()
+        for item in (_cfg_value(config, "pair_trade_crypto_hedge_candidates", []) or [])
+        if _safe_str(item)
+    }
+    _, _, occupied = _existing_exposure(state)
+    bullish_calls = list((scout_book or {}).get("bullish_calls") or [])
+    bearish_calls = list((scout_book or {}).get("bearish_calls") or [])
+    equity_longs = [
+        item for item in bullish_calls
+        if item.get("direction") == "LONG"
+        and item.get("asset_bucket") == "equity"
+        and _safe_float(item.get("scout_score")) >= min_equity_score
+    ]
+    crypto_shorts = [
+        item for item in bearish_calls
+        if item.get("direction") == "SHORT"
+        and item.get("asset_bucket") == "coin"
+        and _safe_float(item.get("scout_score")) >= min_crypto_score
+        and (not allowed_crypto or _safe_str(item.get("coin")).upper() in allowed_crypto)
+        and _safe_str(item.get("coin")).upper() not in occupied
+    ]
+
+    pairs: list[dict] = []
+    hedge_allocations: list[dict] = []
+    for equity in equity_longs:
+        if len(pairs) >= max_pairs:
+            break
+        for crypto in crypto_shorts:
+            if len(pairs) >= max_pairs:
+                break
+            short_coin = _safe_str(crypto.get("coin")).upper()
+            if not short_coin or any(pair.get("short_coin") == short_coin for pair in pairs):
+                continue
+            long_coin = _safe_str(equity.get("coin")).upper()
+            pair_score = round((_safe_float(equity.get("scout_score")) * 0.62 + _safe_float(crypto.get("scout_score")) * 0.38), 2)
+            size = round(min(pair_cap, max(min_trade, pair_cap * hedge_ratio)), 2)
+            summary = f"Long {long_coin} thesis paired with short {short_coin} while crypto tape is weaker."
+            pair_id = f"{long_coin}_LONG__{short_coin}_SHORT"
+            pair = {
+                "pair_id": pair_id,
+                "long_coin": long_coin,
+                "long_direction": "LONG",
+                "short_coin": short_coin,
+                "short_direction": "SHORT",
+                "pair_score": pair_score,
+                "theme": equity.get("theme", ""),
+                "hedge_theme": crypto.get("theme", "CRYPTO_BETA"),
+                "hedge_size_usd": size,
+                "hedge_portfolio_pct": round(size / portfolio_usd, 4),
+                "hedge_ratio": round(hedge_ratio, 4),
+                "why": summary,
+                "long_invalidation": equity.get("invalidation", ""),
+                "short_invalidation": crypto.get("invalidation", ""),
+            }
+            pairs.append(pair)
+            hedge_allocations.append({
+                "coin": short_coin,
+                "direction": "SHORT",
+                "side": "bearish",
+                "theme": crypto.get("theme", "CRYPTO_BETA"),
+                "size_usd": size,
+                "portfolio_pct": round(size / portfolio_usd, 4),
+                "scout_score": pair_score,
+                "thesis_id": crypto.get("thesis_id", ""),
+                "why": summary,
+                "pair_trade": True,
+                "pair_id": pair_id,
+                "paired_long": long_coin,
+                "paired_long_score": _safe_float(equity.get("scout_score")),
+                "hedge_ratio": round(hedge_ratio, 4),
+                "invalidation": crypto.get("invalidation", ""),
+            })
+
+    return {
+        "enabled": True,
+        "pairs": pairs,
+        "hedge_allocations": hedge_allocations,
+        "summary": {
+            "pair_count": len(pairs),
+            "hedge_allocation_count": len(hedge_allocations),
+            "planned_hedge_usd": round(sum(_safe_float(item.get("size_usd")) for item in hedge_allocations), 2),
+            "top_pair": pairs[0] if pairs else None,
+            "reason": "no clean equity-long/crypto-short pair" if not pairs else "",
+        },
+    }
+
+
 def _forecast_price_for_coin(coin: str, state: dict) -> float:
     signal = dict(((state or {}).get("signals") or {}).get(coin) or {})
     return _live_price(signal)
@@ -714,6 +835,11 @@ def build_and_save_report(
         if _cfg_value(config, "starter_basket_optimizer_enabled", True)
         else {"enabled": False, "allocations": [], "summary": {}}
     )
+    pair_trade_book = (
+        build_pair_trade_book(state, scout_book, config=config)
+        if _cfg_value(config, "pair_trade_book_enabled", True)
+        else {"enabled": False, "pairs": [], "hedge_allocations": [], "summary": {}}
+    )
     forecast_calibration = (
         build_forecast_calibration(state, scout_book, config=config, data_dir=data_dir)
         if _cfg_value(config, "forecast_calibration_enabled", True)
@@ -727,11 +853,13 @@ def build_and_save_report(
         "morning_scout_book": scout_book,
         "read_through_engine": read_through,
         "starter_basket_optimizer": starter_basket,
+        "pair_trade_book": pair_trade_book,
         "forecast_calibration": forecast_calibration,
         "summary": {
             "top_call": top_call,
             "active_thesis_count": (thesis_report.get("summary") or {}).get("active_count", 0),
             "starter_plan_count": (starter_basket.get("summary") or {}).get("allocation_count", 0),
+            "pair_trade_count": (pair_trade_book.get("summary") or {}).get("pair_count", 0),
             "read_through_count": (read_through.get("summary") or {}).get("impact_count", 0),
             "forecast_note": (forecast_calibration.get("summary") or {}).get("calibration_note", ""),
         },

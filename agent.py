@@ -1773,6 +1773,27 @@ class TradingAgent:
                     )
                     return
 
+            runner_profile = self._position_runner_profile(coin, signal)
+            if (
+                getattr(self.cfg.trading, "thesis_runner_defer_soft_reversal", True)
+                and runner_profile.get("active")
+            ):
+                log.info(
+                    f"[{coin}] Runner thesis blocks soft reversal {current_pos}->{signal.action}: "
+                    f"{runner_profile.get('reason', 'strong thesis')} still valid"
+                )
+                self._last_signals.setdefault(coin, {})
+                self._last_signals[coin]["runner_profile"] = runner_profile
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="runner_reversal_deferred",
+                    signal=signal,
+                    current_position=current_pos,
+                    blocked=True,
+                )
+                return
+
             log.info(f"[{coin}] Closing {current_pos} (score={signal.score:.1f}) "
                      f"— will re-evaluate next cycle before entering {signal.action}")
             self._close_position(coin, "signal_reversal", signal.price)
@@ -2545,6 +2566,288 @@ class TradingAgent:
                 return False
         return True
 
+    def _position_runner_profile(self, coin: str, signal=None, price: float | None = None) -> dict:
+        inactive = {"active": False, "reason": "", "score": 0.0, "hold_minutes": 0.0}
+        if not getattr(self.cfg.trading, "thesis_runner_enabled", True):
+            return inactive
+        pos = self.risk.positions.get(coin)
+        if not pos:
+            return inactive
+
+        sig = dict(self._last_signals.get(coin, {}) or {})
+        metadata = dict(pos.metadata or {})
+        entry_ctx = dict(metadata.get("entry_context", {}) or {})
+        thesis = dict(sig.get("thesis") or entry_ctx.get("thesis") or {})
+        conviction_entry = dict(sig.get("conviction_entry") or entry_ctx.get("conviction_entry") or {})
+        thesis_entry = thesis.get("conviction_entry")
+        if isinstance(thesis_entry, dict) and not conviction_entry:
+            conviction_entry = dict(thesis_entry)
+
+        instrument_type = str(
+            sig.get("instrument_type")
+            or entry_ctx.get("instrument_type")
+            or self.cfg.trading.instrument_types.get(coin)
+            or hyperliquid_instrument_type(coin)
+            or "crypto"
+        ).lower()
+        live_price = float(
+            price
+            or sig.get("live_price")
+            or sig.get("price")
+            or getattr(signal, "price", 0.0)
+            or pos.entry_price
+            or 0.0
+        )
+        hold_minutes = (time.time() - pos.opened_at) / 60.0 if pos.opened_at else 0.0
+        signal_action = str(getattr(signal, "action", sig.get("action", "")) or "").upper()
+
+        raw_scores = [
+            sig.get("thesis_conviction_score"),
+            sig.get("expectancy_score"),
+            sig.get("score"),
+            entry_ctx.get("score"),
+            thesis.get("conviction_score"),
+            getattr(signal, "score", None),
+        ]
+        score_values = []
+        for value in raw_scores:
+            if value is None:
+                continue
+            try:
+                score_values.append(float(value or 0.0))
+            except Exception:
+                continue
+        score = max(score_values or [0.0])
+        event_score = max(
+            float(sig.get("news_event_score") or 0.0),
+            float(entry_ctx.get("news_event_score") or 0.0),
+            float(sig.get("official_event_score") or 0.0),
+            float(entry_ctx.get("official_event_score") or 0.0),
+            float(sig.get("sec_event_score") or 0.0),
+            float(entry_ctx.get("sec_event_score") or 0.0),
+        )
+        catalyst_score = max(
+            float(sig.get("news_catalyst_score") or 0.0),
+            float(entry_ctx.get("news_catalyst_score") or 0.0),
+            max(0.0, float(sig.get("analyst_revision_score") or 0.0)),
+            max(0.0, float(entry_ctx.get("analyst_revision_score") or 0.0)),
+        )
+
+        min_score = float(getattr(self.cfg.trading, "thesis_runner_min_conviction_score", 64.0) or 64.0)
+        min_event = float(getattr(self.cfg.trading, "thesis_runner_min_event_score", 2.75) or 2.75)
+        min_catalyst = float(getattr(self.cfg.trading, "thesis_runner_min_catalyst_score", 3.0) or 3.0)
+        min_runner_hold = float(getattr(self.cfg.trading, "thesis_runner_min_hold_minutes", 1440.0) or 1440.0)
+
+        event_conviction = bool(
+            sig.get("conviction_entry_event")
+            or entry_ctx.get("conviction_entry_event")
+            or conviction_entry.get("event_conviction")
+            or entry_ctx.get("event_risk_budget_active")
+        )
+        event_setup = event_conviction or event_score >= min_event or catalyst_score >= min_catalyst
+
+        direction = str(pos.direction or "").upper()
+        structure_trend = str(sig.get("structure_trend", entry_ctx.get("structure_trend", "")) or "").upper()
+        mtf_bias = str(sig.get("mtf_bias", entry_ctx.get("mtf_bias", "FLAT")) or "FLAT").upper()
+        breakout_state = str(sig.get("orderbook_breakout_state", entry_ctx.get("orderbook_breakout_state", "NONE")) or "NONE").upper()
+        market_bias = str(sig.get("market_map_bias", entry_ctx.get("market_map_bias", "NEUTRAL")) or "NEUTRAL").upper()
+        daily_breakout = float(sig.get("daily_breakout_level") or entry_ctx.get("daily_breakout_level") or 0.0)
+        price_action_text = " ".join([
+            str(sig.get("price_action_summary", "")),
+            str(entry_ctx.get("price_action_summary", "")),
+            str(sig.get("market_map_notes", "")),
+        ]).upper()
+
+        long_support = (
+            direction == "LONG"
+            and (
+                structure_trend == "UPTREND"
+                or mtf_bias == "BULLISH"
+                or market_bias == "BULLISH"
+                or breakout_state in {"CONFIRMED_BULLISH_BREAKOUT", "PERSISTENT_BULLISH_BREAKOUT"}
+                or bool(sig.get("market_map_reclaim_confirmed") or sig.get("market_map_live_reclaim"))
+                or (daily_breakout > 0 and live_price >= daily_breakout)
+            )
+        )
+        short_support = (
+            direction == "SHORT"
+            and (
+                structure_trend == "DOWNTREND"
+                or mtf_bias == "BEARISH"
+                or market_bias == "BEARISH"
+                or breakout_state in {"CONFIRMED_BEARISH_BREAKDOWN", "PERSISTENT_BEARISH_BREAKDOWN"}
+                or bool(sig.get("market_map_breakdown_confirmed") or sig.get("market_map_live_breakdown"))
+            )
+        )
+        supportive_structure = long_support or short_support
+        ath_like = (
+            direction == "LONG"
+            and getattr(self.cfg.trading, "ath_runner_enabled", True)
+            and (
+                "ATH" in price_action_text
+                or "ALL TIME HIGH" in price_action_text
+                or breakout_state in {"CONFIRMED_BULLISH_BREAKOUT", "PERSISTENT_BULLISH_BREAKOUT"}
+                or (daily_breakout > 0 and live_price >= daily_breakout)
+                or bool(sig.get("market_map_reclaim_confirmed") or sig.get("market_map_live_reclaim"))
+            )
+        )
+
+        thesis_state = str(thesis.get("state", sig.get("thesis_state", "")) or "").upper()
+        thesis_conflicts = float(thesis.get("conflict_points", sig.get("thesis_conflict_points", 0.0)) or 0.0)
+        hard_thesis_conflict = thesis_state == "NO_TRADE" and thesis_conflicts >= 2.0
+        entry_score = float(entry_ctx.get("score") or 0.0)
+        still_same_or_flat = signal_action in {"", "FLAT", direction}
+        favorable_move = self._signed_move(direction, pos.entry_price, live_price)
+
+        event_runner = (
+            instrument_type == "equity"
+            and event_setup
+            and max(score, entry_score) >= (min_score - 8.0)
+            and not hard_thesis_conflict
+        )
+        ath_runner = (
+            ath_like
+            and max(score, entry_score) >= (min_score - 4.0)
+            and not hard_thesis_conflict
+        )
+        high_conviction_runner = (
+            supportive_structure
+            and max(score, entry_score) >= (min_score + 6.0)
+            and not hard_thesis_conflict
+        )
+        early_runner_hold = (
+            event_runner
+            and hold_minutes < min_runner_hold
+            and favorable_move >= -(abs(pos.entry_price - pos.stop_loss) * 0.35 if pos.stop_loss > 0 else 0.0)
+        )
+        active = bool((event_runner or ath_runner or high_conviction_runner or early_runner_hold) and (still_same_or_flat or event_runner or ath_runner))
+        reasons: list[str] = []
+        if event_runner:
+            reasons.append("event thesis")
+        if ath_runner:
+            reasons.append("breakout/ATH continuation")
+        if high_conviction_runner:
+            reasons.append("strong structure")
+        if early_runner_hold and "event thesis" not in reasons:
+            reasons.append("event thesis still inside hold window")
+
+        return {
+            "active": active,
+            "reason": ", ".join(reasons) if reasons else "",
+            "score": round(max(score, entry_score), 2),
+            "event_score": round(event_score, 2),
+            "catalyst_score": round(catalyst_score, 2),
+            "instrument_type": instrument_type,
+            "direction": direction,
+            "hold_minutes": round(hold_minutes, 2),
+            "min_hold_remaining_minutes": round(max(0.0, min_runner_hold - hold_minutes), 2),
+            "event_runner": event_runner,
+            "ath_runner": ath_runner,
+            "high_conviction_runner": high_conviction_runner,
+            "supportive_structure": supportive_structure,
+            "favorable_move": round(favorable_move, 6),
+        }
+
+    def _extend_runner_target(self, coin: str, price: float, profile: dict, reason: str) -> float:
+        pos = self.risk.positions.get(coin)
+        if not pos or price <= 0:
+            return 0.0
+        risk_per_unit = abs(pos.entry_price - pos.stop_loss) if pos.stop_loss > 0 else 0.0
+        reward_per_unit = abs(pos.take_profit - pos.entry_price) if pos.take_profit > 0 else 0.0
+        extension_pct = float(getattr(self.cfg.trading, "thesis_runner_take_profit_extension_pct", 0.06) or 0.06)
+        extension_r = float(getattr(self.cfg.trading, "thesis_runner_take_profit_extension_r", 1.15) or 1.15)
+        min_extension = max(risk_per_unit * extension_r, reward_per_unit * 0.35, price * extension_pct)
+
+        if pos.direction == "LONG":
+            new_take_profit = max(pos.take_profit, price + min_extension)
+        else:
+            new_take_profit = min(pos.take_profit if pos.take_profit > 0 else price, max(0.0, price - min_extension))
+
+        if new_take_profit <= 0:
+            return 0.0
+        pos.take_profit = new_take_profit
+        metadata = dict(pos.metadata or {})
+        entry_ctx = dict(metadata.get("entry_context", {}) or {})
+        runner_meta = dict(metadata.get("runner", {}) or {})
+        runner_meta.update({
+            "active": True,
+            "last_deferred_exit": reason,
+            "last_deferred_at": datetime.now().isoformat(timespec="seconds"),
+            "last_deferred_price": round(price, 6),
+            "last_reason": profile.get("reason", ""),
+            "deferred_exit_count": int(runner_meta.get("deferred_exit_count", 0) or 0) + 1,
+        })
+        entry_ctx.update({
+            "runner_active": True,
+            "runner_reason": profile.get("reason", ""),
+            "planned_take_profit": new_take_profit,
+            "trade_plan": {
+                **dict(entry_ctx.get("trade_plan", {}) or {}),
+                "take_profit": round(new_take_profit, 6),
+                "target_basis": "runner target extended after thesis-confirming profit trigger",
+            },
+        })
+        metadata["runner"] = runner_meta
+        metadata["entry_context"] = entry_ctx
+        pos.metadata = metadata
+        self._last_signals.setdefault(coin, {})
+        self._last_signals[coin]["runner_profile"] = profile
+        self._last_signals[coin]["runner_take_profit_extended_to"] = new_take_profit
+        self._last_signals[coin]["planned_take_profit"] = new_take_profit
+        try:
+            trade_logger.update_open(coin, pos.entry_price, pos.size_usd, pos.stop_loss, pos.take_profit)
+        except Exception as exc:
+            log.debug("[%s] runner trade-log update skipped: %s", coin, exc)
+        return new_take_profit
+
+    def _widen_runner_trailing_stop(self, coin: str, price: float) -> float:
+        pos = self.risk.positions.get(coin)
+        if not pos or price <= 0:
+            return 0.0
+        pct = min(0.28, max(float(getattr(self.cfg.trading, "trailing_stop_pct", 0.12) or 0.12) * 1.5, 0.16))
+        if pos.direction == "LONG":
+            pos.trailing_stop_price = price * (1.0 - pct)
+        else:
+            pos.trailing_stop_price = price * (1.0 + pct)
+        return pos.trailing_stop_price
+
+    def _defer_runner_exit(self, coin: str, reason: str, price: float, portfolio_usd: float) -> bool:
+        if reason not in {"take_profit", "trailing_stop"}:
+            return False
+        profile = self._position_runner_profile(coin, price=price)
+        if not profile.get("active"):
+            return False
+        if reason == "take_profit" and getattr(self.cfg.trading, "thesis_runner_defer_take_profit", True):
+            new_take_profit = self._extend_runner_target(coin, price, profile, reason)
+            if new_take_profit > 0:
+                log.info(
+                    f"[{coin}] Runner thesis defers TP exit; target extends to ${new_take_profit:.2f} "
+                    f"({profile.get('reason', 'runner')})"
+                )
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="runner_take_profit_deferred",
+                    current_position=profile.get("direction", ""),
+                )
+                return True
+        if reason == "trailing_stop":
+            max_defer_minutes = float(getattr(self.cfg.trading, "thesis_runner_defer_trailing_stop_minutes", 720.0) or 720.0)
+            if float(profile.get("hold_minutes", 0.0) or 0.0) <= max_defer_minutes:
+                new_trail = self._widen_runner_trailing_stop(coin, price)
+                log.info(
+                    f"[{coin}] Runner thesis defers early trailing stop; trail resets to ${new_trail:.2f} "
+                    f"({profile.get('reason', 'runner')})"
+                )
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="runner_trailing_stop_deferred",
+                    current_position=profile.get("direction", ""),
+                )
+                return True
+        return False
+
     def _assess_conviction_decay(self, coin: str, current_pos: str, signal) -> dict:
         pos = self.risk.positions.get(coin)
         if not pos:
@@ -2617,10 +2920,27 @@ class TradingAgent:
         elif favorable_move > 0:
             score -= min(8.0, tp_progress * 8.0)
 
+        runner_profile = self._position_runner_profile(coin, signal, live_price)
+        if runner_profile.get("active"):
+            self._last_signals.setdefault(coin, {})
+            self._last_signals[coin]["runner_profile"] = runner_profile
+            discount = float(getattr(self.cfg.trading, "thesis_runner_decay_discount", 24.0) or 24.0)
+            score = max(0.0, score - discount)
+            reasons.append(f"runner thesis still active: {runner_profile.get('reason', 'strong thesis')}")
+
         score = max(0.0, min(100.0, score))
         exit_threshold = float(getattr(self.cfg.trading, "conviction_decay_exit_threshold", 58.0) or 58.0)
         hold_threshold = float(getattr(self.cfg.trading, "conviction_decay_hold_threshold", 36.0) or 36.0)
         summary = "; ".join(reasons[:3]) if reasons else "conviction is stable"
+        if runner_profile.get("active"):
+            max_flat = int(getattr(self.cfg.trading, "thesis_runner_max_flat_cycles", 12) or 12)
+            if flat_cycles < max_flat:
+                return {
+                    "should_exit": False,
+                    "score": round(min(score, hold_threshold - 1.0), 2),
+                    "summary": f"runner hold: {runner_profile.get('reason', 'strong thesis')} until invalidation",
+                    "runner_profile": runner_profile,
+                }
         if score >= exit_threshold:
             return {"should_exit": True, "score": round(score, 2), "summary": summary}
         if score >= hold_threshold:
@@ -2872,7 +3192,11 @@ class TradingAgent:
             "event_budget_size_multiplier": sig.get("event_budget_size_multiplier", 1.0),
             "event_budget_total_exposure_pct": sig.get("event_budget_total_exposure_pct", 0.0),
             "event_budget_theme_exposure_pct": sig.get("event_budget_theme_exposure_pct", 0.0),
-            "event_risk_budget_active": bool(sig.get("conviction_entry_event", False)),
+            "event_risk_budget_active": bool(
+                sig.get("conviction_entry_event", False)
+                or sig.get("event_risk_budget_active", False)
+                or sig.get("pair_trade_overlay", False)
+            ),
             "conviction_entry": sig.get("conviction_entry", {}),
             "conviction_entry_active": sig.get("conviction_entry_active", False),
             "conviction_entry_event": sig.get("conviction_entry_event", False),
@@ -3341,7 +3665,11 @@ class TradingAgent:
             return execution
 
         basket = dict((report or {}).get("starter_basket_optimizer") or {})
+        pair_trade_book = dict((report or {}).get("pair_trade_book") or {})
         allocations = list(basket.get("allocations") or [])
+        if getattr(self.cfg.trading, "pair_trade_execution_enabled", True):
+            allocations.extend(list(pair_trade_book.get("hedge_allocations") or []))
+        execution["pair_trade_book"] = pair_trade_book
         execution["budget"] = dict(basket.get("budget") or {})
         max_per_cycle = max(0, int(getattr(self.cfg.trading, "proactive_starter_execution_max_per_cycle", 3) or 3))
         min_trade = max(
@@ -3429,21 +3757,26 @@ class TradingAgent:
                 continue
 
             trade_plan = self._starter_trade_plan(coin, direction, price, snapshot)
+            is_pair_trade = bool((allocation or {}).get("pair_trade"))
             thesis = dict(snapshot.get("thesis") or {})
             thesis.update({
                 "candidate_action": direction,
-                "state": "PROACTIVE_STARTER",
+                "state": "PAIR_TRADE_OVERLAY" if is_pair_trade else "PROACTIVE_STARTER",
                 "permitted": True,
                 "quality": snapshot.get("thesis_quality", "MEDIUM"),
                 "conviction_score": float((allocation or {}).get("scout_score") or snapshot.get("score") or 60.0),
                 "summary": (allocation or {}).get("why") or snapshot.get("thesis_summary") or "Proactive starter basket allocation.",
                 "conviction_entry": {
                     "active": True,
-                    "style": "proactive_starter_basket",
-                    "event_conviction": True,
+                    "style": "pair_trade_overlay" if is_pair_trade else "proactive_starter_basket",
+                    "event_conviction": not is_pair_trade,
                     "bypass_precision": True,
                     "size_multiplier": round(final_size / max(desired_size, 1e-9), 4),
-                    "reason": "starter basket owns a small pre-event thesis inside event-risk budget",
+                    "reason": (
+                        "pair trade hedge owns a small crypto short against a stronger equity thesis"
+                        if is_pair_trade
+                        else "starter basket owns a small pre-event thesis inside event-risk budget"
+                    ),
                 },
             })
             expectancy = dict(snapshot.get("expectancy") or {})
@@ -3470,8 +3803,12 @@ class TradingAgent:
                 expectancy=expectancy,
                 execution_plan={
                     "mode": "market",
-                    "source": "proactive_starter_basket",
-                    "reason": "own small pre-event starter allocation",
+                    "source": "pair_trade_overlay" if is_pair_trade else "proactive_starter_basket",
+                    "reason": (
+                        "own small paired crypto hedge"
+                        if is_pair_trade
+                        else "own small pre-event starter allocation"
+                    ),
                 },
             )
 
@@ -3503,8 +3840,10 @@ class TradingAgent:
                 "event_risk_budget_active": True,
                 "conviction_entry": thesis["conviction_entry"],
                 "conviction_entry_active": True,
-                "conviction_entry_event": True,
+                "conviction_entry_event": not is_pair_trade,
                 "proactive_starter": True,
+                "pair_trade_overlay": is_pair_trade,
+                "pair_trade": dict(allocation or {}) if is_pair_trade else {},
                 "proactive_starter_allocation": dict(allocation or {}),
                 "trade_plan": trade_plan,
                 "thesis": thesis,
@@ -3550,7 +3889,7 @@ class TradingAgent:
             })
             self._proactive_starter_attempt_ts[coin] = time.time()
             log.info(
-                f"[{coin}] 🧭 Proactive starter executing: {direction} "
+                f"[{coin}] 🧭 {'Pair hedge' if is_pair_trade else 'Proactive starter'} executing: {direction} "
                 f"${final_size:.2f} via starter basket | {guard.get('summary', '')}"
             )
             executed = self._execute_order(coin, signal, order)
@@ -4185,6 +4524,8 @@ class TradingAgent:
             coin   = info["coin"]
             reason = info["reason"]
             price  = info["price"]
+            if self._defer_runner_exit(coin, reason, price, portfolio_usd):
+                continue
             log.info(f"[{coin}] Exit triggered: {reason} @ ${price:.2f}")
             self._close_position(coin, reason, price)
 

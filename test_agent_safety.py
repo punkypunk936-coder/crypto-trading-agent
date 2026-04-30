@@ -3318,6 +3318,146 @@ def test_proactive_starter_execution_opens_capped_event_orders() -> None:
     )
 
 
+def _install_runner_position(agent: TradingAgent, coin: str = "GOOGL") -> None:
+    now = time.time()
+    entry_context = {
+        "instrument_type": "equity",
+        "score": 68.0,
+        "conviction_entry_event": True,
+        "event_risk_budget_active": True,
+        "news_event_score": 4.1,
+        "news_catalyst_score": 3.7,
+        "official_event_score": 2.0,
+        "planned_stop_loss": 95.0,
+        "planned_take_profit": 110.0,
+        "trade_plan": {"stop_loss": 95.0, "take_profit": 110.0},
+    }
+    agent.risk.positions = {
+        coin: OpenPosition(
+            coin=coin,
+            direction="LONG",
+            entry_price=100.0,
+            size_usd=200.0,
+            size_coin=2.0,
+            stop_loss=95.0,
+            take_profit=110.0,
+            trailing_stop_price=88.0,
+            opened_at=now - 90 * 60,
+            exchange="UnitTest",
+            metadata={"entry_context": entry_context},
+        )
+    }
+    agent._last_signals = {
+        coin: {
+            "action": "FLAT",
+            "score": 67.0,
+            "instrument_type": "equity",
+            "live_price": 111.0,
+            "market_map_bias": "BULLISH",
+            "market_map_reclaim_confirmed": True,
+            "news_event_score": 4.1,
+            "news_catalyst_score": 3.7,
+            "official_event_score": 2.0,
+            "conviction_entry_event": True,
+            "thesis": {
+                "state": "ACTIVE",
+                "permitted": True,
+                "conviction_score": 68.0,
+                "conflict_points": 0,
+            },
+        }
+    }
+
+
+def test_thesis_runner_defers_take_profit_and_extends_target() -> None:
+    cfg = build_config()
+    cfg.trading.coins = ["GOOGL"]
+    cfg.trading.instrument_types.update({"GOOGL": "equity"})
+    cfg.trading.decision_dataset_enabled = False
+    cfg.trading.feature_store_enabled = False
+    exchange = DryRunExchange(starting_balance_usd=10000.0, supported_symbols=["GOOGL"])
+    agent = TradingAgent(cfg, [exchange])
+    agent._tradable_coins = ["GOOGL"]
+    agent._tradable_coin_set = {"GOOGL"}
+    _install_runner_position(agent, "GOOGL")
+
+    closed = []
+    agent._close_position = lambda coin, reason, price: closed.append((coin, reason, price))
+
+    agent._check_and_execute_exits({"GOOGL": 111.0}, 10000.0)
+
+    assert closed == []
+    assert "GOOGL" in agent.risk.positions
+    assert agent.risk.positions["GOOGL"].take_profit > 111.0
+    assert agent.risk.positions["GOOGL"].metadata["runner"]["deferred_exit_count"] == 1
+
+
+def test_thesis_runner_still_honors_stop_loss() -> None:
+    cfg = build_config()
+    cfg.trading.coins = ["GOOGL"]
+    cfg.trading.instrument_types.update({"GOOGL": "equity"})
+    cfg.trading.decision_dataset_enabled = False
+    cfg.trading.feature_store_enabled = False
+    agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=10000.0, supported_symbols=["GOOGL"])])
+    agent._tradable_coins = ["GOOGL"]
+    agent._tradable_coin_set = {"GOOGL"}
+    _install_runner_position(agent, "GOOGL")
+
+    closed = []
+
+    def fake_close(coin, reason, price):
+        closed.append((coin, reason, price))
+        agent.risk.positions.pop(coin, None)
+
+    agent._close_position = fake_close
+
+    agent._check_and_execute_exits({"GOOGL": 94.0}, 10000.0)
+
+    assert closed == [("GOOGL", "stop_loss", 94.0)]
+    assert "GOOGL" not in agent.risk.positions
+
+
+def test_pair_trade_book_builds_equity_long_crypto_short_overlay() -> None:
+    cfg = build_config()
+    cfg.trading.min_trade_usd = 100.0
+    cfg.trading.event_risk_budget_min_trade_usd = 100.0
+    cfg.trading.pair_trade_max_notional_pct = 0.02
+    state = {
+        "portfolio_usd": 10000.0,
+        "positions": [],
+        "pending_orders": [],
+        "signals": {},
+    }
+    scout_book = {
+        "bullish_calls": [{
+            "coin": "GOOGL",
+            "direction": "LONG",
+            "asset_bucket": "equity",
+            "theme": "MEGA_CAP_TECH",
+            "scout_score": 72.0,
+            "invalidation": "Invalid below 180",
+        }],
+        "bearish_calls": [{
+            "coin": "BTC",
+            "direction": "SHORT",
+            "asset_bucket": "coin",
+            "theme": "CRYPTO_BETA",
+            "scout_score": 62.0,
+            "invalidation": "Invalid above 69000",
+        }],
+    }
+
+    book = proactive_intelligence_module.build_pair_trade_book(state, scout_book, config=cfg.trading)
+
+    assert book["summary"]["pair_count"] == 1
+    assert book["pairs"][0]["long_coin"] == "GOOGL"
+    assert book["pairs"][0]["short_coin"] == "BTC"
+    hedge = book["hedge_allocations"][0]
+    assert hedge["coin"] == "BTC"
+    assert hedge["direction"] == "SHORT"
+    assert 100.0 <= hedge["size_usd"] <= 200.0
+
+
 def test_dashboard_snapshot_includes_proactive_trader_report() -> None:
     snapshot = build_dashboard_snapshot(
         {"signals": {}, "positions": [], "config": {}, "cycle_number": 1},
@@ -6954,6 +7094,12 @@ def run_all() -> None:
     print("PASS proactive intelligence research stack")
     test_proactive_starter_execution_opens_capped_event_orders()
     print("PASS proactive starter execution caps")
+    test_thesis_runner_defers_take_profit_and_extends_target()
+    print("PASS thesis runner TP deferral")
+    test_thesis_runner_still_honors_stop_loss()
+    print("PASS thesis runner stop-loss integrity")
+    test_pair_trade_book_builds_equity_long_crypto_short_overlay()
+    print("PASS pair trade overlay book")
     test_dashboard_snapshot_includes_proactive_trader_report()
     print("PASS proactive dashboard snapshot")
     test_dashboard_snapshot_surfaces_exact_next_setup_blocker()
