@@ -3563,6 +3563,86 @@ def test_north_star_guard_allows_event_starter_but_trims_size() -> None:
     assert agent._last_signals["GOOGL"]["north_star_guard"]["active"] is True
 
 
+def test_north_star_guard_cancels_stale_pending_limit_before_poll() -> None:
+    cfg = build_config()
+    cfg.trading.decision_dataset_enabled = False
+    cfg.trading.feature_store_enabled = False
+    cfg.trading.north_star_min_trades = 5
+    cfg.trading.north_star_lookback_trades = 5
+    cfg.trading.north_star_target_quality_win_rate = 0.70
+    cfg.trading.north_star_recovery_min_long_score = 72.0
+    agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=10000.0)])
+    result = agent._place_limit_order(
+        "BTC",
+        "LONG",
+        100.0,
+        200.0,
+        95.0,
+        115.0,
+        66.0,
+        reason="initial_limit",
+        entry_context={
+            "expectancy": {"probability": 0.57, "expected_r": 0.12, "uncertainty": 0.40},
+            "thesis": {"conviction_score": 66.0, "conviction_entry": {}},
+        },
+    )
+    assert result.get("pending") is True
+    original_trades_csv = agent_module.TRADES_CSV
+    with tempfile.TemporaryDirectory() as tmpdir:
+        try:
+            agent_module.TRADES_CSV = Path(tmpdir) / "trades_log.csv"
+            _write_north_star_trades(agent_module.TRADES_CSV)
+            agent._enforce_north_star_on_pending_limits({"BTC": 101.0}, 10000.0)
+        finally:
+            agent_module.TRADES_CSV = original_trades_csv
+
+    assert not agent.order_mgr.has_pending("BTC")
+
+
+def test_north_star_guard_resizes_event_pending_limit_before_poll() -> None:
+    cfg = build_config()
+    cfg.trading.decision_dataset_enabled = False
+    cfg.trading.feature_store_enabled = False
+    cfg.trading.min_trade_usd = 100.0
+    cfg.trading.north_star_min_trades = 5
+    cfg.trading.north_star_lookback_trades = 5
+    cfg.trading.north_star_event_size_multiplier = 0.55
+    agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=10000.0)])
+    result = agent._place_limit_order(
+        "BTC",
+        "LONG",
+        100.0,
+        220.0,
+        95.0,
+        115.0,
+        64.0,
+        reason="starter_basket",
+        entry_context={
+            "conviction_entry_event": True,
+            "expectancy": {"probability": 0.56, "expected_r": 0.15, "uncertainty": 0.40},
+            "thesis": {
+                "conviction_score": 64.0,
+                "conviction_entry": {"active": True, "event_conviction": True},
+            },
+        },
+    )
+    assert result.get("pending") is True
+    original_trades_csv = agent_module.TRADES_CSV
+    with tempfile.TemporaryDirectory() as tmpdir:
+        try:
+            agent_module.TRADES_CSV = Path(tmpdir) / "trades_log.csv"
+            _write_north_star_trades(agent_module.TRADES_CSV)
+            agent._enforce_north_star_on_pending_limits({"BTC": 101.0}, 10000.0)
+        finally:
+            agent_module.TRADES_CSV = original_trades_csv
+
+    pending = agent.order_mgr.pending_orders.get("BTC")
+    assert pending is not None
+    assert pending.reason == "north_star_resize"
+    assert round(pending.size_usd, 2) == 121.0
+    assert pending.metadata.get("north_star_resized") is True
+
+
 def test_dashboard_snapshot_includes_proactive_trader_report() -> None:
     snapshot = build_dashboard_snapshot(
         {"signals": {}, "positions": [], "config": {}, "cycle_number": 1},
@@ -7209,6 +7289,10 @@ def run_all() -> None:
     print("PASS north-star marginal entry block")
     test_north_star_guard_allows_event_starter_but_trims_size()
     print("PASS north-star event starter trim")
+    test_north_star_guard_cancels_stale_pending_limit_before_poll()
+    print("PASS north-star pending stale limit cancel")
+    test_north_star_guard_resizes_event_pending_limit_before_poll()
+    print("PASS north-star pending event limit resize")
     test_dashboard_snapshot_includes_proactive_trader_report()
     print("PASS proactive dashboard snapshot")
     test_dashboard_snapshot_surfaces_exact_next_setup_blocker()

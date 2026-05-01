@@ -835,7 +835,8 @@ class TradingAgent:
         for action in om_actions:
             self._handle_order_manager_action(action, portfolio_usd)
 
-        # 5. Poll pending limit orders for fills
+        # 5. Pending limits must pass the same recovery guard before fills are accepted.
+        self._enforce_north_star_on_pending_limits(current_prices, portfolio_usd)
         self._poll_pending_limits(current_prices)
         self._manage_pending_limits(current_prices, portfolio_usd)
 
@@ -4583,6 +4584,105 @@ class TradingAgent:
         self.order_mgr.mark_cancelled(coin)
         log.info(f"[{coin}] Pending limit cancelled: {reason}")
         return True
+
+    def _enforce_north_star_on_pending_limits(self, current_prices: dict, portfolio_usd: float) -> None:
+        if not getattr(self.cfg.trading, "north_star_pending_guard_enabled", True):
+            return
+        scorecard = self._north_star_scorecard()
+        if not scorecard.get("active", False):
+            return
+        for coin, pending in list(self.order_mgr.pending_orders.items()):
+            if self.risk.has_position(coin):
+                continue
+            live_price = float(current_prices.get(coin) or pending.limit_price or 0.0)
+            if live_price <= 0:
+                continue
+            signal = self._build_pending_signal(
+                pending,
+                live_price=live_price,
+                reason="resting limit still needs north-star permission",
+            )
+            entry_context = self._pending_entry_context(pending)
+            event_starter = bool(
+                entry_context.get("conviction_entry_event")
+                or (dict(entry_context.get("thesis") or {}).get("conviction_entry") or {}).get("event_conviction")
+                or str(getattr(pending, "reason", "") or "") in {"event_starter", "starter_basket"}
+            )
+            pair_trade = bool(entry_context.get("pair_trade_overlay") or entry_context.get("pair_trade"))
+            guard = self._north_star_entry_guard(
+                coin,
+                signal,
+                None,
+                event_starter=event_starter,
+                pair_trade=pair_trade,
+            )
+            self._last_signals.setdefault(coin, {})
+            self._last_signals[coin]["north_star_guard"] = guard
+            self._last_signals[coin]["north_star_guard_summary"] = guard.get("summary", "")
+            if not guard.get("permitted", True):
+                reason = str(guard.get("summary") or "north-star recovery blocks stale pending limit")
+                self._cancel_pending_limit(pending, reason)
+                signal.action = "FLAT"
+                signal.reason = reason
+                signal.flat_reason = reason
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="pending_limit_north_star_cancelled",
+                    signal=signal,
+                    blocked=True,
+                )
+                continue
+
+            multiplier = float(guard.get("size_multiplier", 1.0) or 1.0)
+            if multiplier >= 0.999:
+                continue
+            target_size = float(pending.size_usd or 0.0) * multiplier
+            min_trade = float(getattr(self.cfg.trading, "min_trade_usd", 0.0) or 0.0)
+            if target_size < min_trade and not (event_starter or pair_trade):
+                reason = f"north-star recovery trim would shrink pending limit below ${min_trade:.0f} minimum"
+                self._cancel_pending_limit(pending, reason)
+                signal.action = "FLAT"
+                signal.reason = reason
+                signal.flat_reason = reason
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="pending_limit_north_star_cancelled",
+                    signal=signal,
+                    blocked=True,
+                )
+                continue
+
+            target_size = max(min_trade if event_starter or pair_trade else 0.0, target_size)
+            reason = f"north-star recovery resized stale pending limit from ${pending.size_usd:.2f} to ${target_size:.2f}"
+            entry_context["north_star_guard"] = guard
+            if self._cancel_pending_limit(pending, reason):
+                self._place_limit_order(
+                    coin,
+                    pending.direction,
+                    pending.limit_price,
+                    target_size,
+                    pending.stop_loss,
+                    pending.take_profit,
+                    pending.signal_score,
+                    reason="north_star_resize",
+                    entry_context=entry_context,
+                    trade_plan=dict(entry_context.get("trade_plan") or {}),
+                    maker_only=True,
+                    extra_metadata={
+                        "north_star_resized": True,
+                        "prior_size_usd": float(pending.size_usd or 0.0),
+                        "north_star_guard": guard,
+                    },
+                )
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="pending_limit_north_star_resized",
+                    signal=signal,
+                    pending_limit=True,
+                )
 
     def _reprice_pending_limit(
         self,

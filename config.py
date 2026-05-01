@@ -267,6 +267,7 @@ class TradingConfig:
     north_star_stop_loss_cluster_rate: float = 0.30
     north_star_coin_loss_cooldown_window: int = 8
     north_star_coin_loss_cooldown_losses: int = 2
+    north_star_pending_guard_enabled: bool = True
 
     # ── Risk management ─────────────────────────────────
     # Wide TP/SL to let winning trades run on perps
