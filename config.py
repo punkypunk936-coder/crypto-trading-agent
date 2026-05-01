@@ -245,6 +245,29 @@ class TradingConfig:
     euphoria_rl_guard_win_rate: float = 58.0
     max_euphoria_penalty: float   = 0.20   # Max size haircut when conviction outruns learned edge
 
+    # ── North-star guard ─────────────────────────────────────
+    # When rolling quality win-rate is below target, new exposure must be A+
+    # or intentionally tiny event/pair exposure. This keeps the agent from
+    # trading against its own "become a better trader" metric.
+    north_star_guard_enabled: bool = True
+    north_star_target_quality_win_rate: float = 0.70
+    north_star_critical_quality_win_rate: float = 0.50
+    north_star_lookback_trades: int = 50
+    north_star_min_trades: int = 20
+    north_star_quality_win_min_pct: float = 0.15
+    north_star_quality_win_min_usd: float = 0.10
+    north_star_recovery_min_long_score: float = 72.0
+    north_star_recovery_max_short_score: float = 28.0
+    north_star_recovery_min_probability: float = 0.60
+    north_star_event_min_probability: float = 0.55
+    north_star_recovery_max_uncertainty: float = 0.48
+    north_star_recovery_size_multiplier: float = 0.45
+    north_star_event_size_multiplier: float = 0.55
+    north_star_pair_size_multiplier: float = 0.50
+    north_star_stop_loss_cluster_rate: float = 0.30
+    north_star_coin_loss_cooldown_window: int = 8
+    north_star_coin_loss_cooldown_losses: int = 2
+
     # ── Risk management ─────────────────────────────────
     # Wide TP/SL to let winning trades run on perps
     stop_loss_pct: float          = 0.10   # 10% stop-loss (wider = survives volatility)

@@ -8,6 +8,7 @@ Run:
 from __future__ import annotations
 
 import asyncio
+import csv
 import json
 import os
 import sys
@@ -3456,6 +3457,110 @@ def test_pair_trade_book_builds_equity_long_crypto_short_overlay() -> None:
     assert hedge["coin"] == "BTC"
     assert hedge["direction"] == "SHORT"
     assert 100.0 <= hedge["size_usd"] <= 200.0
+
+
+def _write_north_star_trades(path: Path) -> None:
+    rows = [
+        ["1", "MSFT", "LONG", "2026-04-30 09:00", "2026-04-30 09:30", "30", "100", "98", "100", "2", "-2.00", "-2.00", "97", "110", "stop_loss", "64", "LOSS"],
+        ["2", "MU", "LONG", "2026-04-30 10:00", "2026-04-30 10:30", "30", "100", "99", "100", "2", "-1.00", "-1.00", "97", "110", "micro_invalidation", "65", "LOSS"],
+        ["3", "BABA", "LONG", "2026-04-30 11:00", "2026-04-30 11:05", "5", "100", "100.01", "100", "2", "0.01", "0.01", "97", "110", "structure_invalidation", "70", "WIN"],
+        ["4", "CRWV", "LONG", "2026-04-30 12:00", "2026-04-30 12:30", "30", "100", "97", "100", "2", "-3.00", "-3.00", "97", "110", "stop_loss", "61", "LOSS"],
+        ["5", "INTC", "LONG", "2026-04-30 13:00", "2026-04-30 14:00", "60", "100", "103", "100", "2", "3.00", "3.00", "97", "110", "take_profit", "75", "WIN"],
+    ]
+    with path.open("w", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(trade_logger_module.HEADERS)
+        writer.writerows(rows)
+
+
+def test_north_star_guard_blocks_marginal_recovery_entries() -> None:
+    cfg = build_config()
+    cfg.trading.decision_dataset_enabled = False
+    cfg.trading.feature_store_enabled = False
+    cfg.trading.north_star_min_trades = 5
+    cfg.trading.north_star_lookback_trades = 5
+    cfg.trading.north_star_target_quality_win_rate = 0.70
+    cfg.trading.north_star_recovery_min_long_score = 72.0
+    agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=10000.0)])
+    signal = SimpleNamespace(
+        action="LONG",
+        score=66.0,
+        price=100.0,
+        reason="marginal recovery setup",
+        flat_reason="",
+        expectancy={"probability": 0.57, "expected_r": 0.12, "uncertainty": 0.40},
+        thesis={"conviction_score": 66.0, "conviction_entry": {}},
+    )
+    order = OrderRequest("BTC", "LONG", 100.0, 1.0, 100.0, 95.0, 115.0)
+    agent._last_signals["BTC"] = {
+        "action": "LONG",
+        "score": 66.0,
+        "expectancy_probability": 0.57,
+        "expectancy_uncertainty": 0.40,
+    }
+    original_trades_csv = agent_module.TRADES_CSV
+    with tempfile.TemporaryDirectory() as tmpdir:
+        try:
+            agent_module.TRADES_CSV = Path(tmpdir) / "trades_log.csv"
+            _write_north_star_trades(agent_module.TRADES_CSV)
+            allowed = agent._apply_north_star_guard_to_order("BTC", signal, order, portfolio_usd=10000.0)
+        finally:
+            agent_module.TRADES_CSV = original_trades_csv
+
+    assert allowed is False
+    assert signal.action == "FLAT"
+    assert "north-star" in signal.reason
+
+
+def test_north_star_guard_allows_event_starter_but_trims_size() -> None:
+    cfg = build_config()
+    cfg.trading.decision_dataset_enabled = False
+    cfg.trading.feature_store_enabled = False
+    cfg.trading.min_trade_usd = 100.0
+    cfg.trading.north_star_min_trades = 5
+    cfg.trading.north_star_lookback_trades = 5
+    cfg.trading.north_star_event_size_multiplier = 0.55
+    agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=10000.0)])
+    signal = SimpleNamespace(
+        action="LONG",
+        score=64.0,
+        price=100.0,
+        reason="small pre-event starter",
+        flat_reason="",
+        expectancy={"probability": 0.56, "expected_r": 0.15, "uncertainty": 0.40},
+        thesis={
+            "conviction_score": 64.0,
+            "conviction_entry": {"active": True, "event_conviction": True},
+        },
+    )
+    order = OrderRequest("GOOGL", "LONG", 220.0, 2.2, 100.0, 95.0, 115.0)
+    agent._last_signals["GOOGL"] = {
+        "action": "LONG",
+        "score": 64.0,
+        "instrument_type": "equity",
+        "news_event_score": 4.0,
+        "conviction_entry_event": True,
+        "expectancy_probability": 0.56,
+        "expectancy_uncertainty": 0.40,
+    }
+    original_trades_csv = agent_module.TRADES_CSV
+    with tempfile.TemporaryDirectory() as tmpdir:
+        try:
+            agent_module.TRADES_CSV = Path(tmpdir) / "trades_log.csv"
+            _write_north_star_trades(agent_module.TRADES_CSV)
+            allowed = agent._apply_north_star_guard_to_order(
+                "GOOGL",
+                signal,
+                order,
+                portfolio_usd=10000.0,
+                event_starter=True,
+            )
+        finally:
+            agent_module.TRADES_CSV = original_trades_csv
+
+    assert allowed is True
+    assert round(order.size_usd, 2) == 121.0
+    assert agent._last_signals["GOOGL"]["north_star_guard"]["active"] is True
 
 
 def test_dashboard_snapshot_includes_proactive_trader_report() -> None:
@@ -7100,6 +7205,10 @@ def run_all() -> None:
     print("PASS thesis runner stop-loss integrity")
     test_pair_trade_book_builds_equity_long_crypto_short_overlay()
     print("PASS pair trade overlay book")
+    test_north_star_guard_blocks_marginal_recovery_entries()
+    print("PASS north-star marginal entry block")
+    test_north_star_guard_allows_event_starter_but_trims_size()
+    print("PASS north-star event starter trim")
     test_dashboard_snapshot_includes_proactive_trader_report()
     print("PASS proactive dashboard snapshot")
     test_dashboard_snapshot_surfaces_exact_next_setup_blocker()

@@ -28,6 +28,7 @@ import time
 import sys
 import json
 import re
+import csv
 from pathlib import Path
 from types import SimpleNamespace
 from typing import List, Optional, Dict
@@ -134,6 +135,7 @@ class TradingAgent:
         self._orderbook_history: Dict[str, List[dict]] = {}
         self._last_proactive_execution: Dict[str, object] = {}
         self._proactive_starter_attempt_ts: Dict[str, float] = {}
+        self._north_star_cache: Dict[str, object] = {}
         self._tradable_coins = [coin.upper() for coin in cfg.trading.coins]
         self._tradable_coin_set = set(self._tradable_coins)
         self._dynamic_analysis_coins = [
@@ -1901,6 +1903,17 @@ class TradingAgent:
             return
 
         event_starter = bool(conviction_entry.get("active") and conviction_entry.get("event_conviction"))
+        if not self._apply_north_star_guard_to_order(
+            coin,
+            signal,
+            order,
+            portfolio_usd=portfolio_usd,
+            current_position=current_pos,
+            event_starter=event_starter,
+            pair_trade=False,
+        ):
+            return
+
         portfolio_theme_guard = portfolio_guard.assess_correlation(
             self.cfg.trading,
             coin=coin,
@@ -2564,6 +2577,270 @@ class TradingAgent:
                     f"(have {expectancy_score:.0f}, {probability*100:.0f}%)"
                 )
                 return False
+        return True
+
+    @staticmethod
+    def _north_star_trade_win(row: dict, quality_min_pct: float, quality_min_usd: float) -> tuple[bool, bool]:
+        try:
+            pnl_usd = float(row.get("pnl_usd") or 0.0)
+        except Exception:
+            pnl_usd = 0.0
+        try:
+            pnl_pct = float(row.get("pnl_pct") or 0.0)
+        except Exception:
+            pnl_pct = 0.0
+        result = str(row.get("result") or row.get("outcome") or "").upper()
+        raw_win = result == "WIN" or pnl_usd > 0.0 or pnl_pct > 0.0
+        quality_win = raw_win and pnl_usd >= quality_min_usd and pnl_pct >= quality_min_pct
+        return raw_win, quality_win
+
+    def _north_star_scorecard(self, *, force: bool = False) -> dict:
+        if not getattr(self.cfg.trading, "north_star_guard_enabled", True):
+            return {"enabled": False, "active": False, "summary": "north-star guard disabled"}
+
+        lookback = max(1, int(getattr(self.cfg.trading, "north_star_lookback_trades", 50) or 50))
+        min_trades = max(1, int(getattr(self.cfg.trading, "north_star_min_trades", 20) or 20))
+        target = float(getattr(self.cfg.trading, "north_star_target_quality_win_rate", 0.70) or 0.70)
+        critical = float(getattr(self.cfg.trading, "north_star_critical_quality_win_rate", 0.50) or 0.50)
+        min_quality_pct = float(getattr(self.cfg.trading, "north_star_quality_win_min_pct", 0.15) or 0.15)
+        min_quality_usd = float(getattr(self.cfg.trading, "north_star_quality_win_min_usd", 0.10) or 0.10)
+        stop_cluster_rate = float(getattr(self.cfg.trading, "north_star_stop_loss_cluster_rate", 0.30) or 0.30)
+
+        path = Path(TRADES_CSV)
+        try:
+            stat = path.stat()
+            cache_key = f"{path}:{stat.st_mtime_ns}:{lookback}:{min_quality_pct}:{min_quality_usd}"
+        except Exception:
+            stat = None
+            cache_key = f"{path}:missing:{lookback}"
+        if not force and self._north_star_cache.get("key") == cache_key:
+            return dict(self._north_star_cache.get("scorecard") or {})
+
+        rows: list[dict] = []
+        if stat:
+            try:
+                with path.open(newline="", encoding="utf-8") as handle:
+                    rows = [
+                        dict(row)
+                        for row in csv.DictReader(handle)
+                        if str((row or {}).get("closed_at") or "").strip()
+                    ]
+            except Exception as exc:
+                log.debug("north-star scorecard read failed: %s", exc)
+
+        recent = rows[-lookback:]
+        total = len(recent)
+        raw_wins = 0
+        quality_wins = 0
+        pnl_usd = 0.0
+        by_coin: dict[str, list[dict]] = {}
+        exit_reasons: dict[str, int] = {}
+        for row in recent:
+            raw_win, quality_win = self._north_star_trade_win(row, min_quality_pct, min_quality_usd)
+            raw_wins += 1 if raw_win else 0
+            quality_wins += 1 if quality_win else 0
+            try:
+                pnl_usd += float(row.get("pnl_usd") or 0.0)
+            except Exception:
+                pass
+            coin = str(row.get("coin") or "").upper()
+            if coin:
+                by_coin.setdefault(coin, []).append(row)
+            reason = str(row.get("exit_reason") or "").strip() or "unknown"
+            exit_reasons[reason] = exit_reasons.get(reason, 0) + 1
+
+        raw_wr = (raw_wins / total) if total else 0.0
+        quality_wr = (quality_wins / total) if total else 0.0
+        stop_loss_count = exit_reasons.get("stop_loss", 0) + exit_reasons.get("micro_invalidation", 0)
+        stop_loss_rate = (stop_loss_count / total) if total else 0.0
+        active = bool(total >= min_trades and (quality_wr < target or pnl_usd < 0.0 or stop_loss_rate >= stop_cluster_rate))
+        critical_active = bool(total >= min_trades and (quality_wr < critical or pnl_usd < 0.0 and stop_loss_rate >= stop_cluster_rate))
+        scorecard = {
+            "enabled": True,
+            "active": active,
+            "critical": critical_active,
+            "lookback": total,
+            "target_quality_win_rate": round(target, 4),
+            "raw_win_rate": round(raw_wr, 4),
+            "quality_win_rate": round(quality_wr, 4),
+            "raw_wins": raw_wins,
+            "quality_wins": quality_wins,
+            "pnl_usd": round(pnl_usd, 2),
+            "stop_loss_rate": round(stop_loss_rate, 4),
+            "stop_loss_count": stop_loss_count,
+            "exit_reasons": exit_reasons,
+            "by_coin": by_coin,
+            "summary": (
+                f"quality WR {quality_wr * 100:.0f}% vs target {target * 100:.0f}%, "
+                f"PnL ${pnl_usd:+.2f}, stop/micro exits {stop_loss_rate * 100:.0f}%"
+            ) if total else "no closed trades yet",
+        }
+        self._north_star_cache = {"key": cache_key, "scorecard": scorecard}
+        return dict(scorecard)
+
+    def _north_star_entry_guard(self, coin: str, signal, order=None, *, event_starter: bool = False, pair_trade: bool = False) -> dict:
+        scorecard = self._north_star_scorecard()
+        if not scorecard.get("enabled", True):
+            return {"permitted": True, "active": False, "scorecard": scorecard, "summary": scorecard.get("summary", "")}
+        if not scorecard.get("active", False):
+            return {"permitted": True, "active": False, "scorecard": scorecard, "summary": scorecard.get("summary", "")}
+
+        sig = dict(self._last_signals.get(coin, {}) or {})
+        expectancy = dict(getattr(signal, "expectancy", {}) or sig.get("expectancy", {}) or {})
+        thesis = dict(getattr(signal, "thesis", {}) or sig.get("thesis", {}) or {})
+        conviction_entry = dict(thesis.get("conviction_entry") or sig.get("conviction_entry") or {})
+        direction = str(getattr(signal, "action", sig.get("action", "")) or "").upper()
+        signal_score = float(getattr(signal, "score", sig.get("score", 50.0)) or 50.0)
+        probability = float(expectancy.get("probability", sig.get("expectancy_probability", 0.50)) or 0.50)
+        expected_r = float(expectancy.get("expected_r", sig.get("expectancy_expected_r", 0.0)) or 0.0)
+        uncertainty = float(expectancy.get("uncertainty", sig.get("expectancy_uncertainty", 0.50)) or 0.50)
+        event_score = max(
+            float(sig.get("news_event_score") or 0.0),
+            float(sig.get("official_event_score") or 0.0),
+            float(sig.get("sec_event_score") or 0.0),
+        )
+        catalyst_score = max(
+            float(sig.get("news_catalyst_score") or 0.0),
+            max(0.0, float(sig.get("analyst_revision_score") or 0.0)),
+        )
+        event_like = bool(
+            event_starter
+            or sig.get("conviction_entry_event")
+            or conviction_entry.get("event_conviction")
+            or event_score >= float(getattr(self.cfg.trading, "thesis_runner_min_event_score", 2.75) or 2.75)
+            or catalyst_score >= float(getattr(self.cfg.trading, "thesis_runner_min_catalyst_score", 3.0) or 3.0)
+        )
+        pair_like = bool(pair_trade or sig.get("pair_trade_overlay"))
+
+        min_long = float(getattr(self.cfg.trading, "north_star_recovery_min_long_score", 72.0) or 72.0)
+        max_short = float(getattr(self.cfg.trading, "north_star_recovery_max_short_score", 28.0) or 28.0)
+        min_probability = float(getattr(self.cfg.trading, "north_star_recovery_min_probability", 0.60) or 0.60)
+        event_min_probability = float(getattr(self.cfg.trading, "north_star_event_min_probability", 0.55) or 0.55)
+        max_uncertainty = float(getattr(self.cfg.trading, "north_star_recovery_max_uncertainty", 0.48) or 0.48)
+        weak_score = (direction == "LONG" and signal_score < min_long) or (direction == "SHORT" and signal_score > max_short)
+        weak_probability = probability < (event_min_probability if event_like else min_probability)
+        too_uncertain = uncertainty > max_uncertainty
+
+        cooldown_window = max(1, int(getattr(self.cfg.trading, "north_star_coin_loss_cooldown_window", 8) or 8))
+        cooldown_losses = max(1, int(getattr(self.cfg.trading, "north_star_coin_loss_cooldown_losses", 2) or 2))
+        coin_rows = list((scorecard.get("by_coin") or {}).get(coin.upper(), []) or [])[-cooldown_window:]
+        recent_coin_losses = 0
+        for row in coin_rows:
+            raw_win, quality_win = self._north_star_trade_win(
+                row,
+                float(getattr(self.cfg.trading, "north_star_quality_win_min_pct", 0.15) or 0.15),
+                float(getattr(self.cfg.trading, "north_star_quality_win_min_usd", 0.10) or 0.10),
+            )
+            if not quality_win:
+                recent_coin_losses += 1
+        coin_hot_bad = len(coin_rows) >= cooldown_losses and recent_coin_losses >= cooldown_losses
+
+        blockers: list[str] = []
+        warnings: list[str] = []
+        if weak_score and not event_like and not pair_like:
+            blockers.append(f"north-star recovery needs A+ score ({signal_score:.0f} is not enough)")
+        if weak_probability and not pair_like:
+            blockers.append(f"north-star recovery needs better hit odds ({probability * 100:.0f}%)")
+        if too_uncertain and not event_like:
+            blockers.append("north-star recovery blocks high-uncertainty entries")
+        if coin_hot_bad and not event_like and not pair_like:
+            blockers.append(f"{coin.upper()} has too many recent non-quality outcomes")
+        if scorecard.get("critical") and weak_score and not event_like and not pair_like:
+            blockers.append("critical recovery mode blocks marginal entries")
+        if scorecard.get("stop_loss_rate", 0.0) >= float(getattr(self.cfg.trading, "north_star_stop_loss_cluster_rate", 0.30) or 0.30):
+            warnings.append("recent stop/micro exits are clustered")
+
+        size_multiplier = 1.0
+        if pair_like:
+            size_multiplier = min(size_multiplier, float(getattr(self.cfg.trading, "north_star_pair_size_multiplier", 0.50) or 0.50))
+        elif event_like:
+            size_multiplier = min(size_multiplier, float(getattr(self.cfg.trading, "north_star_event_size_multiplier", 0.55) or 0.55))
+            if weak_probability and signal_score < 60.0:
+                blockers.append("event starter is too shaky for recovery mode")
+        else:
+            size_multiplier = min(size_multiplier, float(getattr(self.cfg.trading, "north_star_recovery_size_multiplier", 0.45) or 0.45))
+
+        permitted = not blockers
+        summary = blockers[0] if blockers else (
+            f"north-star recovery active: {scorecard.get('summary', '')}; size x{size_multiplier:.2f}"
+        )
+        return {
+            "permitted": permitted,
+            "active": True,
+            "critical": bool(scorecard.get("critical")),
+            "scorecard": {k: v for k, v in scorecard.items() if k != "by_coin"},
+            "summary": summary,
+            "blockers": blockers[:4],
+            "warnings": warnings[:4],
+            "size_multiplier": round(max(0.05, min(1.0, size_multiplier)), 4),
+            "event_like": event_like,
+            "pair_like": pair_like,
+            "probability": round(probability, 4),
+            "expected_r": round(expected_r, 4),
+            "uncertainty": round(uncertainty, 4),
+        }
+
+    def _apply_north_star_guard_to_order(
+        self,
+        coin: str,
+        signal,
+        order,
+        *,
+        portfolio_usd: float,
+        current_position: str | None = None,
+        event_starter: bool = False,
+        pair_trade: bool = False,
+    ) -> bool:
+        guard = self._north_star_entry_guard(coin, signal, order, event_starter=event_starter, pair_trade=pair_trade)
+        self._last_signals.setdefault(coin, {})
+        self._last_signals[coin]["north_star_guard"] = guard
+        self._last_signals[coin]["north_star_guard_summary"] = guard.get("summary", "")
+        self._last_signals[coin]["north_star_quality_win_rate"] = (guard.get("scorecard") or {}).get("quality_win_rate", 0.0)
+        if not guard.get("permitted", True):
+            reason = str(guard.get("summary") or "north-star guard blocks entry")
+            log.info(f"[{coin}] 🧭 North-star guard blocks entry: {reason}")
+            signal.action = "FLAT"
+            signal.flat_reason = reason
+            signal.reason = reason
+            self._sync_signal_snapshot(coin, signal)
+            self._record_decision_snapshot(
+                coin,
+                portfolio_usd=portfolio_usd,
+                stage="north_star_guard_block",
+                signal=signal,
+                current_position=current_position,
+                blocked=True,
+            )
+            return False
+
+        multiplier = float(guard.get("size_multiplier", 1.0) or 1.0)
+        if multiplier < 0.999 and order is not None:
+            original_size = float(getattr(order, "size_usd", 0.0) or 0.0)
+            trimmed = original_size * multiplier
+            min_trade = float(getattr(self.cfg.trading, "min_trade_usd", 0.0) or 0.0)
+            if trimmed < min_trade and not (event_starter or pair_trade):
+                reason = f"north-star recovery trim would fall below ${min_trade:.0f} minimum"
+                log.info(f"[{coin}] 🧭 {reason}")
+                signal.action = "FLAT"
+                signal.flat_reason = reason
+                signal.reason = reason
+                self._sync_signal_snapshot(coin, signal)
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="north_star_guard_block",
+                    signal=signal,
+                    current_position=current_position,
+                    blocked=True,
+                )
+                return False
+            trimmed = max(min_trade if event_starter or pair_trade else 0.0, trimmed)
+            order.size_usd = trimmed
+            order.size_coin = trimmed / max(float(getattr(order, "price", getattr(signal, "price", 0.0)) or 0.0), 1e-9)
+            log.info(
+                f"[{coin}] 🧭 North-star recovery trims size ${original_size:.2f} → "
+                f"${trimmed:.2f}: {guard.get('summary', '')}"
+            )
         return True
 
     def _position_runner_profile(self, coin: str, signal=None, price: float | None = None) -> dict:
@@ -3878,6 +4155,24 @@ class TradingAgent:
                 conviction_pct=signal.score,
                 is_scale_in=False,
             )
+            if not self._apply_north_star_guard_to_order(
+                coin,
+                signal,
+                order,
+                portfolio_usd=portfolio_usd,
+                current_position="",
+                event_starter=not is_pair_trade,
+                pair_trade=is_pair_trade,
+            ):
+                guard = dict(self._last_signals.get(coin, {}).get("north_star_guard") or {})
+                execution["skipped"].append({
+                    "coin": coin,
+                    "direction": direction,
+                    "reason": guard.get("summary", "north-star guard blocked proactive allocation"),
+                    "north_star_guard": guard,
+                })
+                continue
+            final_size = float(order.size_usd or final_size)
             execution["summary"]["attempted_count"] += 1
             execution["attempts"].append({
                 "coin": coin,
@@ -5034,6 +5329,7 @@ class TradingAgent:
             "daily_pnl_history": getattr(self.risk, "daily_pnl_history", {}),
             "circuit_health": circuit_breaker_registry.health_check(),
             "loss_circuit_breaker": self.risk.circuit_breaker_status(),
+            "north_star": self._north_star_scorecard(),
             "trade_memory":  self._memory.get_stats(),
             "power":         self._last_power_status,
             "config": {
