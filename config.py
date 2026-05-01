@@ -295,12 +295,18 @@ class TradingConfig:
     thesis_runner_min_event_score: float = 2.75
     thesis_runner_min_catalyst_score: float = 3.0
     thesis_runner_min_hold_minutes: float = 1440.0
+    thesis_runner_event_min_hold_minutes: float = 10080.0
+    thesis_runner_ath_min_hold_minutes: float = 10080.0
+    thesis_runner_strong_min_hold_minutes: float = 4320.0
     thesis_runner_defer_take_profit: bool = True
-    thesis_runner_defer_trailing_stop_minutes: float = 720.0
+    thesis_runner_defer_trailing_stop_minutes: float = 1440.0
     thesis_runner_take_profit_extension_pct: float = 0.06
     thesis_runner_take_profit_extension_r: float = 1.15
     thesis_runner_decay_discount: float = 24.0
-    thesis_runner_max_flat_cycles: int = 12
+    thesis_runner_max_flat_cycles: int = 720
+    thesis_runner_event_max_flat_cycles: int = 2160
+    thesis_runner_adverse_r_limit: float = 0.80
+    thesis_runner_time_stop_bypass: bool = True
     thesis_runner_defer_soft_reversal: bool = True
     ath_runner_enabled: bool = True
 

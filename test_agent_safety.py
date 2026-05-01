@@ -3418,6 +3418,79 @@ def test_thesis_runner_still_honors_stop_loss() -> None:
     assert "GOOGL" not in agent.risk.positions
 
 
+def test_thesis_runner_blocks_time_stop_for_multi_day_event_hold() -> None:
+    cfg = build_config()
+    cfg.trading.coins = ["GOOGL"]
+    cfg.trading.instrument_types.update({"GOOGL": "equity"})
+    cfg.trading.decision_dataset_enabled = False
+    cfg.trading.feature_store_enabled = False
+    cfg.trading.time_stop_minutes = 60.0
+    cfg.trading.time_stop_min_tp_progress = 0.25
+    cfg.trading.thesis_runner_event_min_hold_minutes = 10080.0
+    cfg.trading.thesis_runner_event_max_flat_cycles = 2160
+    agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=10000.0, supported_symbols=["GOOGL"])])
+    agent._tradable_coins = ["GOOGL"]
+    agent._tradable_coin_set = {"GOOGL"}
+    _install_runner_position(agent, "GOOGL")
+    agent.risk.positions["GOOGL"].opened_at = time.time() - 2 * 3600
+    agent._last_signals["GOOGL"].update({
+        "live_price": 101.0,
+        "thesis": {
+            "state": "NO_TRADE",
+            "permitted": False,
+            "conviction_score": 68.0,
+            "conflict_points": 0,
+        },
+    })
+    agent._flat_streak["GOOGL"] = 100
+    signal = SimpleNamespace(
+        action="FLAT",
+        score=50.0,
+        price=101.0,
+        expectancy={"score": 48.0, "uncertainty": 0.50},
+        thesis={"state": "NO_TRADE", "permitted": False, "conflict_points": 0},
+    )
+
+    assert agent._detect_position_invalidation("GOOGL", "LONG", signal) == ""
+    decay = agent._assess_conviction_decay("GOOGL", "LONG", signal)
+    assert decay["should_exit"] is False
+    assert decay["summary"].startswith("runner hold:")
+
+
+def test_thesis_runner_still_honors_hard_structure_invalidation() -> None:
+    cfg = build_config()
+    cfg.trading.coins = ["GOOGL"]
+    cfg.trading.instrument_types.update({"GOOGL": "equity"})
+    cfg.trading.decision_dataset_enabled = False
+    cfg.trading.feature_store_enabled = False
+    cfg.trading.time_stop_minutes = 60.0
+    agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=10000.0, supported_symbols=["GOOGL"])])
+    agent._tradable_coins = ["GOOGL"]
+    agent._tradable_coin_set = {"GOOGL"}
+    _install_runner_position(agent, "GOOGL")
+    agent.risk.positions["GOOGL"].opened_at = time.time() - 2 * 3600
+    agent._last_signals["GOOGL"].update({
+        "live_price": 101.0,
+        "structure_trend": "DOWNTREND",
+        "orderbook_breakout_state": "CONFIRMED_BEARISH_BREAKDOWN",
+        "thesis": {
+            "state": "NO_TRADE",
+            "permitted": False,
+            "conviction_score": 68.0,
+            "conflict_points": 2,
+        },
+    })
+    signal = SimpleNamespace(
+        action="FLAT",
+        score=50.0,
+        price=101.0,
+        expectancy={"score": 48.0, "uncertainty": 0.50},
+        thesis={"state": "NO_TRADE", "permitted": False, "conflict_points": 2},
+    )
+
+    assert agent._detect_position_invalidation("GOOGL", "LONG", signal) == "structure_invalidation"
+
+
 def test_pair_trade_book_builds_equity_long_crypto_short_overlay() -> None:
     cfg = build_config()
     cfg.trading.min_trade_usd = 100.0
@@ -7283,6 +7356,10 @@ def run_all() -> None:
     print("PASS thesis runner TP deferral")
     test_thesis_runner_still_honors_stop_loss()
     print("PASS thesis runner stop-loss integrity")
+    test_thesis_runner_blocks_time_stop_for_multi_day_event_hold()
+    print("PASS thesis runner multi-day time-stop bypass")
+    test_thesis_runner_still_honors_hard_structure_invalidation()
+    print("PASS thesis runner hard invalidation integrity")
     test_pair_trade_book_builds_equity_long_crypto_short_overlay()
     print("PASS pair trade overlay book")
     test_north_star_guard_blocks_marginal_recovery_entries()

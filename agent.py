@@ -2845,7 +2845,15 @@ class TradingAgent:
         return True
 
     def _position_runner_profile(self, coin: str, signal=None, price: float | None = None) -> dict:
-        inactive = {"active": False, "reason": "", "score": 0.0, "hold_minutes": 0.0}
+        inactive = {
+            "active": False,
+            "reason": "",
+            "score": 0.0,
+            "hold_minutes": 0.0,
+            "target_hold_minutes": 0.0,
+            "hold_remaining_minutes": 0.0,
+            "max_flat_cycles": int(getattr(self.cfg.trading, "thesis_runner_max_flat_cycles", 720) or 720),
+        }
         if not getattr(self.cfg.trading, "thesis_runner_enabled", True):
             return inactive
         pos = self.risk.positions.get(coin)
@@ -2915,6 +2923,12 @@ class TradingAgent:
         min_event = float(getattr(self.cfg.trading, "thesis_runner_min_event_score", 2.75) or 2.75)
         min_catalyst = float(getattr(self.cfg.trading, "thesis_runner_min_catalyst_score", 3.0) or 3.0)
         min_runner_hold = float(getattr(self.cfg.trading, "thesis_runner_min_hold_minutes", 1440.0) or 1440.0)
+        event_runner_hold = float(getattr(self.cfg.trading, "thesis_runner_event_min_hold_minutes", min_runner_hold) or min_runner_hold)
+        ath_runner_hold = float(getattr(self.cfg.trading, "thesis_runner_ath_min_hold_minutes", min_runner_hold) or min_runner_hold)
+        strong_runner_hold = float(getattr(self.cfg.trading, "thesis_runner_strong_min_hold_minutes", min_runner_hold) or min_runner_hold)
+        adverse_limit = float(getattr(self.cfg.trading, "thesis_runner_adverse_r_limit", 0.80) or 0.80)
+        default_max_flat = int(getattr(self.cfg.trading, "thesis_runner_max_flat_cycles", 720) or 720)
+        event_max_flat = int(getattr(self.cfg.trading, "thesis_runner_event_max_flat_cycles", default_max_flat) or default_max_flat)
 
         event_conviction = bool(
             sig.get("conviction_entry_event")
@@ -2976,6 +2990,9 @@ class TradingAgent:
         entry_score = float(entry_ctx.get("score") or 0.0)
         still_same_or_flat = signal_action in {"", "FLAT", direction}
         favorable_move = self._signed_move(direction, pos.entry_price, live_price)
+        risk_distance = abs(pos.entry_price - pos.stop_loss) if pos.stop_loss > 0 else 0.0
+        adverse_move = max(0.0, -favorable_move)
+        adverse_r = adverse_move / max(risk_distance, 1e-9) if risk_distance > 0 else 0.0
 
         event_runner = (
             instrument_type == "equity"
@@ -2993,12 +3010,25 @@ class TradingAgent:
             and max(score, entry_score) >= (min_score + 6.0)
             and not hard_thesis_conflict
         )
-        early_runner_hold = (
-            event_runner
-            and hold_minutes < min_runner_hold
-            and favorable_move >= -(abs(pos.entry_price - pos.stop_loss) * 0.35 if pos.stop_loss > 0 else 0.0)
+        target_hold = min_runner_hold
+        if event_runner:
+            target_hold = max(target_hold, event_runner_hold)
+        if ath_runner:
+            target_hold = max(target_hold, ath_runner_hold)
+        if high_conviction_runner:
+            target_hold = max(target_hold, strong_runner_hold)
+        protected_hold_window = (
+            (event_runner or ath_runner or high_conviction_runner)
+            and hold_minutes < target_hold
+            and adverse_r < adverse_limit
         )
-        active = bool((event_runner or ath_runner or high_conviction_runner or early_runner_hold) and (still_same_or_flat or event_runner or ath_runner))
+        active = bool(
+            (event_runner or ath_runner or high_conviction_runner or protected_hold_window)
+            and not hard_thesis_conflict
+            and adverse_r < adverse_limit
+            and (still_same_or_flat or event_runner or ath_runner or protected_hold_window)
+        )
+        max_flat_cycles = event_max_flat if (event_runner or ath_runner) else default_max_flat
         reasons: list[str] = []
         if event_runner:
             reasons.append("event thesis")
@@ -3006,8 +3036,13 @@ class TradingAgent:
             reasons.append("breakout/ATH continuation")
         if high_conviction_runner:
             reasons.append("strong structure")
-        if early_runner_hold and "event thesis" not in reasons:
-            reasons.append("event thesis still inside hold window")
+        if protected_hold_window:
+            if event_runner:
+                reasons.append("multi-day event hold")
+            elif ath_runner:
+                reasons.append("runner breakout hold")
+            else:
+                reasons.append("strong thesis hold")
 
         return {
             "active": active,
@@ -3019,6 +3054,12 @@ class TradingAgent:
             "direction": direction,
             "hold_minutes": round(hold_minutes, 2),
             "min_hold_remaining_minutes": round(max(0.0, min_runner_hold - hold_minutes), 2),
+            "target_hold_minutes": round(target_hold, 2),
+            "hold_remaining_minutes": round(max(0.0, target_hold - hold_minutes), 2),
+            "max_flat_cycles": max_flat_cycles,
+            "protected_hold_window": protected_hold_window,
+            "adverse_r": round(adverse_r, 4),
+            "adverse_r_limit": adverse_limit,
             "event_runner": event_runner,
             "ath_runner": ath_runner,
             "high_conviction_runner": high_conviction_runner,
@@ -3211,7 +3252,11 @@ class TradingAgent:
         hold_threshold = float(getattr(self.cfg.trading, "conviction_decay_hold_threshold", 36.0) or 36.0)
         summary = "; ".join(reasons[:3]) if reasons else "conviction is stable"
         if runner_profile.get("active"):
-            max_flat = int(getattr(self.cfg.trading, "thesis_runner_max_flat_cycles", 12) or 12)
+            max_flat = int(
+                runner_profile.get("max_flat_cycles")
+                or getattr(self.cfg.trading, "thesis_runner_max_flat_cycles", 720)
+                or 720
+            )
             if flat_cycles < max_flat:
                 return {
                     "should_exit": False,
@@ -3277,6 +3322,22 @@ class TradingAgent:
         if hold_minutes >= htf_min_minutes and mtf_against and (not thesis_permitted or thesis_conflicts >= 1):
             return "htf_invalidation"
         if hold_minutes >= time_stop_minutes and tp_progress < time_stop_min_progress and (not thesis_permitted or thesis_state == "NO_TRADE"):
+            runner_profile = self._position_runner_profile(coin, signal, live_price)
+            runner_adverse_limit = float(
+                runner_profile.get("adverse_r_limit")
+                or getattr(self.cfg.trading, "thesis_runner_adverse_r_limit", 0.80)
+                or 0.80
+            )
+            hard_runner_conflict = (structure_against or breakout_against or mtf_against) and (not thesis_permitted or thesis_conflicts >= 1)
+            if (
+                getattr(self.cfg.trading, "thesis_runner_time_stop_bypass", True)
+                and runner_profile.get("active")
+                and adverse_r < runner_adverse_limit
+                and not hard_runner_conflict
+            ):
+                self._last_signals.setdefault(coin, {})
+                self._last_signals[coin]["runner_profile"] = runner_profile
+                return ""
             return "time_stop"
         return ""
 
@@ -5396,16 +5457,31 @@ class TradingAgent:
                 p_out["memory_cooldown"]    = sig.get("memory_cooldown", 0)
                 entry_ctx = dict((pos.metadata or {}).get("entry_context", {}) or {})
                 entry_thesis = dict(entry_ctx.get("thesis", {}) or {})
+                runner_profile = self._position_runner_profile(
+                    coin,
+                    price=float(p_out.get("current_price") or 0.0),
+                )
+                runner_reason = str(runner_profile.get("reason") or "").strip()
+                p_out["runner_active"] = bool(runner_profile.get("active"))
+                p_out["runner_reason"] = runner_reason
+                p_out["runner_hold_remaining_minutes"] = runner_profile.get("hold_remaining_minutes", 0.0)
+                p_out["runner_target_hold_minutes"] = runner_profile.get("target_hold_minutes", 0.0)
                 p_out["entry_logic"] = (
                     entry_ctx.get("reason")
                     or entry_thesis.get("summary")
                     or sig.get("thesis_summary", "")
                 )
-                p_out["current_logic"] = (
-                    sig.get("decision_reason")
-                    or sig.get("thesis_summary", "")
-                    or ""
-                )
+                if runner_profile.get("active"):
+                    p_out["current_logic"] = (
+                        f"Runner hold: {runner_reason or 'strong thesis'}; "
+                        f"{p_out.get('invalidation_short') or p_out.get('invalidation') or 'pre-planned invalidation'} still controls."
+                    )
+                else:
+                    p_out["current_logic"] = (
+                        sig.get("decision_reason")
+                        or sig.get("thesis_summary", "")
+                        or ""
+                    )
                 p_out["entry_logic_short"] = self._concise_trade_reason(p_out.get("entry_logic", ""))
                 p_out["current_logic_short"] = self._concise_trade_reason(
                     p_out.get("current_logic", ""),

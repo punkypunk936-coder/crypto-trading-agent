@@ -143,6 +143,24 @@
     background: rgba(91, 140, 255, 0.18);
     border-color: rgba(91, 140, 255, 0.42);
   }
+  .command-search-btn {
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.7px;
+    font-family: var(--mono);
+    cursor: pointer;
+    border: 1px solid rgba(235, 237, 229, 0.14);
+    background: rgba(255,255,255,0.045);
+    color: var(--text);
+    transition: all 0.2s ease;
+  }
+  .command-search-btn:hover {
+    border-color: rgba(91, 140, 255, 0.34);
+    background: rgba(91, 140, 255, 0.10);
+    color: #dbe5ff;
+  }
   .badge {
     padding: 6px 14px;
     border-radius: 20px;
@@ -905,6 +923,139 @@
     flex-wrap: wrap;
     gap: 8px;
     margin-top: 10px;
+  }
+  .command-palette-shell[hidden] {
+    display: none;
+  }
+  .command-palette-shell {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 72px 16px 24px;
+    background: rgba(0,0,0,0.62);
+    backdrop-filter: blur(14px);
+  }
+  .command-palette {
+    width: min(760px, 100%);
+    max-height: min(76vh, 720px);
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    border: 1px solid rgba(235, 237, 229, 0.12);
+    border-radius: 8px;
+    background: #111312;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.42);
+    overflow: hidden;
+  }
+  .command-input-wrap {
+    border-bottom: 1px solid rgba(235, 237, 229, 0.08);
+    padding: 12px;
+    background: rgba(255,255,255,0.025);
+  }
+  .command-input {
+    width: 100%;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 18px;
+    line-height: 1.4;
+    padding: 4px 2px;
+  }
+  .command-body {
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(220px, 0.85fr) minmax(280px, 1.15fr);
+  }
+  .command-results {
+    min-height: 0;
+    overflow: auto;
+    border-right: 1px solid rgba(235, 237, 229, 0.08);
+    padding: 8px;
+  }
+  .command-result-item {
+    width: 100%;
+    display: grid;
+    gap: 5px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+    text-align: left;
+    border-radius: 8px;
+    padding: 10px;
+    cursor: pointer;
+  }
+  .command-result-item:hover,
+  .command-result-item.active {
+    border-color: rgba(91, 140, 255, 0.24);
+    background: rgba(91, 140, 255, 0.10);
+    color: var(--text);
+  }
+  .command-result-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .command-result-symbol {
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--text);
+  }
+  .command-result-note {
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--text-secondary);
+  }
+  .command-detail {
+    min-height: 0;
+    overflow: auto;
+    padding: 16px;
+  }
+  .command-detail-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .command-detail-symbol {
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 800;
+  }
+  .command-detail-card {
+    display: grid;
+    gap: 10px;
+  }
+  .command-detail-line {
+    border: 1px solid rgba(235, 237, 229, 0.08);
+    border-radius: 8px;
+    padding: 10px;
+    background: rgba(255,255,255,0.025);
+  }
+  .command-detail-label {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    margin-bottom: 5px;
+  }
+  .command-detail-value {
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  .command-empty {
+    padding: 18px 12px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
   }
   .volume-shell {
     display: grid;
@@ -1917,6 +2068,17 @@
       align-items: flex-start;
       gap: 4px;
     }
+    .command-palette-shell {
+      padding-top: 48px;
+    }
+    .command-body {
+      grid-template-columns: 1fr;
+    }
+    .command-results {
+      max-height: 220px;
+      border-right: 0;
+      border-bottom: 1px solid rgba(235, 237, 229, 0.08);
+    }
     .daily-sheet-header {
       display: none;
     }
@@ -1944,12 +2106,32 @@
     <h1>PUNKY TRADING AGENT</h1>
   </div>
   <div class="header-right">
+    <button class="command-search-btn" id="command-search-btn" type="button" onclick="openCommandSearch()">FIND ASSET</button>
     <a href="/share" target="_blank" style="padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;font-family:var(--mono);letter-spacing:0.5px;background:var(--blue-dim);color:var(--blue);border:1px solid rgba(91,140,255,0.3);text-decoration:none;transition:all 0.2s ease;">Share P&amp;L</a>
     <button class="kill-btn" id="kill-btn" onclick="handleKill()">KILL SWITCH</button>
     <span id="mode-badge" class="badge badge-offline">OFFLINE</span>
     <span id="last-update"></span>
   </div>
 </header>
+
+<div class="command-palette-shell" id="command-palette-shell" hidden>
+  <div class="command-palette" role="dialog" aria-modal="true" aria-label="Find asset">
+    <div class="command-input-wrap">
+      <input
+        id="command-search-input"
+        class="command-input"
+        type="text"
+        autocomplete="off"
+        placeholder="Type a ticker..."
+        oninput="handleCommandSearch(this.value)"
+      />
+    </div>
+    <div class="command-body">
+      <div class="command-results" id="command-search-results"></div>
+      <div class="command-detail" id="command-search-detail"></div>
+    </div>
+  </div>
+</div>
 
 <!-- KPI Cards -->
 <div class="grid-4" id="kpis">
@@ -2871,6 +3053,10 @@ let latestLLMRefereeReport = { verdicts: {} };
 let latestPlaybookDistillerReport = { summary: {}, assets: {} };
 let latestProactiveTraderReport = { summary: {} };
 let currentTickerSearchQuery = '';
+let commandSearchOpen = false;
+let commandSearchIndex = 0;
+let commandSearchQuery = '';
+let commandSearchMatches = [];
 let tradexyzLookupBusy = false;
 let refreshRequest = null;
 let refreshTimer = null;
@@ -3257,6 +3443,53 @@ document.addEventListener('click', (event) => {
   setActionBoardCategory(category);
 });
 
+document.addEventListener('click', (event) => {
+  if (!event.target || !event.target.closest) return;
+  const resultButton = event.target.closest('.command-result-item[data-command-ticker]');
+  if (resultButton) {
+    event.preventDefault();
+    selectCommandTicker(resultButton.dataset.commandTicker);
+    return;
+  }
+  if (event.target.id === 'command-palette-shell') {
+    closeCommandSearch();
+  }
+});
+
+document.addEventListener('keydown', (event) => {
+  const key = String(event.key || '').toLowerCase();
+  const commandFind = (event.ctrlKey || event.metaKey) && key === 'f';
+  const commandOpen = commandFind || ((event.ctrlKey || event.metaKey) && key === 'k');
+  const slashOpen = key === '/' && !event.ctrlKey && !event.metaKey && !event.altKey && !isEditableTarget(event.target);
+  if (commandOpen || slashOpen) {
+    event.preventDefault();
+    openCommandSearch();
+    return;
+  }
+  if (!commandSearchOpen) return;
+  if (key === 'escape') {
+    event.preventDefault();
+    closeCommandSearch();
+    return;
+  }
+  if (key === 'arrowdown') {
+    event.preventDefault();
+    commandSearchIndex = Math.min(commandSearchIndex + 1, Math.max(0, commandSearchMatches.length - 1));
+    renderCommandSearch();
+    return;
+  }
+  if (key === 'arrowup') {
+    event.preventDefault();
+    commandSearchIndex = Math.max(0, commandSearchIndex - 1);
+    renderCommandSearch();
+    return;
+  }
+  if (key === 'enter') {
+    event.preventDefault();
+    activateCommandSearchSelection();
+  }
+});
+
 function humanizeKey(value) {
   return String(value == null ? '' : value)
     .trim()
@@ -3535,6 +3768,158 @@ function renderTickerSearch(value) {
 
 function handleTickerSearch(value) {
   renderTickerSearch(value);
+}
+
+function commandSearchCandidates(query) {
+  const normalized = String(query || '').trim().toUpperCase();
+  const seen = new Set();
+  const candidates = [];
+  trackedCoins().forEach((coin) => {
+    const ticker = String(coin || '').trim().toUpperCase();
+    if (!ticker || seen.has(ticker)) return;
+    const item = dashboardItemForCoin(ticker);
+    if (!item) return;
+    let matchRank = 4;
+    if (!normalized) {
+      matchRank = 3;
+    } else if (ticker === normalized) {
+      matchRank = 0;
+    } else if (ticker.startsWith(normalized)) {
+      matchRank = 1;
+    } else if (ticker.includes(normalized)) {
+      matchRank = 2;
+    }
+    if (matchRank >= 4) return;
+    seen.add(ticker);
+    candidates.push({ item, matchRank });
+  });
+  return candidates
+    .sort((a, b) => {
+      if (a.matchRank !== b.matchRank) return a.matchRank - b.matchRank;
+      const importance = callImportanceScore(b.item) - callImportanceScore(a.item);
+      if (importance) return importance;
+      return String(a.item.coin || '').localeCompare(String(b.item.coin || ''));
+    })
+    .slice(0, normalized ? 12 : 8)
+    .map((entry) => entry.item);
+}
+
+function commandResultHtml(item, index, active) {
+  const safe = item || {};
+  const modeClass = safe.tradable ? 'signal-mode-tradable' : 'signal-mode-watch';
+  return '<button class="command-result-item' + (active ? ' active' : '') + '" type="button" data-command-ticker="' + esc(safe.coin || '') + '">'
+    + '<div class="command-result-top">'
+      + '<span class="command-result-symbol">' + esc(safe.coin || '--') + '</span>'
+      + '<span class="' + modeClass + '">' + esc(surfaceModeBadge(safe.mode_badge, safe.tradable)) + '</span>'
+    + '</div>'
+    + '<div class="command-result-note">' + esc(simpleActionText(safe)) + ' • ' + esc(simpleNextText(safe, 64)) + '</div>'
+    + '<div class="command-result-note">' + esc(simpleInvalidationText(safe, 68)) + '</div>'
+  + '</button>';
+}
+
+function commandDetailLine(label, value) {
+  return '<div class="command-detail-line">'
+    + '<div class="command-detail-label">' + esc(label) + '</div>'
+    + '<div class="command-detail-value">' + esc(value || '--') + '</div>'
+  + '</div>';
+}
+
+function commandDetailHtml(item) {
+  const safe = item || {};
+  if (!safe.coin) {
+    return '<div class="command-empty">Type a ticker to pull the agent call, level, invalidation, and thesis.</div>';
+  }
+  const modeClass = safe.tradable ? 'signal-mode-tradable' : 'signal-mode-watch';
+  const status = String(safe.status || '').toUpperCase();
+  const holdingText = status.startsWith('OPEN_')
+    ? simpleThesisText(safe, 90)
+    : surfaceModeMeta(safe.mode_meta, safe.tradable);
+  return '<div class="command-detail-title">'
+      + '<div class="command-detail-symbol">' + esc(safe.coin || '--') + '</div>'
+      + '<span class="' + modeClass + '">' + esc(surfaceModeBadge(safe.mode_badge, safe.tradable)) + '</span>'
+    + '</div>'
+    + '<div class="search-chip-row">' + setupStanceChipHtml(safe) + probabilityChipHtml(safe) + eventChipHtml(safe) + '</div>'
+    + '<div class="command-detail-card">'
+      + commandDetailLine('Call', simpleActionText(safe))
+      + commandDetailLine('Level', simpleNextText(safe, 96))
+      + commandDetailLine('Invalid if', simpleInvalidationText(safe, 96))
+      + commandDetailLine(status.startsWith('OPEN_') ? 'Holding because' : 'Why', simpleThesisText(safe, 96))
+      + commandDetailLine('Mode', holdingText)
+    + '</div>'
+    + priceSourceHtml(safe);
+}
+
+function renderCommandSearch() {
+  const results = document.getElementById('command-search-results');
+  const detail = document.getElementById('command-search-detail');
+  if (!results || !detail) return;
+  commandSearchMatches = commandSearchCandidates(commandSearchQuery);
+  if (commandSearchIndex >= commandSearchMatches.length) commandSearchIndex = Math.max(0, commandSearchMatches.length - 1);
+  if (commandSearchIndex < 0) commandSearchIndex = 0;
+  if (!commandSearchMatches.length) {
+    const normalized = String(commandSearchQuery || '').trim().toUpperCase();
+    results.innerHTML = '<div class="command-empty">' + esc(normalized ? ('No live read for ' + normalized + '.') : 'No active ideas loaded yet.') + '</div>';
+    detail.innerHTML = '<div class="command-empty">Try another tracked ticker.</div>';
+    return;
+  }
+  results.innerHTML = commandSearchMatches
+    .map((item, index) => commandResultHtml(item, index, index === commandSearchIndex))
+    .join('');
+  detail.innerHTML = commandDetailHtml(commandSearchMatches[commandSearchIndex]);
+}
+
+function openCommandSearch(seed='') {
+  const shell = document.getElementById('command-palette-shell');
+  const input = document.getElementById('command-search-input');
+  if (!shell || !input) return;
+  const nextValue = String(seed || currentTickerSearchQuery || '').trim().toUpperCase();
+  shell.hidden = false;
+  commandSearchOpen = true;
+  commandSearchQuery = nextValue;
+  commandSearchIndex = 0;
+  input.value = nextValue;
+  renderCommandSearch();
+  setTimeout(() => {
+    input.focus();
+    input.select();
+  }, 0);
+}
+
+function closeCommandSearch() {
+  const shell = document.getElementById('command-palette-shell');
+  if (!shell) return;
+  shell.hidden = true;
+  commandSearchOpen = false;
+}
+
+function selectCommandTicker(ticker) {
+  const normalized = String(ticker || '').trim().toUpperCase();
+  if (!normalized) return;
+  commandSearchQuery = normalized;
+  currentTickerSearchQuery = normalized;
+  const commandInput = document.getElementById('command-search-input');
+  const legacyInput = document.getElementById('ticker-search-input');
+  if (commandInput) commandInput.value = normalized;
+  if (legacyInput) legacyInput.value = normalized;
+  renderTickerSearch(normalized);
+  renderCommandSearch();
+}
+
+function activateCommandSearchSelection() {
+  const item = commandSearchMatches[commandSearchIndex];
+  if (!item) return;
+  selectCommandTicker(item.coin);
+}
+
+function handleCommandSearch(value) {
+  commandSearchQuery = String(value == null ? '' : value);
+  commandSearchIndex = 0;
+  renderCommandSearch();
+}
+
+function isEditableTarget(target) {
+  if (!target || !target.closest) return false;
+  return Boolean(target.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]'));
 }
 
 function formatUsd(value) {
@@ -4415,6 +4800,7 @@ async function refresh() {
     updateTickerSearchOptions();
     const searchInput = document.getElementById('ticker-search-input');
     renderTickerSearch(searchInput ? searchInput.value : currentTickerSearchQuery);
+    if (commandSearchOpen) renderCommandSearch();
 
     // Performance Stats
     document.getElementById('stat-best').innerHTML   = '<span class="green">' + fmtD(st.best) + '</span>';
