@@ -1250,6 +1250,61 @@ def test_macro_news_merges_pre_event_intc_catalyst_flow() -> None:
         news_module._source_backoff.update(original_backoff)
 
 
+def test_macro_news_recognizes_cerebras_pre_ipo_listing_catalyst() -> None:
+    class _Resp:
+        def __init__(self, status_code: int, *, content: bytes = b""):
+            self.status_code = status_code
+            self.content = content
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise requests.HTTPError(f"{self.status_code} boom")
+
+    import requests
+
+    original_get = news_module.requests.get
+    original_cache = dict(news_module._cache)
+    original_backoff = dict(news_module._source_backoff)
+    original_event_feed = news_module.equity_event_feeds.get_equity_event_feed
+    try:
+        news_module._cache.clear()
+        news_module._source_backoff.clear()
+        news_module.equity_event_feeds.get_equity_event_feed = (
+            lambda *args, **kwargs: equity_event_feeds_module.EquityEventFeed(coin="CBRS")
+        )
+
+        def fake_get(url, params=None, **kwargs):
+            if "feeds.finance.yahoo.com" in url:
+                return _Resp(200, content=b'<?xml version="1.0"?><rss><channel></channel></rss>')
+            if "news.google.com" in url:
+                return _Resp(
+                    200,
+                    content=(
+                        b'<?xml version="1.0"?><rss><channel>'
+                        b"<item><title>Cerebras Systems pre-IPO perpetual launch tracks wafer scale engine AI demand and capacity expansion</title></item>"
+                        b"</channel></rss>"
+                    ),
+                )
+            raise AssertionError(f"unexpected url {url}")
+
+        news_module.requests.get = fake_get
+        signal = news_module.get_news_signal("CBRS", auth_token="")
+        assert signal.valid is True
+        assert signal.article_count == 1
+        assert signal.score >= 60.0
+        assert signal.catalyst_score >= 4.0
+        assert "pre-IPO listing" in signal.catalyst_summary
+        assert "pre_ipo_listing" in signal.event_tags
+        assert "ipo_event" in signal.event_tags
+    finally:
+        news_module.requests.get = original_get
+        news_module.equity_event_feeds.get_equity_event_feed = original_event_feed
+        news_module._cache.clear()
+        news_module._cache.update(original_cache)
+        news_module._source_backoff.clear()
+        news_module._source_backoff.update(original_backoff)
+
+
 def test_equity_event_feed_collects_ir_sec_options_and_analyst_revisions() -> None:
     class _Resp:
         def __init__(self, status_code: int, *, json_payload=None, text: str = ""):
@@ -3140,6 +3195,20 @@ def test_default_crypto_category_includes_mon() -> None:
     catalog = hyperliquid_markets_module._catalog_from_fallback()
     assert catalog["MON"]["instrument_type"] == "crypto"
     assert catalog["MON"]["market_type"] == "perp"
+
+
+def test_tradexyz_pre_ipo_cerebras_defaults_to_event_theme() -> None:
+    cfg = Config()
+    assert "CBRS" in cfg.trading.coins
+    assert "CBRS" in cfg.trading.analysis_coins
+    assert cfg.trading.instrument_types["CBRS"] == "equity"
+    assert cfg.trading.asset_category_map["CBRS"] == ["pre_ipo", "semis_memory", "ai_infra"]
+    assert cfg.trading.portfolio_theme_map["CBRS"] == "PRE_IPO_EVENT"
+    catalog = hyperliquid_markets_module._catalog_from_fallback()
+    assert catalog["CBRS"]["venue_symbol"] == "xyz:CBRS"
+    assert catalog["CBRS"]["market_type"] == "perp"
+    assert catalog["CBRS"]["live_tradeable"] is True
+    assert catalog["CBRS"]["pre_ipo"] is True
 
 
 def test_proactive_intelligence_builds_full_research_stack() -> None:
@@ -5279,6 +5348,33 @@ def test_event_risk_budget_trims_and_blocks_crowded_pre_event_starters() -> None
     assert "event risk" in full["summary"].lower()
 
 
+def test_pre_ipo_symbols_automatically_use_tighter_event_budget() -> None:
+    cfg = build_config()
+    cfg.trading.min_trade_usd = 50.0
+    cfg.trading.event_risk_budget_max_single_pct = 0.02
+    cfg.trading.pre_ipo_event_risk_budget_max_single_pct = 0.0125
+    cfg.trading.pre_ipo_event_risk_budget_max_theme_pct = 0.025
+    result = portfolio_guard_module.assess_correlation(
+        cfg.trading,
+        coin="CBRS",
+        direction="LONG",
+        instrument_type="equity",
+        portfolio_usd=10000.0,
+        proposed_size_usd=600.0,
+        open_positions=[],
+        pending_orders=[],
+        event_starter=False,
+    )
+    assert result["permitted"] is True
+    assert result["theme"] == "PRE_IPO_EVENT"
+    assert result["event_budget"]["active"] is True
+    assert result["event_budget"]["pre_ipo"] is True
+    assert result["event_budget"]["single_trade_cap_pct"] == 1.25
+    assert result["event_budget_size_multiplier"] <= 0.209
+    assert result["size_multiplier"] < result["event_budget_size_multiplier"]
+    assert "pre-ipo" in " ".join(result["warnings"]).lower()
+
+
 def test_background_orderbook_feed_enriches_signal_with_persistence_history() -> None:
     class FakeFeed:
         def __init__(self, snapshots):
@@ -5657,7 +5753,9 @@ def test_hyperliquid_market_catalog_discovers_unknown_tradexyz_equities() -> Non
     try:
         hyperliquid_markets_module._CATALOG_CACHE["ts"] = 0.0
         hyperliquid_markets_module._CATALOG_CACHE["catalog"] = {}
-        hyperliquid_markets_module._fetch_perp_names = lambda dex="": {"BTC"} if not dex else {"xyz:NVDA", "xyz:CRWV", "xyz:EWY"}
+        hyperliquid_markets_module._fetch_perp_names = (
+            lambda dex="": {"BTC"} if not dex else {"xyz:NVDA", "xyz:CRWV", "xyz:EWY", "xyz:NEWIPO"}
+        )
         hyperliquid_markets_module._fetch_spot_pairs = lambda: {}
         catalog = hyperliquid_markets_module.get_hyperliquid_market_catalog(force_refresh=True)
         assert catalog["NVDA"]["venue_symbol"] == "xyz:NVDA"
@@ -5665,6 +5763,9 @@ def test_hyperliquid_market_catalog_discovers_unknown_tradexyz_equities() -> Non
         assert catalog["NVDA"]["dex"] == "xyz"
         assert catalog["CRWV"]["display_name"] == "CoreWeave"
         assert catalog["EWY"]["instrument_type"] == "index"
+        assert catalog["NEWIPO"]["venue_symbol"] == "xyz:NEWIPO"
+        assert catalog["NEWIPO"]["instrument_type"] == "equity"
+        assert catalog["NEWIPO"]["categories"] == ["other_stocks"]
     finally:
         hyperliquid_markets_module._fetch_perp_names = original_perps
         hyperliquid_markets_module._fetch_spot_pairs = original_spots
@@ -5707,6 +5808,9 @@ def test_hyperliquid_market_catalog_enables_full_tradexyz_catalog_and_prefers_pe
         assert catalog["TSLA"]["venue_symbol"] == "xyz:TSLA"
         assert catalog["TSLA"]["instrument_type"] == "equity"
         assert catalog["AAPL"]["market_type"] == "perp"
+        assert catalog["CBRS"]["venue_symbol"] == "xyz:CBRS"
+        assert catalog["CBRS"]["categories"] == ["pre_ipo", "semis_memory", "ai_infra"]
+        assert catalog["CBRS"]["pre_ipo"] is True
         assert catalog["NVDA"]["categories"] == ["mag7", "semis_memory"]
     finally:
         hyperliquid_markets_module._fetch_perp_names = original_perps
@@ -5728,16 +5832,18 @@ def test_apply_dynamic_analysis_universe_auto_adds_supported_stocks() -> None:
     original_catalog = main_module.get_hyperliquid_market_catalog
     main_module.config = cfg
     try:
-        main_module.get_hyperliquid_supported_coins = lambda **kwargs: ["BTC", "TSLA", "NVDA", "EWY"]
+        main_module.get_hyperliquid_supported_coins = lambda **kwargs: ["BTC", "TSLA", "NVDA", "EWY", "CBRS"]
         main_module.get_hyperliquid_market_catalog = lambda force_refresh=False: {
             "BTC": {"instrument_type": "crypto"},
+            "CBRS": {"instrument_type": "equity", "categories": ["pre_ipo", "semis_memory", "ai_infra"]},
             "TSLA": {"instrument_type": "equity"},
             "NVDA": {"instrument_type": "equity"},
             "EWY": {"instrument_type": "index"},
         }
         dynamic = main_module.apply_dynamic_analysis_universe()
         assert dynamic == []
-        assert main_module.config.trading.analysis_coins == ["BTC", "EWY", "NVDA", "TSLA"]
+        assert main_module.config.trading.analysis_coins == ["BTC", "CBRS", "EWY", "NVDA", "TSLA"]
+        assert main_module.config.trading.instrument_types["CBRS"] == "equity"
         assert main_module.config.trading.instrument_types["NVDA"] == "equity"
         assert main_module.config.trading.instrument_types["EWY"] == "index"
     finally:
@@ -7266,6 +7372,8 @@ def run_all() -> None:
     print("PASS macro news catalyst checklist")
     test_macro_news_merges_pre_event_intc_catalyst_flow()
     print("PASS macro news pre-event INTC catalyst")
+    test_macro_news_recognizes_cerebras_pre_ipo_listing_catalyst()
+    print("PASS macro news Cerebras pre-IPO catalyst")
     test_equity_event_feed_collects_ir_sec_options_and_analyst_revisions()
     print("PASS equity event feed bundle")
     test_equity_event_feed_uses_nasdaq_fallback_when_yahoo_is_unavailable()
@@ -7348,6 +7456,8 @@ def run_all() -> None:
     print("PASS default stock category completeness")
     test_default_crypto_category_includes_mon()
     print("PASS default crypto category includes MON")
+    test_tradexyz_pre_ipo_cerebras_defaults_to_event_theme()
+    print("PASS TradeXYZ Cerebras pre-IPO defaults")
     test_proactive_intelligence_builds_full_research_stack()
     print("PASS proactive intelligence research stack")
     test_proactive_starter_execution_opens_capped_event_orders()
@@ -7426,6 +7536,8 @@ def run_all() -> None:
     print("PASS portfolio correlation guard")
     test_event_risk_budget_trims_and_blocks_crowded_pre_event_starters()
     print("PASS event risk budget")
+    test_pre_ipo_symbols_automatically_use_tighter_event_budget()
+    print("PASS pre-IPO event budget caps")
     test_background_orderbook_feed_enriches_signal_with_persistence_history()
     print("PASS background orderbook persistence history")
     test_background_orderbook_feed_detects_intracycle_breakout_between_agent_cycles()

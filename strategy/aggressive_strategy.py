@@ -209,6 +209,8 @@ class AggressiveStrategy:
             "calendar_event",
             "earnings_event",
             "pre_event_setup",
+            "pre_ipo_listing",
+            "ipo_event",
             "analyst_conviction",
             "demand_commitment",
             "capacity_lock_in",

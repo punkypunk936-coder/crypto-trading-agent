@@ -182,6 +182,12 @@ TRADEXYZ_ASSET_METADATA: Dict[str, Dict[str, Any]] = {
     "BIRD": {"display_name": "Allbirds", "instrument_type": "equity", "categories": ["growth"]},
     "BRENTOIL": {"display_name": "Brent Oil", "instrument_type": "index", "categories": ["energy"]},
     "BX": {"display_name": "Blackstone", "instrument_type": "equity", "categories": ["financials"]},
+    "CBRS": {
+        "display_name": "Cerebras Systems",
+        "instrument_type": "equity",
+        "categories": ["pre_ipo", "semis_memory", "ai_infra"],
+        "pre_ipo": True,
+    },
     "CL": {"display_name": "Crude Oil", "instrument_type": "index", "categories": ["energy"]},
     "COIN": {"display_name": "Coinbase", "instrument_type": "equity", "categories": ["crypto_equities"]},
     "COPPER": {"display_name": "Copper", "instrument_type": "index", "categories": ["commodities_metals"]},
@@ -252,6 +258,7 @@ _TRADEXYZ_PERP_MARKETS: Dict[str, Dict[str, Any]] = {
         "live_tradeable": True,
         "display_name": str(meta.get("display_name") or coin),
         "categories": list(meta.get("categories") or ["other_stocks"]),
+        "pre_ipo": bool(meta.get("pre_ipo", False)),
         "dex": TRADEXYZ_DEX,
     }
     for coin, meta in TRADEXYZ_ASSET_METADATA.items()
@@ -260,11 +267,11 @@ _TRADEXYZ_PERP_MARKETS: Dict[str, Dict[str, Any]] = {
 _PREFERRED_ORDER = [
     "BTC", "ETH", "SOL", "HYPE", "MON", "TAO", "SP500", "XAU",
     "AAPL", "AMZN", "GOOGL", "META", "MSFT", "TSLA",
-    "NVDA", "INTC", "MU", "SNDK", "SKHX", "CRWV", "EWY", "HIMS",
+    "NVDA", "INTC", "MU", "SNDK", "SKHX", "CRWV", "CBRS", "EWY", "HIMS",
     *[coin for coin in TRADEXYZ_ASSET_METADATA if coin not in {
         "BTC", "ETH", "SOL", "HYPE", "MON", "TAO", "SP500", "XAU",
         "AAPL", "AMZN", "GOOGL", "META", "MSFT", "TSLA",
-        "NVDA", "INTC", "MU", "SNDK", "SKHX", "CRWV", "EWY", "HIMS",
+        "NVDA", "INTC", "MU", "SNDK", "SKHX", "CRWV", "CBRS", "EWY", "HIMS",
     }],
 ]
 
@@ -273,6 +280,7 @@ _TRADEXYZ_DYNAMIC_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "instrument_type": str(meta.get("instrument_type") or "equity"),
         "display_name": str(meta.get("display_name") or coin),
         "categories": list(meta.get("categories") or ["other_stocks"]),
+        "pre_ipo": bool(meta.get("pre_ipo", False)),
     }
     for coin, meta in TRADEXYZ_ASSET_METADATA.items()
 }
@@ -412,7 +420,8 @@ def get_hyperliquid_market_catalog(*, force_refresh: bool = False) -> Dict[str, 
             for coin, spec in _TRADEXYZ_PERP_MARKETS.items()
         }
         for venue_symbol in sorted(tradexyz_perp_names):
-            venue_key = str(venue_symbol or "").upper()
+            venue_raw = str(venue_symbol or "").strip()
+            venue_key = venue_raw.upper()
             manual_coin, manual = manual_tradexyz_by_venue.get(venue_key, (None, None))
             if not manual_coin or not manual:
                 internal_coin = venue_key.split(":", 1)[-1].strip().upper()
@@ -421,7 +430,7 @@ def get_hyperliquid_market_catalog(*, force_refresh: bool = False) -> Dict[str, 
                 override = dict(_TRADEXYZ_DYNAMIC_OVERRIDES.get(internal_coin) or {})
                 catalog[internal_coin] = {
                     "coin": internal_coin,
-                    "venue_symbol": venue_key,
+                    "venue_symbol": venue_raw or venue_key,
                     "market_type": "perp",
                     "instrument_type": str(override.get("instrument_type") or "equity"),
                     "shortable": bool(override.get("shortable", True)),
@@ -429,6 +438,7 @@ def get_hyperliquid_market_catalog(*, force_refresh: bool = False) -> Dict[str, 
                     "live_tradeable": True,
                     "display_name": str(override.get("display_name") or internal_coin),
                     "categories": list(override.get("categories") or ["other_stocks"]),
+                    "pre_ipo": bool(override.get("pre_ipo", False)),
                     "dex": TRADEXYZ_DEX,
                 }
                 continue

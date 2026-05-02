@@ -61,7 +61,7 @@ REQUEST_HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7
 INDEX_INSTRUMENTS = {
     "SP500", "XAU", "BRENT", "WTI", "CL", "NDX", "DJI", "VIX",
     "AAPL", "AMD", "AMZN", "BABA", "BIRD", "BX", "COIN", "COST", "CRCL",
-    "CRWV", "DKNG", "DRAM", "EWJ", "EWY", "GME", "GOOGL", "HIMS", "HOOD",
+    "CBRS", "CRWV", "DKNG", "DRAM", "EWJ", "EWY", "GME", "GOOGL", "HIMS", "HOOD",
     "HYUNDAI", "INTC", "KIOXIA", "LITE", "LLY", "META", "MRVL", "MSFT",
     "MSTR", "MU", "NFLX", "NVDA", "ORCL", "PLTR", "RIVN", "RKLB", "SKHX",
     "SMSN", "SNDK", "SOFTBANK", "TSLA", "TSM", "URNM", "USAR", "XLE",
@@ -287,6 +287,25 @@ EQUITY_PRE_EVENT_SETUP_KEYWORDS = (
     "reports quarterly",
 )
 
+EQUITY_PRE_IPO_EVENT_KEYWORDS = (
+    "pre-ipo",
+    "pre ipo",
+    "ipop",
+    "ipo launch",
+    "pre-ipo perpetual",
+    "pre ipo perpetual",
+    "public listing",
+    "nasdaq listing",
+    "nasdaq debut",
+    "filed for ipo",
+    "filed its s-1",
+    "s-1 filing",
+    "outside launch date",
+    "settlement period",
+    "converts to a standard",
+    "market converts",
+)
+
 EQUITY_ANALYST_CONVICTION_KEYWORDS = (
     "raises price target",
     "price target raised",
@@ -312,6 +331,8 @@ CATALYST_TAG_LABELS: Dict[str, str] = {
     "distribution_expand": "distribution expansion",
     "earnings_event": "earnings event",
     "pre_event_setup": "pre-event setup",
+    "pre_ipo_listing": "pre-IPO listing",
+    "ipo_event": "IPO event",
     "analyst_conviction": "analyst conviction",
     "official_ir_event": "official IR event",
     "sec_filing": "SEC filing flow",
@@ -419,6 +440,7 @@ MACRO_NEWS_QUERIES: Dict[str, str] = {
     "TSLA": "Tesla stock OR TSLA deliveries OR EV demand",
     "NVDA": "NVIDIA OR NVDA OR Blackwell OR GPU demand OR data center spend",
     "INTC": "Intel OR INTC OR foundry OR 18A OR Xeon OR Gaudi OR AI PC OR server CPU demand OR data center CPU",
+    "CBRS": "Cerebras OR CBRS OR Cerebras Systems OR wafer scale engine OR AI chip OR pre-IPO OR IPO OR S-1",
     "MU": "Micron OR MU OR memory pricing OR HBM demand OR HBM3E OR DRAM OR data center memory",
     "SNDK": "SanDisk OR SNDK OR NAND pricing OR flash memory OR SSD demand OR enterprise storage",
     "SKHX": "SK Hynix OR SKHX OR HBM memory OR HBM3E OR DRAM OR South Korea semiconductors",
@@ -491,6 +513,12 @@ ASSET_NEWS_PROFILES: Dict[str, Dict[str, List[str]]] = {
         "context": ["foundry", "xeon", "gaudi", "chipmaker", "18a", "cpu", "server cpu", "data center"],
         "strong_context": ["foundry", "18a", "xeon", "gaudi", "server cpu", "data center", "ai pc"],
         "partner_context": ["aws", "amazon", "microsoft", "openai", "anthropic"],
+    },
+    "CBRS": {
+        "primary": ["cerebras", "cerebras systems", "cbrs"],
+        "context": ["wafer scale engine", "ai chip", "accelerator", "pre-ipo", "ipo", "s-1", "nasdaq"],
+        "strong_context": ["wafer scale engine", "ai chip", "pre-ipo", "ipo", "nasdaq debut", "s-1"],
+        "partner_context": ["nvidia", "nvda", "amd", "intel"],
     },
     "MU": {
         "primary": ["micron", "mu"],
@@ -792,6 +820,10 @@ def _equity_catalyst_checklist(title: str, coin: str) -> CatalystChecklist:
     if any(keyword in lower for keyword in EQUITY_PRE_EVENT_SETUP_KEYWORDS):
         tags.append("pre_event_setup")
         score += 1.20
+    if any(keyword in lower for keyword in EQUITY_PRE_IPO_EVENT_KEYWORDS):
+        tags.append("pre_ipo_listing")
+        tags.append("ipo_event")
+        score += 1.45
     if any(keyword in lower for keyword in EQUITY_ANALYST_CONVICTION_KEYWORDS):
         tags.append("analyst_conviction")
         score += 0.85
@@ -1025,6 +1057,8 @@ def _fetch_macro_news(coin: str) -> NewsSignal:
         "calendar_event",
         "earnings_event",
         "pre_event_setup",
+        "pre_ipo_listing",
+        "ipo_event",
         "analyst_conviction",
         "official_ir_event",
         "sec_filing",
@@ -1117,6 +1151,8 @@ def _score_macro_headline(title: str, coin: str = "") -> float:
             score += 8
         if any(kw in lower for kw in EQUITY_PRE_EVENT_SETUP_KEYWORDS):
             score += 12
+        if any(kw in lower for kw in EQUITY_PRE_IPO_EVENT_KEYWORDS):
+            score += 14
         if any(kw in lower for kw in EQUITY_ANALYST_CONVICTION_KEYWORDS):
             score += 14
         if "earnings calendar" in lower or "set to report" in lower:

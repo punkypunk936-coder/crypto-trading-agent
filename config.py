@@ -43,6 +43,7 @@ _BASE_ASSET_CATEGORY_MAP = {
 _ASSET_CATEGORY_LABELS = {
     "crypto": "Coins",
     "indices_macro": "Indices & Macro",
+    "pre_ipo": "Pre-IPO",
     "mag7": "Mag7",
     "semis_memory": "Semis & Memory",
     "neoclouds": "Neoclouds",
@@ -66,6 +67,7 @@ _ASSET_CATEGORY_LABELS = {
 _THEME_BY_CATEGORY = {
     "crypto": "CRYPTO_BETA",
     "indices_macro": "US_MACRO_BETA",
+    "pre_ipo": "PRE_IPO_EVENT",
     "mag7": "MEGA_CAP_TECH",
     "semis_memory": "SEMIS_MEMORY",
     "neoclouds": "NEOCLOUDS",
@@ -573,6 +575,12 @@ class TradingConfig:
     event_risk_budget_soft_penalty_pct: float = 0.65
     event_risk_budget_min_trade_usd: float = 100.0
     event_risk_budget_strict_caps: bool = True
+    pre_ipo_theme_max_positions: int = 2
+    pre_ipo_theme_max_same_direction_exposure_pct: float = 0.04
+    pre_ipo_event_risk_budget_max_portfolio_pct: float = 0.04
+    pre_ipo_event_risk_budget_max_theme_pct: float = 0.025
+    pre_ipo_event_risk_budget_max_single_pct: float = 0.0125
+    pre_ipo_event_size_multiplier: float = 0.60
 
     asset_category_map: dict = field(default_factory=_default_asset_category_map)
     asset_category_labels: dict = field(default_factory=lambda: dict(_ASSET_CATEGORY_LABELS))

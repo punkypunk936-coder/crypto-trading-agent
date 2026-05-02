@@ -191,6 +191,21 @@ class TradingAgent:
         self._attempt_recovery()
         self._reconcile_with_exchange()
 
+    def _asset_categories_for_coin(self, coin: str) -> List[str]:
+        raw = (getattr(self.cfg.trading, "asset_category_map", {}) or {}).get(str(coin or "").upper(), [])
+        if isinstance(raw, str):
+            values = [raw]
+        else:
+            values = list(raw or [])
+        return [
+            str(category or "").strip().lower()
+            for category in values
+            if str(category or "").strip()
+        ]
+
+    def _is_pre_ipo_asset(self, coin: str) -> bool:
+        return "pre_ipo" in self._asset_categories_for_coin(coin)
+
     # ── Control ───────────────────────────────────────────────
 
     def start(self):
@@ -1903,7 +1918,15 @@ class TradingAgent:
             )
             return
 
-        event_starter = bool(conviction_entry.get("active") and conviction_entry.get("event_conviction"))
+        pre_ipo_event = self._is_pre_ipo_asset(coin)
+        event_starter = bool(
+            (conviction_entry.get("active") and conviction_entry.get("event_conviction"))
+            or pre_ipo_event
+        )
+        if pre_ipo_event:
+            self._last_signals.setdefault(coin, {})
+            self._last_signals[coin]["pre_ipo_event"] = True
+            self._last_signals[coin]["conviction_entry_event"] = True
         if not self._apply_north_star_guard_to_order(
             coin,
             signal,
@@ -1938,6 +1961,9 @@ class TradingAgent:
         self._last_signals[coin]["event_budget_size_multiplier"] = portfolio_theme_guard.get("event_budget_size_multiplier", 1.0)
         self._last_signals[coin]["event_budget_total_exposure_pct"] = portfolio_theme_guard.get("event_budget_total_exposure_pct", 0.0)
         self._last_signals[coin]["event_budget_theme_exposure_pct"] = portfolio_theme_guard.get("event_budget_theme_exposure_pct", 0.0)
+        self._last_signals[coin]["event_risk_budget_active"] = bool(
+            (portfolio_theme_guard.get("event_budget") or {}).get("active", False)
+        )
 
         if getattr(self.cfg.trading, "portfolio_correlation_guard_enabled", True):
             if not portfolio_theme_guard.get("permitted", True):

@@ -35,6 +35,20 @@ def _theme_for_coin(trading_cfg, coin: str, instrument_type: str) -> str:
     return "CRYPTO_BETA"
 
 
+def _categories_for_coin(trading_cfg, coin: str) -> list[str]:
+    mapping = dict(getattr(trading_cfg, "asset_category_map", {}) or {})
+    raw = mapping.get(_safe_str(coin).upper(), [])
+    if isinstance(raw, str):
+        raw_values = [raw]
+    else:
+        raw_values = list(raw or [])
+    return [
+        _safe_str(category).lower()
+        for category in raw_values
+        if _safe_str(category)
+    ]
+
+
 def _metadata_for_item(item: Any) -> Mapping[str, Any]:
     if isinstance(item, Mapping):
         return item.get("metadata", {}) or {}
@@ -126,6 +140,10 @@ def assess_correlation(
     event_starter: bool = False,
 ) -> dict:
     theme = _theme_for_coin(trading_cfg, coin, instrument_type)
+    categories = _categories_for_coin(trading_cfg, coin)
+    pre_ipo_event = "pre_ipo" in categories
+    if pre_ipo_event:
+        event_starter = True
     same_direction = _safe_str(direction).upper()
     same_theme_positions: list[dict] = []
     same_theme_same_direction: list[dict] = []
@@ -176,8 +194,21 @@ def assess_correlation(
 
     same_direction_exposure = sum(item["size_usd"] for item in same_theme_same_direction)
     total_theme_exposure = sum(item["size_usd"] for item in same_theme_positions)
+    proposed_for_exposure = max(0.0, proposed_size_usd)
+    if pre_ipo_event and portfolio_usd > 0:
+        pre_ipo_single_cap = float(
+            getattr(
+                trading_cfg,
+                "pre_ipo_event_risk_budget_max_single_pct",
+                getattr(trading_cfg, "event_risk_budget_max_single_pct", 0.02),
+            ) or 0.02
+        )
+        proposed_for_exposure = min(
+            proposed_for_exposure,
+            max(0.0, portfolio_usd * pre_ipo_single_cap),
+        )
     next_same_direction_exposure_pct = (
-        (same_direction_exposure + max(0.0, proposed_size_usd)) / max(portfolio_usd, 1e-9)
+        (same_direction_exposure + proposed_for_exposure) / max(portfolio_usd, 1e-9)
         if portfolio_usd > 0 else 0.0
     )
     total_theme_exposure_pct = (
@@ -200,9 +231,28 @@ def assess_correlation(
     blockers: list[str] = []
     warnings: list[str] = []
     size_multiplier = 1.0
+    if pre_ipo_event:
+        max_positions = min(
+            max_positions,
+            max(1, int(getattr(trading_cfg, "pre_ipo_theme_max_positions", max_positions) or max_positions)),
+        )
+        pre_ipo_same_dir_cap = float(
+            getattr(
+                trading_cfg,
+                "pre_ipo_theme_max_same_direction_exposure_pct",
+                max_same_dir_exposure_pct,
+            ) or max_same_dir_exposure_pct
+        )
+        max_same_dir_exposure_pct = min(max_same_dir_exposure_pct, max(0.0, pre_ipo_same_dir_cap))
+        size_multiplier *= max(
+            0.05,
+            min(1.0, float(getattr(trading_cfg, "pre_ipo_event_size_multiplier", 0.60) or 0.60)),
+        )
+        warnings.append("pre-IPO starter uses smaller size until listing/conversion risk clears")
     event_budget = {
         "enabled": bool(event_budget_enabled),
         "active": bool(event_starter and event_budget_enabled),
+        "pre_ipo": bool(pre_ipo_event),
         "permitted": True,
         "summary": "",
         "size_multiplier": 1.0,
@@ -250,6 +300,19 @@ def assess_correlation(
         max_total_pct = max(0.0, float(getattr(trading_cfg, "event_risk_budget_max_portfolio_pct", 0.10) or 0.10))
         max_theme_pct = max(0.0, float(getattr(trading_cfg, "event_risk_budget_max_theme_pct", 0.08) or 0.08))
         max_single_pct = max(0.0, float(getattr(trading_cfg, "event_risk_budget_max_single_pct", 0.02) or 0.02))
+        if pre_ipo_event:
+            max_total_pct = min(
+                max_total_pct,
+                max(0.0, float(getattr(trading_cfg, "pre_ipo_event_risk_budget_max_portfolio_pct", max_total_pct) or max_total_pct)),
+            )
+            max_theme_pct = min(
+                max_theme_pct,
+                max(0.0, float(getattr(trading_cfg, "pre_ipo_event_risk_budget_max_theme_pct", max_theme_pct) or max_theme_pct)),
+            )
+            max_single_pct = min(
+                max_single_pct,
+                max(0.0, float(getattr(trading_cfg, "pre_ipo_event_risk_budget_max_single_pct", max_single_pct) or max_single_pct)),
+            )
         soft_budget_pct = max(0.0, min(0.95, float(getattr(trading_cfg, "event_risk_budget_soft_penalty_pct", 0.65) or 0.65)))
         min_trade_usd = max(
             _safe_float(getattr(trading_cfg, "min_trade_usd", 0.0)),
@@ -295,7 +358,9 @@ def assess_correlation(
         event_budget.update({
             "permitted": not any("event risk" in blocker for blocker in blockers),
             "summary": (
-                "event budget has room for a starter"
+                "pre-IPO event budget has room for a starter"
+                if pre_ipo_event and not any("event risk" in blocker for blocker in blockers)
+                else "event budget has room for a starter"
                 if not any("event risk" in blocker for blocker in blockers)
                 else next((blocker for blocker in blockers if "event risk" in blocker), "event risk budget blocks starter")
             ),
