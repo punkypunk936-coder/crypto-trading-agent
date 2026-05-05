@@ -92,6 +92,7 @@ from indicators.orderbook_levels import (
 from indicators.trade_memory import trade_memory
 from indicators.funding_oi_cvd import get_funding_oi_cvd
 from exchanges.hyperliquid_markets import (
+    get_hyperliquid_market_catalog,
     hyperliquid_supports_shorts,
     hyperliquid_instrument_type,
     hyperliquid_market_is_active,
@@ -136,6 +137,8 @@ class TradingAgent:
         self._last_proactive_execution: Dict[str, object] = {}
         self._proactive_starter_attempt_ts: Dict[str, float] = {}
         self._north_star_cache: Dict[str, object] = {}
+        self._last_tradexyz_listing_sync_cycle = -1_000_000
+        self._last_listing_sync_report: Dict[str, object] = {}
         self._tradable_coins = [coin.upper() for coin in cfg.trading.coins]
         self._tradable_coin_set = set(self._tradable_coins)
         self._dynamic_analysis_coins = [
@@ -206,10 +209,235 @@ class TradingAgent:
     def _is_pre_ipo_asset(self, coin: str) -> bool:
         return "pre_ipo" in self._asset_categories_for_coin(coin)
 
+    @staticmethod
+    def _theme_from_asset_categories(categories: List[str], instrument_type: str) -> str:
+        primary = str((categories or [])[0] if categories else "").strip().lower()
+        theme_by_category = {
+            "crypto": "CRYPTO_BETA",
+            "indices_macro": "US_MACRO_BETA",
+            "pre_ipo": "PRE_IPO_EVENT",
+            "mag7": "MEGA_CAP_TECH",
+            "semis_memory": "SEMIS_MEMORY",
+            "neoclouds": "NEOCLOUDS",
+            "ai_infra": "AI_INFRA",
+            "crypto_equities": "CRYPTO_EQUITIES",
+            "asia_macro": "ASIA_MACRO",
+            "latam_macro": "LATAM_MACRO",
+            "commodities_metals": "COMMODITIES_METALS",
+            "energy": "ENERGY_COMPLEX",
+            "agriculture": "AGRICULTURE",
+            "fx_rates": "FX_RATES",
+            "uranium": "URANIUM",
+            "volatility": "VOLATILITY",
+            "consumer": "CONSUMER_GROWTH",
+            "financials": "FINANCIALS",
+            "biotech_glp1": "BIOTECH_GLP1",
+            "meme_momentum": "MEME_MOMENTUM",
+            "growth": "US_GROWTH",
+            "software": "SOFTWARE_GROWTH",
+            "other_stocks": "OTHER_STOCKS",
+        }
+        if primary in theme_by_category:
+            return theme_by_category[primary]
+        if str(instrument_type or "").lower() == "crypto":
+            return "CRYPTO_BETA"
+        if str(instrument_type or "").lower() == "index":
+            return "US_MACRO_BETA"
+        return (primary or "OTHER_STOCKS").upper()
+
+    def _sync_runtime_market_metadata(self, coin: str, spec: dict | None = None) -> None:
+        coin_upper = str(coin or "").upper().strip()
+        if not coin_upper:
+            return
+        spec = dict(spec or get_hyperliquid_market_catalog().get(coin_upper) or {})
+        instrument_type = str(
+            spec.get("instrument_type")
+            or self.cfg.trading.instrument_types.get(coin_upper)
+            or hyperliquid_instrument_type(coin_upper, "crypto")
+        ).strip().lower() or "crypto"
+        raw_categories = spec.get("categories")
+        if isinstance(raw_categories, str):
+            raw_categories = [raw_categories]
+        categories = [
+            str(category or "").strip().lower()
+            for category in list(raw_categories or [])
+            if str(category or "").strip()
+        ]
+        if not categories:
+            existing = (getattr(self.cfg.trading, "asset_category_map", {}) or {}).get(coin_upper, [])
+            if isinstance(existing, str):
+                existing = [existing]
+            categories = [
+                str(category or "").strip().lower()
+                for category in list(existing or [])
+                if str(category or "").strip()
+            ]
+        if not categories:
+            if instrument_type == "crypto":
+                categories = ["crypto"]
+            elif instrument_type == "index":
+                categories = ["indices_macro"]
+            else:
+                categories = ["other_stocks"]
+
+        self.cfg.trading.instrument_types[coin_upper] = instrument_type
+        self.cfg.trading.asset_category_map[coin_upper] = categories
+        self.cfg.trading.portfolio_theme_map.setdefault(
+            coin_upper,
+            self._theme_from_asset_categories(categories, instrument_type),
+        )
+
+    def _exchange_supported_coin_set(self, catalog: dict) -> set[str]:
+        supported: set[str] = set()
+        paper_mode = False
+        for ex in self.exchanges:
+            try:
+                if bool(ex.is_dry_run()):
+                    paper_mode = True
+            except Exception:
+                pass
+            try:
+                supported.update(str(coin or "").upper() for coin in (ex.supported_coins() or []) if coin)
+            except Exception as exc:
+                log.debug("[%s] Supported-symbol refresh skipped: %s", getattr(ex, "name", "exchange"), exc)
+        if paper_mode:
+            for coin, spec in (catalog or {}).items():
+                if bool((spec or {}).get("paper_tradeable", True)):
+                    supported.add(str(coin or "").upper())
+        return supported
+
+    def _ensure_paper_exchange_symbol(self, coin: str, spec: dict) -> None:
+        coin_upper = str(coin or "").upper().strip()
+        if not coin_upper:
+            return
+        for ex in self.exchanges:
+            try:
+                if not bool(ex.is_dry_run()):
+                    continue
+            except Exception:
+                continue
+            symbols = getattr(ex, "_supported_symbols", None)
+            if isinstance(symbols, list) and coin_upper not in symbols:
+                symbols.append(coin_upper)
+            shortable_map = getattr(ex, "_shortable_map", None)
+            if isinstance(shortable_map, dict):
+                shortable_map.setdefault(coin_upper, bool((spec or {}).get("shortable", True)))
+
+    def _add_runtime_symbol(self, coin: str, *, executable: bool, dynamic: bool, spec: dict) -> dict:
+        coin_upper = str(coin or "").upper().strip()
+        if not coin_upper:
+            return {"analysis_added": False, "execution_added": False}
+
+        self._sync_runtime_market_metadata(coin_upper, spec)
+        analysis_added = False
+        execution_added = False
+        if coin_upper not in self._analysis_coins:
+            self._analysis_coins.append(coin_upper)
+            analysis_added = True
+        cfg_analysis = [str(value or "").upper() for value in (getattr(self.cfg.trading, "analysis_coins", []) or [])]
+        if coin_upper not in cfg_analysis:
+            self.cfg.trading.analysis_coins.append(coin_upper)
+            analysis_added = True
+        if coin_upper not in self._price_circuits:
+            self._price_circuits[coin_upper] = get_price_feed_circuit(f"primary_{coin_upper.lower()}")
+
+        if executable:
+            if coin_upper not in self._tradable_coin_set:
+                self._tradable_coins.append(coin_upper)
+                self._tradable_coin_set.add(coin_upper)
+                execution_added = True
+            cfg_coins = [str(value or "").upper() for value in (getattr(self.cfg.trading, "coins", []) or [])]
+            if coin_upper not in cfg_coins:
+                self.cfg.trading.coins.append(coin_upper)
+                execution_added = True
+            self._ensure_paper_exchange_symbol(coin_upper, spec)
+        if dynamic and (analysis_added or execution_added):
+            if coin_upper not in self._dynamic_analysis_coins:
+                self._dynamic_analysis_coins.append(coin_upper)
+            cfg_dynamic = [
+                str(value or "").upper()
+                for value in (getattr(self.cfg.trading, "dynamic_analysis_coins", []) or [])
+            ]
+            if coin_upper not in cfg_dynamic:
+                self.cfg.trading.dynamic_analysis_coins.append(coin_upper)
+        return {"analysis_added": analysis_added, "execution_added": execution_added}
+
+    def _maybe_sync_tradexyz_listing_universe(self, *, force: bool = False) -> list[str]:
+        if not getattr(self.cfg.trading, "tradexyz_listing_auto_sync_enabled", True):
+            return []
+        if not force and not self._running:
+            return []
+        interval_cycles = max(1, int(getattr(self.cfg.trading, "tradexyz_listing_sync_interval_cycles", 5) or 5))
+        if not force and (self._cycle - self._last_tradexyz_listing_sync_cycle) < interval_cycles:
+            return []
+
+        self._last_tradexyz_listing_sync_cycle = self._cycle
+        added_analysis: list[str] = []
+        added_execution: list[str] = []
+        try:
+            catalog = get_hyperliquid_market_catalog(force_refresh=True)
+            supported = self._exchange_supported_coin_set(catalog)
+            enforce_active = bool(getattr(self.cfg.trading, "enforce_active_venue_markets", True))
+            promote_before_activity = bool(getattr(self.cfg.trading, "promote_analysis_before_activity", True))
+            auto_promote = bool(getattr(self.cfg.trading, "auto_promote_analysis_coins", True))
+            for coin, spec in sorted((catalog or {}).items()):
+                coin_upper = str(coin or "").upper().strip()
+                if not coin_upper or coin_upper not in supported:
+                    continue
+                spec = dict(spec or {})
+                if str(spec.get("dex") or "").strip() != "xyz":
+                    continue
+                active = True
+                if enforce_active and not promote_before_activity and is_hyperliquid_supported(coin_upper):
+                    active = hyperliquid_market_is_active(coin_upper)
+                executable = bool(auto_promote and (active or promote_before_activity))
+                result = self._add_runtime_symbol(
+                    coin_upper,
+                    executable=executable,
+                    dynamic=True,
+                    spec=spec,
+                )
+                if result.get("analysis_added"):
+                    added_analysis.append(coin_upper)
+                if result.get("execution_added"):
+                    added_execution.append(coin_upper)
+
+            self._last_listing_sync_report = {
+                "checked_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "cycle": self._cycle,
+                "tradexyz_market_count": len([
+                    1 for item in (catalog or {}).values()
+                    if str((item or {}).get("dex") or "").strip() == "xyz"
+                ]),
+                "added_analysis": added_analysis,
+                "added_execution": added_execution,
+                "status": "ok",
+            }
+            if added_analysis or added_execution:
+                log.info(
+                    "TradeXYZ listing sync onboarded %s watchlist / %s executable symbol(s): %s",
+                    len(added_analysis),
+                    len(added_execution),
+                    ", ".join(sorted(set(added_analysis + added_execution))),
+                )
+                if self._running:
+                    self._start_background_orderbook_feed()
+            return sorted(set(added_analysis + added_execution))
+        except Exception as exc:
+            self._last_listing_sync_report = {
+                "checked_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "cycle": self._cycle,
+                "status": "failed",
+                "error": str(exc),
+            }
+            log.warning("TradeXYZ listing sync skipped: %s", exc)
+            return []
+
     # ── Control ───────────────────────────────────────────────
 
     def start(self):
         """Run the agent loop. Press Ctrl+C to stop."""
+        self._maybe_sync_tradexyz_listing_universe(force=True)
         log.info("=" * 64)
         log.info(f"  Hyperliquid Trading Agent  |  Mode: "
                  f"{'DRY RUN 🟡' if self.cfg.is_dry_run else 'LIVE 🔴'}")
@@ -818,6 +1046,8 @@ class TradingAgent:
 
         if not self._enforce_power_safety():
             return
+
+        self._maybe_sync_tradexyz_listing_universe()
 
         # 1. Portfolio equity
         portfolio_usd = self._get_portfolio_usd()
@@ -5532,6 +5762,7 @@ class TradingAgent:
             "circuit_health": circuit_breaker_registry.health_check(),
             "loss_circuit_breaker": self.risk.circuit_breaker_status(),
             "north_star": self._north_star_scorecard(),
+            "listing_sync": getattr(self, "_last_listing_sync_report", {}),
             "trade_memory":  self._memory.get_stats(),
             "power":         self._last_power_status,
             "config": {

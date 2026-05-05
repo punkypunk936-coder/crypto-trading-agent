@@ -5883,6 +5883,60 @@ def test_apply_dynamic_analysis_universe_auto_adds_supported_stocks() -> None:
         main_module.get_hyperliquid_market_catalog = original_catalog
 
 
+def test_agent_runtime_tradexyz_listing_sync_onboards_new_symbols() -> None:
+    cfg = build_config()
+    cfg.trading.coins = ["BTC"]
+    cfg.trading.analysis_coins = ["BTC"]
+    cfg.trading.dynamic_analysis_coins = []
+    cfg.trading.auto_promote_analysis_coins = True
+    cfg.trading.promote_analysis_before_activity = True
+    cfg.trading.tradexyz_listing_auto_sync_enabled = True
+    cfg.trading.tradexyz_listing_sync_interval_cycles = 1
+    exchange = DryRunExchange(starting_balance_usd=1000.0, supported_symbols=["BTC"])
+    agent = TradingAgent(cfg, [exchange])
+
+    original_catalog = agent_module.get_hyperliquid_market_catalog
+    original_active = agent_module.hyperliquid_market_is_active
+    original_supported = agent_module.is_hyperliquid_supported
+    try:
+        agent_module.get_hyperliquid_market_catalog = lambda force_refresh=False: {
+            "BTC": {"instrument_type": "crypto", "paper_tradeable": True},
+            "NEWIPO": {
+                "coin": "NEWIPO",
+                "venue_symbol": "xyz:NEWIPO",
+                "dex": "xyz",
+                "market_type": "perp",
+                "instrument_type": "equity",
+                "categories": ["pre_ipo", "ai_infra"],
+                "shortable": True,
+                "paper_tradeable": True,
+                "live_tradeable": True,
+            },
+        }
+        agent_module.hyperliquid_market_is_active = lambda coin, force_refresh=False: False
+        agent_module.is_hyperliquid_supported = lambda coin: str(coin).upper() in {"BTC", "NEWIPO"}
+
+        added = agent._maybe_sync_tradexyz_listing_universe(force=True)
+
+        assert added == ["NEWIPO"]
+        assert "NEWIPO" in agent._analysis_coins
+        assert "NEWIPO" in agent._tradable_coins
+        assert "NEWIPO" in agent._tradable_coin_set
+        assert "NEWIPO" in cfg.trading.analysis_coins
+        assert "NEWIPO" in cfg.trading.coins
+        assert cfg.trading.dynamic_analysis_coins == ["NEWIPO"]
+        assert cfg.trading.instrument_types["NEWIPO"] == "equity"
+        assert cfg.trading.asset_category_map["NEWIPO"] == ["pre_ipo", "ai_infra"]
+        assert cfg.trading.portfolio_theme_map["NEWIPO"] == "PRE_IPO_EVENT"
+        assert "NEWIPO" in exchange.supported_coins()
+        assert "NEWIPO" in agent._price_circuits
+        assert agent._last_listing_sync_report["added_execution"] == ["NEWIPO"]
+    finally:
+        agent_module.get_hyperliquid_market_catalog = original_catalog
+        agent_module.hyperliquid_market_is_active = original_active
+        agent_module.is_hyperliquid_supported = original_supported
+
+
 def test_market_universe_filters_hyperliquid_large_caps_into_scout_watchlist() -> None:
     original_fetch = market_universe_module._fetch_coingecko_market_caps
     original_equity_fetch = market_universe_module._fetch_equity_market_caps
@@ -7595,6 +7649,8 @@ def run_all() -> None:
     print("PASS full Trade.xyz executable catalog")
     test_apply_dynamic_analysis_universe_auto_adds_supported_stocks()
     print("PASS supported stock auto-promotion")
+    test_agent_runtime_tradexyz_listing_sync_onboards_new_symbols()
+    print("PASS runtime TradeXYZ listing sync")
     test_market_universe_filters_hyperliquid_large_caps_into_scout_watchlist()
     print("PASS market-cap scout universe")
     test_reentry_watch_inherits_dynamic_trade_plan()

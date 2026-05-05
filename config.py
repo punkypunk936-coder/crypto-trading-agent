@@ -479,6 +479,8 @@ class TradingConfig:
     dynamic_market_cap_active_only: bool = True
     dynamic_market_cap_max_coins: int = 60
     dynamic_market_cap_feed_limit: int = 16
+    tradexyz_listing_auto_sync_enabled: bool = True
+    tradexyz_listing_sync_interval_cycles: int = 5
 
     # ── Multi-timeframe analysis ─────────────────────────
     # Fetches 4H and 12H candles to determine the higher-timeframe trend.
