@@ -200,6 +200,7 @@ TRADEXYZ_ASSET_METADATA: Dict[str, Dict[str, Any]] = {
     "DXY": {"display_name": "US Dollar Index", "instrument_type": "index", "categories": ["fx_rates", "indices_macro"]},
     "EUR": {"display_name": "Euro", "instrument_type": "index", "categories": ["fx_rates"]},
     "EWJ": {"display_name": "Japan ETF", "instrument_type": "index", "categories": ["asia_macro", "indices_macro"]},
+    "EWZ": {"display_name": "Brazil ETF", "instrument_type": "index", "categories": ["latam_macro", "indices_macro"]},
     "EWY": {"display_name": "South Korea ETF", "instrument_type": "index", "categories": ["asia_macro", "indices_macro"]},
     "GME": {"display_name": "GameStop", "instrument_type": "equity", "categories": ["meme_momentum"]},
     "GOLD": {"display_name": "Gold", "instrument_type": "index", "categories": ["commodities_metals"]},
@@ -211,6 +212,7 @@ TRADEXYZ_ASSET_METADATA: Dict[str, Dict[str, Any]] = {
     "JP225": {"display_name": "Nikkei 225", "instrument_type": "index", "categories": ["asia_macro", "indices_macro"]},
     "JPY": {"display_name": "Japanese Yen", "instrument_type": "index", "categories": ["fx_rates", "asia_macro"]},
     "KIOXIA": {"display_name": "Kioxia", "instrument_type": "equity", "categories": ["semis_memory", "asia_macro"]},
+    "KRW": {"display_name": "Korean Won", "instrument_type": "index", "categories": ["fx_rates", "asia_macro"]},
     "KR200": {"display_name": "KOSPI 200", "instrument_type": "index", "categories": ["asia_macro", "indices_macro"]},
     "LITE": {"display_name": "LITE", "instrument_type": "equity", "categories": ["growth"]},
     "LLY": {"display_name": "Eli Lilly", "instrument_type": "equity", "categories": ["biotech_glp1"]},
@@ -246,6 +248,7 @@ TRADEXYZ_ASSET_METADATA: Dict[str, Dict[str, Any]] = {
     "WHEAT": {"display_name": "Wheat", "instrument_type": "index", "categories": ["agriculture"]},
     "XLE": {"display_name": "Energy Select Sector SPDR", "instrument_type": "index", "categories": ["energy", "indices_macro"]},
     "XYZ100": {"display_name": "XYZ 100", "instrument_type": "index", "categories": ["indices_macro"]},
+    "ZM": {"display_name": "Zoom Communications", "instrument_type": "equity", "categories": ["software", "growth"]},
 }
 
 _TRADEXYZ_PERP_MARKETS: Dict[str, Dict[str, Any]] = {

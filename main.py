@@ -111,6 +111,85 @@ def _normalise_coin_list(values) -> list[str]:
     return out
 
 
+def _theme_from_categories(categories: list[str], instrument_type: str) -> str:
+    primary = str((categories or [])[0] if categories else "").strip().lower()
+    theme_by_category = {
+        "crypto": "CRYPTO_BETA",
+        "indices_macro": "US_MACRO_BETA",
+        "pre_ipo": "PRE_IPO_EVENT",
+        "mag7": "MEGA_CAP_TECH",
+        "semis_memory": "SEMIS_MEMORY",
+        "neoclouds": "NEOCLOUDS",
+        "ai_infra": "AI_INFRA",
+        "crypto_equities": "CRYPTO_EQUITIES",
+        "asia_macro": "ASIA_MACRO",
+        "latam_macro": "LATAM_MACRO",
+        "commodities_metals": "COMMODITIES_METALS",
+        "energy": "ENERGY_COMPLEX",
+        "agriculture": "AGRICULTURE",
+        "fx_rates": "FX_RATES",
+        "uranium": "URANIUM",
+        "volatility": "VOLATILITY",
+        "consumer": "CONSUMER_GROWTH",
+        "financials": "FINANCIALS",
+        "biotech_glp1": "BIOTECH_GLP1",
+        "meme_momentum": "MEME_MOMENTUM",
+        "growth": "US_GROWTH",
+        "software": "SOFTWARE_GROWTH",
+        "other_stocks": "OTHER_STOCKS",
+    }
+    if primary in theme_by_category:
+        return theme_by_category[primary]
+    if str(instrument_type or "").lower() == "crypto":
+        return "CRYPTO_BETA"
+    if str(instrument_type or "").lower() == "index":
+        return "US_MACRO_BETA"
+    return (primary or "OTHER_STOCKS").upper()
+
+
+def _sync_config_market_metadata(coin: str, spec: dict | None = None) -> None:
+    coin_upper = str(coin or "").upper().strip()
+    if not coin_upper:
+        return
+    spec = dict(spec or get_hyperliquid_market_catalog().get(coin_upper) or {})
+    instrument_type = str(
+        spec.get("instrument_type")
+        or config.trading.instrument_types.get(coin_upper)
+        or hyperliquid_instrument_type(coin_upper, "crypto")
+    ).strip().lower() or "crypto"
+    raw_categories = spec.get("categories")
+    if isinstance(raw_categories, str):
+        raw_categories = [raw_categories]
+    categories = [
+        str(category or "").strip().lower()
+        for category in list(raw_categories or [])
+        if str(category or "").strip()
+    ]
+    if not categories:
+        existing = (getattr(config.trading, "asset_category_map", {}) or {}).get(coin_upper, [])
+        if isinstance(existing, str):
+            existing = [existing]
+        categories = [
+            str(category or "").strip().lower()
+            for category in list(existing or [])
+            if str(category or "").strip()
+        ]
+    if not categories:
+        if instrument_type == "crypto":
+            categories = ["crypto"]
+        elif instrument_type == "index":
+            categories = ["indices_macro"]
+        else:
+            categories = ["other_stocks"]
+
+    config.trading.instrument_types[coin_upper] = instrument_type
+    config.trading.asset_category_map[coin_upper] = categories
+    config.trading.portfolio_theme_map.setdefault(
+        coin_upper,
+        _theme_from_categories(categories, instrument_type),
+    )
+
+
 def _sync_supported_stock_universe(*, dry_run_mode: bool | None = None) -> list[str]:
     if not config.exchange.use_hyperliquid or not getattr(config.trading, "auto_promote_supported_stocks", True):
         return []
@@ -131,7 +210,7 @@ def _sync_supported_stock_universe(*, dry_run_mode: bool | None = None) -> list[
         if instrument_type not in {"equity", "index"}:
             continue
         coin_upper = str(coin).upper()
-        config.trading.instrument_types[coin_upper] = instrument_type
+        _sync_config_market_metadata(coin_upper, spec)
         promoted.append(coin_upper)
     return _normalise_coin_list(promoted)
 
@@ -159,7 +238,7 @@ def apply_dynamic_analysis_universe() -> list[str]:
                 ", ".join(dynamic_analysis),
             )
         for coin in dynamic_analysis:
-            config.trading.instrument_types.setdefault(coin, hyperliquid_instrument_type(coin, "crypto"))
+            _sync_config_market_metadata(coin)
 
     supported_stock_watchlist = _sync_supported_stock_universe(dry_run_mode=config.trading.dry_run)
 

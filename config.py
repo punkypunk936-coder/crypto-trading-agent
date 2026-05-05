@@ -50,6 +50,7 @@ _ASSET_CATEGORY_LABELS = {
     "ai_infra": "AI Infra",
     "crypto_equities": "Crypto Equities",
     "asia_macro": "Asia Macro",
+    "latam_macro": "LatAm Macro",
     "commodities_metals": "Metals",
     "energy": "Energy",
     "agriculture": "Agriculture",
@@ -61,6 +62,7 @@ _ASSET_CATEGORY_LABELS = {
     "biotech_glp1": "Biotech & GLP-1",
     "meme_momentum": "Meme Momentum",
     "growth": "Growth",
+    "software": "Software",
     "other_stocks": "Other Stocks",
 }
 
@@ -74,6 +76,7 @@ _THEME_BY_CATEGORY = {
     "ai_infra": "AI_INFRA",
     "crypto_equities": "CRYPTO_EQUITIES",
     "asia_macro": "ASIA_MACRO",
+    "latam_macro": "LATAM_MACRO",
     "commodities_metals": "COMMODITIES_METALS",
     "energy": "ENERGY_COMPLEX",
     "agriculture": "AGRICULTURE",
@@ -85,6 +88,7 @@ _THEME_BY_CATEGORY = {
     "biotech_glp1": "BIOTECH_GLP1",
     "meme_momentum": "MEME_MOMENTUM",
     "growth": "US_GROWTH",
+    "software": "SOFTWARE_GROWTH",
     "other_stocks": "OTHER_STOCKS",
 }
 

@@ -3211,6 +3211,24 @@ def test_tradexyz_pre_ipo_cerebras_defaults_to_event_theme() -> None:
     assert catalog["CBRS"]["pre_ipo"] is True
 
 
+def test_tradexyz_latest_launches_are_first_class_defaults() -> None:
+    cfg = Config()
+    expected = {
+        "EWZ": ("index", ["latam_macro", "indices_macro"], "LATAM_MACRO"),
+        "KRW": ("index", ["fx_rates", "asia_macro"], "FX_RATES"),
+        "ZM": ("equity", ["software", "growth"], "SOFTWARE_GROWTH"),
+    }
+    catalog = hyperliquid_markets_module._catalog_from_fallback()
+    for coin, (instrument_type, categories, theme) in expected.items():
+        assert coin in cfg.trading.coins
+        assert coin in cfg.trading.analysis_coins
+        assert cfg.trading.instrument_types[coin] == instrument_type
+        assert cfg.trading.asset_category_map[coin] == categories
+        assert cfg.trading.portfolio_theme_map[coin] == theme
+        assert catalog[coin]["venue_symbol"] == f"xyz:{coin}"
+        assert catalog[coin]["live_tradeable"] is True
+
+
 def test_proactive_intelligence_builds_full_research_stack() -> None:
     state = {
         "portfolio_usd": 10000.0,
@@ -5832,20 +5850,33 @@ def test_apply_dynamic_analysis_universe_auto_adds_supported_stocks() -> None:
     original_catalog = main_module.get_hyperliquid_market_catalog
     main_module.config = cfg
     try:
-        main_module.get_hyperliquid_supported_coins = lambda **kwargs: ["BTC", "TSLA", "NVDA", "EWY", "CBRS"]
+        main_module.get_hyperliquid_supported_coins = lambda **kwargs: [
+            "BTC", "TSLA", "NVDA", "EWY", "CBRS", "EWZ", "KRW", "ZM",
+        ]
         main_module.get_hyperliquid_market_catalog = lambda force_refresh=False: {
             "BTC": {"instrument_type": "crypto"},
             "CBRS": {"instrument_type": "equity", "categories": ["pre_ipo", "semis_memory", "ai_infra"]},
+            "EWZ": {"instrument_type": "index", "categories": ["latam_macro", "indices_macro"]},
+            "KRW": {"instrument_type": "index", "categories": ["fx_rates", "asia_macro"]},
             "TSLA": {"instrument_type": "equity"},
             "NVDA": {"instrument_type": "equity"},
             "EWY": {"instrument_type": "index"},
+            "ZM": {"instrument_type": "equity", "categories": ["software", "growth"]},
         }
         dynamic = main_module.apply_dynamic_analysis_universe()
         assert dynamic == []
-        assert main_module.config.trading.analysis_coins == ["BTC", "CBRS", "EWY", "NVDA", "TSLA"]
+        assert main_module.config.trading.analysis_coins == [
+            "BTC", "CBRS", "EWY", "EWZ", "KRW", "NVDA", "TSLA", "ZM",
+        ]
         assert main_module.config.trading.instrument_types["CBRS"] == "equity"
         assert main_module.config.trading.instrument_types["NVDA"] == "equity"
         assert main_module.config.trading.instrument_types["EWY"] == "index"
+        assert main_module.config.trading.asset_category_map["EWZ"] == ["latam_macro", "indices_macro"]
+        assert main_module.config.trading.portfolio_theme_map["EWZ"] == "LATAM_MACRO"
+        assert main_module.config.trading.asset_category_map["KRW"] == ["fx_rates", "asia_macro"]
+        assert main_module.config.trading.portfolio_theme_map["KRW"] == "FX_RATES"
+        assert main_module.config.trading.asset_category_map["ZM"] == ["software", "growth"]
+        assert main_module.config.trading.portfolio_theme_map["ZM"] == "SOFTWARE_GROWTH"
     finally:
         main_module.config = original_config
         main_module.get_hyperliquid_supported_coins = original_supported
@@ -7458,6 +7489,8 @@ def run_all() -> None:
     print("PASS default crypto category includes MON")
     test_tradexyz_pre_ipo_cerebras_defaults_to_event_theme()
     print("PASS TradeXYZ Cerebras pre-IPO defaults")
+    test_tradexyz_latest_launches_are_first_class_defaults()
+    print("PASS TradeXYZ latest listing defaults")
     test_proactive_intelligence_builds_full_research_stack()
     print("PASS proactive intelligence research stack")
     test_proactive_starter_execution_opens_capped_event_orders()
