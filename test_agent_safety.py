@@ -138,6 +138,7 @@ def build_config() -> Config:
     cfg.trading.dynamic_market_cap_watchlist_enabled = False
     cfg.trading.live_promotion_gate_enabled = False
     cfg.trading.require_notifications_for_live = False
+    cfg.trading.setup_quality_guard_enabled = False
     return cfg
 
 
@@ -3578,6 +3579,54 @@ def test_thesis_runner_still_honors_hard_structure_invalidation() -> None:
     assert agent._detect_position_invalidation("GOOGL", "LONG", signal) == "structure_invalidation"
 
 
+def test_winner_stickiness_blocks_conviction_churn_exit() -> None:
+    cfg = build_config()
+    cfg.trading.coins = ["BTC"]
+    cfg.trading.decision_dataset_enabled = False
+    cfg.trading.feature_store_enabled = False
+    cfg.trading.winner_stickiness_min_profit_pct = 0.20
+    cfg.trading.winner_stickiness_min_profit_r = 0.10
+    agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=10000.0, supported_symbols=["BTC"])])
+    agent.risk.positions = {
+        "BTC": OpenPosition(
+            coin="BTC",
+            direction="LONG",
+            entry_price=100.0,
+            size_usd=200.0,
+            size_coin=2.0,
+            stop_loss=95.0,
+            take_profit=120.0,
+            trailing_stop_price=88.0,
+            opened_at=time.time() - 45 * 60,
+            exchange="UnitTest",
+            metadata={"entry_context": {"score": 66.0, "planned_stop_loss": 95.0, "planned_take_profit": 120.0}},
+        )
+    }
+    agent._last_signals = {
+        "BTC": {
+            "action": "FLAT",
+            "score": 50.0,
+            "live_price": 101.0,
+            "thesis": {"state": "NO_TRADE", "permitted": False, "conflict_points": 0},
+            "expectancy": {"score": 44.0, "uncertainty": 0.50},
+        }
+    }
+    agent._flat_streak["BTC"] = 6
+    signal = SimpleNamespace(
+        action="FLAT",
+        score=50.0,
+        price=101.0,
+        expectancy={"score": 44.0, "uncertainty": 0.50},
+        thesis={"state": "NO_TRADE", "permitted": False, "conflict_points": 0},
+    )
+
+    decay = agent._assess_conviction_decay("BTC", "LONG", signal)
+
+    assert decay["should_exit"] is False
+    assert decay["summary"].startswith("winner hold:")
+    assert agent._last_signals["BTC"]["winner_stickiness"]["active"] is True
+
+
 def test_pair_trade_book_builds_equity_long_crypto_short_overlay() -> None:
     cfg = build_config()
     cfg.trading.min_trade_usd = 100.0
@@ -3617,6 +3666,54 @@ def test_pair_trade_book_builds_equity_long_crypto_short_overlay() -> None:
     assert hedge["coin"] == "BTC"
     assert hedge["direction"] == "SHORT"
     assert 100.0 <= hedge["size_usd"] <= 200.0
+
+
+def test_setup_quality_guard_blocks_toxic_reversal_family() -> None:
+    cfg = build_config()
+    cfg.trading.setup_quality_guard_enabled = True
+    cfg.trading.setup_quality_guard_min_samples = 3
+    cfg.trading.setup_quality_guard_signal_reversal_loss_limit = 2
+    cfg.trading.setup_quality_guard_min_long_score = 70.0
+    cfg.trading.setup_quality_guard_min_probability = 0.58
+    cfg.trading.setup_quality_guard_min_expected_r = 0.22
+    cfg.trading.decision_dataset_enabled = False
+    cfg.trading.feature_store_enabled = False
+    agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=10000.0)])
+    signal = SimpleNamespace(
+        action="LONG",
+        score=66.0,
+        price=100.0,
+        reason="marginal setup",
+        flat_reason="",
+        expectancy={"probability": 0.53, "expected_r": 0.08, "uncertainty": 0.40},
+        thesis={"state": "ACTIVE", "permitted": True, "conflict_points": 0},
+    )
+    agent._last_signals["BTC"] = {
+        "action": "LONG",
+        "score": 66.0,
+        "expectancy_probability": 0.53,
+        "expectancy_expected_r": 0.08,
+    }
+    rows = [
+        ["1", "BTC", "LONG", "2026-05-01 09:00", "2026-05-01 09:30", "30", "100", "96", "100", "2", "-4.00", "-4.00", "95", "115", "signal_reversal", "66", "LOSS"],
+        ["2", "BTC", "LONG", "2026-05-01 10:00", "2026-05-01 10:30", "30", "100", "97", "100", "2", "-3.00", "-3.00", "95", "115", "signal_reversal", "67", "LOSS"],
+        ["3", "BTC", "LONG", "2026-05-01 11:00", "2026-05-01 11:30", "30", "100", "100.2", "100", "2", "0.20", "0.20", "95", "115", "conviction_lost", "68", "WIN"],
+    ]
+    original_trades_csv = agent_module.TRADES_CSV
+    with tempfile.TemporaryDirectory() as tmpdir:
+        try:
+            agent_module.TRADES_CSV = Path(tmpdir) / "trades_log.csv"
+            with agent_module.TRADES_CSV.open("w", newline="") as handle:
+                writer = csv.writer(handle)
+                writer.writerow(trade_logger_module.HEADERS)
+                writer.writerows(rows)
+            allowed = agent._setup_quality_guard("BTC", signal, portfolio_usd=10000.0, current_position=None)
+        finally:
+            agent_module.TRADES_CSV = original_trades_csv
+
+    assert allowed is False
+    assert signal.action == "FLAT"
+    assert "toxic" in signal.reason
 
 
 def _write_north_star_trades(path: Path) -> None:
@@ -7557,8 +7654,12 @@ def run_all() -> None:
     print("PASS thesis runner multi-day time-stop bypass")
     test_thesis_runner_still_honors_hard_structure_invalidation()
     print("PASS thesis runner hard invalidation integrity")
+    test_winner_stickiness_blocks_conviction_churn_exit()
+    print("PASS winner stickiness churn guard")
     test_pair_trade_book_builds_equity_long_crypto_short_overlay()
     print("PASS pair trade overlay book")
+    test_setup_quality_guard_blocks_toxic_reversal_family()
+    print("PASS setup quality toxic-family guard")
     test_north_star_guard_blocks_marginal_recovery_entries()
     print("PASS north-star marginal entry block")
     test_north_star_guard_allows_event_starter_but_trims_size()

@@ -315,6 +315,24 @@ class TradingConfig:
     thesis_runner_time_stop_bypass: bool = True
     thesis_runner_defer_soft_reversal: bool = True
     ath_runner_enabled: bool = True
+    winner_stickiness_enabled: bool = True
+    winner_stickiness_min_profit_pct: float = 0.20
+    winner_stickiness_min_profit_r: float = 0.15
+    winner_stickiness_hold_minutes: float = 4320.0
+    winner_stickiness_max_flat_cycles: int = 720
+    winner_stickiness_defer_soft_reversal: bool = True
+    winner_stickiness_decay_discount: float = 22.0
+
+    setup_quality_guard_enabled: bool = True
+    setup_quality_guard_lookback_trades: int = 80
+    setup_quality_guard_min_samples: int = 4
+    setup_quality_guard_min_win_rate: float = 0.52
+    setup_quality_guard_signal_reversal_loss_limit: int = 2
+    setup_quality_guard_min_long_score: float = 70.0
+    setup_quality_guard_max_short_score: float = 30.0
+    setup_quality_guard_min_probability: float = 0.58
+    setup_quality_guard_min_expected_r: float = 0.22
+    setup_quality_guard_event_min_probability: float = 0.54
 
     use_orderbook_levels: bool    = True   # Live L2 + daily key-level intelligence for venue-backed assets
     orderbook_depth_limit: int    = 120

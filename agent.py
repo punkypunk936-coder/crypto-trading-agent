@@ -137,6 +137,7 @@ class TradingAgent:
         self._last_proactive_execution: Dict[str, object] = {}
         self._proactive_starter_attempt_ts: Dict[str, float] = {}
         self._north_star_cache: Dict[str, object] = {}
+        self._setup_quality_cache: Dict[str, object] = {}
         self._last_tradexyz_listing_sync_cycle = -1_000_000
         self._last_listing_sync_report: Dict[str, object] = {}
         self._tradable_coins = [coin.upper() for coin in cfg.trading.coins]
@@ -2042,6 +2043,28 @@ class TradingAgent:
                 )
                 return
 
+            sticky_profile = self._winner_stickiness_profile(coin, signal)
+            if (
+                getattr(self.cfg.trading, "winner_stickiness_defer_soft_reversal", True)
+                and sticky_profile.get("active")
+            ):
+                log.info(
+                    f"[{coin}] Winner stickiness blocks soft reversal {current_pos}->{signal.action}: "
+                    f"+{sticky_profile.get('favorable_pct', 0):.2f}% / "
+                    f"+{sticky_profile.get('favorable_r', 0):.2f}R and no hard invalidation"
+                )
+                self._last_signals.setdefault(coin, {})
+                self._last_signals[coin]["winner_stickiness"] = sticky_profile
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="winner_reversal_deferred",
+                    signal=signal,
+                    current_position=current_pos,
+                    blocked=True,
+                )
+                return
+
             log.info(f"[{coin}] Closing {current_pos} (score={signal.score:.1f}) "
                      f"— will re-evaluate next cycle before entering {signal.action}")
             self._close_position(coin, "signal_reversal", signal.price)
@@ -2058,6 +2081,14 @@ class TradingAgent:
                 current_position=current_pos,
                 blocked=True,
             )
+            return
+
+        if not self._setup_quality_guard(
+            coin,
+            signal,
+            portfolio_usd=portfolio_usd,
+            current_position=current_pos,
+        ):
             return
 
         # ── Directional signal: reset flat streak ──────────────────────────
@@ -3100,6 +3131,140 @@ class TradingAgent:
             )
         return True
 
+    def _quality_guard_rows(self, lookback: int) -> list[dict]:
+        path = Path(TRADES_CSV)
+        try:
+            stat = path.stat()
+            cache_key = f"{path}:{stat.st_mtime_ns}:{lookback}"
+        except Exception:
+            cache_key = f"{path}:missing:{lookback}"
+            stat = None
+        if self._setup_quality_cache.get("key") == cache_key:
+            return list(self._setup_quality_cache.get("rows") or [])
+        rows: list[dict] = []
+        if stat:
+            try:
+                with path.open(newline="", encoding="utf-8") as handle:
+                    rows = [
+                        dict(row)
+                        for row in csv.DictReader(handle)
+                        if str((row or {}).get("closed_at") or "").strip()
+                    ]
+            except Exception as exc:
+                log.debug("setup-quality guard read failed: %s", exc)
+        recent = rows[-max(1, int(lookback or 80)):]
+        self._setup_quality_cache = {"key": cache_key, "rows": recent}
+        return list(recent)
+
+    @staticmethod
+    def _row_pnl_usd(row: dict) -> float:
+        try:
+            return float((row or {}).get("pnl_usd") or 0.0)
+        except Exception:
+            return 0.0
+
+    def _setup_quality_guard(self, coin: str, signal, *, portfolio_usd: float, current_position: str | None) -> bool:
+        if not getattr(self.cfg.trading, "setup_quality_guard_enabled", True):
+            return True
+        if current_position or str(getattr(signal, "action", "") or "").upper() not in {"LONG", "SHORT"}:
+            return True
+
+        direction = str(getattr(signal, "action", "") or "").upper()
+        lookback = int(getattr(self.cfg.trading, "setup_quality_guard_lookback_trades", 80) or 80)
+        rows = [
+            row for row in self._quality_guard_rows(lookback)
+            if str(row.get("coin") or "").upper() == coin.upper()
+            and str(row.get("direction") or "").upper() == direction
+        ]
+        min_samples = int(getattr(self.cfg.trading, "setup_quality_guard_min_samples", 4) or 4)
+        reversal_limit = int(getattr(self.cfg.trading, "setup_quality_guard_signal_reversal_loss_limit", 2) or 2)
+        losses = [row for row in rows if self._row_pnl_usd(row) <= 0.0]
+        wins = [row for row in rows if self._row_pnl_usd(row) > 0.0]
+        reversal_losses = [
+            row for row in losses
+            if str(row.get("exit_reason") or "").strip() == "signal_reversal"
+        ]
+        win_rate = (len(wins) / len(rows)) if rows else 1.0
+        min_win_rate = float(getattr(self.cfg.trading, "setup_quality_guard_min_win_rate", 0.52) or 0.52)
+        toxic = (
+            (len(rows) >= min_samples and win_rate < min_win_rate)
+            or len(reversal_losses) >= reversal_limit
+        )
+        if not toxic:
+            return True
+
+        sig = dict(self._last_signals.get(coin, {}) or {})
+        expectancy = dict(getattr(signal, "expectancy", {}) or sig.get("expectancy", {}) or {})
+        probability = float(expectancy.get("probability", sig.get("expectancy_probability", 0.50)) or 0.50)
+        expected_r = float(expectancy.get("expected_r", sig.get("expectancy_expected_r", 0.0)) or 0.0)
+        event_score = max(
+            float(sig.get("news_event_score") or 0.0),
+            float(sig.get("official_event_score") or 0.0),
+            float(sig.get("sec_event_score") or 0.0),
+        )
+        catalyst_score = max(
+            float(sig.get("news_catalyst_score") or 0.0),
+            max(0.0, float(sig.get("analyst_revision_score") or 0.0)),
+        )
+        conviction_entry = dict(sig.get("conviction_entry") or {})
+        event_like = bool(
+            sig.get("conviction_entry_event")
+            or conviction_entry.get("event_conviction")
+            or event_score >= float(getattr(self.cfg.trading, "thesis_runner_min_event_score", 2.75) or 2.75)
+            or catalyst_score >= float(getattr(self.cfg.trading, "thesis_runner_min_catalyst_score", 3.0) or 3.0)
+        )
+        min_long = float(getattr(self.cfg.trading, "setup_quality_guard_min_long_score", 70.0) or 70.0)
+        max_short = float(getattr(self.cfg.trading, "setup_quality_guard_max_short_score", 30.0) or 30.0)
+        min_probability = float(getattr(self.cfg.trading, "setup_quality_guard_min_probability", 0.58) or 0.58)
+        event_min_probability = float(getattr(self.cfg.trading, "setup_quality_guard_event_min_probability", 0.54) or 0.54)
+        min_expected_r = float(getattr(self.cfg.trading, "setup_quality_guard_min_expected_r", 0.22) or 0.22)
+        score = float(getattr(signal, "score", sig.get("score", 50.0)) or 50.0)
+        score_ok = (direction == "LONG" and score >= min_long) or (direction == "SHORT" and score <= max_short)
+        probability_ok = probability >= (event_min_probability if event_like else min_probability)
+        expected_r_ok = expected_r >= min_expected_r
+        if score_ok and probability_ok and (expected_r_ok or event_like):
+            self._last_signals.setdefault(coin, {})
+            self._last_signals[coin]["setup_quality_guard"] = {
+                "active": True,
+                "permitted": True,
+                "samples": len(rows),
+                "win_rate": round(win_rate, 4),
+                "reversal_losses": len(reversal_losses),
+                "summary": "toxic history noted, but A+ setup clears the stricter gate",
+            }
+            return True
+
+        reason = (
+            f"{coin.upper()} {direction} history is toxic: "
+            f"{len(wins)}/{len(rows)} wins, {len(reversal_losses)} reversal-losses; "
+            f"need A+ score/odds before adding risk"
+        )
+        log.info(f"[{coin}] 🧪 Setup-quality guard blocks {direction}: {reason}")
+        signal.action = "FLAT"
+        signal.flat_reason = reason
+        signal.reason = reason
+        self._last_signals.setdefault(coin, {})
+        self._last_signals[coin]["setup_quality_guard"] = {
+            "active": True,
+            "permitted": False,
+            "samples": len(rows),
+            "win_rate": round(win_rate, 4),
+            "reversal_losses": len(reversal_losses),
+            "probability": round(probability, 4),
+            "expected_r": round(expected_r, 4),
+            "summary": reason,
+        }
+        self._sync_signal_snapshot(coin, signal)
+        self._record_decision_snapshot(
+            coin,
+            portfolio_usd=portfolio_usd,
+            stage="setup_quality_guard_block",
+            signal=signal,
+            current_position=current_position,
+            blocked=True,
+        )
+        return False
+
     def _position_runner_profile(self, coin: str, signal=None, price: float | None = None) -> dict:
         inactive = {
             "active": False,
@@ -3323,6 +3488,83 @@ class TradingAgent:
             "favorable_move": round(favorable_move, 6),
         }
 
+    def _winner_stickiness_profile(self, coin: str, signal=None, price: float | None = None) -> dict:
+        inactive = {
+            "active": False,
+            "reason": "",
+            "favorable_pct": 0.0,
+            "favorable_r": 0.0,
+            "hold_minutes": 0.0,
+            "hold_remaining_minutes": 0.0,
+            "max_flat_cycles": int(getattr(self.cfg.trading, "winner_stickiness_max_flat_cycles", 720) or 720),
+        }
+        if not getattr(self.cfg.trading, "winner_stickiness_enabled", True):
+            return inactive
+        pos = self.risk.positions.get(coin)
+        if not pos or pos.entry_price <= 0:
+            return inactive
+
+        sig = dict(self._last_signals.get(coin, {}) or {})
+        live_price = float(
+            price
+            or sig.get("live_price")
+            or sig.get("price")
+            or getattr(signal, "price", 0.0)
+            or pos.entry_price
+            or 0.0
+        )
+        if live_price <= 0:
+            return inactive
+
+        direction = str(pos.direction or "").upper()
+        favorable_move = self._signed_move(direction, pos.entry_price, live_price)
+        favorable_pct = favorable_move / max(pos.entry_price, 1e-9) * 100.0
+        risk_distance = abs(pos.entry_price - pos.stop_loss) if pos.stop_loss > 0 else 0.0
+        favorable_r = favorable_move / max(risk_distance, 1e-9) if risk_distance > 0 else 0.0
+        min_pct = float(getattr(self.cfg.trading, "winner_stickiness_min_profit_pct", 0.20) or 0.20)
+        min_r = float(getattr(self.cfg.trading, "winner_stickiness_min_profit_r", 0.15) or 0.15)
+        if favorable_pct < min_pct and favorable_r < min_r:
+            return inactive
+
+        hold_minutes = (time.time() - pos.opened_at) / 60.0 if pos.opened_at else 0.0
+        target_hold = float(getattr(self.cfg.trading, "winner_stickiness_hold_minutes", 4320.0) or 4320.0)
+        if hold_minutes >= target_hold:
+            return inactive
+
+        structure_trend = str(sig.get("structure_trend", "") or "").upper()
+        mtf_bias = str(sig.get("mtf_bias", "FLAT") or "FLAT").upper()
+        breakout_state = str(sig.get("orderbook_breakout_state", "NONE") or "NONE").upper()
+        thesis = dict(sig.get("thesis", {}) or getattr(signal, "thesis", {}) or {})
+        thesis_state = str(thesis.get("state", "") or "").upper()
+        thesis_conflicts = float(thesis.get("conflict_points", sig.get("thesis_conflict_points", 0.0)) or 0.0)
+        hard_against = (
+            (direction == "LONG" and (
+                structure_trend == "DOWNTREND"
+                or mtf_bias == "BEARISH"
+                or breakout_state in {"CONFIRMED_BEARISH_BREAKDOWN", "PERSISTENT_BEARISH_BREAKDOWN"}
+            ))
+            or (direction == "SHORT" and (
+                structure_trend == "UPTREND"
+                or mtf_bias == "BULLISH"
+                or breakout_state in {"CONFIRMED_BULLISH_BREAKOUT", "PERSISTENT_BULLISH_BREAKOUT"}
+            ))
+        )
+        if hard_against and (thesis_state == "NO_TRADE" or thesis_conflicts >= 1.0):
+            return inactive
+
+        return {
+            "active": True,
+            "reason": "winner stickiness: trade is working; hold until invalidation",
+            "direction": direction,
+            "favorable_pct": round(favorable_pct, 4),
+            "favorable_r": round(favorable_r, 4),
+            "hold_minutes": round(hold_minutes, 2),
+            "target_hold_minutes": round(target_hold, 2),
+            "hold_remaining_minutes": round(max(0.0, target_hold - hold_minutes), 2),
+            "max_flat_cycles": int(getattr(self.cfg.trading, "winner_stickiness_max_flat_cycles", 720) or 720),
+            "hard_against": hard_against,
+        }
+
     def _extend_runner_target(self, coin: str, price: float, profile: dict, reason: str) -> float:
         pos = self.risk.positions.get(coin)
         if not pos or price <= 0:
@@ -3503,6 +3745,14 @@ class TradingAgent:
             score = max(0.0, score - discount)
             reasons.append(f"runner thesis still active: {runner_profile.get('reason', 'strong thesis')}")
 
+        sticky_profile = self._winner_stickiness_profile(coin, signal, live_price)
+        if sticky_profile.get("active"):
+            self._last_signals.setdefault(coin, {})
+            self._last_signals[coin]["winner_stickiness"] = sticky_profile
+            discount = float(getattr(self.cfg.trading, "winner_stickiness_decay_discount", 22.0) or 22.0)
+            score = max(0.0, score - discount)
+            reasons.append("winner stickiness is active")
+
         score = max(0.0, min(100.0, score))
         exit_threshold = float(getattr(self.cfg.trading, "conviction_decay_exit_threshold", 58.0) or 58.0)
         hold_threshold = float(getattr(self.cfg.trading, "conviction_decay_hold_threshold", 36.0) or 36.0)
@@ -3519,6 +3769,22 @@ class TradingAgent:
                     "score": round(min(score, hold_threshold - 1.0), 2),
                     "summary": f"runner hold: {runner_profile.get('reason', 'strong thesis')} until invalidation",
                     "runner_profile": runner_profile,
+                }
+        if sticky_profile.get("active"):
+            max_flat = int(
+                sticky_profile.get("max_flat_cycles")
+                or getattr(self.cfg.trading, "winner_stickiness_max_flat_cycles", 720)
+                or 720
+            )
+            if flat_cycles < max_flat:
+                return {
+                    "should_exit": False,
+                    "score": round(min(score, hold_threshold - 1.0), 2),
+                    "summary": (
+                        f"winner hold: +{sticky_profile.get('favorable_pct', 0):.2f}% "
+                        f"/ +{sticky_profile.get('favorable_r', 0):.2f}R, thesis not invalidated"
+                    ),
+                    "winner_stickiness": sticky_profile,
                 }
         if score >= exit_threshold:
             return {"should_exit": True, "score": round(score, 2), "summary": summary}
@@ -3796,6 +4062,7 @@ class TradingAgent:
             "conviction_entry_active": sig.get("conviction_entry_active", False),
             "conviction_entry_event": sig.get("conviction_entry_event", False),
             "operator_review_guard": sig.get("operator_review_guard", {}),
+            "setup_quality_guard": sig.get("setup_quality_guard", {}),
             "trade_plan": trade_plan,
             "thesis": sig.get("thesis", {}),
             "expectancy": sig.get("expectancy", {}),
