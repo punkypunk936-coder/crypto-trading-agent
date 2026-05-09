@@ -443,6 +443,10 @@ class TradingConfig:
     htf_invalidation_min_minutes: float = 60.0
     time_stop_minutes: float = 360.0
     time_stop_min_tp_progress: float = 0.25
+    stale_adverse_exit_enabled: bool = True
+    stale_adverse_min_minutes: float = 1440.0
+    stale_adverse_max_adverse_r: float = 0.28
+    stale_adverse_max_tp_progress: float = 0.12
     conviction_decay_exit_threshold: float = 58.0
     conviction_decay_hold_threshold: float = 36.0
     conviction_decay_flat_cycle_weight: float = 7.0
@@ -494,9 +498,11 @@ class TradingConfig:
     dynamic_market_cap_min_usd: float = 1_000_000_000.0
     dynamic_market_cap_pages: int = 3
     dynamic_market_cap_cache_hours: float = 6.0
-    dynamic_market_cap_active_only: bool = True
-    dynamic_market_cap_max_coins: int = 60
+    dynamic_market_cap_active_only: bool = False
+    dynamic_market_cap_max_coins: int = 250
     dynamic_market_cap_feed_limit: int = 16
+    dynamic_market_cap_gate_tradexyz_enabled: bool = True
+    dynamic_market_cap_keep_indices_without_cap: bool = True
     tradexyz_listing_auto_sync_enabled: bool = True
     tradexyz_listing_sync_interval_cycles: int = 5
 

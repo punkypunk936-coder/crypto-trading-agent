@@ -190,7 +190,50 @@ def _sync_config_market_metadata(coin: str, spec: dict | None = None) -> None:
     )
 
 
-def _sync_supported_stock_universe(*, dry_run_mode: bool | None = None) -> list[str]:
+def _tradexyz_cap_gate_allows(coin: str, *, eligible_symbols: set[str] | None, catalog: dict[str, dict]) -> bool:
+    if not getattr(config.trading, "dynamic_market_cap_gate_tradexyz_enabled", True):
+        return True
+    if eligible_symbols is None:
+        return True
+    coin_upper = str(coin or "").upper().strip()
+    spec = dict(catalog.get(coin_upper) or {})
+    if str(spec.get("dex") or "").strip() != "xyz":
+        return True
+    instrument_type = str(
+        spec.get("instrument_type")
+        or config.trading.instrument_types.get(coin_upper, "")
+        or hyperliquid_instrument_type(coin_upper, "crypto")
+    ).strip().lower()
+    if instrument_type == "index" and getattr(config.trading, "dynamic_market_cap_keep_indices_without_cap", True):
+        return True
+    if instrument_type in {"equity", "crypto"}:
+        return coin_upper in eligible_symbols
+    return True
+
+
+def _filter_tradexyz_cap_gated_symbols(values, *, eligible_symbols: set[str], catalog: dict[str, dict]) -> list[str]:
+    kept: list[str] = []
+    dropped: list[str] = []
+    for coin in _normalise_coin_list(values):
+        if _tradexyz_cap_gate_allows(coin, eligible_symbols=eligible_symbols, catalog=catalog):
+            kept.append(coin)
+        else:
+            dropped.append(coin)
+    if dropped:
+        log.info(
+            "Ignoring Trade.xyz symbols below/without the $%s market-cap gate: %s",
+            f"{int(float(getattr(config.trading, 'dynamic_market_cap_min_usd', 1_000_000_000.0))):,}",
+            ", ".join(dropped),
+        )
+    return kept
+
+
+def _sync_supported_stock_universe(
+    *,
+    dry_run_mode: bool | None = None,
+    eligible_symbols: set[str] | None = None,
+    catalog: dict[str, dict] | None = None,
+) -> list[str]:
     if not config.exchange.use_hyperliquid or not getattr(config.trading, "auto_promote_supported_stocks", True):
         return []
 
@@ -198,7 +241,10 @@ def _sync_supported_stock_universe(*, dry_run_mode: bool | None = None) -> list[
     if not supported:
         return []
 
-    catalog = get_hyperliquid_market_catalog()
+    catalog = dict(catalog or get_hyperliquid_market_catalog())
+    normalized_eligible = None if eligible_symbols is None else {
+        str(coin or "").upper().strip() for coin in eligible_symbols if coin
+    }
     promoted: list[str] = []
     for coin in supported:
         spec = dict(catalog.get(str(coin).upper()) or {})
@@ -210,6 +256,8 @@ def _sync_supported_stock_universe(*, dry_run_mode: bool | None = None) -> list[
         if instrument_type not in {"equity", "index"}:
             continue
         coin_upper = str(coin).upper()
+        if not _tradexyz_cap_gate_allows(coin_upper, eligible_symbols=normalized_eligible, catalog=catalog):
+            continue
         _sync_config_market_metadata(coin_upper, spec)
         promoted.append(coin_upper)
     return _normalise_coin_list(promoted)
@@ -217,11 +265,17 @@ def _sync_supported_stock_universe(*, dry_run_mode: bool | None = None) -> list[
 
 def apply_dynamic_analysis_universe() -> list[str]:
     previous_dynamic = {str(coin).upper() for coin in getattr(config.trading, "dynamic_analysis_coins", []) or []}
+    catalog = get_hyperliquid_market_catalog()
+    cap_gate_active = bool(
+        getattr(config.trading, "dynamic_market_cap_gate_tradexyz_enabled", True)
+        and getattr(config.trading, "dynamic_market_cap_watchlist_enabled", False)
+    )
     base_analysis = [
         coin for coin in _normalise_coin_list(getattr(config.trading, "analysis_coins", []) or [])
         if coin not in previous_dynamic
     ]
     dynamic_analysis: list[str] = []
+    eligible_market_cap_symbols: set[str] = set()
     if config.exchange.use_hyperliquid and getattr(config.trading, "dynamic_market_cap_watchlist_enabled", False):
         payload = build_hyperliquid_market_cap_watchlist(
             min_market_cap_usd=float(getattr(config.trading, "dynamic_market_cap_min_usd", 1_000_000_000.0) or 1_000_000_000.0),
@@ -231,6 +285,7 @@ def apply_dynamic_analysis_universe() -> list[str]:
             max_coins=int(getattr(config.trading, "dynamic_market_cap_max_coins", 60) or 60),
         )
         dynamic_analysis = _normalise_coin_list(payload.get("coins", []) or [])
+        eligible_market_cap_symbols = set(dynamic_analysis)
         if dynamic_analysis:
             log.info(
                 "Expanded Hyperliquid scout universe (>$%s market cap): %s",
@@ -240,7 +295,23 @@ def apply_dynamic_analysis_universe() -> list[str]:
         for coin in dynamic_analysis:
             _sync_config_market_metadata(coin)
 
-    supported_stock_watchlist = _sync_supported_stock_universe(dry_run_mode=config.trading.dry_run)
+    if cap_gate_active:
+        base_analysis = _filter_tradexyz_cap_gated_symbols(
+            base_analysis,
+            eligible_symbols=eligible_market_cap_symbols,
+            catalog=catalog,
+        )
+        config.trading.coins = _filter_tradexyz_cap_gated_symbols(
+            getattr(config.trading, "coins", []) or [],
+            eligible_symbols=eligible_market_cap_symbols,
+            catalog=catalog,
+        )
+
+    supported_stock_watchlist = _sync_supported_stock_universe(
+        dry_run_mode=config.trading.dry_run,
+        eligible_symbols=eligible_market_cap_symbols if cap_gate_active else None,
+        catalog=catalog,
+    )
 
     config.trading.dynamic_analysis_coins = dynamic_analysis
     merged = list(base_analysis)

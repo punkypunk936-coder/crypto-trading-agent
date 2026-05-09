@@ -3215,7 +3215,9 @@ def test_tradexyz_pre_ipo_cerebras_defaults_to_event_theme() -> None:
 def test_tradexyz_latest_launches_are_first_class_defaults() -> None:
     cfg = Config()
     expected = {
+        "EBAY": ("equity", ["consumer"], "CONSUMER_GROWTH"),
         "EWZ": ("index", ["latam_macro", "indices_macro"], "LATAM_MACRO"),
+        "NIFTY": ("index", ["asia_macro", "indices_macro"], "ASIA_MACRO"),
         "KRW": ("index", ["fx_rates", "asia_macro"], "FX_RATES"),
         "ZM": ("equity", ["software", "growth"], "SOFTWARE_GROWTH"),
     }
@@ -3577,6 +3579,48 @@ def test_thesis_runner_still_honors_hard_structure_invalidation() -> None:
     )
 
     assert agent._detect_position_invalidation("GOOGL", "LONG", signal) == "structure_invalidation"
+
+
+def test_stale_adverse_exit_cuts_multi_day_loser_without_killing_runners() -> None:
+    cfg = build_config()
+    cfg.trading.coins = ["BTC"]
+    cfg.trading.decision_dataset_enabled = False
+    cfg.trading.feature_store_enabled = False
+    cfg.trading.stale_adverse_min_minutes = 12 * 60
+    cfg.trading.stale_adverse_max_adverse_r = 0.25
+    cfg.trading.stale_adverse_max_tp_progress = 0.10
+    agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=10000.0, supported_symbols=["BTC"])])
+    agent.risk.positions = {
+        "BTC": OpenPosition(
+            coin="BTC",
+            direction="LONG",
+            entry_price=100.0,
+            size_usd=200.0,
+            size_coin=2.0,
+            stop_loss=90.0,
+            take_profit=130.0,
+            trailing_stop_price=88.0,
+            opened_at=time.time() - 18 * 3600,
+            exchange="UnitTest",
+            metadata={"entry_context": {"score": 66.0, "planned_stop_loss": 90.0, "planned_take_profit": 130.0}},
+        )
+    }
+    agent._last_signals = {
+        "BTC": {
+            "action": "SHORT",
+            "score": 28.0,
+            "live_price": 96.0,
+            "thesis": {"state": "ACTIVE", "permitted": True, "conflict_points": 0},
+        }
+    }
+    signal = SimpleNamespace(
+        action="SHORT",
+        score=28.0,
+        price=96.0,
+        thesis={"state": "ACTIVE", "permitted": True, "conflict_points": 0},
+    )
+
+    assert agent._detect_position_invalidation("BTC", "LONG", signal) == "stale_adverse"
 
 
 def test_winner_stickiness_blocks_conviction_churn_exit() -> None:
@@ -5980,6 +6024,50 @@ def test_apply_dynamic_analysis_universe_auto_adds_supported_stocks() -> None:
         main_module.get_hyperliquid_market_catalog = original_catalog
 
 
+def test_apply_dynamic_analysis_universe_gates_tradexyz_equities_by_market_cap() -> None:
+    cfg = build_config()
+    cfg.trading.dry_run = True
+    cfg.exchange.use_hyperliquid = True
+    cfg.trading.dynamic_market_cap_watchlist_enabled = True
+    cfg.trading.dynamic_market_cap_gate_tradexyz_enabled = True
+    cfg.trading.coins = ["BTC", "H100", "EBAY", "NIFTY"]
+    cfg.trading.analysis_coins = ["BTC", "BIRD", "H100", "EBAY", "NIFTY"]
+    original_config = main_module.config
+    original_supported = main_module.get_hyperliquid_supported_coins
+    original_catalog = main_module.get_hyperliquid_market_catalog
+    original_builder = main_module.build_hyperliquid_market_cap_watchlist
+    main_module.config = cfg
+    try:
+        main_module.get_hyperliquid_supported_coins = lambda **kwargs: ["BTC", "BIRD", "H100", "EBAY", "NIFTY"]
+        main_module.get_hyperliquid_market_catalog = lambda force_refresh=False: {
+            "BTC": {"instrument_type": "crypto", "market_type": "perp", "venue_symbol": "BTC"},
+            "BIRD": {"instrument_type": "equity", "market_type": "perp", "venue_symbol": "xyz:BIRD", "dex": "xyz"},
+            "H100": {"instrument_type": "equity", "market_type": "perp", "venue_symbol": "xyz:H100", "dex": "xyz"},
+            "EBAY": {"instrument_type": "equity", "market_type": "perp", "venue_symbol": "xyz:EBAY", "dex": "xyz", "categories": ["consumer"]},
+            "NIFTY": {"instrument_type": "index", "market_type": "perp", "venue_symbol": "xyz:NIFTY", "dex": "xyz", "categories": ["asia_macro", "indices_macro"]},
+        }
+        main_module.build_hyperliquid_market_cap_watchlist = lambda **kwargs: {
+            "coins": ["EBAY"],
+            "records": [{"coin": "EBAY", "market_cap_usd": 45_000_000_000.0}],
+        }
+
+        dynamic = main_module.apply_dynamic_analysis_universe()
+
+        assert dynamic == ["EBAY"]
+        assert "EBAY" in main_module.config.trading.analysis_coins
+        assert "EBAY" in main_module.config.trading.coins
+        assert "NIFTY" in main_module.config.trading.analysis_coins
+        assert "NIFTY" in main_module.config.trading.coins
+        assert "BIRD" not in main_module.config.trading.analysis_coins
+        assert "H100" not in main_module.config.trading.analysis_coins
+        assert "H100" not in main_module.config.trading.coins
+    finally:
+        main_module.config = original_config
+        main_module.get_hyperliquid_supported_coins = original_supported
+        main_module.get_hyperliquid_market_catalog = original_catalog
+        main_module.build_hyperliquid_market_cap_watchlist = original_builder
+
+
 def test_agent_runtime_tradexyz_listing_sync_onboards_new_symbols() -> None:
     cfg = build_config()
     cfg.trading.coins = ["BTC"]
@@ -6032,6 +6120,64 @@ def test_agent_runtime_tradexyz_listing_sync_onboards_new_symbols() -> None:
         agent_module.get_hyperliquid_market_catalog = original_catalog
         agent_module.hyperliquid_market_is_active = original_active
         agent_module.is_hyperliquid_supported = original_supported
+
+
+def test_agent_runtime_tradexyz_listing_sync_skips_low_cap_equities() -> None:
+    cfg = build_config()
+    cfg.trading.coins = ["BTC"]
+    cfg.trading.analysis_coins = ["BTC"]
+    cfg.trading.dynamic_analysis_coins = []
+    cfg.trading.auto_promote_analysis_coins = True
+    cfg.trading.promote_analysis_before_activity = True
+    cfg.trading.dynamic_market_cap_watchlist_enabled = True
+    cfg.trading.dynamic_market_cap_gate_tradexyz_enabled = True
+    cfg.trading.tradexyz_listing_auto_sync_enabled = True
+    cfg.trading.tradexyz_listing_sync_interval_cycles = 1
+    exchange = DryRunExchange(starting_balance_usd=1000.0, supported_symbols=["BTC"])
+    agent = TradingAgent(cfg, [exchange])
+
+    original_catalog = agent_module.get_hyperliquid_market_catalog
+    original_builder = agent_module.build_hyperliquid_market_cap_watchlist
+    try:
+        agent_module.get_hyperliquid_market_catalog = lambda force_refresh=False: {
+            "BTC": {"instrument_type": "crypto", "paper_tradeable": True},
+            "NEWIPO": {
+                "coin": "NEWIPO",
+                "venue_symbol": "xyz:NEWIPO",
+                "dex": "xyz",
+                "market_type": "perp",
+                "instrument_type": "equity",
+                "categories": ["pre_ipo", "ai_infra"],
+                "shortable": True,
+                "paper_tradeable": True,
+                "live_tradeable": True,
+            },
+            "BABY": {
+                "coin": "BABY",
+                "venue_symbol": "xyz:BABY",
+                "dex": "xyz",
+                "market_type": "perp",
+                "instrument_type": "equity",
+                "categories": ["growth"],
+                "shortable": True,
+                "paper_tradeable": True,
+                "live_tradeable": True,
+            },
+        }
+        agent_module.build_hyperliquid_market_cap_watchlist = lambda **kwargs: {
+            "coins": ["NEWIPO"],
+            "records": [{"coin": "NEWIPO", "market_cap_usd": 5_000_000_000.0}],
+        }
+
+        added = agent._maybe_sync_tradexyz_listing_universe(force=True)
+
+        assert added == ["NEWIPO"]
+        assert "NEWIPO" in agent._analysis_coins
+        assert "BABY" not in agent._analysis_coins
+        assert "BABY" not in agent._tradable_coin_set
+    finally:
+        agent_module.get_hyperliquid_market_catalog = original_catalog
+        agent_module.build_hyperliquid_market_cap_watchlist = original_builder
 
 
 def test_market_universe_filters_hyperliquid_large_caps_into_scout_watchlist() -> None:
@@ -7654,6 +7800,8 @@ def run_all() -> None:
     print("PASS thesis runner multi-day time-stop bypass")
     test_thesis_runner_still_honors_hard_structure_invalidation()
     print("PASS thesis runner hard invalidation integrity")
+    test_stale_adverse_exit_cuts_multi_day_loser_without_killing_runners()
+    print("PASS stale adverse loser invalidation")
     test_winner_stickiness_blocks_conviction_churn_exit()
     print("PASS winner stickiness churn guard")
     test_pair_trade_book_builds_equity_long_crypto_short_overlay()
@@ -7750,8 +7898,12 @@ def run_all() -> None:
     print("PASS full Trade.xyz executable catalog")
     test_apply_dynamic_analysis_universe_auto_adds_supported_stocks()
     print("PASS supported stock auto-promotion")
+    test_apply_dynamic_analysis_universe_gates_tradexyz_equities_by_market_cap()
+    print("PASS Trade.xyz market-cap execution gate")
     test_agent_runtime_tradexyz_listing_sync_onboards_new_symbols()
     print("PASS runtime TradeXYZ listing sync")
+    test_agent_runtime_tradexyz_listing_sync_skips_low_cap_equities()
+    print("PASS runtime TradeXYZ low-cap skip")
     test_market_universe_filters_hyperliquid_large_caps_into_scout_watchlist()
     print("PASS market-cap scout universe")
     test_reentry_watch_inherits_dynamic_trade_plan()

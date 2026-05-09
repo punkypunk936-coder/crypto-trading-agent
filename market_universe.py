@@ -10,7 +10,9 @@ We intersect Hyperliquid's live universe with respectable large-cap assets:
 from __future__ import annotations
 
 import json
+import re
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -27,9 +29,28 @@ log = get_logger("market_universe")
 
 COINGECKO_MARKETS_URL = "https://api.coingecko.com/api/v3/coins/markets"
 YAHOO_QUOTE_URL = "https://query1.finance.yahoo.com/v7/finance/quote"
+NASDAQ_SUMMARY_URL = "https://api.nasdaq.com/api/quote/{symbol}/summary"
 EQUITY_MARKET_CAP_OVERRIDES_USD = {
+    # Fallbacks for Trade.xyz names that do not have a direct U.S. quote
+    # endpoint, or where the live quote provider can temporarily block.
+    "CBRS": 23_000_000_000.0,
+    "H100": 54_000_000.0,
+    "HYUNDAI": 45_000_000_000.0,
+    "KIOXIA": 6_000_000_000.0,
+    "SKHX": 120_000_000_000.0,
+    "SMSN": 350_000_000_000.0,
+    "SOFTBANK": 130_000_000_000.0,
     "INTC": 90_000_000_000.0,
     "HIMS": 14_000_000_000.0,
+}
+NASDAQ_MARKET_CAP_SKIP_SYMBOLS = {
+    "CBRS",
+    "H100",
+    "HYUNDAI",
+    "KIOXIA",
+    "SKHX",
+    "SMSN",
+    "SOFTBANK",
 }
 
 
@@ -54,6 +75,23 @@ def _rank_or_default(value: Any, default: int = 999999) -> int:
         return int(value)
     except Exception:
         return default
+
+
+def _parse_market_cap_value(value: Any) -> float:
+    raw = str(value or "").strip()
+    if not raw or raw.upper() == "N/A":
+        return 0.0
+    cleaned = raw.replace("$", "").replace(",", "").strip()
+    match = re.match(r"^([0-9]+(?:\.[0-9]+)?)\s*([TtBbMmKk])?$", cleaned)
+    if not match:
+        return _safe_float(cleaned)
+    multiplier = {
+        "T": 1_000_000_000_000.0,
+        "B": 1_000_000_000.0,
+        "M": 1_000_000.0,
+        "K": 1_000.0,
+    }.get(str(match.group(2) or "").upper(), 1.0)
+    return _safe_float(match.group(1)) * multiplier
 
 
 def _load_cache(cache_path: Path) -> dict | None:
@@ -135,7 +173,44 @@ def _fetch_equity_market_caps(symbols: list[str]) -> dict[str, dict]:
                     "source": "yahoo_quote",
                 }
     except Exception as exc:
-        log.info("Equity market-cap refresh fell back to local overrides: %s", exc)
+        log.info("Yahoo equity market-cap refresh fell back to Nasdaq/overrides: %s", exc)
+
+    def _fetch_nasdaq_market_cap(symbol: str) -> tuple[str, dict | None]:
+        try:
+            resp = requests.get(
+                NASDAQ_SUMMARY_URL.format(symbol=symbol),
+                params={"assetclass": "stocks"},
+                headers={"Accept": "application/json", "User-Agent": "Mozilla/5.0"},
+                timeout=8,
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+            summary = dict(((payload.get("data") or {}).get("summaryData") or {}))
+            market_cap = _parse_market_cap_value((summary.get("MarketCap") or {}).get("value"))
+            if market_cap <= 0:
+                return symbol, None
+            return symbol, {
+                "name": symbol,
+                "market_cap": market_cap,
+                "market_cap_rank": None,
+                "price_change_percentage_24h": 0.0,
+                "source": "nasdaq_summary",
+            }
+        except Exception as exc:
+            log.debug("[%s] Nasdaq market-cap lookup skipped: %s", symbol, exc)
+            return symbol, None
+
+    missing = [
+        symbol for symbol in tickers
+        if symbol not in rows and symbol not in NASDAQ_MARKET_CAP_SKIP_SYMBOLS
+    ]
+    if missing:
+        with ThreadPoolExecutor(max_workers=min(8, len(missing))) as pool:
+            futures = [pool.submit(_fetch_nasdaq_market_cap, symbol) for symbol in missing]
+            for future in as_completed(futures):
+                symbol, row = future.result()
+                if row:
+                    rows[symbol] = row
 
     for symbol in tickers:
         if symbol in rows:
@@ -280,14 +355,7 @@ def build_hyperliquid_market_cap_watchlist(
             min_market_cap_usd=min_market_cap_usd,
             active_only=active_only,
         )
-        equity_records = _build_equity_candidates(
-            catalog=catalog,
-            min_market_cap_usd=min_market_cap_usd,
-            active_only=active_only,
-        )
         merged: dict[str, dict] = {row["coin"]: row for row in base_records}
-        for row in equity_records:
-            merged[row["coin"]] = row
         if not merged:
             return None
         return _finalize_watchlist_payload(

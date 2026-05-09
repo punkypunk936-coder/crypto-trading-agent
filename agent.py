@@ -107,6 +107,7 @@ from notifications import build_notifier
 from checkpoint import checkpoint_manager, load_checkpoint
 from runtime_power import get_power_status
 from dashboard.snapshot import build_dashboard_snapshot, default_control, merge_dataset_into_trades
+from market_universe import build_hyperliquid_market_cap_watchlist
 from circuit_breaker import (
     circuit_breaker_registry,
     get_exchange_circuit,
@@ -381,12 +382,40 @@ class TradingAgent:
             enforce_active = bool(getattr(self.cfg.trading, "enforce_active_venue_markets", True))
             promote_before_activity = bool(getattr(self.cfg.trading, "promote_analysis_before_activity", True))
             auto_promote = bool(getattr(self.cfg.trading, "auto_promote_analysis_coins", True))
+            eligible_market_cap_symbols: set[str] | None = None
+            if (
+                getattr(self.cfg.trading, "dynamic_market_cap_gate_tradexyz_enabled", True)
+                and getattr(self.cfg.trading, "dynamic_market_cap_watchlist_enabled", False)
+            ):
+                market_cap_payload = build_hyperliquid_market_cap_watchlist(
+                    min_market_cap_usd=float(getattr(self.cfg.trading, "dynamic_market_cap_min_usd", 1_000_000_000.0) or 1_000_000_000.0),
+                    pages=int(getattr(self.cfg.trading, "dynamic_market_cap_pages", 3) or 3),
+                    cache_hours=float(getattr(self.cfg.trading, "dynamic_market_cap_cache_hours", 6.0) or 6.0),
+                    active_only=False,
+                    max_coins=int(getattr(self.cfg.trading, "dynamic_market_cap_max_coins", 60) or 60),
+                )
+                eligible_market_cap_symbols = {
+                    str(value or "").upper().strip()
+                    for value in list(market_cap_payload.get("coins") or [])
+                    if str(value or "").strip()
+                }
             for coin, spec in sorted((catalog or {}).items()):
                 coin_upper = str(coin or "").upper().strip()
                 if not coin_upper or coin_upper not in supported:
                     continue
                 spec = dict(spec or {})
                 if str(spec.get("dex") or "").strip() != "xyz":
+                    continue
+                instrument_type = str(
+                    spec.get("instrument_type")
+                    or self.cfg.trading.instrument_types.get(coin_upper, "")
+                    or "equity"
+                ).strip().lower()
+                if (
+                    eligible_market_cap_symbols is not None
+                    and instrument_type in {"equity", "crypto"}
+                    and coin_upper not in eligible_market_cap_symbols
+                ):
                     continue
                 active = True
                 if enforce_active and not promote_before_activity and is_hyperliquid_supported(coin_upper):
@@ -3814,7 +3843,9 @@ class TradingAgent:
         structure_trend = str(sig.get("structure_trend", "") or "").upper()
         mtf_bias = str(sig.get("mtf_bias", "FLAT") or "FLAT").upper()
         breakout_state = str(sig.get("orderbook_breakout_state", "NONE") or "NONE").upper()
-        thesis_permitted = bool(thesis.get("permitted", signal.action in {"LONG", "SHORT"}))
+        signal_action = str(getattr(signal, "action", "") or "").upper()
+        thesis_permitted = bool(thesis.get("permitted", signal_action in {"LONG", "SHORT"}))
+        thesis_supports_position = bool(thesis_permitted and signal_action in {"", "FLAT", str(current_pos or "").upper()})
         thesis_state = str(thesis.get("state", "") or "").upper()
         thesis_conflicts = float(thesis.get("conflict_points", 0.0) or 0.0)
 
@@ -3837,20 +3868,34 @@ class TradingAgent:
             (pos.direction == "SHORT" and mtf_bias == "BULLISH")
         )
 
-        if hold_minutes <= early_minutes and adverse_r >= early_adverse_r and not thesis_permitted:
+        if hold_minutes <= early_minutes and adverse_r >= early_adverse_r and not thesis_supports_position:
             return "micro_invalidation"
-        if (structure_against or breakout_against) and (not thesis_permitted or thesis_state == "NO_TRADE" or thesis_conflicts >= 2):
+        if (structure_against or breakout_against) and (not thesis_supports_position or thesis_state == "NO_TRADE" or thesis_conflicts >= 2):
             return "structure_invalidation"
-        if hold_minutes >= htf_min_minutes and mtf_against and (not thesis_permitted or thesis_conflicts >= 1):
+        if hold_minutes >= htf_min_minutes and mtf_against and (not thesis_supports_position or thesis_conflicts >= 1):
             return "htf_invalidation"
-        if hold_minutes >= time_stop_minutes and tp_progress < time_stop_min_progress and (not thesis_permitted or thesis_state == "NO_TRADE"):
+        if (
+            getattr(self.cfg.trading, "stale_adverse_exit_enabled", True)
+            and hold_minutes >= float(getattr(self.cfg.trading, "stale_adverse_min_minutes", 1440.0) or 1440.0)
+            and adverse_r >= float(getattr(self.cfg.trading, "stale_adverse_max_adverse_r", 0.28) or 0.28)
+            and tp_progress < float(getattr(self.cfg.trading, "stale_adverse_max_tp_progress", 0.12) or 0.12)
+        ):
             runner_profile = self._position_runner_profile(coin, signal, live_price)
             runner_adverse_limit = float(
                 runner_profile.get("adverse_r_limit")
                 or getattr(self.cfg.trading, "thesis_runner_adverse_r_limit", 0.80)
                 or 0.80
             )
-            hard_runner_conflict = (structure_against or breakout_against or mtf_against) and (not thesis_permitted or thesis_conflicts >= 1)
+            if not (runner_profile.get("active") and thesis_supports_position and adverse_r < runner_adverse_limit):
+                return "stale_adverse"
+        if hold_minutes >= time_stop_minutes and tp_progress < time_stop_min_progress and (not thesis_supports_position or thesis_state == "NO_TRADE"):
+            runner_profile = self._position_runner_profile(coin, signal, live_price)
+            runner_adverse_limit = float(
+                runner_profile.get("adverse_r_limit")
+                or getattr(self.cfg.trading, "thesis_runner_adverse_r_limit", 0.80)
+                or 0.80
+            )
+            hard_runner_conflict = (structure_against or breakout_against or mtf_against) and (not thesis_supports_position or thesis_conflicts >= 1)
             if (
                 getattr(self.cfg.trading, "thesis_runner_time_stop_bypass", True)
                 and runner_profile.get("active")
