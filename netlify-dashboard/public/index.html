@@ -3047,6 +3047,7 @@ let latestActionBoard = { items: [], summary: {}, lead: null };
 let latestReviewStore = { reviews: {} };
 let latestReviewSummary = {};
 let latestLearningSummary = {};
+let latestPerformanceEdges = { summary: {}, working_edges: [], failing_edges: [] };
 let latestAssetDossiers = { assets: {}, summary: {} };
 let latestMissedMoveReport = { summary: {} };
 let latestLLMRefereeReport = { verdicts: {} };
@@ -3544,6 +3545,10 @@ function fallbackSearchItem(coin) {
   const resistance = pickLevel(mapEntry.resistances, signal.market_map_nearest_resistance, 'min');
   const livePrice = Number(signal.live_price || signal.price || 0);
   const priceDiagnostics = signal.price_diagnostics || (position ? position.price_diagnostics : {}) || {};
+  const fp = signal.first_principles || {};
+  const fpThesis = String(fp.plain_thesis || signal.first_principles_plain_thesis || '').trim();
+  const fpPath = String(fp.likely_path || signal.first_principles_likely_path || '').trim();
+  const fpWrong = String(fp.wrong_if || signal.first_principles_wrong_if || '').trim();
 
   let status = 'NO_SETUP';
   let label = 'Watching';
@@ -3580,22 +3585,22 @@ function fallbackSearchItem(coin) {
   } else if (action === 'LONG') {
     status = 'READY_LONG';
     label = 'Long thesis live';
-    headline = shortText(signal.decision_reason || 'Long thesis is live.', 180);
+    headline = shortText(fpThesis || signal.decision_reason || 'Long thesis is live.', 180);
     const triggerLevel = longTrigger || Number(signal.price || signal.live_price || 0);
     entryStatus = entryStatusLine(livePrice, longTrigger, 'trigger');
     trigger = numericLevel('Entry', triggerLevel, livePrice) || 'Watching for a clean long trigger.';
     executionNote = tradable
-      ? 'The thesis qualifies, but the bot still waits for confirmation, sizing, and clean fills before sending the order.'
+      ? (fpPath || 'The thesis qualifies, but the bot still waits for confirmation, sizing, and clean fills before sending the order.')
       : 'The thesis qualifies, but venue support or live market quality is not ready enough yet.';
   } else if (action === 'SHORT') {
     status = 'READY_SHORT';
     label = 'Short thesis live';
-    headline = shortText(signal.decision_reason || 'Short thesis is live.', 180);
+    headline = shortText(fpThesis || signal.decision_reason || 'Short thesis is live.', 180);
     const triggerLevel = shortTrigger || Number(signal.price || signal.live_price || 0);
     entryStatus = entryStatusLine(livePrice, shortTrigger, 'trigger');
     trigger = numericLevel('Entry', triggerLevel, livePrice) || 'Watching for a clean short trigger.';
     executionNote = tradable
-      ? 'The thesis qualifies, but the bot still waits for confirmation, sizing, and clean fills before sending the order.'
+      ? (fpPath || 'The thesis qualifies, but the bot still waits for confirmation, sizing, and clean fills before sending the order.')
       : 'The thesis qualifies, but venue support or live market quality is not ready enough yet.';
   } else if (assetState) {
     status = assetState;
@@ -3639,6 +3644,9 @@ function fallbackSearchItem(coin) {
   }
   if (!invalidation && risk) {
     invalidation = simpleInvalidationText({ risk }, 90);
+  }
+  if (fpWrong) {
+    invalidation = shortText(fpWrong, 90);
   }
   const probability = setupProbabilityPayload({
     signal,
@@ -4306,11 +4314,16 @@ function renderLearningSummary(summary, trades) {
     .map(([coin, verdict]) => ({ coin, verdict: verdict || {} }));
   const workingFamilies = (((latestPlaybookDistillerReport || {}).summary || {}).top_working_families || []).slice(0, 3);
   const failingFamilies = (((latestPlaybookDistillerReport || {}).summary || {}).top_failing_families || []).slice(0, 3);
+  const perf = latestPerformanceEdges || {};
+  const perfSummary = perf.summary || {};
+  const workingEdges = Array.isArray(perf.working_edges) ? perf.working_edges.slice(0, 3) : [];
+  const failingEdges = Array.isArray(perf.failing_edges) ? perf.failing_edges.slice(0, 3) : [];
+  const edgeLine = (edge) => String(edge.label || 'bucket') + ' ' + Math.round(Number(edge.win_rate || 0) * 100) + '% ' + fmtD(Number(edge.pnl_usd || 0));
   let html = '<div class="review-stack"><div class="review-summary-grid">'
     + '<div class="review-summary-box"><div class="card-label">Closed Trades</div><div class="review-count">' + esc(String(summary.count || 0)) + '</div><div class="review-count-sub">recent lessons absorbed</div></div>'
     + '<div class="review-summary-box"><div class="card-label">Winning Lessons</div><div class="review-count green">' + esc(String(summary.wins || 0)) + '</div><div class="review-count-sub">setups that paid</div></div>'
     + '<div class="review-summary-box"><div class="card-label">Losing Lessons</div><div class="review-count red">' + esc(String(summary.losses || 0)) + '</div><div class="review-count-sub">mistakes now tracked</div></div>'
-    + '<div class="review-summary-box"><div class="card-label">Research Brain</div><div class="review-notes">Dossiers, referee calls, missed-move pressure, and the distilled playbook now sit behind the same calm dashboard instead of living in separate tools.</div></div>'
+    + '<div class="review-summary-box"><div class="card-label">Edge Read</div><div class="review-notes">' + esc(shortText(perfSummary.top_lesson || 'Not enough closed trades to isolate the edge yet.', 130)) + '</div></div>'
     + '</div>';
 
   html += '<div class="review-summary-grid">'
@@ -4324,6 +4337,11 @@ function renderLearningSummary(summary, trades) {
     + '<div class="review-summary-box"><div class="card-label">Playbook Distiller</div><div class="review-notes">' + (workingFamilies.length
       ? esc(workingFamilies.map((item) => item.coin + ' ' + item.direction + ' ' + item.regime + ' ' + Math.round((Number(item.win_rate || 0)) * 100) + '%').join(' • '))
       : 'The weekly rewrite is still waiting for enough closed-trade history.') + '</div></div>'
+    + '</div>';
+
+  html += '<div class="review-summary-grid">'
+    + '<div class="review-summary-box"><div class="card-label">What Pays</div><div class="review-notes">' + esc(workingEdges.length ? workingEdges.map(edgeLine).join(' • ') : 'No repeatable winning bucket yet.') + '</div></div>'
+    + '<div class="review-summary-box"><div class="card-label">What Hurts</div><div class="review-notes">' + esc(failingEdges.length ? failingEdges.map(edgeLine).join(' • ') : 'No toxic bucket is clear yet.') + '</div></div>'
     + '</div>';
 
   if (workingFamilies.length || failingFamilies.length) {
@@ -4684,6 +4702,7 @@ async function refresh() {
     latestReviewStore = data.trade_reviews || { reviews: {} };
     latestReviewSummary = data.review_summary || {};
     latestLearningSummary = data.learning_summary || {};
+    latestPerformanceEdges = data.performance_edges || ((s || {}).performance_edges) || { summary: {}, working_edges: [], failing_edges: [] };
     latestAssetDossiers = data.asset_dossiers || { assets: {}, summary: {} };
     latestMissedMoveReport = data.missed_move_report || { summary: {} };
     latestLLMRefereeReport = data.llm_referee_report || { verdicts: {} };

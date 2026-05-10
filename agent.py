@@ -61,12 +61,14 @@ import decision_dataset
 import decision_review_lab
 import execution_coach
 import feature_store
+import first_principles
 import llm_referee
 from logger import get_logger
 from data.market_data import completed_candle_frame, fetch_candles, get_current_price, get_price_diagnostics
 import hosted_state_sync
 import market_map
 import missed_move_lab
+import performance_intelligence
 import playbook_distiller
 import portfolio_guard
 import proactive_intelligence
@@ -82,6 +84,7 @@ from indicators.chart_analyst import read_chart, ChartVerdict
 from indicators.mtf  import compute_mtf, MTFAnalysis
 from indicators.news import get_news_signal
 from indicators.candlestick_patterns import compute_candlestick_patterns
+from indicators.social_attention import get_social_attention_signal
 from indicators.orderbook_levels import (
     configure_background_orderbook_feed,
     get_orderbook_levels,
@@ -139,6 +142,7 @@ class TradingAgent:
         self._proactive_starter_attempt_ts: Dict[str, float] = {}
         self._north_star_cache: Dict[str, object] = {}
         self._setup_quality_cache: Dict[str, object] = {}
+        self._performance_edge_cache: Dict[str, object] = {}
         self._last_tradexyz_listing_sync_cycle = -1_000_000
         self._last_listing_sync_report: Dict[str, object] = {}
         self._tradable_coins = [coin.upper() for coin in cfg.trading.coins]
@@ -1262,6 +1266,13 @@ class TradingAgent:
             except Exception as e:
                 log.debug(f"[{coin}] Narrative gate skipped: {e}")
 
+        social_attention_signal = None
+        if getattr(self.cfg.trading, "use_social_attention", True):
+            try:
+                social_attention_signal = get_social_attention_signal(coin, self.cfg.trading)
+            except Exception as e:
+                log.debug(f"[{coin}] Social attention skipped: {e}")
+
         # Trade memory adjustment
         current_pos = self.risk.position_direction(coin)
         prelim_dir  = "LONG" if tech.rsi_score >= 50 else "SHORT"
@@ -1410,6 +1421,13 @@ class TradingAgent:
             "analyst_revision_score": getattr(news_signal, "analyst_revision_score", 0.0) if news_signal and news_signal.valid else 0.0,
             "analyst_revision_summary": getattr(news_signal, "analyst_revision_summary", "") if news_signal and news_signal.valid else "",
             "event_feed": getattr(news_signal, "event_feed", {}) if news_signal and news_signal.valid else {},
+            "social_attention_score": getattr(social_attention_signal, "score", 50.0) if social_attention_signal else 50.0,
+            "social_attention_sentiment": getattr(social_attention_signal, "sentiment", "NEUTRAL") if social_attention_signal else "NEUTRAL",
+            "social_attention_level": getattr(social_attention_signal, "attention_level", "LOW") if social_attention_signal else "LOW",
+            "social_attention_mentions": getattr(social_attention_signal, "mentions", 0) if social_attention_signal else 0,
+            "social_attention_summary": getattr(social_attention_signal, "summary", "") if social_attention_signal else "",
+            "social_attention_sources_checked": getattr(social_attention_signal, "sources_checked", 0) if social_attention_signal else 0,
+            "social_attention_source_hits": getattr(social_attention_signal, "source_hits", []) if social_attention_signal else [],
             "narrative_summary": getattr(narrative_signal, "summary", "") if narrative_signal else "",
             "narrative_event_risk_active": bool(getattr(narrative_signal, "event_risk_active", False)) if narrative_signal else False,
             "narrative_event_name": getattr(narrative_signal, "event_name", "") if narrative_signal else "",
@@ -1564,6 +1582,7 @@ class TradingAgent:
             "llm_referee_summary": "",
             "llm_referee_why_now": "",
         }
+        self._refresh_first_principles_view(coin)
         self._refresh_asset_state(coin, stage="analysis", current_position=current_pos)
         self._apply_analog_context(
             coin,
@@ -2112,6 +2131,14 @@ class TradingAgent:
             )
             return
 
+        if not self._first_principles_entry_guard(
+            coin,
+            signal,
+            portfolio_usd=portfolio_usd,
+            current_position=current_pos,
+        ):
+            return
+
         if not self._setup_quality_guard(
             coin,
             signal,
@@ -2459,6 +2486,30 @@ class TradingAgent:
             count += 1
         return count
 
+    def _refresh_first_principles_view(self, coin: str) -> dict:
+        snap = self._last_signals.get(coin)
+        if not isinstance(snap, dict):
+            return {}
+        view = first_principles.build_first_principles_view(coin, snap, self.cfg.trading)
+        snap.update({
+            "first_principles": view,
+            "first_principles_direction": view.get("direction", "FLAT"),
+            "first_principles_summary": view.get("summary", ""),
+            "first_principles_plain_thesis": view.get("plain_thesis", ""),
+            "first_principles_likely_path": view.get("likely_path", ""),
+            "first_principles_wrong_if": view.get("wrong_if", ""),
+            "first_principles_sequence": view.get("sequence", []),
+            "first_principles_fundamental_score": view.get("fundamental_score", 0.0),
+            "first_principles_attention_score": view.get("attention_score", 0.0),
+            "first_principles_flow_score": view.get("flow_score", 0.0),
+            "first_principles_price_score": view.get("price_score", 0.0),
+            "first_principles_sequence_score": view.get("sequence_score", 0.0),
+            "first_principles_decision": view.get("decision", ""),
+            "first_principles_theme": view.get("theme", ""),
+            "first_principles_what_matters": view.get("what_matters", ""),
+        })
+        return view
+
     def _sync_signal_snapshot(self, coin: str, signal) -> None:
         if coin not in self._last_signals:
             return
@@ -2516,6 +2567,7 @@ class TradingAgent:
             "execution_plan": execution_plan,
             "trade_plan": trade_plan,
         })
+        self._refresh_first_principles_view(coin)
         self._refresh_asset_state(coin, stage=str(snap.get("decision_stage") or "analysis"))
 
     def _apply_analog_context(
@@ -3159,6 +3211,120 @@ class TradingAgent:
                 f"${trimmed:.2f}: {guard.get('summary', '')}"
             )
         return True
+
+    def _performance_edge_rows(self) -> list[dict]:
+        lookback = int(getattr(self.cfg.trading, "performance_edge_guard_lookback_trades", 160) or 160)
+        return self._quality_guard_rows(lookback)
+
+    def _performance_edge_report(self, *, force: bool = False) -> dict:
+        rows = self._performance_edge_rows()
+        key = f"{len(rows)}:{rows[-1].get('trade_id') if rows else 'none'}"
+        if not force and self._performance_edge_cache.get("key") == key:
+            return dict(self._performance_edge_cache.get("report") or {})
+        report = performance_intelligence.build_performance_edges(
+            rows,
+            min_samples=int(getattr(self.cfg.trading, "performance_edge_summary_min_samples", 3) or 3),
+        )
+        self._performance_edge_cache = {"key": key, "report": report}
+        return dict(report)
+
+    def _first_principles_entry_guard(self, coin: str, signal, *, portfolio_usd: float, current_position: str | None) -> bool:
+        if not getattr(self.cfg.trading, "first_principles_guard_enabled", True):
+            return True
+        if current_position or str(getattr(signal, "action", "") or "").upper() not in {"LONG", "SHORT"}:
+            return True
+
+        direction = str(getattr(signal, "action", "") or "").upper()
+        score = float(getattr(signal, "score", 50.0) or 50.0)
+        marginal_long = score < float(getattr(self.cfg.trading, "first_principles_guard_marginal_long_score", 70.0) or 70.0)
+        marginal_short = score > float(getattr(self.cfg.trading, "first_principles_guard_marginal_short_score", 30.0) or 30.0)
+        if not ((direction == "LONG" and marginal_long) or (direction == "SHORT" and marginal_short)):
+            return True
+
+        self._refresh_first_principles_view(coin)
+        sig = dict(self._last_signals.get(coin, {}) or {})
+        view = dict(sig.get("first_principles") or {})
+        expectancy = dict(getattr(signal, "expectancy", {}) or sig.get("expectancy", {}) or {})
+        thesis = dict(getattr(signal, "thesis", {}) or sig.get("thesis", {}) or {})
+        conviction_entry = dict(thesis.get("conviction_entry") or sig.get("conviction_entry") or {})
+
+        event_score = max(
+            float(sig.get("news_event_score") or 0.0),
+            float(sig.get("official_event_score") or 0.0),
+            float(sig.get("sec_event_score") or 0.0),
+        )
+        catalyst_score = max(
+            float(sig.get("news_catalyst_score") or 0.0),
+            max(0.0, float(sig.get("analyst_revision_score") or 0.0)),
+        )
+        fundamental_score = float(view.get("fundamental_score") or sig.get("first_principles_fundamental_score") or 0.0)
+        attention_score = float(view.get("attention_score") or sig.get("first_principles_attention_score") or 0.0)
+        sequence_score = float(view.get("sequence_score") or sig.get("first_principles_sequence_score") or 0.0)
+        probability = float(expectancy.get("probability", sig.get("expectancy_probability", 0.50)) or 0.50)
+
+        event_like = bool(
+            sig.get("conviction_entry_event")
+            or conviction_entry.get("event_conviction")
+            or event_score >= float(getattr(self.cfg.trading, "first_principles_guard_event_score", 2.5) or 2.5)
+            or catalyst_score >= float(getattr(self.cfg.trading, "first_principles_guard_catalyst_score", 2.5) or 2.5)
+        )
+        fundamentals_ok = fundamental_score >= float(getattr(self.cfg.trading, "first_principles_guard_min_fundamental_score", 62.0) or 62.0)
+        attention_ok = attention_score >= float(getattr(self.cfg.trading, "first_principles_guard_min_attention_score", 58.0) or 58.0)
+        sequence_ok = sequence_score >= float(getattr(self.cfg.trading, "first_principles_guard_min_sequence_score", 60.0) or 60.0)
+        probability_ok = probability >= float(getattr(self.cfg.trading, "first_principles_guard_min_probability", 0.54) or 0.54)
+
+        performance_verdict = {"active": False, "permitted": True, "summary": ""}
+        if getattr(self.cfg.trading, "performance_edge_guard_enabled", True):
+            performance_verdict = performance_intelligence.setup_edge_verdict(
+                self._performance_edge_rows(),
+                coin=coin,
+                direction=direction,
+                score=score,
+                min_samples=int(getattr(self.cfg.trading, "performance_edge_guard_min_samples", 4) or 4),
+                min_win_rate=float(getattr(self.cfg.trading, "performance_edge_guard_min_win_rate", 0.52) or 0.52),
+            )
+
+        permitted = bool(
+            event_like
+            or (fundamentals_ok and attention_ok and sequence_ok and probability_ok)
+        )
+        if performance_verdict.get("active") and not event_like and not (fundamentals_ok and attention_ok and sequence_ok):
+            permitted = False
+
+        self._last_signals.setdefault(coin, {})
+        self._last_signals[coin]["first_principles_guard"] = {
+            "active": True,
+            "permitted": permitted,
+            "fundamental_score": round(fundamental_score, 2),
+            "attention_score": round(attention_score, 2),
+            "sequence_score": round(sequence_score, 2),
+            "probability": round(probability, 4),
+            "event_like": event_like,
+            "performance_edge": performance_verdict,
+            "summary": view.get("summary", ""),
+        }
+        if permitted:
+            return True
+
+        reason = (
+            f"first-principles guard: marginal {direction} needs stronger fundamentals/attention"
+        )
+        if performance_verdict.get("active") and performance_verdict.get("summary"):
+            reason = f"{reason}; {performance_verdict['summary']}"
+        log.info(f"[{coin}] 🧠 {reason}")
+        signal.action = "FLAT"
+        signal.flat_reason = reason
+        signal.reason = reason
+        self._sync_signal_snapshot(coin, signal)
+        self._record_decision_snapshot(
+            coin,
+            portfolio_usd=portfolio_usd,
+            stage="first_principles_guard_block",
+            signal=signal,
+            current_position=current_position,
+            blocked=True,
+        )
+        return False
 
     def _quality_guard_rows(self, lookback: int) -> list[dict]:
         path = Path(TRADES_CSV)
@@ -4033,6 +4199,17 @@ class TradingAgent:
             "options_summary": sig.get("options_summary", ""),
             "analyst_revision_score": sig.get("analyst_revision_score", 0.0),
             "analyst_revision_summary": sig.get("analyst_revision_summary", ""),
+            "social_attention_score": sig.get("social_attention_score", 50.0),
+            "social_attention_sentiment": sig.get("social_attention_sentiment", "NEUTRAL"),
+            "social_attention_level": sig.get("social_attention_level", "LOW"),
+            "social_attention_mentions": sig.get("social_attention_mentions", 0),
+            "social_attention_summary": sig.get("social_attention_summary", ""),
+            "first_principles": sig.get("first_principles", {}),
+            "first_principles_summary": sig.get("first_principles_summary", ""),
+            "first_principles_plain_thesis": sig.get("first_principles_plain_thesis", ""),
+            "first_principles_likely_path": sig.get("first_principles_likely_path", ""),
+            "first_principles_wrong_if": sig.get("first_principles_wrong_if", ""),
+            "first_principles_sequence_score": sig.get("first_principles_sequence_score", 0.0),
             "candle_score": sig.get("candle_score", 50.0),
             "candle_trend": sig.get("candle_trend", "FLAT"),
             "foc_score": sig.get("foc_score", 50.0),
@@ -6128,6 +6305,15 @@ class TradingAgent:
         except Exception as e:
             log.debug(f"decision_dataset.jsonl read failed: {e}")
         enriched_trade_records = merge_dataset_into_trades(trades_data, trade_dataset_records)
+        performance_edge_data = performance_intelligence.build_performance_edges(
+            enriched_trade_records or trades_data,
+            min_samples=int(getattr(self.cfg.trading, "performance_edge_summary_min_samples", 3) or 3),
+        )
+        state["performance_edges"] = performance_edge_data
+        try:
+            state_path.write_text(json.dumps(state, indent=2))
+        except Exception as e:
+            log.debug(f"state.json performance-edge write failed: {e}")
 
         market_map_data = market_map.build_effective_market_map(
             self._analysis_coins,

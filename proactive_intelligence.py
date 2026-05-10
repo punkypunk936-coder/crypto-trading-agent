@@ -189,6 +189,9 @@ def _direction(coin: str, signal: dict, market_entry: dict | None = None) -> str
         return "SHORT"
     if "LONG" in state or "RECLAIM" in state:
         return "LONG"
+    fp_direction = _safe_str(signal.get("first_principles_direction")).upper()
+    if fp_direction in {"LONG", "SHORT"} and _safe_float(signal.get("first_principles_sequence_score")) >= 60.0:
+        return fp_direction
     bias = _safe_str(signal.get("market_map_bias") or (market_entry or {}).get("bias")).upper()
     if bias == "BULLISH":
         return "LONG"
@@ -225,14 +228,22 @@ def _conviction_score(signal: dict, direction: str) -> float:
     event = _safe_float(signal.get("news_event_score")) * 6.0
     official = _safe_float(signal.get("official_event_score")) * 4.0
     revisions = max(0.0, _safe_float(signal.get("analyst_revision_score"))) * 3.0
+    first_principles_score = max(0.0, _safe_float(signal.get("first_principles_sequence_score")) - 50.0) * 0.45
+    fundamentals = max(0.0, _safe_float(signal.get("first_principles_fundamental_score")) - 50.0) * 0.35
+    attention = max(0.0, _safe_float(signal.get("first_principles_attention_score") or signal.get("social_attention_score")) - 50.0) * 0.30
     thesis = max(0.0, _safe_float(signal.get("thesis_conviction_score"), score) - 50.0) * 0.55
     expectancy = max(0.0, _safe_float(signal.get("expectancy_probability")) - 0.50) * 100.0
     starter = 8.0 if bool(signal.get("conviction_entry_active")) else 0.0
-    return round(max(0.0, min(100.0, 30.0 + directional_strength + catalyst + event + official + revisions + thesis + expectancy + starter)), 2)
+    return round(max(0.0, min(100.0, 30.0 + directional_strength + catalyst + event + official + revisions + first_principles_score + fundamentals + attention + thesis + expectancy + starter)), 2)
 
 
 def _thesis_summary(coin: str, direction: str, signal: dict, market_entry: dict | None) -> str:
-    explicit = _safe_str(signal.get("thesis_summary") or signal.get("decision_reason") or signal.get("flat_reason"))
+    explicit = _safe_str(
+        signal.get("first_principles_plain_thesis")
+        or signal.get("thesis_summary")
+        or signal.get("decision_reason")
+        or signal.get("flat_reason")
+    )
     if explicit:
         return explicit[:260]
     if _safe_float(signal.get("news_event_score")) >= 3:
@@ -340,6 +351,9 @@ def build_thesis_ledger_report(
             "probability": probability,
             "expected_surprise": _safe_str(signal.get("analyst_revision_summary") or signal.get("news_event_summary") or signal.get("news_catalyst_summary") or "Catalyst surprise not explicit yet."),
             "why_now": _thesis_summary(coin, direction, signal, market_entry),
+            "first_principles": dict(signal.get("first_principles") or {}),
+            "likely_path": _safe_str(signal.get("first_principles_likely_path") or "Likely path not explicit yet."),
+            "attention_summary": _safe_str(signal.get("social_attention_summary") or "No configured trader-flow read yet."),
             "base_case": _safe_str(signal.get("thesis_summary") or signal.get("market_map_summary") or "Base case is continuation in the thesis direction if confirmation arrives."),
             "bull_case": f"{coin} expands in the thesis direction as catalyst flow, positioning, and structure align.",
             "bear_case": f"{coin} fails the setup if the market fades the catalyst or rejects the trigger zone.",

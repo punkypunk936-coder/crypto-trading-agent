@@ -885,6 +885,8 @@ def _build_catalyst_rail(sig: dict) -> list[dict[str, str]]:
     analyst_revision = _safe_float(sig.get("analyst_revision_score"))
     analyst_summary = str(sig.get("analyst_revision_summary") or "").strip()
     event_budget_summary = str(sig.get("event_budget_summary") or "").strip()
+    social_score = _safe_float(sig.get("social_attention_score") or 50.0)
+    social_summary = str(sig.get("social_attention_summary") or "").strip()
     if catalyst_score >= 3.0 or catalyst_summary:
         catalyst_text = catalyst_summary or news_headline or "fresh catalyst support is still present"
         label = "Catalyst"
@@ -931,6 +933,12 @@ def _build_catalyst_rail(sig: dict) -> list[dict[str, str]]:
             "label": "Budget",
             "tone": "watch",
             "text": _clip_text(event_budget_summary, 90),
+        })
+    if social_summary and social_score >= 58.0 and len(rail) < 3:
+        rail.append({
+            "label": "Attention",
+            "tone": "support" if social_score >= 62.0 else "watch",
+            "text": _clip_text(social_summary, 90),
         })
     narrative_text = narrative_summary or news_headline
     if narrative_text and not _contains_any(
@@ -1687,6 +1695,17 @@ def action_board(
         entry_status = ""
         trade_plan = dict(sig.get("trade_plan") or {})
         planned_stop = _safe_float(sig.get("planned_stop_loss") or trade_plan.get("stop_loss"))
+        first_principles_view = dict(sig.get("first_principles") or {})
+        first_principles_thesis = str(
+            first_principles_view.get("plain_thesis")
+            or sig.get("first_principles_plain_thesis")
+            or ""
+        ).strip()
+        first_principles_path = str(
+            first_principles_view.get("likely_path")
+            or sig.get("first_principles_likely_path")
+            or ""
+        ).strip()
 
         if pos:
             direction = str(pos.get("direction") or "").upper() or action
@@ -1735,27 +1754,27 @@ def action_board(
         elif action == "LONG":
             status = "READY_LONG"
             label = "Long thesis live"
-            headline = _primary_reason(sig.get("decision_reason") or current_logic) or "Long thesis is live."
+            headline = first_principles_thesis or _primary_reason(sig.get("decision_reason") or current_logic) or "Long thesis is live."
             entry_status = _entry_status_text(live_anchor, long_trigger, "trigger")
             trigger_level = long_trigger or _safe_float(sig.get("price")) or _safe_float(sig.get("live_price"))
             trigger = _numeric_level_text("Entry", trigger_level, live_anchor)
             if not trigger:
                 trigger = "Watching for a clean long trigger."
             if tradable:
-                execution_note = "The thesis qualifies, but the bot still waits for confirmation, sizing, and clean fills before sending the order."
+                execution_note = first_principles_path or "The thesis qualifies, but the bot still waits for confirmation, sizing, and clean fills before sending the order."
             else:
                 execution_note = "The thesis qualifies, but venue support or live market quality is not ready enough to execute yet."
         elif action == "SHORT":
             status = "READY_SHORT"
             label = "Short thesis live"
-            headline = _primary_reason(sig.get("decision_reason") or current_logic) or "Short thesis is live."
+            headline = first_principles_thesis or _primary_reason(sig.get("decision_reason") or current_logic) or "Short thesis is live."
             entry_status = _entry_status_text(live_anchor, short_trigger, "trigger")
             trigger_level = short_trigger or _safe_float(sig.get("price")) or _safe_float(sig.get("live_price"))
             trigger = _numeric_level_text("Entry", trigger_level, live_anchor)
             if not trigger:
                 trigger = "Watching for a clean short trigger."
             if tradable:
-                execution_note = "The thesis qualifies, but the bot still waits for confirmation, sizing, and clean fills before sending the order."
+                execution_note = first_principles_path or "The thesis qualifies, but the bot still waits for confirmation, sizing, and clean fills before sending the order."
             else:
                 execution_note = "The thesis qualifies, but venue support or live market quality is not ready enough to execute yet."
         elif bias == "BULLISH" and long_trigger and (reclaim_confirmed or bullish_breakout_live):
@@ -2021,6 +2040,15 @@ def action_board(
                 "llm_referee": dict(sig.get("llm_referee") or {}),
                 "llm_referee_summary": str(sig.get("llm_referee_summary") or ""),
                 "llm_referee_why_now": str(sig.get("llm_referee_why_now") or ""),
+                "first_principles": first_principles_view,
+                "first_principles_plain_thesis": first_principles_thesis,
+                "first_principles_likely_path": first_principles_path,
+                "first_principles_wrong_if": str(first_principles_view.get("wrong_if") or sig.get("first_principles_wrong_if") or ""),
+                "first_principles_sequence_score": _safe_float(first_principles_view.get("sequence_score") or sig.get("first_principles_sequence_score")),
+                "first_principles_fundamental_score": _safe_float(first_principles_view.get("fundamental_score") or sig.get("first_principles_fundamental_score")),
+                "first_principles_attention_score": _safe_float(first_principles_view.get("attention_score") or sig.get("first_principles_attention_score")),
+                "social_attention_score": _safe_float(sig.get("social_attention_score") or 50.0),
+                "social_attention_summary": str(sig.get("social_attention_summary") or ""),
                 "execution_coach_verdict": coach_verdict,
                 "execution_coach_summary": coach_summary,
                 **probability,
@@ -2425,6 +2453,7 @@ def build_dashboard_snapshot(
         "trade_reviews": normalized_trade_reviews,
         "review_summary": review_summary(safe_trades, normalized_trade_reviews),
         "learning_summary": learning_summary(safe_trades),
+        "performance_edges": dict(shaped_state.get("performance_edges") or {}),
         "decision_review_report": dict(decision_review_report or {}),
         "challenger_report": dict(challenger_report or {}),
         "missed_move_report": dict(missed_move_report or {}),

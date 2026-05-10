@@ -33,6 +33,7 @@ import decision_dataset as decision_dataset_module
 import decision_review_lab as decision_review_lab_module
 import execution_coach as execution_coach_module
 import feature_store as feature_store_module
+import first_principles as first_principles_module
 import hosted_state_sync as hosted_state_sync_module
 import llm_referee as llm_referee_module
 import main as main_module
@@ -41,6 +42,7 @@ import market_universe as market_universe_module
 import missed_move_lab as missed_move_lab_module
 import narrative as narrative_module
 import portfolio_guard as portfolio_guard_module
+import performance_intelligence as performance_intelligence_module
 import playbook_distiller as playbook_distiller_module
 import precision_lab as precision_lab_module
 import proactive_intelligence as proactive_intelligence_module
@@ -49,6 +51,7 @@ from data import market_data as market_data_module
 from indicators import equity_event_feeds as equity_event_feeds_module
 from indicators import news as news_module
 from indicators import orderbook_levels as orderbook_levels_module
+from indicators import social_attention as social_attention_module
 import trade_dataset as trade_dataset_module
 import trade_logger as trade_logger_module
 import trade_review as trade_review_module
@@ -139,6 +142,9 @@ def build_config() -> Config:
     cfg.trading.live_promotion_gate_enabled = False
     cfg.trading.require_notifications_for_live = False
     cfg.trading.setup_quality_guard_enabled = False
+    cfg.trading.first_principles_guard_enabled = False
+    cfg.trading.performance_edge_guard_enabled = False
+    cfg.trading.use_social_attention = False
     return cfg
 
 
@@ -7655,6 +7661,160 @@ def test_dashboard_snapshot_includes_playbook_distiller_report() -> None:
     assert snapshot["playbook_distiller_report"]["assets"]["BTC"]["playbook"] == "Test"
 
 
+def test_first_principles_view_sequences_fundamentals_before_price() -> None:
+    cfg = build_config()
+    cfg.trading.asset_category_map = {"GOOGL": ["mag7", "ai_infra"]}
+    view = first_principles_module.build_first_principles_view(
+        "GOOGL",
+        {
+            "action": "LONG",
+            "score": 66.0,
+            "instrument_type": "equity",
+            "official_event_score": 3.0,
+            "news_catalyst_score": 2.5,
+            "analyst_revision_score": 1.2,
+            "social_attention_score": 64.0,
+            "social_attention_mentions": 5,
+            "expectancy_probability": 0.57,
+            "planned_stop_loss": 175.0,
+        },
+        cfg.trading,
+    )
+    assert [step["step"] for step in view["sequence"]] == ["Fundamentals", "Attention", "Flows", "Price"]
+    assert view["direction"] == "LONG"
+    assert view["fundamental_score"] >= 62
+    assert "175" in view["wrong_if"]
+
+
+def test_social_attention_scans_configured_public_feeds() -> None:
+    original_fetch = social_attention_module._fetch_source_text
+    social_attention_module._CACHE.clear()
+    try:
+        social_attention_module._fetch_source_text = lambda url, timeout: "$GOOGL breakout long. AI demand strong. $GOOGL upgrade."
+        cfg = SimpleNamespace(
+            use_social_attention=True,
+            social_attention_sources=["https://example.test/feed"],
+            social_attention_max_sources=2,
+            social_attention_timeout_seconds=1.0,
+            social_attention_cache_seconds=1,
+        )
+        signal = social_attention_module.get_social_attention_signal("GOOGL", cfg)
+        assert signal.valid is True
+        assert signal.mentions >= 2
+        assert signal.score > 50
+        assert signal.sentiment == "BULLISH"
+    finally:
+        social_attention_module._fetch_source_text = original_fetch
+        social_attention_module._CACHE.clear()
+
+
+def test_performance_edges_summarize_what_pays_and_hurts() -> None:
+    rows = [
+        {"trade_id": "1", "coin": "GOOGL", "direction": "LONG", "signal_score": "74", "duration_mins": "1800", "pnl_usd": "8", "result": "WIN"},
+        {"trade_id": "2", "coin": "GOOGL", "direction": "LONG", "signal_score": "72", "duration_mins": "2200", "pnl_usd": "6", "result": "WIN"},
+        {"trade_id": "3", "coin": "META", "direction": "LONG", "signal_score": "71", "duration_mins": "1600", "pnl_usd": "4", "result": "WIN"},
+        {"trade_id": "4", "coin": "BTC", "direction": "LONG", "signal_score": "66", "duration_mins": "20", "pnl_usd": "-2", "result": "LOSS"},
+        {"trade_id": "5", "coin": "ETH", "direction": "LONG", "signal_score": "67", "duration_mins": "30", "pnl_usd": "-3", "result": "LOSS"},
+        {"trade_id": "6", "coin": "SOL", "direction": "LONG", "signal_score": "68", "duration_mins": "25", "pnl_usd": "-1", "result": "LOSS"},
+    ]
+    report = performance_intelligence_module.build_performance_edges(rows, min_samples=3)
+    assert report["summary"]["total_closed"] == 6
+    assert report["working_edges"]
+    assert report["failing_edges"]
+    assert "Lean into" in " ".join(report["lessons"])
+    assert "Avoid" in " ".join(report["lessons"])
+
+
+def test_dashboard_snapshot_includes_performance_edges() -> None:
+    snapshot = build_dashboard_snapshot(
+        {
+            "signals": {},
+            "positions": [],
+            "config": {},
+            "cycle_number": 1,
+            "performance_edges": {"summary": {"top_lesson": "Lean into LONG score 70-75"}},
+        },
+        [],
+    )
+    assert snapshot["performance_edges"]["summary"]["top_lesson"].startswith("Lean into")
+
+
+def test_first_principles_guard_blocks_marginal_price_only_entry() -> None:
+    cfg = build_config()
+    cfg.trading.first_principles_guard_enabled = True
+    cfg.trading.performance_edge_guard_enabled = False
+    cfg.trading.decision_dataset_enabled = False
+    agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=1000.0)])
+    signal = SimpleNamespace(
+        action="LONG",
+        score=66.0,
+        confidence="MEDIUM",
+        reason="marginal price-only long",
+        flat_reason="",
+        stop_loss_price=95.0,
+        take_profit_price=120.0,
+        trade_plan={},
+        thesis={"state": "ACTIVE", "permitted": True, "conviction_score": 66.0},
+        expectancy={"probability": 0.51, "expected_r": 0.05, "uncertainty": 0.40, "score": 54.0},
+        execution_plan={},
+    )
+    agent._last_signals["BTC"] = {
+        "action": "LONG",
+        "score": 66.0,
+        "instrument_type": "crypto",
+        "planned_stop_loss": 95.0,
+        "expectancy_probability": 0.51,
+        "news_event_score": 0.0,
+        "news_catalyst_score": 0.0,
+        "social_attention_score": 50.0,
+    }
+    assert agent._first_principles_entry_guard("BTC", signal, portfolio_usd=1000.0, current_position=None) is False
+    assert signal.action == "FLAT"
+    assert "first-principles guard" in signal.reason
+
+
+def test_first_principles_guard_allows_marginal_event_attention_starter() -> None:
+    cfg = build_config()
+    cfg.trading.first_principles_guard_enabled = True
+    cfg.trading.performance_edge_guard_enabled = False
+    cfg.trading.decision_dataset_enabled = False
+    agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=1000.0)])
+    signal = SimpleNamespace(
+        action="LONG",
+        score=66.0,
+        confidence="MEDIUM",
+        reason="small event starter",
+        flat_reason="",
+        stop_loss_price=175.0,
+        take_profit_price=220.0,
+        trade_plan={},
+        thesis={
+            "state": "CONVICTION_ENTRY",
+            "permitted": True,
+            "conviction_score": 66.0,
+            "conviction_entry": {"active": True, "event_conviction": True},
+        },
+        expectancy={"probability": 0.55, "expected_r": 0.18, "uncertainty": 0.36, "score": 58.0},
+        execution_plan={},
+    )
+    agent._last_signals["GOOGL"] = {
+        "action": "LONG",
+        "score": 66.0,
+        "instrument_type": "equity",
+        "asset_categories": ["mag7", "ai_infra"],
+        "planned_stop_loss": 175.0,
+        "expectancy_probability": 0.55,
+        "official_event_score": 3.0,
+        "news_catalyst_score": 2.6,
+        "analyst_revision_score": 1.0,
+        "social_attention_score": 64.0,
+        "social_attention_mentions": 4,
+        "conviction_entry": {"active": True, "event_conviction": True},
+        "conviction_entry_event": True,
+    }
+    assert agent._first_principles_entry_guard("GOOGL", signal, portfolio_usd=1000.0, current_position=None) is True
+
+
 def run_all() -> None:
     test_checkpoint_recovery()
     print("PASS checkpoint recovery")
@@ -7936,6 +8096,18 @@ def run_all() -> None:
     print("PASS playbook distiller")
     test_dashboard_snapshot_includes_playbook_distiller_report()
     print("PASS dashboard playbook distiller snapshot")
+    test_first_principles_view_sequences_fundamentals_before_price()
+    print("PASS first-principles reasoning sequence")
+    test_social_attention_scans_configured_public_feeds()
+    print("PASS social attention feed scan")
+    test_performance_edges_summarize_what_pays_and_hurts()
+    print("PASS performance edge summary")
+    test_dashboard_snapshot_includes_performance_edges()
+    print("PASS dashboard performance edge snapshot")
+    test_first_principles_guard_blocks_marginal_price_only_entry()
+    print("PASS first-principles marginal block")
+    test_first_principles_guard_allows_marginal_event_attention_starter()
+    print("PASS first-principles event starter")
     test_llm_referee_returns_disabled_without_api_key()
     print("PASS LLM referee disabled fallback")
     test_llm_referee_parses_structured_openai_verdict()

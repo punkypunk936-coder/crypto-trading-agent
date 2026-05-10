@@ -333,6 +333,20 @@ class TradingConfig:
     setup_quality_guard_min_probability: float = 0.58
     setup_quality_guard_min_expected_r: float = 0.22
     setup_quality_guard_event_min_probability: float = 0.54
+    first_principles_guard_enabled: bool = True
+    first_principles_guard_marginal_long_score: float = 70.0
+    first_principles_guard_marginal_short_score: float = 30.0
+    first_principles_guard_min_fundamental_score: float = 62.0
+    first_principles_guard_min_attention_score: float = 58.0
+    first_principles_guard_min_sequence_score: float = 60.0
+    first_principles_guard_min_probability: float = 0.54
+    first_principles_guard_event_score: float = 2.5
+    first_principles_guard_catalyst_score: float = 2.5
+    performance_edge_guard_enabled: bool = True
+    performance_edge_guard_lookback_trades: int = 160
+    performance_edge_guard_min_samples: int = 4
+    performance_edge_guard_min_win_rate: float = 0.52
+    performance_edge_summary_min_samples: int = 3
 
     use_orderbook_levels: bool    = True   # Live L2 + daily key-level intelligence for venue-backed assets
     orderbook_depth_limit: int    = 120
@@ -697,6 +711,17 @@ class TradingConfig:
     pair_trade_crypto_hedge_candidates: List[str] = field(default_factory=lambda: [
         "BTC", "ETH", "SOL", "HYPE", "MON",
     ])
+    use_social_attention: bool = True
+    social_attention_sources: List[str] = field(
+        default_factory=lambda: [
+            item.strip()
+            for item in os.getenv("SOCIAL_ATTENTION_SOURCES", "").replace("\n", ",").split(",")
+            if item.strip()
+        ]
+    )
+    social_attention_max_sources: int = 6
+    social_attention_timeout_seconds: float = 4.0
+    social_attention_cache_seconds: int = 300
     proactive_starter_execution_hard_block_stages: List[str] = field(default_factory=lambda: [
         "data_reliability_block",
         "execution_coach_skip",
