@@ -9,6 +9,8 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Any, Iterable
 
+import daily_radar
+
 
 def default_state() -> dict:
     return {
@@ -2442,12 +2444,20 @@ def build_dashboard_snapshot(
     enriched_trades = merge_dataset_into_trades(trades or [], trade_dataset_records)
     safe_trades = merge_reviews_into_trades(enriched_trades, normalized_trade_reviews)
     shaped_state = augment_state(state)
+    board = action_board(shaped_state, normalized_market_map, decision_dataset_records)
+    radar = daily_radar.build_daily_radar(
+        shaped_state,
+        normalized_market_map,
+        board,
+        dict(proactive_trader_report or {}),
+    )
     return {
         "state": shaped_state,
         "trades": safe_trades[-50:][::-1],
         "stats": calc_stats(safe_trades),
         "control": normalize_control(control),
-        "action_board": action_board(shaped_state, normalized_market_map, decision_dataset_records),
+        "action_board": board,
+        "daily_radar": radar,
         "market_map": normalized_market_map,
         "market_map_summary": market_map_summary(normalized_market_map),
         "trade_reviews": normalized_trade_reviews,

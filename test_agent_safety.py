@@ -29,6 +29,7 @@ import asset_state_machine as asset_state_machine_module
 import backtest as backtest_module
 import challenger_model as challenger_model_module
 import data_reliability as data_reliability_module
+import daily_radar as daily_radar_module
 import decision_dataset as decision_dataset_module
 import decision_review_lab as decision_review_lab_module
 import execution_coach as execution_coach_module
@@ -2865,6 +2866,7 @@ def test_dashboard_loads_prebuilt_snapshot_without_rehydrating() -> None:
                 "trades": [],
                 "stats": {"total": 0, "wins": 0, "losses": 0, "win_rate": 0, "total_pnl": 0, "avg_win": 0, "avg_loss": 0, "best": 0, "worst": 0},
                 "control": {"kill": {"active": False, "reason": "", "requested_at": None, "acknowledged_at": None}},
+                "daily_radar": {"summary": {"focus_count": 0}, "top_assets": []},
                 "runtime": {"stale": False, "state_age_seconds": 2},
                 "server_time": "2026-04-23 23:16:00",
             }))
@@ -2877,6 +2879,62 @@ def test_dashboard_loads_prebuilt_snapshot_without_rehydrating() -> None:
         finally:
             dashboard_module.SNAPSHOT = original_snapshot
             dashboard_module.build_dashboard_snapshot = original_builder
+            dashboard_module._local_snapshot_cache = original_local_cache
+
+
+def test_dashboard_upgrades_legacy_prebuilt_snapshot_with_daily_radar() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        temp = Path(tmpdir)
+        original_snapshot = dashboard_module.SNAPSHOT
+        original_local_cache = dict(dashboard_module._local_snapshot_cache)
+        try:
+            dashboard_module.SNAPSHOT = temp / "dashboard_snapshot.json"
+            dashboard_module._local_snapshot_cache = {
+                "snapshot": None,
+                "mtime_ns": None,
+                "refreshing": False,
+                "last_refresh_started": 0.0,
+                "last_refresh_finished": 0.0,
+                "last_refresh_error": "",
+            }
+            dashboard_module.SNAPSHOT.write_text(json.dumps({
+                "state": {
+                    "status": "running",
+                    "cycle_number": 78,
+                    "positions": [],
+                    "signals": {
+                        "GOOGL": {
+                            "action": "LONG",
+                            "score": 72.0,
+                            "execution_mode": "tradable",
+                            "instrument_type": "equity",
+                            "first_principles": {
+                                "plain_thesis": "AI cloud demand keeps the long thesis alive.",
+                                "fundamental_score": 76.0,
+                                "attention_score": 64.0,
+                                "flow_score": 60.0,
+                                "price_score": 62.0,
+                                "sequence_score": 71.0,
+                            },
+                        }
+                    },
+                    "config": {"coins": ["GOOGL"], "analysis_coins": ["GOOGL"]},
+                },
+                "trades": [],
+                "stats": {"total": 0},
+                "control": {"kill": {"active": False, "reason": "", "requested_at": None, "acknowledged_at": None}},
+                "action_board": {"items": []},
+                "market_map": {"coins": {"GOOGL": {"bias": "BULLISH", "supports": [178.0]}}},
+                "runtime": {"stale": False, "state_age_seconds": 2},
+                "server_time": "2026-04-23 23:16:00",
+            }))
+
+            payload = dashboard_module._load_snapshot_local()
+            assert payload is not None
+            assert payload["state"]["cycle_number"] == 78
+            assert payload["daily_radar"]["top_assets"][0]["coin"] == "GOOGL"
+        finally:
+            dashboard_module.SNAPSHOT = original_snapshot
             dashboard_module._local_snapshot_cache = original_local_cache
 
 
@@ -7739,6 +7797,95 @@ def test_dashboard_snapshot_includes_performance_edges() -> None:
     assert snapshot["performance_edges"]["summary"]["top_lesson"].startswith("Lean into")
 
 
+def test_daily_radar_surfaces_first_principles_and_add_scope() -> None:
+    state = {
+        "signals": {
+            "GOOGL": {
+                "action": "LONG",
+                "score": 73.0,
+                "execution_mode": "tradable",
+                "instrument_type": "equity",
+                "asset_categories": ["mag7", "ai_infra"],
+                "first_principles": {
+                    "plain_thesis": "Cloud acceleration and AI capex keep the upside case alive.",
+                    "wrong_if": "Invalid below 178.",
+                    "fundamental_score": 78.0,
+                    "attention_score": 69.0,
+                    "flow_score": 63.0,
+                    "price_score": 66.0,
+                    "sequence_score": 74.0,
+                    "theme": "mag7",
+                    "what_matters": "Cloud growth, AI infra demand, and margin leverage matter most.",
+                },
+                "official_event_score": 3.0,
+                "social_attention_summary": "Trader chatter is focused on AI cloud strength.",
+            }
+        },
+        "positions": [
+            {
+                "coin": "GOOGL",
+                "direction": "LONG",
+                "stop_loss": 178.0,
+                "current_logic_short": "Holding while cloud thesis stays intact.",
+            }
+        ],
+        "config": {"coins": ["GOOGL"], "analysis_coins": ["GOOGL"]},
+    }
+    market_map = {"coins": {"GOOGL": {"bias": "BULLISH", "supports": [178.0], "summary": "Holding above demand."}}}
+    board = {
+        "items": [
+            {
+                "coin": "GOOGL",
+                "status": "OPEN_LONG",
+                "tradable": True,
+                "score": 73.0,
+                "probability_pct": 66,
+                "invalidation_short": "Invalid below 178.",
+            }
+        ]
+    }
+    radar = daily_radar_module.build_daily_radar(state, market_map, board, limit=4)
+    assert radar["top_assets"][0]["coin"] == "GOOGL"
+    assert radar["top_assets"][0]["add_candidate"] is True
+    assert "Cloud" in radar["top_assets"][0]["why"]
+    assert [step["label"] for step in radar["top_assets"][0]["first_principles"]] == [
+        "Fundamentals",
+        "Attention",
+        "Flows",
+        "Price",
+    ]
+
+
+def test_dashboard_snapshot_includes_daily_radar() -> None:
+    snapshot = build_dashboard_snapshot(
+        {
+            "signals": {
+                "META": {
+                    "action": "LONG",
+                    "score": 72.0,
+                    "execution_mode": "tradable",
+                    "instrument_type": "equity",
+                    "first_principles": {
+                        "plain_thesis": "Ad demand and AI ranking are driving the setup.",
+                        "fundamental_score": 76.0,
+                        "attention_score": 64.0,
+                        "flow_score": 60.0,
+                        "price_score": 62.0,
+                        "sequence_score": 71.0,
+                    },
+                }
+            },
+            "positions": [],
+            "config": {"coins": ["META"], "analysis_coins": ["META"]},
+            "cycle_number": 1,
+        },
+        [],
+        market_map={"coins": {"META": {"bias": "BULLISH", "supports": [500.0]}}},
+    )
+    assert snapshot["daily_radar"]["summary"]["focus_count"] >= 1
+    assert snapshot["daily_radar"]["top_assets"][0]["coin"] == "META"
+
+
 def test_first_principles_guard_blocks_marginal_price_only_entry() -> None:
     cfg = build_config()
     cfg.trading.first_principles_guard_enabled = True
@@ -7922,6 +8069,8 @@ def run_all() -> None:
     print("PASS dashboard snapshot refresh")
     test_dashboard_loads_prebuilt_snapshot_without_rehydrating()
     print("PASS dashboard prebuilt snapshot fast path")
+    test_dashboard_upgrades_legacy_prebuilt_snapshot_with_daily_radar()
+    print("PASS dashboard legacy radar snapshot upgrade")
     test_hosted_dashboard_bundle_matches_local_template()
     print("PASS hosted dashboard bundle sync")
     test_dashboard_template_compacts_daily_view_and_hides_support_pending()
@@ -8104,6 +8253,10 @@ def run_all() -> None:
     print("PASS performance edge summary")
     test_dashboard_snapshot_includes_performance_edges()
     print("PASS dashboard performance edge snapshot")
+    test_daily_radar_surfaces_first_principles_and_add_scope()
+    print("PASS daily radar first-principles add scope")
+    test_dashboard_snapshot_includes_daily_radar()
+    print("PASS dashboard daily radar snapshot")
     test_first_principles_guard_blocks_marginal_price_only_entry()
     print("PASS first-principles marginal block")
     test_first_principles_guard_allows_marginal_event_attention_starter()

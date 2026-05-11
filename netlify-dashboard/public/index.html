@@ -389,6 +389,80 @@
     padding: 10px;
     min-width: 0;
   }
+  .radar-shell {
+    display: grid;
+    gap: 10px;
+  }
+  .radar-summary {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .radar-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 10px;
+  }
+  .radar-item {
+    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.022);
+    border-radius: 8px;
+    padding: 10px;
+    min-width: 0;
+  }
+  .radar-item-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 7px;
+  }
+  .radar-symbol {
+    font-size: 15px;
+    font-weight: 800;
+    color: var(--text);
+  }
+  .radar-score {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 10px;
+    white-space: nowrap;
+  }
+  .radar-line {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.45;
+    margin-top: 6px;
+  }
+  .radar-line strong {
+    color: var(--text);
+    font-weight: 700;
+  }
+  .radar-step-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    margin-top: 9px;
+  }
+  .radar-step {
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 8px;
+    padding: 7px;
+    min-width: 0;
+    background: rgba(0,0,0,0.12);
+  }
+  .radar-step-label {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 9px;
+    text-transform: uppercase;
+  }
+  .radar-step-text {
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.35;
+    margin-top: 4px;
+  }
   .call-bucket-top {
     display: flex;
     align-items: center;
@@ -2060,8 +2134,12 @@
     .utility-grid,
     .proactive-grid,
     .call-watchlist-grid,
-    .call-lanes {
+    .call-lanes,
+    .radar-grid {
       grid-template-columns: 1fr;
+    }
+    .radar-step-row {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
     .call-watchlist-head {
       flex-direction: column;
@@ -2106,7 +2184,8 @@
     <h1>PUNKY TRADING AGENT</h1>
   </div>
   <div class="header-right">
-    <button class="command-search-btn" id="command-search-btn" type="button" onclick="openCommandSearch()">FIND ASSET</button>
+    <button class="command-search-btn" id="command-search-btn" type="button" onclick="openCommandSearch()">STANCE SEARCH</button>
+    <button class="command-search-btn" id="tradexyz-volume-shortcut-btn" type="button" onclick="openTradexyzVolumeSearch()">XYZ VOLUME</button>
     <a href="/share" target="_blank" style="padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;font-family:var(--mono);letter-spacing:0.5px;background:var(--blue-dim);color:var(--blue);border:1px solid rgba(91,140,255,0.3);text-decoration:none;transition:all 0.2s ease;">Share P&amp;L</a>
     <button class="kill-btn" id="kill-btn" onclick="handleKill()">KILL SWITCH</button>
     <span id="mode-badge" class="badge badge-offline">OFFLINE</span>
@@ -2174,6 +2253,18 @@
         <div class="empty-icon">--</div>
         FLAT — no open positions
       </div>
+    </div>
+  </div>
+</div>
+
+<div class="full-width">
+  <div class="card" id="daily-radar-card">
+    <div class="card-label-row">
+      <div class="card-label">Today's Radar</div>
+      <div class="card-sub" id="daily-radar-meta">Waiting for the next radar pass...</div>
+    </div>
+    <div id="daily-radar-body">
+      <div class="empty-state">The agent will surface today's focus list after the next cycle.</div>
     </div>
   </div>
 </div>
@@ -2258,7 +2349,7 @@
             />
             <button class="tool-btn" id="tradexyz-check-btn" onclick="lookupTradexyzVolume()">CHECK VOLUME</button>
           </div>
-          <div id="tradexyz-status" class="volume-status">Wallet volume snapshot is idle.</div>
+          <div id="tradexyz-status" class="volume-status">Press Ctrl+X from anywhere to check Trade.xyz wallet volume.</div>
           <div id="tradexyz-result" class="search-result">
             <div class="search-result-empty">No wallet checked yet.</div>
           </div>
@@ -3053,6 +3144,7 @@ let latestMissedMoveReport = { summary: {} };
 let latestLLMRefereeReport = { verdicts: {} };
 let latestPlaybookDistillerReport = { summary: {}, assets: {} };
 let latestProactiveTraderReport = { summary: {} };
+let latestDailyRadar = { summary: {}, top_assets: [] };
 let currentTickerSearchQuery = '';
 let commandSearchOpen = false;
 let commandSearchIndex = 0;
@@ -3459,6 +3551,12 @@ document.addEventListener('click', (event) => {
 
 document.addEventListener('keydown', (event) => {
   const key = String(event.key || '').toLowerCase();
+  const tradexyzVolumeOpen = (event.ctrlKey || event.metaKey) && key === 'x' && !isEditableTarget(event.target);
+  if (tradexyzVolumeOpen) {
+    event.preventDefault();
+    openTradexyzVolumeSearch();
+    return;
+  }
   const commandFind = (event.ctrlKey || event.metaKey) && key === 'f';
   const commandOpen = commandFind || ((event.ctrlKey || event.metaKey) && key === 'k');
   const slashOpen = key === '/' && !event.ctrlKey && !event.metaKey && !event.altKey && !isEditableTarget(event.target);
@@ -3944,6 +4042,23 @@ function setTradexyzStatus(message, tone='info') {
   node.textContent = message;
 }
 
+function openTradexyzVolumeSearch(seed='') {
+  const panel = document.getElementById('tools-panel');
+  const input = document.getElementById('tradexyz-wallet-input');
+  if (panel) {
+    panel.open = true;
+    panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  if (input) {
+    if (seed) input.value = String(seed || '').trim();
+    setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 0);
+  }
+  setTradexyzStatus('Paste a wallet and press Enter. Shortcut: Ctrl+X.', 'info');
+}
+
 function renderTradexyzVolume(payload) {
   const result = document.getElementById('tradexyz-result');
   if (!result) return;
@@ -4005,6 +4120,86 @@ function renderTradexyzVolume(payload) {
 
   html += '<div class="volume-footer">Checked at ' + esc(String(payload.checked_at || '--')) + ' • DEX ' + esc(String(payload.dex || 'xyz').toUpperCase()) + '</div>';
   result.innerHTML = html;
+}
+
+function radarSideLabel(item) {
+  const side = String((item || {}).side || '').toLowerCase();
+  if (side === 'bullish') return 'Bullish';
+  if (side === 'bearish') return 'Bearish';
+  return 'Watch';
+}
+
+function radarSideChip(item) {
+  const side = String((item || {}).side || '').toLowerCase();
+  const klass = side === 'bullish' ? biasClass('bullish') : side === 'bearish' ? biasClass('bearish') : biasClass('neutral');
+  return '<span class="' + klass + '">' + esc(radarSideLabel(item)) + '</span>';
+}
+
+function radarStatusChip(item) {
+  const safe = item || {};
+  const modeClass = safe.tradable ? 'signal-mode-tradable' : 'signal-mode-watch';
+  const status = String(safe.status || (safe.tradable ? 'READY' : 'TRACK')).toUpperCase();
+  return '<span class="' + modeClass + '">' + esc(status) + '</span>';
+}
+
+function radarStepsHtml(item) {
+  const steps = Array.isArray((item || {}).first_principles) ? item.first_principles.slice(0, 4) : [];
+  if (!steps.length) return '';
+  return '<div class="radar-step-row">'
+    + steps.map((step) => {
+      const label = String((step || {}).label || 'Check');
+      const text = String((step || {}).text || 'Still forming.');
+      const score = Number((step || {}).score || 0);
+      return '<div class="radar-step">'
+        + '<div class="radar-step-label">' + esc(label + (score > 0 ? ' ' + Math.round(score) : '')) + '</div>'
+        + '<div class="radar-step-text">' + esc(shortText(text, 58)) + '</div>'
+      + '</div>';
+    }).join('')
+  + '</div>';
+}
+
+function radarItemHtml(item) {
+  const safe = item || {};
+  const score = Number(safe.radar_score || 0);
+  return '<div class="radar-item">'
+    + '<div class="radar-item-top">'
+      + '<div class="token-line"><div class="radar-symbol">' + esc(safe.coin || '--') + '</div>' + radarSideChip(safe) + radarStatusChip(safe) + (safe.add_candidate ? '<span class="review-chip event-chip-starter">ADD SCOPE</span>' : '') + '</div>'
+      + '<div class="radar-score">' + esc(score ? Math.round(score) + '/100' : '--') + '</div>'
+    + '</div>'
+    + '<div class="radar-line"><strong>Why:</strong> ' + esc(shortText(safe.why || 'Merit still forming.', 104)) + '</div>'
+    + '<div class="radar-line"><strong>Next:</strong> ' + esc(shortText(safe.next || 'Wait for trigger.', 92)) + '</div>'
+    + '<div class="radar-line"><strong>Invalid:</strong> ' + esc(shortText(safe.invalidation || 'Invalidation forming.', 88)) + '</div>'
+    + '<div class="radar-line"><strong>Scope:</strong> ' + esc(shortText(safe.scope || 'Track only.', 88)) + '</div>'
+    + radarStepsHtml(safe)
+  + '</div>';
+}
+
+function renderDailyRadar(report) {
+  const meta = document.getElementById('daily-radar-meta');
+  const body = document.getElementById('daily-radar-body');
+  if (!meta || !body) return;
+  const safe = report || {};
+  const summary = safe.summary || {};
+  const assets = Array.isArray(safe.top_assets) ? safe.top_assets.filter((item) => item && item.coin) : [];
+  const themes = summary.themes || {};
+  const themeText = Object.entries(themes).slice(0, 3).map(([theme, count]) => humanizeKey(theme) + ' ' + count).join(' • ');
+  meta.textContent = [
+    String(summary.focus_count || assets.length || 0) + ' focus',
+    String(summary.add_candidate_count || 0) + ' add scope',
+    String(summary.open_count || 0) + ' open',
+    themeText,
+  ].filter(Boolean).join(' • ');
+  if (!assets.length) {
+    body.innerHTML = '<div class="empty-state">No strong radar list yet. The agent is waiting for fundamentals, attention, flows, and price to agree.</div>';
+    return;
+  }
+  const visible = assets.slice(0, 8);
+  const hidden = Math.max(0, assets.length - visible.length);
+  body.innerHTML = '<div class="radar-shell">'
+    + '<div class="radar-summary">' + esc(shortText(summary.top_line || 'Focus list is active.', 180)) + '</div>'
+    + '<div class="radar-grid">' + visible.map(radarItemHtml).join('') + '</div>'
+    + (hidden ? '<div class="search-hint">+' + esc(String(hidden)) + ' more lower-priority radar names are being tracked in the backend.</div>' : '')
+  + '</div>';
 }
 
 function normalizeActionGroups(board) {
@@ -4708,6 +4903,7 @@ async function refresh() {
     latestLLMRefereeReport = data.llm_referee_report || { verdicts: {} };
     latestPlaybookDistillerReport = data.playbook_distiller_report || { summary: {}, assets: {} };
     latestProactiveTraderReport = data.proactive_trader_report || { summary: {} };
+    latestDailyRadar = data.daily_radar || ((s || {}).daily_radar) || { summary: {}, top_assets: [] };
     const actionBoard = data.action_board || { items: [], lead: null };
     latestActionBoard = actionBoard;
 
@@ -4814,6 +5010,7 @@ async function refresh() {
         '</div>';
     }
 
+    renderDailyRadar(latestDailyRadar);
     renderActionBoard(actionBoard);
     renderProactiveDesk(latestProactiveTraderReport);
     updateTickerSearchOptions();
