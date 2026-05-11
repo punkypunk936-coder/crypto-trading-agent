@@ -3138,6 +3138,8 @@ const REFRESH_BASE_MS = 15000;
 const REFRESH_STALE_MS = 25000;
 const REFRESH_MAX_MS = 60000;
 const REFRESH_TIMEOUT_MS = 8000;
+const STATIC_GITHUB_PAGES_MODE = /\.github\.io$/i.test(window.location.hostname || '');
+const STATIC_STATE_FALLBACK_URL = 'https://raw.githubusercontent.com/punkypunk936-coder/crypto-trading-agent/dashboard-state-live/dashboard/dashboard_snapshot.json';
 const DEFAULT_ASSET_CATEGORY_LABELS = {
   indices_macro: 'Indices & Macro',
   mag7: 'Mag7',
@@ -4442,6 +4444,9 @@ function renderProactiveDesk(report) {
 }
 
 async function postJson(path, payload) {
+  if (STATIC_GITHUB_PAGES_MODE) {
+    throw new Error('This hosted mirror is view-only. Use the local dashboard for edits.');
+  }
   const response = await fetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -4452,6 +4457,33 @@ async function postJson(path, payload) {
     throw new Error(data.error || data.message || response.statusText || 'Request failed');
   }
   return data;
+}
+
+async function fetchDashboardState(signal) {
+  const sources = ['/api/state'];
+  if (STATIC_GITHUB_PAGES_MODE) {
+    sources.push(STATIC_STATE_FALLBACK_URL + '?ts=' + Date.now());
+  }
+  let lastError = null;
+  for (const source of sources) {
+    try {
+      const response = await fetch(source, {
+        signal,
+        cache: 'no-store',
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      const data = await response.json();
+      if (!data || !data.state) throw new Error('Missing dashboard state');
+      if (source !== '/api/state') {
+        data.runtime = Object.assign({}, data.runtime || {}, { hosted_static_fallback: true });
+      }
+      return data;
+    } catch (error) {
+      lastError = error;
+      if (error && error.name === 'AbortError') break;
+    }
+  }
+  throw lastError || new Error('Dashboard state unavailable');
 }
 
 async function editGlobalMapNotes() {
@@ -4578,12 +4610,7 @@ async function refresh() {
   const timeoutId = setTimeout(() => controller.abort(), REFRESH_TIMEOUT_MS);
   refreshRequest = (async () => {
   try {
-    const res  = await fetch('/api/state', {
-      signal: controller.signal,
-      cache: 'no-store',
-    });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const data = await res.json();
+    const data = await fetchDashboardState(controller.signal);
     const s    = data.state;
     const st   = data.stats;
     const tr   = data.trades;
@@ -4613,6 +4640,9 @@ async function refresh() {
     }
     if (runtime.stale) {
       updateText += ' • STALE';
+    }
+    if (runtime.hosted_static_fallback) {
+      updateText += ' • HOSTED MIRROR';
     }
     const power = (s && s.power) || {};
     if (power.available) {
@@ -4787,6 +4817,10 @@ function scheduleRefresh(delayMs = REFRESH_BASE_MS) {
 let killConfirm = false;
 function handleKill() {
   const btn = document.getElementById('kill-btn');
+  if (STATIC_GITHUB_PAGES_MODE) {
+    alert('Hosted mirror is view-only. Use the local dashboard kill switch for live control.');
+    return;
+  }
   if (latestControl && latestControl.kill && latestControl.kill.active) {
     btn.textContent = 'Clearing...';
     btn.disabled = true;
