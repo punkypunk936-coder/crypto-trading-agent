@@ -1,0 +1,4891 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crypto Trading Agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #090a0a;
+    --bg-secondary: #101111;
+    --card: #121313;
+    --card-hover: #151717;
+    --border: rgba(235, 237, 229, 0.08);
+    --border-hover: rgba(235, 237, 229, 0.14);
+    --green: #00e68a;
+    --green-dim: rgba(0, 230, 138, 0.15);
+    --green-glow: rgba(0, 230, 138, 0.3);
+    --red: #ff4d6a;
+    --red-dim: rgba(255, 77, 106, 0.15);
+    --red-glow: rgba(255, 77, 106, 0.3);
+    --yellow: #ffb84d;
+    --yellow-dim: rgba(255, 184, 77, 0.15);
+    --blue: #5b8cff;
+    --blue-dim: rgba(91, 140, 255, 0.15);
+    --purple: #a78bfa;
+    --purple-dim: rgba(167, 139, 250, 0.15);
+    --cyan: #22d3ee;
+    --muted: rgba(235, 237, 229, 0.38);
+    --text: rgba(245, 246, 240, 0.93);
+    --text-secondary: rgba(235, 237, 229, 0.58);
+    --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --mono: 'JetBrains Mono', 'SF Mono', monospace;
+    --radius: 8px;
+    --radius-sm: 6px;
+    --glow-green: 0 0 0 1px rgba(0, 230, 138, 0.10);
+    --glow-red: 0 0 0 1px rgba(255, 77, 106, 0.12);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: none;
+    display: none;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .container {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 16px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ── Header ────────────────────────────── */
+  header {
+    padding: 16px 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+  }
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .logo-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    background: #e8ece6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: 800;
+    color: #000;
+    box-shadow: none;
+  }
+  .logo h1 {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: var(--text);
+  }
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .kill-btn {
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: var(--mono);
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    border: 1px solid rgba(255, 77, 106, 0.4);
+    background: rgba(255, 77, 106, 0.1);
+    color: var(--red);
+    transition: all 0.3s ease;
+  }
+  .kill-btn:hover {
+    background: rgba(255, 77, 106, 0.25);
+    border-color: var(--red);
+    box-shadow: 0 0 20px rgba(255, 77, 106, 0.2);
+  }
+  .kill-btn:active { transform: scale(0.95); }
+  .kill-btn.confirming {
+    background: var(--red);
+    color: #fff;
+    animation: haltPulse 1s ease-in-out infinite;
+  }
+  .tool-btn {
+    padding: 7px 12px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    font-family: var(--mono);
+    cursor: pointer;
+    border: 1px solid rgba(91, 140, 255, 0.28);
+    background: rgba(91, 140, 255, 0.10);
+    color: var(--blue);
+    transition: all 0.25s ease;
+  }
+  .tool-btn:hover {
+    background: rgba(91, 140, 255, 0.18);
+    border-color: rgba(91, 140, 255, 0.42);
+  }
+  .command-search-btn {
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.7px;
+    font-family: var(--mono);
+    cursor: pointer;
+    border: 1px solid rgba(235, 237, 229, 0.14);
+    background: rgba(255,255,255,0.045);
+    color: var(--text);
+    transition: all 0.2s ease;
+  }
+  .command-search-btn:hover {
+    border-color: rgba(91, 140, 255, 0.34);
+    background: rgba(91, 140, 255, 0.10);
+    color: #dbe5ff;
+  }
+  .badge {
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    font-family: var(--mono);
+    backdrop-filter: blur(10px);
+    transition: all 0.3s ease;
+  }
+  .badge-live {
+    background: var(--red-dim);
+    color: var(--red);
+    border: 1px solid rgba(255, 77, 106, 0.3);
+    box-shadow: 0 0 20px rgba(255, 77, 106, 0.1);
+  }
+  .badge-dry {
+    background: var(--yellow-dim);
+    color: var(--yellow);
+    border: 1px solid rgba(255, 184, 77, 0.3);
+  }
+  .badge-offline {
+    background: rgba(255,255,255,0.05);
+    color: var(--muted);
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  #last-update {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-family: var(--mono);
+  }
+
+  /* ── Glass Cards ────────────────────────── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    transition: border-color 0.2s ease, background 0.2s ease;
+    position: relative;
+    overflow: hidden;
+  }
+  .card::before {
+    content: none;
+  }
+  .card:hover {
+    background: var(--card-hover);
+    border-color: var(--border-hover);
+  }
+
+  .card-highlight {
+    border-color: rgba(0, 230, 138, 0.2);
+    box-shadow: var(--glow-green);
+  }
+
+  .card-halt {
+    border-color: rgba(255, 77, 106, 0.3);
+    box-shadow: var(--glow-red);
+  }
+
+  .card-label {
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.85px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-value {
+    font-size: 24px;
+    font-weight: 800;
+    font-family: var(--mono);
+    letter-spacing: 0;
+  }
+  .card-sub {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 6px;
+    font-family: var(--mono);
+  }
+  #sentiment {
+    line-height: 1.45;
+    white-space: normal;
+  }
+  .card-label-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .card-label-row .card-label {
+    margin-bottom: 0;
+  }
+  .map-meta, .review-meta {
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-family: var(--mono);
+  }
+  .market-map-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 12px;
+  }
+  .asset-switcher {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .asset-tab {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.03);
+    color: var(--text-secondary);
+    border-radius: 999px;
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 700;
+    font-family: var(--mono);
+    letter-spacing: 0.45px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .asset-tab:hover {
+    border-color: rgba(255,255,255,0.14);
+    color: var(--text);
+    background: rgba(255,255,255,0.05);
+  }
+  .asset-tab.active {
+    border-color: rgba(91,140,255,0.28);
+    color: var(--blue);
+    background: rgba(91,140,255,0.12);
+    box-shadow: 0 0 0 1px rgba(91,140,255,0.08) inset;
+  }
+  .asset-tab-count {
+    color: var(--muted);
+  }
+  .asset-tab.active .asset-tab-count {
+    color: rgba(91,140,255,0.88);
+  }
+  .asset-bucket-note {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+    margin-bottom: 12px;
+  }
+  .desk-overview {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .desk-overview-label {
+    color: var(--muted);
+    font-size: 10px;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    font-family: var(--mono);
+  }
+  .desk-overview-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .desk-overview-pill.active {
+    border-color: rgba(91,140,255,0.28);
+    color: var(--blue);
+    background: rgba(91,140,255,0.12);
+    box-shadow: 0 0 0 1px rgba(91,140,255,0.08) inset;
+  }
+  .asset-section-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 10px;
+  }
+  .asset-section-stack {
+    display: grid;
+    gap: 14px;
+  }
+  .asset-section-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .asset-section-title {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text);
+  }
+  .asset-section-sub {
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .call-watchlist {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .call-watchlist-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .call-watchlist-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .call-bucket {
+    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.018);
+    border-radius: 8px;
+    padding: 10px;
+    min-width: 0;
+  }
+  .radar-shell {
+    display: grid;
+    gap: 10px;
+  }
+  .radar-summary {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .radar-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 10px;
+  }
+  .radar-item {
+    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.022);
+    border-radius: 8px;
+    padding: 10px;
+    min-width: 0;
+  }
+  .radar-item-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 7px;
+  }
+  .radar-symbol {
+    font-size: 15px;
+    font-weight: 800;
+    color: var(--text);
+  }
+  .radar-score {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 10px;
+    white-space: nowrap;
+  }
+  .radar-line {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.45;
+    margin-top: 6px;
+  }
+  .radar-line strong {
+    color: var(--text);
+    font-weight: 700;
+  }
+  .radar-step-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    margin-top: 9px;
+  }
+  .radar-step {
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 8px;
+    padding: 7px;
+    min-width: 0;
+    background: rgba(0,0,0,0.12);
+  }
+  .radar-step-label {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 9px;
+    text-transform: uppercase;
+  }
+  .radar-step-text {
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.35;
+    margin-top: 4px;
+  }
+  .call-bucket-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .call-bucket-title {
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.7px;
+    text-transform: uppercase;
+    color: var(--text);
+  }
+  .call-bucket-count {
+    color: var(--muted);
+    font-size: 10px;
+    font-family: var(--mono);
+    white-space: nowrap;
+  }
+  .call-lanes {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .call-lane {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+  }
+  .call-lane-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 10px;
+    font-family: var(--mono);
+    letter-spacing: 0.75px;
+    text-transform: uppercase;
+  }
+  .call-lane-bullish .call-lane-title {
+    color: #9fffd1;
+  }
+  .call-lane-bearish .call-lane-title {
+    color: #ffb8c2;
+  }
+  .call-row {
+    display: grid;
+    gap: 5px;
+    border: 1px solid rgba(255,255,255,0.055);
+    background: rgba(255,255,255,0.022);
+    border-radius: 8px;
+    padding: 8px;
+    min-width: 0;
+  }
+  .call-row-bullish {
+    border-color: rgba(0,230,138,0.16);
+    background: rgba(0,230,138,0.045);
+  }
+  .call-row-bearish {
+    border-color: rgba(255,77,106,0.16);
+    background: rgba(255,77,106,0.045);
+  }
+  .call-row-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+  }
+  .call-row-symbol {
+    font-size: 13px;
+    font-weight: 800;
+    font-family: var(--mono);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .call-row-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 5px;
+  }
+  .call-row-text {
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.4;
+    min-width: 0;
+  }
+  .call-row-risk {
+    color: var(--muted);
+    font-size: 10px;
+    line-height: 1.35;
+    font-family: var(--mono);
+    min-width: 0;
+  }
+  .call-empty {
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.4;
+    border: 1px dashed rgba(255,255,255,0.08);
+    border-radius: 8px;
+    padding: 8px;
+  }
+  .call-neutral-note {
+    color: var(--muted);
+    font-size: 11px;
+    font-family: var(--mono);
+    margin-top: 8px;
+  }
+  .proactive-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .proactive-card {
+    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.02);
+    border-radius: 8px;
+    padding: 10px;
+    min-width: 0;
+  }
+  .proactive-title {
+    color: var(--muted);
+    font-size: 10px;
+    font-family: var(--mono);
+    letter-spacing: 0.75px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .proactive-main {
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1.35;
+    margin-bottom: 5px;
+  }
+  .proactive-sub {
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .proactive-list {
+    display: grid;
+    gap: 5px;
+    margin-top: 6px;
+  }
+  .proactive-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-family: var(--mono);
+  }
+  .utility-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .utility-card {
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.02);
+    padding: 12px;
+  }
+  .utility-title {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .utility-sub {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+    margin-bottom: 12px;
+  }
+  .map-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.02);
+    overflow: hidden;
+  }
+  .map-card summary,
+  .decision-box summary {
+    list-style: none;
+    cursor: pointer;
+  }
+  .map-card summary::-webkit-details-marker,
+  .decision-box summary::-webkit-details-marker {
+    display: none;
+  }
+  .map-card-summary,
+  .decision-summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 14px;
+  }
+  .map-card-body,
+  .decision-body {
+    padding: 0 14px 14px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+  }
+  .map-card-body {
+    display: grid;
+    gap: 10px;
+    padding-top: 12px;
+  }
+  .map-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .map-coin {
+    font-size: 16px;
+    font-weight: 800;
+    font-family: var(--mono);
+  }
+  .map-bias {
+    padding: 4px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.7px;
+    font-family: var(--mono);
+    border: 1px solid var(--border);
+  }
+  .map-bias-bullish { color: var(--green); background: var(--green-dim); border-color: rgba(0,230,138,0.24); }
+  .map-bias-bearish { color: var(--red); background: var(--red-dim); border-color: rgba(255,77,106,0.24); }
+  .map-bias-neutral { color: var(--yellow); background: var(--yellow-dim); border-color: rgba(255,184,77,0.24); }
+  .map-levels {
+    display: grid;
+    gap: 8px;
+  }
+  .map-level-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .map-level-row strong {
+    color: var(--text);
+    font-family: var(--mono);
+  }
+  .map-notes {
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.45;
+  }
+  .map-summary-main,
+  .decision-summary-main {
+    min-width: 0;
+    flex: 1;
+  }
+  .map-summary-side,
+  .decision-summary-side {
+    min-width: 148px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+    gap: 10px;
+    text-align: right;
+  }
+  .token-line {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .token-subline {
+    margin-top: 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .token-subline-simple {
+    color: var(--text);
+    font-weight: 600;
+  }
+  .token-preview {
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-family: var(--mono);
+    line-height: 1.4;
+  }
+  .token-chevron {
+    color: var(--muted);
+    font-size: 12px;
+    font-family: var(--mono);
+    transition: transform 0.2s ease;
+  }
+  .map-card[open] .token-chevron,
+  .decision-box[open] .token-chevron {
+    transform: rotate(180deg);
+  }
+  .map-card[data-tradable="true"] {
+    border-color: rgba(0,230,138,0.18);
+  }
+  .map-card[data-tradable="false"] {
+    border-color: rgba(91,140,255,0.16);
+  }
+  .token-stack {
+    display: grid;
+    gap: 10px;
+  }
+  .token-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 8px;
+  }
+  .token-detail {
+    border: 1px solid rgba(255,255,255,0.05);
+    background: rgba(255,255,255,0.02);
+    border-radius: 10px;
+    padding: 10px;
+  }
+  .token-detail-label {
+    display: block;
+    color: var(--muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    margin-bottom: 4px;
+  }
+  .token-detail-value {
+    color: var(--text);
+    font-size: 12px;
+    line-height: 1.45;
+    font-family: var(--mono);
+  }
+  .detail-stack-section {
+    display: grid;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .detail-stack-label {
+    color: var(--muted);
+    font-size: 10px;
+    font-family: var(--mono);
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+  }
+  .lead-callout {
+    margin-bottom: 12px;
+    border: 1px solid rgba(91,140,255,0.14);
+    background: rgba(91,140,255,0.045);
+    border-radius: 8px;
+    padding: 12px 14px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .friction-stack {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 8px;
+  }
+  .friction-chip {
+    border-radius: 8px;
+    padding: 10px;
+    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.025);
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+  }
+  .friction-chip-clear {
+    border-color: rgba(0,230,138,0.16);
+    background: rgba(0,230,138,0.06);
+  }
+  .friction-chip-wait {
+    border-color: rgba(255,184,77,0.16);
+    background: rgba(255,184,77,0.06);
+  }
+  .friction-chip-block {
+    border-color: rgba(255,77,106,0.16);
+    background: rgba(255,77,106,0.06);
+  }
+  .friction-chip-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .friction-chip-label {
+    color: var(--text);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+  }
+  .friction-chip-state {
+    font-size: 10px;
+    font-family: var(--mono);
+    letter-spacing: 0.7px;
+    text-transform: uppercase;
+  }
+  .friction-chip-clear .friction-chip-state {
+    color: var(--green);
+  }
+  .friction-chip-wait .friction-chip-state {
+    color: var(--yellow);
+  }
+  .friction-chip-block .friction-chip-state {
+    color: #ff9aaa;
+  }
+  .friction-chip-summary {
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  .catalyst-rail {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .catalyst-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    border-radius: 999px;
+    padding: 7px 10px;
+    font-size: 11px;
+    line-height: 1.35;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.03);
+    color: var(--text-secondary);
+  }
+  .catalyst-pill-label {
+    color: var(--muted);
+    font-family: var(--mono);
+    letter-spacing: 0.7px;
+    text-transform: uppercase;
+    font-size: 10px;
+    flex: 0 0 auto;
+  }
+  .catalyst-pill-text {
+    min-width: 0;
+  }
+  .catalyst-pill-support {
+    border-color: rgba(0,230,138,0.16);
+    background: rgba(0,230,138,0.07);
+    color: #c6ffe6;
+  }
+  .catalyst-pill-watch {
+    border-color: rgba(91,140,255,0.18);
+    background: rgba(91,140,255,0.08);
+    color: #d5e0ff;
+  }
+  .catalyst-pill-risk {
+    border-color: rgba(255,184,77,0.18);
+    background: rgba(255,184,77,0.08);
+    color: #ffe4b3;
+  }
+  .search-shell {
+    display: grid;
+    gap: 12px;
+  }
+  .search-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+  }
+  .search-input {
+    flex: 1;
+    min-width: 180px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.03);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 13px;
+    font-family: var(--mono);
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  }
+  .search-input:focus {
+    border-color: rgba(91,140,255,0.36);
+    box-shadow: 0 0 0 3px rgba(91,140,255,0.10);
+    background: rgba(255,255,255,0.05);
+  }
+  .search-hint {
+    color: var(--muted);
+    font-size: 11px;
+    font-family: var(--mono);
+  }
+  .search-result {
+    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.025);
+    border-radius: 8px;
+    padding: 12px;
+  }
+  .search-result-empty {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .search-title {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+  }
+  .search-summary {
+    margin-top: 8px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .search-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .search-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .command-palette-shell[hidden] {
+    display: none;
+  }
+  .command-palette-shell {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 72px 16px 24px;
+    background: rgba(0,0,0,0.62);
+    backdrop-filter: blur(14px);
+  }
+  .command-palette {
+    width: min(760px, 100%);
+    max-height: min(76vh, 720px);
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    border: 1px solid rgba(235, 237, 229, 0.12);
+    border-radius: 8px;
+    background: #111312;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.42);
+    overflow: hidden;
+  }
+  .command-input-wrap {
+    border-bottom: 1px solid rgba(235, 237, 229, 0.08);
+    padding: 12px;
+    background: rgba(255,255,255,0.025);
+  }
+  .command-input {
+    width: 100%;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 18px;
+    line-height: 1.4;
+    padding: 4px 2px;
+  }
+  .command-body {
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(220px, 0.85fr) minmax(280px, 1.15fr);
+  }
+  .command-results {
+    min-height: 0;
+    overflow: auto;
+    border-right: 1px solid rgba(235, 237, 229, 0.08);
+    padding: 8px;
+  }
+  .command-result-item {
+    width: 100%;
+    display: grid;
+    gap: 5px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+    text-align: left;
+    border-radius: 8px;
+    padding: 10px;
+    cursor: pointer;
+  }
+  .command-result-item:hover,
+  .command-result-item.active {
+    border-color: rgba(91, 140, 255, 0.24);
+    background: rgba(91, 140, 255, 0.10);
+    color: var(--text);
+  }
+  .command-result-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .command-result-symbol {
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--text);
+  }
+  .command-result-note {
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--text-secondary);
+  }
+  .command-detail {
+    min-height: 0;
+    overflow: auto;
+    padding: 16px;
+  }
+  .command-detail-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .command-detail-symbol {
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 800;
+  }
+  .command-detail-card {
+    display: grid;
+    gap: 10px;
+  }
+  .command-detail-line {
+    border: 1px solid rgba(235, 237, 229, 0.08);
+    border-radius: 8px;
+    padding: 10px;
+    background: rgba(255,255,255,0.025);
+  }
+  .command-detail-label {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    margin-bottom: 5px;
+  }
+  .command-detail-value {
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  .command-empty {
+    padding: 18px 12px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .volume-shell {
+    display: grid;
+    gap: 12px;
+  }
+  .volume-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+  }
+  .volume-status {
+    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.025);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+  }
+  .volume-status.error {
+    color: #ffb8c2;
+    border-color: rgba(255,77,106,0.24);
+    background: rgba(255,77,106,0.08);
+  }
+  .volume-status.ok {
+    color: #bfead6;
+    border-color: rgba(0,230,138,0.2);
+    background: rgba(0,230,138,0.07);
+  }
+  .volume-kpis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 8px;
+  }
+  .volume-table-wrap {
+    overflow-x: auto;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px;
+    background: rgba(255,255,255,0.02);
+  }
+  .volume-footer {
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  .review-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+  }
+  .review-summary-box {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    background: rgba(255,255,255,0.02);
+  }
+  .review-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    font-family: var(--mono);
+    border: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .review-good { color: var(--green); background: var(--green-dim); border-color: rgba(0,230,138,0.24); }
+  .review-bad-thesis, .review-both-bad { color: var(--red); background: var(--red-dim); border-color: rgba(255,77,106,0.24); }
+  .review-bad-execution { color: var(--yellow); background: var(--yellow-dim); border-color: rgba(255,184,77,0.24); }
+  .review-miss { color: var(--blue); background: var(--blue-dim); border-color: rgba(91,140,255,0.24); }
+  .review-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .review-notes {
+    font-size: 11px;
+    color: var(--text-secondary);
+    line-height: 1.35;
+  }
+  .map-global-notes {
+    margin-bottom: 14px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: rgba(91, 140, 255, 0.08);
+    border: 1px solid rgba(91, 140, 255, 0.14);
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+  .daily-briefing {
+    margin: 12px 0;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: rgba(255,255,255,0.03);
+    display: grid;
+    gap: 10px;
+  }
+  .daily-briefing-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .daily-briefing-title {
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+  }
+  .daily-briefing-pills {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .daily-briefing-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.03);
+    color: var(--text-secondary);
+    font-size: 10px;
+    font-family: var(--mono);
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+  .daily-briefing-line {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+  }
+  .daily-briefing-line + .daily-briefing-line {
+    padding-top: 10px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+  }
+  .daily-briefing-label {
+    color: var(--muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    font-family: var(--mono);
+    white-space: nowrap;
+  }
+  .daily-briefing-text {
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.5;
+    font-family: var(--mono);
+    min-width: 0;
+  }
+  .prob-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    font-family: var(--mono);
+    border: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .prob-chip-high {
+    color: var(--green);
+    background: var(--green-dim);
+    border-color: rgba(0,230,138,0.24);
+  }
+  .prob-chip-medium {
+    color: var(--yellow);
+    background: var(--yellow-dim);
+    border-color: rgba(255,184,77,0.24);
+  }
+  .prob-chip-low {
+    color: #ffb8c2;
+    background: rgba(255,77,106,0.08);
+    border-color: rgba(255,77,106,0.24);
+  }
+  .daily-sheet {
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: rgba(255,255,255,0.02);
+    overflow: hidden;
+  }
+  .daily-sheet-header,
+  .daily-sheet-row {
+    display: grid;
+    grid-template-columns: minmax(220px, 1.4fr) repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    align-items: start;
+  }
+  .daily-sheet-header {
+    padding: 0 14px 10px;
+    color: var(--muted);
+    font-size: 10px;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    font-family: var(--mono);
+  }
+  .daily-sheet-row {
+    padding: 14px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+  }
+  .daily-sheet-row:first-of-type {
+    border-top: none;
+  }
+  .daily-sheet-row[data-tradable="true"] {
+    background: rgba(0,230,138,0.02);
+  }
+  .daily-sheet-main,
+  .daily-sheet-stat {
+    min-width: 0;
+  }
+  .daily-sheet-stat {
+    display: grid;
+    gap: 4px;
+  }
+  .daily-sheet-label {
+    color: var(--muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+  }
+  .daily-sheet-value {
+    color: var(--text);
+    font-size: 11px;
+    line-height: 1.45;
+    font-family: var(--mono);
+    word-break: break-word;
+  }
+  .daily-levels-panel {
+    margin-top: 12px;
+  }
+  .daily-levels-panel .daily-sheet {
+    margin-top: 12px;
+  }
+  .daily-levels-separator {
+    margin: 14px 0 10px;
+    color: var(--muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    font-family: var(--mono);
+  }
+  .daily-levels-detail-grid {
+    margin-top: 12px;
+  }
+  .map-card-empty {
+    border-style: dashed;
+    opacity: 0.92;
+  }
+  .map-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+  }
+  .map-zone {
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+  }
+  .review-stack {
+    display: grid;
+    gap: 12px;
+  }
+  .review-count {
+    font-size: 24px;
+    font-family: var(--mono);
+    font-weight: 800;
+  }
+  .review-count-sub {
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-family: var(--mono);
+  }
+  .review-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .review-queue {
+    display: grid;
+    gap: 10px;
+  }
+  .review-queue-item {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--border);
+    align-items: center;
+  }
+  .review-queue-main {
+    display: grid;
+    gap: 4px;
+  }
+  .review-queue-title {
+    font-size: 12px;
+    font-weight: 700;
+    font-family: var(--mono);
+  }
+  .review-queue-sub {
+    font-size: 11px;
+    color: var(--text-secondary);
+    line-height: 1.35;
+  }
+  .details-card summary {
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+  }
+  .details-card summary::-webkit-details-marker {
+    display: none;
+  }
+  .details-card summary::after {
+    content: '+';
+    margin-left: auto;
+    color: var(--text-secondary);
+    font-family: var(--mono);
+    font-size: 14px;
+  }
+  .details-card[open] summary::after {
+    content: '−';
+  }
+  .details-card #review-body {
+    margin-top: 14px;
+  }
+  .table-review-cell {
+    min-width: 190px;
+  }
+  .table-action-cell {
+    min-width: 100px;
+  }
+  .table-action-cell .tool-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* ── Layout Grids ──────────────────────── */
+  .grid-4 {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .grid-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .full-width { margin-bottom: 16px; }
+
+  /* ── Colors ─────────────────────────────── */
+  .green { color: var(--green); }
+  .red { color: var(--red); }
+  .yellow { color: var(--yellow); }
+  .blue { color: var(--blue); }
+  .purple { color: var(--purple); }
+  .muted { color: var(--muted); }
+
+  /* ── KPI Icon Accent ────────────────────── */
+  .kpi-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    margin-bottom: 14px;
+  }
+  .kpi-icon.green-bg { background: var(--green-dim); }
+  .kpi-icon.blue-bg  { background: var(--blue-dim); }
+  .kpi-icon.purple-bg { background: var(--purple-dim); }
+  .kpi-icon.yellow-bg { background: var(--yellow-dim); }
+
+  /* ── Pulse Dot ──────────────────────────── */
+  .pulse {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green-glow);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 8px var(--green-glow); }
+    50% { opacity: 0.4; box-shadow: 0 0 4px var(--green-glow); }
+  }
+  .offline-dot { background: var(--muted); box-shadow: none; animation: none; }
+
+  /* ── Open Count Badge ───────────────────── */
+  .open-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--green), #00b36b);
+    color: #000;
+    font-size: 10px;
+    font-weight: 800;
+    font-family: var(--mono);
+    padding: 2px 8px;
+    border-radius: 10px;
+    min-width: 22px;
+    box-shadow: 0 2px 10px rgba(0, 230, 138, 0.3);
+  }
+  .open-count-flat {
+    background: rgba(255,255,255,0.08);
+    color: var(--text-secondary);
+    box-shadow: none;
+  }
+
+  /* ── Status Hero Cards ─────────────────── */
+  .status-hero {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .status-main {
+    min-width: 0;
+  }
+  .status-value {
+    font-size: 28px;
+    font-weight: 800;
+    font-family: var(--mono);
+    letter-spacing: -0.5px;
+  }
+  .status-detail {
+    margin-top: 8px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .status-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+  .status-chip {
+    padding: 7px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    font-family: var(--mono);
+    letter-spacing: 0.4px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.04);
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+  .status-chip-green {
+    background: var(--green-dim);
+    color: var(--green);
+    border-color: rgba(0,230,138,0.24);
+  }
+  .status-chip-red {
+    background: var(--red-dim);
+    color: var(--red);
+    border-color: rgba(255,77,106,0.24);
+  }
+  .status-chip-blue {
+    background: var(--blue-dim);
+    color: var(--blue);
+    border-color: rgba(91,140,255,0.24);
+  }
+  .status-chip-yellow {
+    background: var(--yellow-dim);
+    color: var(--yellow);
+    border-color: rgba(255,184,77,0.24);
+  }
+
+  /* ── Position Cards ─────────────────────── */
+  .pos-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: var(--radius-sm);
+    padding: 16px;
+    margin-bottom: 10px;
+    border: 1px solid rgba(255,255,255,0.03);
+    transition: all 0.3s ease;
+    animation: slideIn 0.4s ease;
+  }
+  .pos-grid:hover {
+    border-color: rgba(255,255,255,0.06);
+    background: rgba(0, 0, 0, 0.4);
+  }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .pos-grid:last-child { margin-bottom: 0; }
+  .pos-meta {
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    font-weight: 500;
+  }
+  .pos-val {
+    font-size: 15px;
+    font-weight: 700;
+    margin-top: 4px;
+    font-family: var(--mono);
+  }
+  .price-source-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 8px 0 12px;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(255,255,255,0.05);
+    background: rgba(255,255,255,0.025);
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.35;
+  }
+  .price-source-line strong {
+    color: var(--text-secondary);
+    font-weight: 650;
+  }
+  .price-source-warn {
+    color: var(--yellow);
+    background: rgba(255,184,77,0.08);
+    border-color: rgba(255,184,77,0.22);
+  }
+
+  .pos-direction {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    font-family: var(--mono);
+    letter-spacing: 0.5px;
+  }
+  .pos-long {
+    background: var(--green-dim);
+    color: var(--green);
+    border: 1px solid rgba(0, 230, 138, 0.2);
+  }
+  .pos-short {
+    background: var(--red-dim);
+    color: var(--red);
+    border: 1px solid rgba(255, 77, 106, 0.2);
+  }
+
+  /* ── Signal Bars ────────────────────────── */
+  .signal-item {
+    margin-bottom: 16px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    animation: fadeIn 0.3s ease;
+  }
+  .signal-item:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+  .signal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+    gap: 12px;
+  }
+  .signal-header-left {
+    min-width: 0;
+  }
+  .signal-coin {
+    font-weight: 700;
+    font-size: 14px;
+    margin-right: 8px;
+  }
+  .signal-action {
+    font-size: 11px;
+    font-weight: 700;
+    font-family: var(--mono);
+  }
+  .signal-score {
+    font-family: var(--mono);
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .signal-mode {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 8px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    font-family: var(--mono);
+    letter-spacing: 0.4px;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .signal-mode-tradable {
+    color: var(--green);
+    background: var(--green-dim);
+    border-color: rgba(0,230,138,0.22);
+  }
+  .signal-mode-watch {
+    color: var(--blue);
+    background: var(--blue-dim);
+    border-color: rgba(91,140,255,0.22);
+  }
+  .signal-extras {
+    font-size: 10px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+  .signal-reason {
+    margin: 10px 0 12px;
+    color: var(--text-secondary);
+    line-height: 1.45;
+    font-size: 12px;
+  }
+  .signal-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .signal-stat {
+    border: 1px solid rgba(255,255,255,0.05);
+    background: rgba(255,255,255,0.02);
+    border-radius: 10px;
+    padding: 10px;
+  }
+  .signal-stat-label {
+    display: block;
+    color: var(--muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    margin-bottom: 4px;
+  }
+  .signal-stat-value {
+    font-family: var(--mono);
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--text);
+  }
+  .decision-board {
+    display: grid;
+    gap: 16px;
+  }
+  .decision-group-title {
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.1px;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+  .decision-group-sub {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.4;
+    margin-bottom: 10px;
+  }
+  .decision-group-footnote {
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.45;
+    margin: -2px 0 10px;
+  }
+  .decision-card {
+    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.025);
+    border-radius: 8px;
+  }
+  .decision-card-tradable {
+    background: rgba(255,255,255,0.035);
+  }
+  .decision-card-pending {
+    border-color: rgba(255,198,92,0.26);
+    box-shadow: 0 0 0 1px rgba(255,198,92,0.05);
+  }
+  .decision-card-watch {
+    background: rgba(91,140,255,0.06);
+    border-color: rgba(91,140,255,0.14);
+  }
+  .decision-card-long {
+    border-color: rgba(0,230,138,0.26);
+    box-shadow: 0 0 0 1px rgba(0,230,138,0.05);
+  }
+  .decision-card-short {
+    border-color: rgba(255,77,106,0.26);
+    box-shadow: 0 0 0 1px rgba(255,77,106,0.05);
+  }
+  .decision-compact-list {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .decision-compact-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(180px, 0.9fr);
+    gap: 12px;
+    align-items: center;
+    border: 1px solid rgba(255,255,255,0.055);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.018);
+    padding: 10px 12px;
+  }
+  .decision-compact-main,
+  .decision-compact-side {
+    min-width: 0;
+  }
+  .decision-compact-side {
+    display: grid;
+    gap: 4px;
+    color: var(--text-secondary);
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.35;
+  }
+  .quiet-more {
+    margin-top: 10px;
+    border: 1px solid rgba(255,255,255,0.055);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.018);
+    padding: 10px 12px;
+  }
+  .quiet-more summary {
+    list-style: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-family: var(--mono);
+  }
+  .quiet-more summary::-webkit-details-marker {
+    display: none;
+  }
+  .event-chip {
+    color: var(--blue);
+    background: rgba(91,140,255,0.10);
+    border-color: rgba(91,140,255,0.24);
+  }
+  .event-chip-starter {
+    color: #dcfce7;
+    background: rgba(0,230,138,0.10);
+    border-color: rgba(0,230,138,0.26);
+  }
+  .decision-coin {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+  }
+  .decision-mode {
+    font-size: 10px;
+    font-weight: 700;
+    font-family: var(--mono);
+    color: var(--text-secondary);
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+  }
+  .decision-action {
+    font-size: 26px;
+    font-weight: 900;
+    font-family: var(--mono);
+    line-height: 1;
+    letter-spacing: 0.8px;
+    margin-bottom: 8px;
+  }
+  .decision-meta {
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-family: var(--mono);
+    margin-bottom: 10px;
+  }
+  .decision-note {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .decision-guard {
+    margin-top: 10px;
+    font-size: 11px;
+    line-height: 1.4;
+    font-family: var(--mono);
+    color: var(--yellow);
+  }
+  .decision-guard.red {
+    color: var(--red);
+  }
+  .decision-rl-note {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .bar-track {
+    width: 100%;
+    height: 6px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+    position: relative;
+  }
+  .bar-long {
+    background: linear-gradient(90deg, rgba(0,230,138,0.4), var(--green));
+    box-shadow: 0 0 10px rgba(0, 230, 138, 0.3);
+  }
+  .bar-short {
+    background: linear-gradient(90deg, rgba(255,77,106,0.4), var(--red));
+    box-shadow: 0 0 10px rgba(255, 77, 106, 0.3);
+  }
+  .bar-flat {
+    background: linear-gradient(90deg, rgba(255,255,255,0.1), rgba(255,255,255,0.25));
+  }
+
+  /* ── Stat Rows ──────────────────────────── */
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-label {
+    color: var(--text-secondary);
+    font-size: 13px;
+  }
+  .stat-value {
+    font-family: var(--mono);
+    font-weight: 600;
+    font-size: 14px;
+  }
+
+  /* ── Circuit Breaker Banner ─────────────── */
+  .halt-banner {
+    background: linear-gradient(135deg, rgba(255, 77, 106, 0.1), rgba(255, 77, 106, 0.05));
+    border: 1px solid rgba(255, 77, 106, 0.3);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    animation: haltPulse 3s ease-in-out infinite;
+  }
+  @keyframes haltPulse {
+    0%, 100% { box-shadow: 0 0 20px rgba(255, 77, 106, 0.1); }
+    50% { box-shadow: 0 0 40px rgba(255, 77, 106, 0.2); }
+  }
+  .halt-icon {
+    font-size: 24px;
+    flex-shrink: 0;
+  }
+  .halt-text {
+    flex: 1;
+  }
+  .halt-title {
+    font-weight: 700;
+    color: var(--red);
+    font-size: 14px;
+    margin-bottom: 4px;
+  }
+  .halt-detail {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-family: var(--mono);
+  }
+  .halt-timer {
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 20px;
+    color: var(--red);
+  }
+
+  /* ── Table ──────────────────────────────── */
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    color: var(--muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    font-weight: 600;
+  }
+  td {
+    padding: 12px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    font-size: 13px;
+    font-family: var(--mono);
+    font-weight: 500;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr { transition: background 0.2s ease; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+
+  .expand-toggle {
+    cursor: pointer;
+    user-select: none;
+    transition: color 0.2s;
+  }
+  .expand-toggle:hover { color: var(--text); }
+  .expand-arrow {
+    display: inline-block;
+    transition: transform 0.3s ease;
+    margin-right: 6px;
+  }
+  .expand-arrow.open { transform: rotate(90deg); }
+
+  /* ── Scrollbar ──────────────────────────── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+  /* ── Empty State ────────────────────────── */
+  .empty-state {
+    padding: 32px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .empty-state .empty-icon {
+    font-size: 32px;
+    margin-bottom: 10px;
+    opacity: 0.5;
+  }
+
+  /* ── Responsive ─────────────────────────── */
+  @media (max-width: 1024px) {
+    .grid-4 { grid-template-columns: repeat(2, 1fr); }
+    .grid-3 { grid-template-columns: 1fr 1fr; }
+    .pos-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+  }
+  @media (max-width: 640px) {
+    .container { padding: 0 12px; }
+    header { flex-direction: column; gap: 12px; align-items: flex-start; }
+    .grid-4, .grid-3 { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .grid-2 { grid-template-columns: 1fr; }
+    .card { padding: 16px; }
+    .card-value { font-size: 22px; }
+    .pos-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .halt-banner { flex-direction: column; text-align: center; }
+    .status-hero { flex-direction: column; }
+    .status-chips { justify-content: flex-start; }
+    .signal-grid { grid-template-columns: 1fr; }
+    .map-card-summary,
+    .decision-summary {
+      flex-direction: column;
+    }
+    .decision-compact-row {
+      grid-template-columns: 1fr;
+    }
+    .map-summary-side,
+    .decision-summary-side {
+      width: 100%;
+      min-width: 0;
+      justify-content: space-between;
+      text-align: left;
+    }
+    .asset-section-grid,
+    .market-map-grid,
+    .utility-grid,
+    .proactive-grid,
+    .call-watchlist-grid,
+    .call-lanes,
+    .radar-grid {
+      grid-template-columns: 1fr;
+    }
+    .radar-step-row {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .call-watchlist-head {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+    }
+    .command-palette-shell {
+      padding-top: 48px;
+    }
+    .command-body {
+      grid-template-columns: 1fr;
+    }
+    .command-results {
+      max-height: 220px;
+      border-right: 0;
+      border-bottom: 1px solid rgba(235, 237, 229, 0.08);
+    }
+    .daily-sheet-header {
+      display: none;
+    }
+    .daily-sheet-row {
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+    .daily-briefing-line {
+      grid-template-columns: 1fr;
+      gap: 6px;
+    }
+  }
+  @media (max-width: 380px) {
+    .grid-4 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">P</div>
+    <h1>PUNKY TRADING AGENT</h1>
+  </div>
+  <div class="header-right">
+    <button class="command-search-btn" id="command-search-btn" type="button" onclick="openCommandSearch()">STANCE SEARCH</button>
+    <button class="command-search-btn" id="tradexyz-volume-shortcut-btn" type="button" onclick="openTradexyzVolumeSearch()">XYZ VOLUME</button>
+    <a href="/share" target="_blank" style="padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;font-family:var(--mono);letter-spacing:0.5px;background:var(--blue-dim);color:var(--blue);border:1px solid rgba(91,140,255,0.3);text-decoration:none;transition:all 0.2s ease;">Share P&amp;L</a>
+    <button class="kill-btn" id="kill-btn" onclick="handleKill()">KILL SWITCH</button>
+    <span id="mode-badge" class="badge badge-offline">OFFLINE</span>
+    <span id="last-update"></span>
+  </div>
+</header>
+
+<div class="command-palette-shell" id="command-palette-shell" hidden>
+  <div class="command-palette" role="dialog" aria-modal="true" aria-label="Find asset">
+    <div class="command-input-wrap">
+      <input
+        id="command-search-input"
+        class="command-input"
+        type="text"
+        autocomplete="off"
+        placeholder="Type a ticker..."
+        oninput="handleCommandSearch(this.value)"
+      />
+    </div>
+    <div class="command-body">
+      <div class="command-results" id="command-search-results"></div>
+      <div class="command-detail" id="command-search-detail"></div>
+    </div>
+  </div>
+</div>
+
+<!-- KPI Cards -->
+<div class="grid-4" id="kpis">
+  <div class="card">
+    <div class="kpi-icon green-bg">$</div>
+    <div class="card-label">Portfolio</div>
+    <div class="card-value" id="portfolio">$--</div>
+    <div class="card-sub" id="available">Available: --</div>
+  </div>
+  <div class="card">
+    <div class="kpi-icon blue-bg">P/L</div>
+    <div class="card-label">Total P&amp;L</div>
+    <div class="card-value" id="total-pnl">$--</div>
+    <div class="card-sub" id="win-rate">Win rate: --</div>
+  </div>
+  <div class="card">
+    <div class="kpi-icon purple-bg">%</div>
+    <div class="card-label">Win Rate</div>
+    <div class="card-value" id="trade-count">--</div>
+    <div class="card-sub" id="wins-losses">Closed: --</div>
+  </div>
+  <div class="card">
+    <div class="kpi-icon yellow-bg">→</div>
+    <div class="card-label">Next Setup</div>
+    <div class="card-value" id="cycle">--</div>
+    <div class="card-sub" id="sentiment">Waiting for the next clean setup...</div>
+  </div>
+</div>
+
+<!-- OPEN TRADES -->
+<div class="full-width">
+  <div class="card card-highlight" id="open-trades-card">
+    <div class="card-label">
+      <span class="pulse" id="pulse-dot"></span>
+      Open Trades
+      <span id="open-count" class="open-count" style="display:none;">0</span>
+    </div>
+    <div id="open-trades-body">
+      <div class="empty-state">
+        <div class="empty-icon">--</div>
+        FLAT — no open positions
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="full-width">
+  <div class="card" id="daily-radar-card">
+    <div class="card-label-row">
+      <div class="card-label">Today's Radar</div>
+      <div class="card-sub" id="daily-radar-meta">Waiting for the next radar pass...</div>
+    </div>
+    <div id="daily-radar-body">
+      <div class="empty-state">The agent will surface today's focus list after the next cycle.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Action Board -->
+<div class="full-width">
+  <div class="card">
+    <div class="card-label">Action Board</div>
+    <div class="card-sub" id="action-board-meta">Waiting for first cycle...</div>
+    <div id="signals-body">
+      <div class="empty-state">Waiting for first cycle...</div>
+    </div>
+  </div>
+</div>
+
+<!-- Proactive Desk -->
+<div class="full-width">
+  <div class="card">
+    <div class="card-label">Proactive Desk</div>
+    <div class="card-sub" id="proactive-meta">Waiting for proactive research...</div>
+    <div id="proactive-body">
+      <div class="empty-state">Scout book will populate after the next cycle.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Daily View -->
+<div class="full-width">
+  <details class="card details-card" id="daily-panel">
+    <summary class="card-label">Daily View</summary>
+    <div class="card-label-row">
+      <div class="map-meta" id="market-map-meta">Waiting for daily view...</div>
+      <div class="review-actions">
+        <button class="tool-btn" onclick="editMarketMap()">EDIT LEVELS</button>
+      </div>
+    </div>
+    <div id="market-map-body">
+      <div class="empty-state">Building live daily view...</div>
+    </div>
+  </details>
+</div>
+
+<div class="full-width">
+  <details class="card details-card" id="tools-panel">
+    <summary class="card-label">Advanced Tools</summary>
+    <div class="utility-grid">
+      <div class="utility-card">
+        <div class="utility-title">Trade.xyz Volume</div>
+        <div class="volume-shell">
+          <div class="volume-actions">
+            <input
+              id="tradexyz-wallet-input"
+              class="search-input"
+              type="text"
+              placeholder="0x..."
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button class="tool-btn" id="tradexyz-check-btn" onclick="lookupTradexyzVolume()">CHECK VOLUME</button>
+          </div>
+          <div id="tradexyz-status" class="volume-status">Press Ctrl+X from anywhere to check Trade.xyz wallet volume.</div>
+          <div id="tradexyz-result" class="search-result">
+            <div class="search-result-empty">No wallet checked yet.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </details>
+</div>
+
+<div class="full-width">
+  <details class="card details-card" id="performance-panel">
+    <summary class="card-label">Performance</summary>
+    <div id="stats-body">
+      <div class="stat-row"><span class="stat-label">Best trade</span><span class="stat-value" id="stat-best">--</span></div>
+      <div class="stat-row"><span class="stat-label">Worst trade</span><span class="stat-value" id="stat-worst">--</span></div>
+      <div class="stat-row"><span class="stat-label">Average win</span><span class="stat-value" id="stat-avgwin">--</span></div>
+      <div class="stat-row"><span class="stat-label">Average loss</span><span class="stat-value" id="stat-avgloss">--</span></div>
+      <div class="stat-row"><span class="stat-label">Today</span><span class="stat-value" id="stat-daily-pnl">--</span></div>
+    </div>
+  </details>
+</div>
+
+<div class="full-width">
+  <details class="card details-card" id="learning-panel">
+    <summary class="card-label">Agent Learning <span class="muted" style="font-size:10px;margin-left:4px;" id="review-meta">Waiting for learning stats...</span></summary>
+    <div id="review-body">
+      <div class="empty-state">No lessons absorbed yet</div>
+    </div>
+  </details>
+</div>
+
+<!-- Closed Trade Log -->
+<div class="full-width" style="margin-bottom:32px;">
+  <div class="card" style="padding-bottom:8px;">
+    <div class="card-label expand-toggle" onclick="toggleTrades()">
+      <span class="expand-arrow" id="trades-arrow">▶</span>
+      Closed Trades
+      <span class="muted" style="font-size:10px;margin-left:4px;" id="closed-count-label"></span>
+    </div>
+    <div id="trades-wrap" style="display:none;overflow-x:auto;">
+      <table>
+        <thead><tr>
+          <th>#</th><th>Coin</th><th>Dir</th><th>Opened</th><th>Closed</th>
+          <th>P&amp;L $</th><th>P&amp;L %</th><th>Opened Because</th><th>Closed Because</th><th>Lesson</th>
+        </tr></thead>
+        <tbody id="trades-body">
+          <tr><td colspan="10" class="muted" style="text-align:center;padding:24px;">No closed trades yet</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+</div> <!-- /container -->
+
+<script>
+const fmt  = (n, dec=2) => n == null ? '--' : Number(n).toLocaleString('en-US', {minimumFractionDigits:dec, maximumFractionDigits:dec});
+const fmtP = (n) => n == null ? '--' : (n >= 0 ? '+' : '') + fmt(n) + '%';
+const fmtD = (n) => n == null ? '--' : (n >= 0 ? '+$' : '-$') + fmt(Math.abs(n));
+const fmtCompactUsd = (n) => {
+  const value = Number(n);
+  if (!Number.isFinite(value) || value <= 0) return '$1B';
+  return '$' + value.toLocaleString('en-US', { notation: 'compact', maximumFractionDigits: value >= 1_000_000_000 ? 0 : 1 });
+};
+const fmtSigned = (n, dec=1) => n == null ? '--' : (n >= 0 ? '+' : '') + fmt(n, dec);
+const cls  = (n) => n > 0 ? 'green' : n < 0 ? 'red' : 'muted';
+const esc  = (v) => String(v == null ? '' : v)
+  .replaceAll('&', '&amp;')
+  .replaceAll('<', '&lt;')
+  .replaceAll('>', '&gt;')
+  .replaceAll('"', '&quot;')
+  .replaceAll("'", '&#39;');
+const shortText = (v, max=120) => {
+  const text = String(v == null ? '' : v).trim();
+  return text.length > max ? text.slice(0, max - 1) + '…' : text;
+};
+const priceSourceParts = (item) => {
+  const data = item || {};
+  const source = String(data.price_source_label || data.price_source || '').trim();
+  const reference = Number(data.reference_price || 0);
+  const deviationRaw = data.price_deviation_pct;
+  const deviation = deviationRaw == null ? null : Number(deviationRaw);
+  const parts = [];
+  if (source) parts.push(source);
+  if (reference > 0) parts.push('Ref ' + formatUsd(reference));
+  if (Number.isFinite(deviation)) parts.push('Δ ' + fmtP(deviation));
+  return parts;
+};
+const priceSourceHtml = (item) => {
+  const parts = priceSourceParts(item);
+  const status = String((item || {}).price_status || '').toUpperCase();
+  const warning = String((item || {}).price_warning || '').trim();
+  if (!parts.length && !warning) return '';
+  const clsName = (status === 'CHECK' || status === 'REFERENCE_MISSING')
+    ? 'price-source-line price-source-warn'
+    : 'price-source-line';
+  const text = parts.length ? parts.join(' • ') : 'Reference check unavailable';
+  return '<div class="' + clsName + '"><strong>Price source:</strong> ' + esc(text)
+    + (warning ? ' • ' + esc(shortText(warning, 120)) : '')
+    + '</div>';
+};
+const levelMove = (current, level) => {
+  const cur = Number(current || 0);
+  const lvl = Number(level || 0);
+  if (!(cur > 0) || !(lvl > 0)) return '';
+  const delta = lvl - cur;
+  const pct = cur ? (delta / cur) * 100 : 0;
+  return fmtSigned(delta, 2) + ' / ' + fmtP(pct);
+};
+const levelGap = (current, level) => {
+  const cur = Number(current || 0);
+  const lvl = Number(level || 0);
+  if (!(cur > 0) || !(lvl > 0)) return '';
+  const delta = cur - lvl;
+  const pct = lvl ? (delta / lvl) * 100 : 0;
+  return fmtSigned(delta, 2) + ' (' + fmtP(pct) + ')';
+};
+const numericLevel = (label, level, current=0) => {
+  const lvl = Number(level || 0);
+  if (!(lvl > 0)) return '';
+  const move = levelMove(current, lvl);
+  return label + ' ' + fmt(lvl) + (move ? ' (' + move + ')' : '');
+};
+const entryStatusLine = (current, level, label) => {
+  const cur = Number(current || 0);
+  const lvl = Number(level || 0);
+  if (!(cur > 0) || !(lvl > 0)) return '';
+  return 'Live ' + fmt(cur) + '; ' + label + ' ' + fmt(lvl) + '; gap ' + levelGap(cur, lvl);
+};
+const stopTargetLine = (current, stop, target) => {
+  const parts = [];
+  const stopText = numericLevel('SL', stop, current);
+  const targetText = numericLevel('TP', target, current);
+  if (stopText) parts.push(stopText);
+  if (targetText) parts.push(targetText);
+  return parts.join(' • ');
+};
+const csvText = (values, dec=2) => {
+  const list = Array.isArray(values) ? values : [];
+  if (!list.length) return '--';
+  return list.map((value) => fmt(value, dec)).join(', ');
+};
+const pickLevel = (values, fallback=null, prefer='min') => {
+  const list = (Array.isArray(values) ? values : [])
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  if (Number.isFinite(Number(fallback)) && Number(fallback) > 0) {
+    list.push(Number(fallback));
+  }
+  if (!list.length) return null;
+  return prefer === 'max' ? Math.max(...list) : Math.min(...list);
+};
+const zoneText = (zone) => {
+  if (!zone || (!zone.low && !zone.high)) return '--';
+  return fmt(zone.low || 0) + ' → ' + fmt(zone.high || zone.low || 0);
+};
+const reviewChipClass = (verdict) => {
+  const key = String(verdict || '').toUpperCase();
+  if (key === 'GOOD_TRADE') return 'review-good';
+  if (key === 'BAD_THESIS') return 'review-bad-thesis';
+  if (key === 'BAD_EXECUTION') return 'review-bad-execution';
+  if (key === 'BOTH_BAD') return 'review-both-bad';
+  if (key === 'MISS') return 'review-miss';
+  return '';
+};
+const biasClass = (bias) => {
+  const key = String(bias || 'NEUTRAL').toLowerCase();
+  if (key === 'bullish') return 'map-bias map-bias-bullish';
+  if (key === 'bearish') return 'map-bias map-bias-bearish';
+  return 'map-bias map-bias-neutral';
+};
+const stampText = (value) => String(value || '').slice(0, 16) || '--';
+const normalizeChoice = (value, allowed, fallback) => {
+  const text = String(value == null ? '' : value).trim().toUpperCase();
+  return allowed.includes(text) ? text : fallback;
+};
+const reviewBadgeHtml = (review) => {
+  if (!review) return '<span class="review-chip">UNREVIEWED</span>';
+  const verdict = String(review.verdict || 'GOOD_TRADE').toUpperCase();
+  return '<span class="review-chip ' + reviewChipClass(verdict) + '">' + esc(verdict.replaceAll('_', ' ')) + '</span>';
+};
+const reviewBreakdownHtml = (label, values) => {
+  const entries = Object.entries(values || {}).filter(([, count]) => count);
+  if (!entries.length) {
+    return '<div class="review-notes">' + esc(label) + ': none yet</div>';
+  }
+  return '<div class="review-notes"><strong>' + esc(label) + ':</strong> '
+    + esc(entries.map(([key, count]) => key.replaceAll('_', ' ') + ' ' + count).join(' • '))
+    + '</div>';
+};
+const surfaceModeMeta = (value, tradable=false) => {
+  const text = String(value || '').trim();
+  if (tradable) return text || 'Executable';
+  if (!text || text.toLowerCase() === 'support pending') return 'Tracking only';
+  return text;
+};
+const surfaceModeBadge = (value, tradable=false) => {
+  const text = String(value || '').trim().toUpperCase();
+  if (tradable) return text || 'EXEC';
+  if (!text || text === 'PENDING' || text === 'WATCH') return 'TRACK';
+  return text;
+};
+const setupCallSide = (item) => {
+  const safe = item || {};
+  const status = String(safe.status || '').trim().toUpperCase();
+  const bias = String(safe.bias || '').trim().toUpperCase();
+  const action = String(safe.candidate_action || safe.final_action || safe.action || '').trim().toUpperCase();
+  if (status.includes('SHORT') || action === 'SHORT' || bias === 'BEARISH') return 'bearish';
+  if (status.includes('LONG') || action === 'LONG' || bias === 'BULLISH') return 'bullish';
+  return 'neutral';
+};
+const setupStanceTone = (item) => {
+  const status = String(((item || {}).status) || '').trim().toUpperCase();
+  if (status.startsWith('OPEN_')) return 'LIVE';
+  if (status === 'PENDING_ENTRY') return 'WORKING';
+  if (status === 'READY_LONG' || status === 'READY_SHORT') return 'READY';
+  if (['EXECUTION_BLOCKED', 'DATA_QUALITY_HOLD', 'PORTFOLIO_GUARD', 'RISK_BLOCKED'].includes(status)) return 'BLOCKED';
+  if (['WATCH_LONG', 'WATCH_SHORT'].includes(status)) return 'WATCH';
+  if (['WAIT_RECLAIM', 'WAIT_BREAKDOWN', 'WAITING_CONFIRMATION', 'ARMED', 'PASSIVE_ENTRY'].includes(status)) return 'WAIT';
+  if (status === 'COOLDOWN') return 'COOLDOWN';
+  if (status === 'NO_SETUP') return 'FLAT';
+  return String((item || {}).label || 'WATCH').trim().toUpperCase();
+};
+const setupStanceText = (item, mode='chip') => {
+  const side = setupCallSide(item);
+  if (side === 'bullish') return mode === 'title' ? 'Bullish call' : 'BULLISH CALL';
+  if (side === 'bearish') return mode === 'title' ? 'Bearish call' : 'BEARISH CALL';
+  return mode === 'title' ? 'Neutral' : 'NEUTRAL';
+};
+const setupStanceChipHtml = (item) => {
+  const safe = item || {};
+  const side = setupCallSide(safe);
+  const tone = side === 'bullish' ? 'BULLISH' : side === 'bearish' ? 'BEARISH' : 'NEUTRAL';
+  return '<span class="' + biasClass(tone) + '">' + esc(setupStanceText(safe, 'chip')) + '</span>';
+};
+const setupReasonText = (item, limit=170) => {
+  const safe = item || {};
+  return shortText(
+    safe.next_setup_reason
+      || safe.execution_note
+      || safe.entry_status
+      || safe.trigger
+      || safe.headline
+      || 'Waiting for a cleaner setup.',
+    limit
+  );
+};
+const cleanSentence = (value) => String(value == null ? '' : value)
+  .replace(/\s+/g, ' ')
+  .trim();
+const extractCatalystTerms = (value, limit=3) => {
+  const text = cleanSentence(value);
+  const markerMatch = text.match(/(?:Thesis|Catalyst):\s*([^|.]+)/i);
+  if (!markerMatch) return '';
+  return markerMatch[1]
+    .replace(/\band\b/gi, '+')
+    .split('+')
+    .map((term) => cleanSentence(term).replace(/^[,;:-]+|[,;:-]+$/g, ''))
+    .filter((term) => term && term.length <= 48)
+    .slice(0, limit)
+    .join(' + ');
+};
+const plainTradeReason = (value, mode='open', limit=86) => {
+  const text = cleanSentence(value);
+  if (!text) return mode === 'hold' ? 'Thesis still valid.' : 'No opening thesis recorded.';
+  const lower = text.toLowerCase();
+  const catalysts = extractCatalystTerms(text);
+  if (mode === 'hold') {
+    if (catalysts) return shortText('Catalysts intact: ' + catalysts + '.', limit);
+    if (lower.includes('thesis stayed intact') || lower.includes('thesis stays valid')) return 'Thesis still valid.';
+  }
+  if (lower.includes('pre-event starter')) return shortText('Pre-event starter: ' + (catalysts || 'catalyst stack active') + '.', limit);
+  if (lower.includes('support defense') || lower.includes('at support')) return shortText('Support held; ' + (catalysts || 'starter risk allowed') + '.', limit);
+  if (lower.includes('breakout') || lower.includes('reclaim')) return shortText('Breakout/reclaim confirmed; ' + (catalysts || 'momentum active') + '.', limit);
+  if (lower.includes('breakdown')) return shortText('Breakdown confirmed; ' + (catalysts || 'risk active') + '.', limit);
+  if (lower.includes('top of book drifted')) return 'Price drifted, thesis intact.';
+  return shortText(text.split('|')[0].replace(/^Thesis\s+\w+:\s*/i, '').trim(), limit);
+};
+const levelLabel = (label) => {
+  const key = String(label || '').toUpperCase();
+  if (key === 'SL') return 'Stop';
+  if (key === 'TP') return 'Target';
+  if (key === 'BREAK') return 'Break';
+  return key.charAt(0) + key.slice(1).toLowerCase();
+};
+const levelTokensFromText = (value) => {
+  const text = String(value == null ? '' : value);
+  const tokens = [];
+  const pattern = /(SL|TP|Limit|Entry|Trigger|Reclaim|Break|Lose)\s+[-+]?\d[\d,]*(?:\.\d+)?/gi;
+  let match = pattern.exec(text);
+  while (match) {
+    tokens.push(levelLabel(match[1]) + ' ' + match[0].replace(match[1], '').trim());
+    match = pattern.exec(text);
+  }
+  return tokens;
+};
+const stripLevelMath = (value) => cleanSentence(value)
+  .replace(/\s*\([^)]*\)/g, '')
+  .replace(/^Live\s+[-+]?\d[\d,]*(?:\.\d+)?\s*[;•]\s*/i, '')
+  .replace(/\s*[;•]\s*/g, ' / ');
+const simpleLevelText = (value, fallback='Level forming', limit=74) => {
+  const tokens = levelTokensFromText(value);
+  if (tokens.length) return shortText(tokens.join(' / '), limit);
+  const cleaned = stripLevelMath(value);
+  return shortText(cleaned || fallback, limit);
+};
+const simpleActionText = (item) => {
+  const status = String((item || {}).status || '').toUpperCase();
+  if (status === 'OPEN_LONG') return 'Holding long';
+  if (status === 'OPEN_SHORT') return 'Holding short';
+  if (status === 'PENDING_ENTRY') return 'Order working';
+  if (status === 'READY_LONG') return 'Ready to buy';
+  if (status === 'READY_SHORT') return 'Ready to short';
+  if (status === 'WATCH_LONG' || status === 'WAIT_RECLAIM') return 'Watching long';
+  if (status === 'WATCH_SHORT' || status === 'WAIT_BREAKDOWN') return 'Watching short';
+  if (['EXECUTION_BLOCKED', 'DATA_QUALITY_HOLD', 'PORTFOLIO_GUARD', 'RISK_BLOCKED'].includes(status)) return 'Blocked';
+  if (status === 'COOLDOWN') return 'Cooling off';
+  return setupStanceText(item, 'title');
+};
+const simpleNextText = (item, limit=76) => {
+  const safe = item || {};
+  const status = String(safe.status || '').toUpperCase();
+  const level = simpleLevelText(safe.trigger || safe.entry_status, 'Level forming', 54);
+  if (status === 'OPEN_LONG' || status === 'OPEN_SHORT') return shortText('Hold: ' + level, limit);
+  if (status === 'PENDING_ENTRY') return shortText('Working: ' + level, limit);
+  if (status === 'READY_LONG') return shortText('Buy if: ' + level, limit);
+  if (status === 'READY_SHORT') return shortText('Short if: ' + level, limit);
+  if (status === 'WATCH_LONG' || status === 'WAIT_RECLAIM') return shortText('Needs: ' + level, limit);
+  if (status === 'WATCH_SHORT' || status === 'WAIT_BREAKDOWN') return shortText('Needs: ' + level, limit);
+  if (status === 'COOLDOWN') return 'Cooling off.';
+  return shortText(level || setupReasonText(safe, limit), limit);
+};
+const simpleRiskText = (item, limit=70) => {
+  const risk = simpleLevelText((item || {}).risk || '', '', limit);
+  if (risk) return risk.replace(/^Lose\s/i, 'Wrong below ').replace(/^Reclaim\s/i, 'Wrong above ');
+  return shortText(simpleLevelText((item || {}).trigger || '', 'Risk forming', limit), limit);
+};
+const simpleInvalidationText = (item, limit=78) => {
+  const safe = item || {};
+  const direct = cleanSentence(safe.invalidation_short || safe.invalidation || '');
+  if (direct) {
+    return shortText(
+      direct
+        .replace(/\s*\([^)]*\)/g, '')
+        .replace(/\.$/, ''),
+      limit
+    );
+  }
+  const risk = simpleRiskText(safe, limit)
+    .replace(/^Wrong below\s/i, 'Invalid below ')
+    .replace(/^Wrong above\s/i, 'Invalid above ')
+    .replace(/^Lose\s/i, 'Invalid below ')
+    .replace(/^Reclaim\s/i, 'Invalid above ');
+  return shortText(risk || 'Invalidation forming', limit);
+};
+const simpleThesisText = (item, limit=84) => {
+  const safe = item || {};
+  return plainTradeReason(
+    safe.current_logic_short
+      || safe.entry_logic_short
+      || safe.headline
+      || safe.next_setup_reason
+      || safe.execution_note
+      || safe.map_summary
+      || '',
+    String(safe.status || '').toUpperCase().startsWith('OPEN_') ? 'hold' : 'open',
+    limit
+  );
+};
+const whyLeadText = (item, limit=170) => {
+  const safe = item || {};
+  return shortText(
+    safe.why_this_lead
+      || safe.probability_detail
+      || safe.probability_text
+      || setupReasonText(safe, limit),
+    limit
+  );
+};
+const leadSummaryText = (item, limit=220) => {
+  if (!item) return 'Waiting for the next clean setup.';
+  return shortText(simpleNextText(item, 86) + ' • ' + simpleInvalidationText(item, 76) + ' • ' + simpleThesisText(item, 76), limit);
+};
+const frictionStateLabel = (status) => {
+  const key = String(status || 'wait').toLowerCase();
+  if (key === 'clear') return 'Clear';
+  if (key === 'block') return 'Block';
+  return 'Wait';
+};
+const frictionStackHtml = (item) => {
+  const stack = Array.isArray((item || {}).friction_stack) ? item.friction_stack.filter((entry) => entry && (entry.label || entry.summary)) : [];
+  if (!stack.length) return '';
+  return '<div class="detail-stack-section"><div class="detail-stack-label">Friction Stack</div><div class="friction-stack">'
+    + stack.map((entry) => {
+      const tone = ['clear', 'wait', 'block'].includes(String(entry.status || '').toLowerCase()) ? String(entry.status || '').toLowerCase() : 'wait';
+      const summary = shortText(entry.summary || 'Still being evaluated.', 96);
+      return '<div class="friction-chip friction-chip-' + esc(tone) + '">'
+        + '<div class="friction-chip-top"><div class="friction-chip-label">' + esc(String(entry.label || 'Check')) + '</div><div class="friction-chip-state">' + esc(frictionStateLabel(tone)) + '</div></div>'
+        + '<div class="friction-chip-summary">' + esc(summary) + '</div>'
+      + '</div>';
+    }).join('')
+    + '</div></div>';
+};
+const catalystRailHtml = (item) => {
+  const rail = Array.isArray((item || {}).catalyst_rail) ? item.catalyst_rail.filter((entry) => entry && entry.text) : [];
+  if (!rail.length) return '';
+  return '<div class="detail-stack-section"><div class="detail-stack-label">Catalyst Rail</div><div class="catalyst-rail">'
+    + rail.map((entry) => {
+      const tone = ['support', 'watch', 'risk'].includes(String(entry.tone || '').toLowerCase()) ? String(entry.tone || '').toLowerCase() : 'watch';
+      return '<div class="catalyst-pill catalyst-pill-' + esc(tone) + '"><span class="catalyst-pill-label">' + esc(String(entry.label || 'Signal')) + '</span><span class="catalyst-pill-text">' + esc(shortText(entry.text || '', 100)) + '</span></div>';
+    }).join('')
+    + '</div></div>';
+};
+const eventChipHtml = (item) => {
+  const safe = item || {};
+  const starterActive = Boolean(safe.conviction_entry_active);
+  const starterSize = Number(safe.conviction_entry_size_multiplier || 0);
+  if (starterActive) {
+    const label = safe.conviction_entry_event ? 'EVENT STARTER' : 'STARTER';
+    const sizeText = starterSize > 0 ? ' ' + Math.round(starterSize * 100) + '%' : '';
+    return '<span class="review-chip event-chip-starter">' + esc(label + sizeText) + '</span>';
+  }
+  const eventScore = Number(safe.news_event_score || 0);
+  const catalystScore = Number(safe.news_catalyst_score || 0);
+  if (eventScore >= 3 || safe.news_event_summary) {
+    return '<span class="review-chip event-chip">EVENT</span>';
+  }
+  if (catalystScore >= 3 || safe.news_catalyst_summary) {
+    return '<span class="review-chip event-chip">CATALYST</span>';
+  }
+  return '';
+};
+const actionCompactRowHtml = (item) => {
+  const status = String((item || {}).status || 'NO_SETUP').toUpperCase();
+  const modeClass = item.tradable ? 'signal-mode-tradable' : 'signal-mode-watch';
+  return '<div class="decision-compact-row">'
+    + '<div class="decision-compact-main">'
+      + '<div class="token-line"><div class="decision-coin">' + esc(item.coin) + '</div><span class="' + modeClass + '">' + esc(surfaceModeBadge(item.mode_badge, item.tradable)) + '</span>' + setupStanceChipHtml(item) + probabilityChipHtml(item) + eventChipHtml(item) + assetCategoryBadgeHtml(item) + (status === 'PENDING_ENTRY' ? '<span class="review-chip">ORDER LIVE</span>' : '') + '</div>'
+      + '<div class="token-subline token-subline-simple">' + esc(simpleThesisText(item, 84)) + '</div>'
+    + '</div>'
+    + '<div class="decision-compact-side">'
+      + '<div>' + esc(simpleNextText(item, 78)) + '</div>'
+      + '<div>' + esc(simpleInvalidationText(item, 72)) + '</div>'
+    + '</div>'
+  + '</div>';
+};
+const callImportanceScore = (item) => {
+  const safe = item || {};
+  const status = String(safe.status || '').toUpperCase();
+  let score = 0;
+  if (status.startsWith('OPEN_')) score += 80;
+  if (status === 'PENDING_ENTRY') score += 72;
+  if (status === 'READY_LONG' || status === 'READY_SHORT') score += 64;
+  if (status === 'WATCH_LONG' || status === 'WATCH_SHORT' || status === 'WAIT_RECLAIM' || status === 'WAIT_BREAKDOWN') score += 42;
+  if (safe.tradable) score += 12;
+  score += Math.max(0, Math.min(30, Number(safe.probability_pct || 0) - 45));
+  score += Math.min(18, Math.abs(Number(safe.score || 50) - 50) / 2);
+  score += Math.min(18, Number(safe.news_event_score || safe.news_catalyst_score || 0) * 3);
+  if (safe.conviction_entry_active) score += 14;
+  return score;
+};
+const sortCallItems = (items) => {
+  return Array.from(items || []).sort((a, b) => {
+    const delta = callImportanceScore(b) - callImportanceScore(a);
+    if (delta) return delta;
+    return String((a || {}).coin || '').localeCompare(String((b || {}).coin || ''));
+  });
+};
+const callWatchlistRowHtml = (item, side) => {
+  const safe = item || {};
+  const modeClass = safe.tradable ? 'signal-mode-tradable' : 'signal-mode-watch';
+  const status = String(safe.status || '').toUpperCase();
+  const statusText = status.startsWith('OPEN_')
+    ? 'LIVE'
+    : status === 'PENDING_ENTRY'
+      ? 'ORDER'
+      : surfaceModeBadge(safe.mode_badge, safe.tradable);
+  const meta = [
+    '<span class="' + modeClass + '">' + esc(statusText) + '</span>',
+    eventChipHtml(safe),
+  ].filter(Boolean).join('');
+  return '<div class="call-row call-row-' + esc(side) + '">'
+    + '<div class="call-row-top">'
+      + '<div class="call-row-symbol">' + esc(safe.coin || '--') + '</div>'
+      + '<div class="call-row-meta">' + meta + '</div>'
+    + '</div>'
+    + '<div class="call-row-text">' + esc(simpleNextText(safe, 78)) + '</div>'
+    + '<div class="call-row-risk">' + esc(simpleInvalidationText(safe, 62)) + '</div>'
+  + '</div>';
+};
+const renderCallLane = (items, side, label) => {
+  const visible = sortCallItems(items).slice(0, 5);
+  const hidden = Math.max(0, Number((items || []).length) - visible.length);
+  return '<div class="call-lane call-lane-' + esc(side) + '">'
+    + '<div class="call-lane-title"><span>' + esc(label) + '</span><span>' + esc(String((items || []).length)) + '</span></div>'
+    + (visible.length ? visible.map((item) => callWatchlistRowHtml(item, side)).join('') : '<div class="call-empty">No clear call right now.</div>')
+    + (hidden ? '<div class="call-neutral-note">+' + esc(String(hidden)) + ' more lower-priority names</div>' : '')
+  + '</div>';
+};
+const renderCallBucket = (bucket, items) => {
+  const bucketItems = (items || []).filter((item) => (item.asset_bucket || assetBucketForCoin(item.coin)) === bucket);
+  const bullish = bucketItems.filter((item) => setupCallSide(item) === 'bullish');
+  const bearish = bucketItems.filter((item) => setupCallSide(item) === 'bearish');
+  const neutralCount = bucketItems.length - bullish.length - bearish.length;
+  return '<div class="call-bucket">'
+    + '<div class="call-bucket-top">'
+      + '<div class="call-bucket-title">' + esc(bucketLabel(bucket)) + '</div>'
+      + '<div class="call-bucket-count">' + esc(String(bucketItems.length)) + ' tracked</div>'
+    + '</div>'
+    + '<div class="call-lanes">'
+      + renderCallLane(bullish, 'bullish', 'Bullish')
+      + renderCallLane(bearish, 'bearish', 'Bearish')
+    + '</div>'
+    + (neutralCount > 0 ? '<div class="call-neutral-note">' + esc(String(neutralCount)) + ' neutral / no strong call</div>' : '')
+  + '</div>';
+};
+const renderCallWatchlist = (items) => {
+  const safeItems = Array.isArray(items) ? items.filter((item) => item && item.coin) : [];
+  if (!safeItems.length) return '';
+  return '<div class="call-watchlist">'
+    + '<div class="call-watchlist-head">'
+      + '<div class="asset-section-title">Watchlist</div>'
+      + '<div class="asset-section-sub">Bullish and bearish calls. Only the next level is shown.</div>'
+    + '</div>'
+    + '<div class="call-watchlist-grid">'
+      + renderCallBucket('coin', safeItems)
+      + renderCallBucket('equity', safeItems)
+    + '</div>'
+  + '</div>';
+};
+const itemBiasMixText = (items) => {
+  const counts = { BULLISH: 0, BEARISH: 0, NEUTRAL: 0 };
+  (items || []).forEach((item) => {
+    const side = setupCallSide(item);
+    if (side === 'bullish') counts.BULLISH += 1;
+    else if (side === 'bearish') counts.BEARISH += 1;
+    else counts.NEUTRAL += 1;
+  });
+  const parts = [];
+  if (counts.BULLISH) parts.push(String(counts.BULLISH) + ' bullish');
+  if (counts.BEARISH) parts.push(String(counts.BEARISH) + ' bearish');
+  if (counts.NEUTRAL) parts.push(String(counts.NEUTRAL) + ' neutral');
+  return parts.join(' • ') || 'No directional bias yet.';
+};
+const latestWinningLesson = (summary) => {
+  const latest = (summary || {}).latest || null;
+  if (latest && String(latest.result || '').toUpperCase() === 'WIN') return latest;
+  const lessons = Array.isArray((summary || {}).recent_lessons) ? summary.recent_lessons : [];
+  return lessons.find((lesson) => String((lesson || {}).result || '').toUpperCase() === 'WIN') || null;
+};
+const latestWinSummaryText = (lesson) => {
+  if (!lesson) return '';
+  const parts = [];
+  const coin = String(lesson.coin || '--').trim();
+  const direction = String(lesson.direction || '').trim().toUpperCase();
+  if (coin) parts.push(coin);
+  if (direction) parts.push(direction);
+  const lessonText = shortText(lesson.lesson || lesson.close_logic || plainTradeReason(lesson.open_logic || 'Clean win logged.', 'open', 70), 90);
+  const headline = parts.join(' ');
+  return headline + ' ' + fmtD(Number(lesson.pnl_usd || 0)) + (lessonText ? ' • ' + lessonText : '');
+};
+const fallbackProbability = (score, confidence, convictionScore=0) => {
+  const anchor = Number(convictionScore || 0) > 0 ? Number(convictionScore || 0) : Number(score || 50);
+  const adjustments = { LOW: -0.05, MEDIUM: 0.0, HIGH: 0.06 };
+  const base = 0.50 + ((Math.max(0, Math.min(100, anchor)) - 50) / 50) * 0.18 + (adjustments[String(confidence || 'MEDIUM').toUpperCase()] || 0);
+  return Math.max(0.18, Math.min(0.82, base));
+};
+const probabilityTierForPct = (pct) => {
+  const value = Number(pct || 0);
+  if (value >= 65) return 'high';
+  if (value >= 50) return 'medium';
+  return 'low';
+};
+const probabilityChipHtml = (item) => {
+  const pct = Number((item || {}).probability_pct || 0);
+  if (!(pct > 0)) return '';
+  const tier = String((item || {}).probability_tier || probabilityTierForPct(pct));
+  return '<span class="prob-chip prob-chip-' + esc(tier) + '">' + esc(String(pct) + '% odds') + '</span>';
+};
+const compactOddsText = (item) => {
+  const pct = Number((item || {}).probability_pct || 0);
+  if (!(pct > 0)) return '';
+  return String(pct) + '% odds';
+};
+const setupProbabilityPayload = ({
+  signal,
+  status,
+  action,
+  confidence,
+  score,
+  convictionScore,
+  livePrice,
+  longTrigger,
+  shortTrigger,
+  bias,
+  tradable,
+  coachVerdict,
+}) => {
+  const sig = signal || {};
+  const expectancyProbability = Number(sig.expectancy_probability || 0);
+  const uncertainty = Number(sig.expectancy_uncertainty || 0);
+  const analogAdjustment = Math.max(-0.08, Math.min(0.08, Number(sig.analog_probability_adjustment || 0)));
+  const catalystScore = Number(sig.news_catalyst_score || 0);
+  const referee = (sig.llm_referee || {});
+  const refereeVerdict = String(referee.verdict || sig.llm_referee_verdict || '').toUpperCase();
+  const executionQualityScore = Number(sig.execution_quality_score || 0);
+  const statusKey = String(status || '').toUpperCase();
+  const actionKey = String(action || '').toUpperCase();
+  const coachKey = String(coachVerdict || '').toUpperCase();
+  let probability = expectancyProbability > 0 && expectancyProbability <= 1
+    ? expectancyProbability
+    : fallbackProbability(score, confidence, convictionScore);
+  let label = 'Setup odds';
+  const reasons = [];
+
+  if (uncertainty > 0) {
+    if (uncertainty <= 0.22) {
+      probability += 0.02;
+      reasons.push('low model uncertainty');
+    } else if (uncertainty >= 0.40) {
+      probability -= 0.04;
+      reasons.push('high model uncertainty');
+    }
+  }
+  if (analogAdjustment) {
+    probability += analogAdjustment;
+    reasons.push(analogAdjustment > 0 ? 'historical analogs are supportive' : 'historical analogs are cautious');
+  }
+  if (refereeVerdict === 'SUPPORT') {
+    probability += 0.03;
+    reasons.push('referee supports the setup');
+  } else if (refereeVerdict === 'WAIT') {
+    probability -= 0.02;
+    reasons.push('referee still wants cleaner confirmation');
+  } else if (refereeVerdict === 'BLOCK') {
+    probability -= 0.05;
+    reasons.push('referee is blocking the setup');
+  }
+  if (coachKey === 'BLOCK') {
+    probability -= 0.06;
+    reasons.push('execution coach is blocking here');
+  } else if (coachKey === 'GO') {
+    probability += 0.03;
+    reasons.push('execution coach likes the tape');
+  }
+  if (executionQualityScore > 0) {
+    if (executionQualityScore >= 75) {
+      probability += 0.03;
+      reasons.push('execution quality is clean');
+    } else if (executionQualityScore <= 55) {
+      probability -= 0.03;
+      reasons.push('execution quality is messy');
+    }
+  }
+  if (catalystScore >= 3.0) {
+    probability += 0.04;
+    reasons.push('major catalyst still supports the move');
+  } else if (catalystScore >= 2.0) {
+    probability += 0.02;
+    reasons.push('fresh catalyst support is still there');
+  }
+
+  const liveReclaim = Boolean(sig.market_map_live_reclaim) || (Number(livePrice || 0) > 0 && Number(longTrigger || 0) > 0 && Number(livePrice || 0) >= Number(longTrigger || 0));
+  const waitingReclaim = statusKey === 'WAIT_RECLAIM' || (
+    statusKey === 'WATCH_LONG' && Number(longTrigger || 0) > 0 && !liveReclaim && (Boolean(sig.market_map_reclaim_confirmed) || String(bias || '').toUpperCase() === 'BULLISH')
+  );
+  const liveBreakdown = Boolean(sig.market_map_live_breakdown);
+  const waitingBreak = statusKey === 'WAIT_BREAKDOWN' || (
+    statusKey === 'WATCH_SHORT' && Number(shortTrigger || 0) > 0 && !liveBreakdown && String(bias || '').toUpperCase() === 'BEARISH'
+  );
+
+  if (waitingReclaim && Number(longTrigger || 0) > 0) {
+    label = 'Reclaim odds';
+    if (sig.market_map_reclaim_confirmed) {
+      probability += 0.07;
+      reasons.push('prior reclaim already printed');
+    }
+    if (sig.market_map_reclaim_lost && !liveReclaim) {
+      probability -= 0.03;
+      reasons.push('intraday hold was lost');
+    }
+    const breakoutStates = new Set([
+      String(sig.orderbook_breakout_state || '').toUpperCase(),
+      String(sig.orderbook_intracycle_breakout_state || '').toUpperCase(),
+    ]);
+    if (breakoutStates.has('CONFIRMED_BULLISH_BREAKOUT') || breakoutStates.has('PERSISTENT_BULLISH_BREAKOUT')) {
+      probability += 0.04;
+      reasons.push('breakout pressure is still live');
+    }
+    if (Number(livePrice || 0) > 0) {
+      const distancePct = Math.max(0, (Number(longTrigger || 0) - Number(livePrice || 0)) / Number(longTrigger || 0));
+      if (distancePct <= 0.0025) {
+        probability += 0.06;
+        reasons.push((distancePct * 100).toFixed(2) + '% below reclaim');
+      } else if (distancePct <= 0.0075) {
+        probability += 0.03;
+        reasons.push((distancePct * 100).toFixed(2) + '% below reclaim');
+      } else if (distancePct >= 0.03) {
+        probability -= 0.06;
+        reasons.push((distancePct * 100).toFixed(2) + '% below reclaim');
+      } else if (distancePct >= 0.015) {
+        probability -= 0.03;
+        reasons.push((distancePct * 100).toFixed(2) + '% below reclaim');
+      }
+    }
+  } else if (waitingBreak && Number(shortTrigger || 0) > 0) {
+    label = 'Break odds';
+    const breakdownConfirmed = Boolean(sig.market_map_breakdown_confirmed);
+    const breakdownLost = breakdownConfirmed && !liveBreakdown;
+    const breakoutStates = new Set([
+      String(sig.orderbook_breakout_state || '').toUpperCase(),
+      String(sig.orderbook_intracycle_breakout_state || '').toUpperCase(),
+    ]);
+    if (breakdownConfirmed) {
+      probability += 0.07;
+      reasons.push('prior breakdown already printed');
+    }
+    if (breakdownLost) {
+      probability -= 0.03;
+      reasons.push('intraday breakdown was lost');
+    }
+    if (breakoutStates.has('CONFIRMED_BEARISH_BREAKOUT') || breakoutStates.has('PERSISTENT_BEARISH_BREAKOUT')) {
+      probability += 0.04;
+      reasons.push('sell pressure is still live');
+    }
+    if (Number(livePrice || 0) > 0) {
+      const distancePct = Math.max(0, (Number(livePrice || 0) - Number(shortTrigger || 0)) / Number(shortTrigger || 0));
+      if (distancePct <= 0.0025) {
+        probability += 0.06;
+        reasons.push((distancePct * 100).toFixed(2) + '% above breakdown');
+      } else if (distancePct <= 0.0075) {
+        probability += 0.03;
+        reasons.push((distancePct * 100).toFixed(2) + '% above breakdown');
+      } else if (distancePct >= 0.03) {
+        probability -= 0.06;
+        reasons.push((distancePct * 100).toFixed(2) + '% above breakdown');
+      } else if (distancePct >= 0.015) {
+        probability -= 0.03;
+        reasons.push((distancePct * 100).toFixed(2) + '% above breakdown');
+      }
+    }
+  } else if (statusKey === 'OPEN_LONG' || statusKey === 'OPEN_SHORT') {
+    label = 'Hold odds';
+  } else if (['READY_LONG', 'READY_SHORT', 'PENDING_ENTRY', 'WAITING_CONFIRMATION', 'EXECUTABLE', 'PASSIVE_ENTRY'].includes(statusKey)) {
+    label = 'Entry odds';
+  } else if (actionKey === 'LONG' || actionKey === 'SHORT') {
+    label = 'Entry odds';
+  }
+
+  if (tradable && (label === 'Entry odds' || label === 'Setup odds')) {
+    probability += 0.01;
+  }
+
+  probability = Math.max(0.05, Math.min(0.95, probability));
+  const probabilityPct = Math.round(probability * 100);
+  const tier = probabilityTierForPct(probabilityPct);
+  const detailReasons = [];
+  const seen = new Set();
+  reasons.forEach((reason) => {
+    const text = String(reason || '').trim();
+    const key = text.toLowerCase();
+    if (!text || seen.has(key) || detailReasons.length >= 3) return;
+    seen.add(key);
+    detailReasons.push(text);
+  });
+  const detail = label + ' ' + probabilityPct + '%' + (detailReasons.length ? ' • ' + detailReasons.join(' • ') : '');
+  return {
+    probability: Number(probability.toFixed(4)),
+    probability_pct: probabilityPct,
+    probability_label: label,
+    probability_text: label + ' ' + probabilityPct + '%',
+    probability_detail: detail,
+    probability_tier: tier,
+  };
+};
+const dashboardItemForCoin = (coin) => {
+  const ticker = String(coin || '').trim().toUpperCase();
+  if (!ticker) return null;
+  return actionBoardItems().find((item) => String(item.coin || '').trim().toUpperCase() === ticker) || null;
+};
+let latestControl = null;
+let latestState = null;
+let latestTrades = [];
+let latestMarketMap = { coins: {} };
+let latestMarketMapSummary = {};
+let latestActionBoard = { items: [], summary: {}, lead: null };
+let latestReviewStore = { reviews: {} };
+let latestReviewSummary = {};
+let latestLearningSummary = {};
+let latestPerformanceEdges = { summary: {}, working_edges: [], failing_edges: [] };
+let latestAssetDossiers = { assets: {}, summary: {} };
+let latestMissedMoveReport = { summary: {} };
+let latestLLMRefereeReport = { verdicts: {} };
+let latestPlaybookDistillerReport = { summary: {}, assets: {} };
+let latestProactiveTraderReport = { summary: {} };
+let latestDailyRadar = { summary: {}, top_assets: [] };
+let commandSearchOpen = false;
+let commandSearchIndex = 0;
+let commandSearchQuery = '';
+let commandSearchMatches = [];
+let tradexyzLookupBusy = false;
+let refreshRequest = null;
+let refreshTimer = null;
+let refreshFailureCount = 0;
+let actionBoardBucket = 'coin';
+let marketMapBucket = 'coin';
+let actionBoardCategory = 'all';
+let marketMapCategory = 'all';
+const REFRESH_BASE_MS = 15000;
+const REFRESH_STALE_MS = 25000;
+const REFRESH_MAX_MS = 60000;
+const REFRESH_TIMEOUT_MS = 8000;
+const STATIC_GITHUB_PAGES_MODE = /\.github\.io$/i.test(window.location.hostname || '');
+const STATIC_STATE_FALLBACK_URL = 'https://raw.githubusercontent.com/punkypunk936-coder/crypto-trading-agent/dashboard-state-live/dashboard/dashboard_snapshot.json';
+const DEFAULT_ASSET_CATEGORY_LABELS = {
+  indices_macro: 'Indices & Macro',
+  mag7: 'Mag7',
+  semis_memory: 'Semis & Memory',
+  neoclouds: 'Neoclouds',
+  ai_infra: 'AI Infra',
+  crypto_equities: 'Crypto Equities',
+  asia_macro: 'Asia Macro',
+  commodities_metals: 'Metals',
+  energy: 'Energy',
+  agriculture: 'Agriculture',
+  fx_rates: 'FX & Rates',
+  uranium: 'Uranium',
+  volatility: 'Volatility',
+  consumer: 'Consumer',
+  financials: 'Financials',
+  biotech_glp1: 'Biotech & GLP-1',
+  meme_momentum: 'Meme Momentum',
+  growth: 'Growth',
+  other_stocks: 'Other Stocks',
+};
+
+function toggleTrades() {
+  const wrap = document.getElementById('trades-wrap');
+  const arrow = document.getElementById('trades-arrow');
+  const show = wrap.style.display === 'none';
+  wrap.style.display = show ? 'block' : 'none';
+  arrow.className = 'expand-arrow' + (show ? ' open' : '');
+}
+
+function formatTimer(seconds) {
+  if (!seconds || seconds <= 0) return '0:00';
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return m + ':' + String(s).padStart(2, '0');
+}
+
+function trackedCoins() {
+  const coins = new Set();
+  const configCoins = (((latestState || {}).config || {}).coins || []);
+  const dynamicCoins = (((latestState || {}).config || {}).dynamic_analysis_coins || []);
+  const signalCoins = Object.keys(((latestState || {}).signals || {}));
+  const mappedCoins = Object.keys(((latestMarketMap || {}).coins || {}));
+  const actionCoins = Array.isArray((latestActionBoard || {}).items) ? latestActionBoard.items.map((item) => item.coin) : [];
+  [configCoins, dynamicCoins, signalCoins, mappedCoins, actionCoins].forEach((values) => {
+    (values || []).forEach((coin) => {
+      const text = String(coin || '').trim().toUpperCase();
+      if (text) coins.add(text);
+    });
+  });
+  return Array.from(coins).sort();
+}
+
+function instrumentTypeForCoin(coin) {
+  const ticker = String(coin || '').trim().toUpperCase();
+  const signal = ((((latestState || {}).signals || {})[ticker]) || {});
+  const signalType = String(signal.instrument_type || '').trim().toLowerCase();
+  if (signalType) return signalType;
+  const configTypes = (((latestState || {}).config || {}).instrument_types || {});
+  return String(configTypes[ticker] || 'crypto').trim().toLowerCase();
+}
+
+function assetBucketForType(type) {
+  const normalized = String(type || 'crypto').trim().toLowerCase();
+  return normalized === 'crypto' ? 'coin' : 'equity';
+}
+
+function assetBucketForCoin(coin) {
+  return assetBucketForType(instrumentTypeForCoin(coin));
+}
+
+function bucketLabel(bucket) {
+  if (bucket === 'equity') return 'Stocks & Indices';
+  return 'Coins';
+}
+
+function bucketDescription(bucket) {
+  if (bucket === 'equity') return 'Venue-supported stocks, ETFs, and macro-linked contracts grouped into cleaner stock desks.';
+  return 'Crypto coins and token perps only.';
+}
+
+function assetCategoryMap() {
+  return ((((latestState || {}).config || {}).asset_categories) || {});
+}
+
+function assetCategoryLabels() {
+  return Object.assign({}, DEFAULT_ASSET_CATEGORY_LABELS, ((((latestState || {}).config || {}).asset_category_labels) || {}));
+}
+
+function normalizeAssetCategories(value) {
+  let raw = [];
+  if (Array.isArray(value)) raw = value;
+  else if (typeof value === 'string') raw = value.replaceAll('|', ',').split(',');
+  else if (value != null) raw = [value];
+  const seen = new Set();
+  const categories = [];
+  raw.forEach((item) => {
+    const category = String(item || '').trim().toLowerCase();
+    if (!category || seen.has(category)) return;
+    seen.add(category);
+    categories.push(category);
+  });
+  return categories;
+}
+
+function normalizeTextList(value) {
+  let raw = [];
+  if (Array.isArray(value)) raw = value;
+  else if (typeof value === 'string') raw = value.replaceAll('|', ',').split(',');
+  else if (value != null) raw = [value];
+  const seen = new Set();
+  const items = [];
+  raw.forEach((item) => {
+    const text = String(item || '').trim();
+    const key = text.toLowerCase();
+    if (!text || seen.has(key)) return;
+    seen.add(key);
+    items.push(text);
+  });
+  return items;
+}
+
+function assetCategoriesForCoin(coin) {
+  const ticker = String(coin || '').trim().toUpperCase();
+  if (!ticker) return ['other_stocks'];
+  const actionItems = Array.isArray((latestActionBoard || {}).items) ? latestActionBoard.items : [];
+  const actionMatch = actionItems.find((item) => String((item || {}).coin || '').trim().toUpperCase() === ticker);
+  const itemCategories = normalizeAssetCategories((actionMatch || {}).asset_categories || (actionMatch || {}).asset_category);
+  if (itemCategories.length) return itemCategories;
+  const signal = ((((latestState || {}).signals || {})[ticker]) || {});
+  const signalCategories = normalizeAssetCategories(signal.asset_categories || signal.asset_category);
+  if (signalCategories.length) return signalCategories;
+  const configCategories = normalizeAssetCategories((assetCategoryMap() || {})[ticker]);
+  if (configCategories.length) return configCategories;
+  const type = instrumentTypeForCoin(ticker);
+  if (type === 'index') return ['indices_macro'];
+  if (type === 'equity') return ['other_stocks'];
+  return ['crypto'];
+}
+
+function assetCategoryForCoin(coin) {
+  return assetCategoriesForCoin(coin)[0] || 'other_stocks';
+}
+
+function itemAssetCategories(item) {
+  if (typeof item === 'string') return assetCategoriesForCoin(item);
+  const categories = normalizeAssetCategories((item || {}).asset_categories || (item || {}).asset_category);
+  if (categories.length) return categories;
+  return assetCategoriesForCoin((item || {}).coin);
+}
+
+function assetCategoryLabel(category) {
+  const key = String(category || '').trim().toLowerCase();
+  if (key === 'all') return 'All';
+  return String((assetCategoryLabels() || {})[key] || humanizeKey(key) || 'Other');
+}
+
+function itemAssetCategoryLabels(item) {
+  const explicitLabels = normalizeTextList((item || {}).asset_category_labels || (item || {}).asset_category_label);
+  if (explicitLabels.length) return explicitLabels;
+  return itemAssetCategories(item).map((category) => assetCategoryLabel(category));
+}
+
+function assetCategoryBadgeHtml(item) {
+  const bucket = typeof item === 'string' ? assetBucketForCoin(item) : ((item || {}).asset_bucket || assetBucketForCoin((item || {}).coin));
+  if (bucket !== 'equity') return '';
+  const labels = itemAssetCategoryLabels(item).filter(Boolean);
+  if (!labels.length) return '';
+  const visible = labels.slice(0, 2);
+  const extra = labels.length > 2 ? ' +' + String(labels.length - 2) : '';
+  return '<span class="review-chip">' + esc((visible.join(' / ') + extra).toUpperCase()) + '</span>';
+}
+
+function assetCategoryDescription(category) {
+  const key = String(category || '').trim().toLowerCase();
+  if (key === 'indices_macro') return 'Macro-linked index and ETF proxies with slower, cleaner tape.';
+  if (key === 'mag7') return 'The big US platform leaders where catalyst reactions matter most.';
+  if (key === 'semis_memory') return 'Chip, storage, and memory names that often move together on AI demand.';
+  if (key === 'neoclouds') return 'GPU-cloud and AI infrastructure names tied to compute demand.';
+  if (key === 'ai_infra') return 'AI infrastructure names where cloud commitments and capex cycles can drive re-rates.';
+  if (key === 'crypto_equities') return 'Public market crypto beta, brokers, exchanges, and treasury-linked stocks.';
+  if (key === 'asia_macro') return 'Asia-linked equity, index, and currency proxies for regional risk appetite.';
+  if (key === 'commodities_metals') return 'Metals and hard-asset proxies with macro and supply-chain sensitivity.';
+  if (key === 'energy') return 'Oil, gas, and energy equity proxies where inventory and geopolitical catalysts matter.';
+  if (key === 'agriculture') return 'Agricultural contracts with cleaner macro and weather-driven trend behavior.';
+  if (key === 'fx_rates') return 'Currency and dollar-index proxies that can anchor macro risk direction.';
+  if (key === 'uranium') return 'Uranium spot and miner exposure with policy, supply, and nuclear-demand catalysts.';
+  if (key === 'volatility') return 'Volatility instruments for stress, hedging, and regime-change reads.';
+  if (key === 'consumer') return 'Consumer and discretionary names where spending trends drive tape.';
+  if (key === 'financials') return 'Financials and private-market exposure with rate and liquidity sensitivity.';
+  if (key === 'biotech_glp1') return 'Healthcare and GLP-1-linked growth where product catalysts matter.';
+  if (key === 'meme_momentum') return 'High-reflexivity tickers where flow, attention, and positioning dominate.';
+  if (key === 'growth') return 'Single-name growth setups outside the big platform and chip baskets.';
+  if (key === 'other_stocks') return 'Everything executable that does not fit the main desks yet.';
+  return '';
+}
+
+function emptyCategoryGroups() {
+  return {
+    all: { key: 'all', label: 'All', items: [], count: 0 },
+  };
+}
+
+function categoryOrder(groups) {
+  const preferred = [
+    'all', 'indices_macro', 'mag7', 'semis_memory', 'neoclouds', 'ai_infra',
+    'crypto_equities', 'asia_macro', 'commodities_metals', 'energy', 'agriculture',
+    'fx_rates', 'uranium', 'volatility', 'consumer', 'financials', 'biotech_glp1',
+    'meme_momentum', 'growth', 'other_stocks',
+  ];
+  const seen = new Set(preferred);
+  Object.keys(groups || {}).forEach((key) => {
+    if (!seen.has(key)) preferred.push(key);
+  });
+  return preferred;
+}
+
+function groupAssetItemsByCategory(items, resolver) {
+  const groups = emptyCategoryGroups();
+  (items || []).forEach((item) => {
+    const categories = normalizeAssetCategories(resolver(item));
+    const safeCategories = categories.length ? categories : ['other_stocks'];
+    const seenCategories = new Set();
+    safeCategories.forEach((category) => {
+      if (seenCategories.has(category)) return;
+      seenCategories.add(category);
+      if (!groups[category]) groups[category] = { key: category, label: assetCategoryLabel(category), items: [], count: 0 };
+      groups[category].items.push(item);
+      groups[category].count += 1;
+    });
+    groups.all.items.push(item);
+    groups.all.count += 1;
+  });
+  return groups;
+}
+
+function chooseAssetCategory(current, groups, bucket) {
+  if (bucket !== 'equity') return 'all';
+  const order = categoryOrder(groups);
+  if (groups && groups[current] && Number(groups[current].count || 0) > 0) return current;
+  if (groups && groups.all && Number(groups.all.count || 0) > 0) return 'all';
+  return order.find((key) => groups && groups[key] && Number(groups[key].count || 0) > 0) || 'all';
+}
+
+function renderCategoryTabs(current, groups, scope, bucket) {
+  if (bucket !== 'equity') return '';
+  const order = categoryOrder(groups);
+  const available = order.filter((key) => groups && groups[key] && Number(groups[key].count || 0) > 0);
+  if (available.length <= 2 && available.includes('all')) return '';
+  return '<div class="asset-switcher">'
+    + available.map((key) => {
+      const group = groups[key] || {};
+      const active = key === current;
+      return '<button type="button" class="asset-tab' + (active ? ' active' : '') + '" data-category-scope="' + esc(scope) + '" data-category-value="' + esc(key) + '">'
+        + esc(assetCategoryLabel(key))
+        + '<span class="asset-tab-count">' + esc(String(group.count || 0)) + '</span>'
+      + '</button>';
+    }).join('')
+    + '</div>';
+}
+
+function renderDeskOverview(groups, scope, activeBucket, activeCategory) {
+  const equityGroup = groups && groups.equity;
+  const equityItems = (equityGroup || {}).items || [];
+  if (!equityItems.length) return '';
+  const categoryGroups = groupAssetItemsByCategory(equityItems, (item) => {
+    return itemAssetCategories(item);
+  });
+  const order = categoryOrder(categoryGroups).filter((key) => key !== 'all');
+  if (!order.length) return '';
+  return '<div class="desk-overview"><div class="desk-overview-label">Stock Desks</div><div class="desk-overview-pills">'
+    + order.map((key) => {
+      const group = categoryGroups[key] || {};
+      const active = activeBucket === 'equity' && activeCategory === key;
+      return '<button type="button" class="asset-tab desk-overview-pill' + (active ? ' active' : '') + '" data-desk-scope="' + esc(scope) + '" data-desk-category="' + esc(key) + '">'
+        + esc(assetCategoryLabel(key))
+        + '<span class="asset-tab-count">' + esc(String(group.count || 0)) + '</span>'
+      + '</button>';
+    }).join('')
+    + '</div></div>';
+}
+
+function emptyBucketGroups() {
+  return {
+    coin: { key: 'coin', label: bucketLabel('coin'), items: [], tradable_items: [], observation_items: [], count: 0, tradable_count: 0, observation_count: 0, active_count: 0, pending_count: 0 },
+    equity: { key: 'equity', label: bucketLabel('equity'), items: [], tradable_items: [], observation_items: [], count: 0, tradable_count: 0, observation_count: 0, active_count: 0, pending_count: 0 },
+  };
+}
+
+function chooseBucket(current, groups) {
+  const order = ['coin', 'equity'];
+  if (groups && groups[current] && Number(groups[current].count || 0) > 0) return current;
+  return order.find((key) => groups && groups[key] && Number(groups[key].count || 0) > 0) || 'coin';
+}
+
+function renderBucketTabs(current, groups, scope) {
+  const order = ['coin', 'equity'];
+  const available = order.filter((key) => groups && groups[key] && Number(groups[key].count || 0) > 0);
+  if (available.length <= 1) return '';
+  return '<div class="asset-switcher">'
+    + available.map((key) => {
+      const group = groups[key] || {};
+      const active = key === current;
+      return '<button type="button" class="asset-tab' + (active ? ' active' : '') + '" data-bucket-scope="' + esc(scope) + '" data-bucket-value="' + esc(key) + '">'
+        + esc(bucketLabel(key))
+        + '<span class="asset-tab-count">' + esc(String(group.count || 0)) + '</span>'
+      + '</button>';
+    }).join('')
+    + '</div>';
+}
+
+function handleAssetBucketClick(scope, bucket) {
+  const normalizedScope = String(scope || '').trim().toLowerCase();
+  if (normalizedScope === 'market') {
+    setMarketMapBucket(bucket);
+    return;
+  }
+  setActionBoardBucket(bucket);
+}
+
+function setActionBoardBucket(bucket) {
+  actionBoardBucket = String(bucket || 'coin');
+  actionBoardCategory = 'all';
+  renderActionBoard(latestActionBoard || {});
+}
+
+function setMarketMapBucket(bucket) {
+  marketMapBucket = String(bucket || 'coin');
+  marketMapCategory = 'all';
+  renderMarketMapSummary(latestMarketMapSummary || {}, latestMarketMap || { coins: {} });
+}
+
+function setActionBoardCategory(category) {
+  actionBoardCategory = String(category || 'all');
+  renderActionBoard(latestActionBoard || {});
+}
+
+function setMarketMapCategory(category) {
+  marketMapCategory = String(category || 'all');
+  renderMarketMapSummary(latestMarketMapSummary || {}, latestMarketMap || { coins: {} });
+}
+
+document.addEventListener('click', (event) => {
+  const button = event.target.closest('.asset-tab[data-bucket-scope][data-bucket-value]');
+  if (button) {
+    event.preventDefault();
+    handleAssetBucketClick(button.dataset.bucketScope, button.dataset.bucketValue);
+    return;
+  }
+  const categoryButton = event.target.closest('.asset-tab[data-category-scope][data-category-value]');
+  if (!categoryButton) return;
+  event.preventDefault();
+  if (String(categoryButton.dataset.categoryScope || '').trim().toLowerCase() === 'market') {
+    setMarketMapCategory(categoryButton.dataset.categoryValue);
+    return;
+  }
+  setActionBoardCategory(categoryButton.dataset.categoryValue);
+});
+
+document.addEventListener('click', (event) => {
+  const deskButton = event.target.closest('.desk-overview-pill[data-desk-scope][data-desk-category]');
+  if (!deskButton) return;
+  event.preventDefault();
+  const scope = String(deskButton.dataset.deskScope || '').trim().toLowerCase();
+  const category = deskButton.dataset.deskCategory;
+  if (scope === 'market') {
+    setMarketMapBucket('equity');
+    setMarketMapCategory(category);
+    return;
+  }
+  setActionBoardBucket('equity');
+  setActionBoardCategory(category);
+});
+
+document.addEventListener('click', (event) => {
+  if (!event.target || !event.target.closest) return;
+  const resultButton = event.target.closest('.command-result-item[data-command-ticker]');
+  if (resultButton) {
+    event.preventDefault();
+    selectCommandTicker(resultButton.dataset.commandTicker);
+    return;
+  }
+  if (event.target.id === 'command-palette-shell') {
+    closeCommandSearch();
+  }
+});
+
+document.addEventListener('keydown', (event) => {
+  const key = String(event.key || '').toLowerCase();
+  const tradexyzVolumeOpen = (event.ctrlKey || event.metaKey) && key === 'x' && !isEditableTarget(event.target);
+  if (tradexyzVolumeOpen) {
+    event.preventDefault();
+    openTradexyzVolumeSearch();
+    return;
+  }
+  const commandFind = (event.ctrlKey || event.metaKey) && key === 'f';
+  const commandOpen = commandFind || ((event.ctrlKey || event.metaKey) && key === 'k');
+  const slashOpen = key === '/' && !event.ctrlKey && !event.metaKey && !event.altKey && !isEditableTarget(event.target);
+  if (commandOpen || slashOpen) {
+    event.preventDefault();
+    openCommandSearch();
+    return;
+  }
+  if (!commandSearchOpen) return;
+  if (key === 'escape') {
+    event.preventDefault();
+    closeCommandSearch();
+    return;
+  }
+  if (key === 'arrowdown') {
+    event.preventDefault();
+    commandSearchIndex = Math.min(commandSearchIndex + 1, Math.max(0, commandSearchMatches.length - 1));
+    renderCommandSearch();
+    return;
+  }
+  if (key === 'arrowup') {
+    event.preventDefault();
+    commandSearchIndex = Math.max(0, commandSearchIndex - 1);
+    renderCommandSearch();
+    return;
+  }
+  if (key === 'enter') {
+    event.preventDefault();
+    activateCommandSearchSelection();
+  }
+});
+
+function humanizeKey(value) {
+  return String(value == null ? '' : value)
+    .trim()
+    .replaceAll('_', ' ')
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+function actionBoardItems() {
+  return Array.isArray((latestActionBoard || {}).items)
+    ? latestActionBoard.items.filter((item) => item && item.coin)
+    : [];
+}
+
+function commandSearchCandidates(query) {
+  const normalized = String(query || '').trim().toUpperCase();
+  const seen = new Set();
+  const candidates = [];
+  actionBoardItems().forEach((item) => {
+    const ticker = String((item || {}).coin || '').trim().toUpperCase();
+    if (!ticker || seen.has(ticker)) return;
+    let matchRank = 4;
+    if (!normalized) {
+      matchRank = 3;
+    } else if (ticker === normalized) {
+      matchRank = 0;
+    } else if (ticker.startsWith(normalized)) {
+      matchRank = 1;
+    } else if (ticker.includes(normalized)) {
+      matchRank = 2;
+    }
+    if (matchRank >= 4) return;
+    seen.add(ticker);
+    candidates.push({ item, matchRank });
+  });
+  return candidates
+    .sort((a, b) => {
+      if (a.matchRank !== b.matchRank) return a.matchRank - b.matchRank;
+      const importance = callImportanceScore(b.item) - callImportanceScore(a.item);
+      if (importance) return importance;
+      return String(a.item.coin || '').localeCompare(String(b.item.coin || ''));
+    })
+    .slice(0, normalized ? 12 : 8)
+    .map((entry) => entry.item);
+}
+
+function commandResultHtml(item, index, active) {
+  const safe = item || {};
+  const modeClass = safe.tradable ? 'signal-mode-tradable' : 'signal-mode-watch';
+  return '<button class="command-result-item' + (active ? ' active' : '') + '" type="button" data-command-ticker="' + esc(safe.coin || '') + '">'
+    + '<div class="command-result-top">'
+      + '<span class="command-result-symbol">' + esc(safe.coin || '--') + '</span>'
+      + '<span class="' + modeClass + '">' + esc(surfaceModeBadge(safe.mode_badge, safe.tradable)) + '</span>'
+    + '</div>'
+    + '<div class="command-result-note">' + esc(simpleActionText(safe)) + ' • ' + esc(simpleNextText(safe, 64)) + '</div>'
+    + '<div class="command-result-note">' + esc(simpleInvalidationText(safe, 68)) + '</div>'
+  + '</button>';
+}
+
+function commandDetailLine(label, value) {
+  return '<div class="command-detail-line">'
+    + '<div class="command-detail-label">' + esc(label) + '</div>'
+    + '<div class="command-detail-value">' + esc(value || '--') + '</div>'
+  + '</div>';
+}
+
+function commandDetailHtml(item) {
+  const safe = item || {};
+  if (!safe.coin) {
+    return '<div class="command-empty">Type a ticker to pull the agent call, level, invalidation, and thesis.</div>';
+  }
+  const modeClass = safe.tradable ? 'signal-mode-tradable' : 'signal-mode-watch';
+  const status = String(safe.status || '').toUpperCase();
+  const holdingText = status.startsWith('OPEN_')
+    ? simpleThesisText(safe, 90)
+    : surfaceModeMeta(safe.mode_meta, safe.tradable);
+  return '<div class="command-detail-title">'
+      + '<div class="command-detail-symbol">' + esc(safe.coin || '--') + '</div>'
+      + '<span class="' + modeClass + '">' + esc(surfaceModeBadge(safe.mode_badge, safe.tradable)) + '</span>'
+    + '</div>'
+    + '<div class="search-chip-row">' + setupStanceChipHtml(safe) + probabilityChipHtml(safe) + eventChipHtml(safe) + '</div>'
+    + '<div class="command-detail-card">'
+      + commandDetailLine('Call', simpleActionText(safe))
+      + commandDetailLine('Level', simpleNextText(safe, 96))
+      + commandDetailLine('Invalid if', simpleInvalidationText(safe, 96))
+      + commandDetailLine(status.startsWith('OPEN_') ? 'Holding because' : 'Why', simpleThesisText(safe, 96))
+      + commandDetailLine('Mode', holdingText)
+    + '</div>'
+    + priceSourceHtml(safe);
+}
+
+function renderCommandSearch() {
+  const results = document.getElementById('command-search-results');
+  const detail = document.getElementById('command-search-detail');
+  if (!results || !detail) return;
+  commandSearchMatches = commandSearchCandidates(commandSearchQuery);
+  if (commandSearchIndex >= commandSearchMatches.length) commandSearchIndex = Math.max(0, commandSearchMatches.length - 1);
+  if (commandSearchIndex < 0) commandSearchIndex = 0;
+  if (!commandSearchMatches.length) {
+    const normalized = String(commandSearchQuery || '').trim().toUpperCase();
+    results.innerHTML = '<div class="command-empty">' + esc(normalized ? ('No live read for ' + normalized + '.') : 'No active ideas loaded yet.') + '</div>';
+    detail.innerHTML = '<div class="command-empty">Try another tracked ticker.</div>';
+    return;
+  }
+  results.innerHTML = commandSearchMatches
+    .map((item, index) => commandResultHtml(item, index, index === commandSearchIndex))
+    .join('');
+  detail.innerHTML = commandDetailHtml(commandSearchMatches[commandSearchIndex]);
+}
+
+function openCommandSearch(seed='') {
+  const shell = document.getElementById('command-palette-shell');
+  const input = document.getElementById('command-search-input');
+  if (!shell || !input) return;
+  const nextValue = String(seed || '').trim().toUpperCase();
+  shell.hidden = false;
+  commandSearchOpen = true;
+  commandSearchQuery = nextValue;
+  commandSearchIndex = 0;
+  input.value = nextValue;
+  renderCommandSearch();
+  setTimeout(() => {
+    input.focus();
+    input.select();
+  }, 0);
+}
+
+function closeCommandSearch() {
+  const shell = document.getElementById('command-palette-shell');
+  if (!shell) return;
+  shell.hidden = true;
+  commandSearchOpen = false;
+}
+
+function selectCommandTicker(ticker) {
+  const normalized = String(ticker || '').trim().toUpperCase();
+  if (!normalized) return;
+  commandSearchQuery = normalized;
+  commandSearchIndex = 0;
+  const commandInput = document.getElementById('command-search-input');
+  if (commandInput) commandInput.value = normalized;
+  renderCommandSearch();
+}
+
+function activateCommandSearchSelection() {
+  const item = commandSearchMatches[commandSearchIndex];
+  if (!item) return;
+  selectCommandTicker(item.coin);
+}
+
+function handleCommandSearch(value) {
+  commandSearchQuery = String(value == null ? '' : value);
+  commandSearchIndex = 0;
+  renderCommandSearch();
+}
+
+function isEditableTarget(target) {
+  if (!target || !target.closest) return false;
+  return Boolean(target.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]'));
+}
+
+function formatUsd(value) {
+  const number = Number(value || 0);
+  if (!Number.isFinite(number)) return '$0.00';
+  if (Math.abs(number) >= 1_000_000) return '$' + number.toLocaleString('en-US', { notation: 'compact', maximumFractionDigits: 2 });
+  return '$' + fmt(number);
+}
+
+function setTradexyzStatus(message, tone='info') {
+  const node = document.getElementById('tradexyz-status');
+  if (!node) return;
+  node.className = 'volume-status' + (tone === 'error' ? ' error' : tone === 'ok' ? ' ok' : '');
+  node.textContent = message;
+}
+
+function openTradexyzVolumeSearch(seed='') {
+  const panel = document.getElementById('tools-panel');
+  const input = document.getElementById('tradexyz-wallet-input');
+  if (panel) {
+    panel.open = true;
+    panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  if (input) {
+    if (seed) input.value = String(seed || '').trim();
+    setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 0);
+  }
+  setTradexyzStatus('Paste a wallet and press Enter. Shortcut: Ctrl+X.', 'info');
+}
+
+function renderTradexyzVolume(payload) {
+  const result = document.getElementById('tradexyz-result');
+  if (!result) return;
+  const summary = payload.summary || {};
+  const coverage = payload.coverage || {};
+  const identity = payload.identity || {};
+  const markets = Array.isArray(payload.markets) ? payload.markets : [];
+  const topMarkets = markets.slice(0, 10);
+  const requestBits = [
+    String(coverage.request_count || 0) + ' request' + (Number(coverage.request_count || 0) === 1 ? '' : 's'),
+  ];
+  if (coverage.split_count) requestBits.push(String(coverage.split_count) + ' split windows');
+  if (coverage.possible_truncation) requestBits.push('possible truncation');
+
+  let html = '<div class="search-title">' + esc(payload.wallet || '') + ' • Trade.xyz volume snapshot</div>'
+    + '<div class="search-summary">This rollup uses Hyperliquid fills from ' + esc(String(coverage.start_time || '--')) + ' to ' + esc(String(coverage.end_time || '--')) + ' and filters them to the live Trade.xyz market universe.</div>'
+    + '<div class="volume-kpis">'
+      + '<div class="token-detail"><span class="token-detail-label">Total volume</span><div class="token-detail-value">' + esc(formatUsd(summary.total_volume_usd || 0)) + '</div></div>'
+      + '<div class="token-detail"><span class="token-detail-label">Matched fills</span><div class="token-detail-value">' + esc(String(summary.fill_count || 0)) + '</div></div>'
+      + '<div class="token-detail"><span class="token-detail-label">Markets traded</span><div class="token-detail-value">' + esc(String(summary.market_count || 0)) + '</div></div>'
+      + '<div class="token-detail"><span class="token-detail-label">Buy / sell volume</span><div class="token-detail-value">' + esc(formatUsd(summary.buy_volume_usd || 0) + ' / ' + formatUsd(summary.sell_volume_usd || 0)) + '</div></div>'
+    + '</div>'
+    + '<div class="search-grid">'
+      + '<div class="token-detail"><span class="token-detail-label">First fill</span><div class="token-detail-value">' + esc(String(summary.first_fill_at || 'No fills found')) + '</div></div>'
+      + '<div class="token-detail"><span class="token-detail-label">Last fill</span><div class="token-detail-value">' + esc(String(summary.last_fill_at || '—')) + '</div></div>'
+      + '<div class="token-detail"><span class="token-detail-label">Tracked xyz markets</span><div class="token-detail-value">' + esc(String(summary.tracked_markets || 0)) + '</div></div>'
+      + '<div class="token-detail"><span class="token-detail-label">Scanner activity</span><div class="token-detail-value">' + esc(requestBits.join(' • ')) + '</div></div>'
+    + '</div>';
+
+  html += '<div class="search-grid" style="margin-top:8px;">'
+    + '<div class="token-detail"><span class="token-detail-label">Requested address</span><div class="token-detail-value">' + esc(String(identity.requested_address || payload.wallet || '—')) + '</div></div>'
+    + '<div class="token-detail"><span class="token-detail-label">Query scope</span><div class="token-detail-value">' + esc(humanizeKey(String(identity.query_scope || 'strict_address'))) + '</div></div>'
+    + '<div class="token-detail"><span class="token-detail-label">Hyperliquid role</span><div class="token-detail-value">' + esc(humanizeKey(String(identity.role || 'user'))) + '</div></div>'
+    + '<div class="token-detail"><span class="token-detail-label">Abstraction mode</span><div class="token-detail-value">' + esc(String(identity.abstraction_mode || 'default')) + '</div></div>'
+    + '</div>';
+
+  const identityNotes = Array.isArray(identity.notes) ? identity.notes.filter((item) => item) : [];
+  if (identityNotes.length) {
+    html += '<div class="search-summary"><strong>Identity notes:</strong> ' + esc(identityNotes.join(' ')) + '</div>';
+  }
+  if (Array.isArray(identity.linked_addresses) && identity.linked_addresses.length) {
+    html += '<div class="search-summary"><strong>Linked addresses:</strong> ' + esc(identity.linked_addresses.join(', ')) + '</div>';
+  }
+
+  if (topMarkets.length) {
+    html += '<div class="volume-table-wrap"><table><thead><tr><th>Market</th><th>Volume</th><th>Fills</th><th>Buy Volume</th><th>Sell Volume</th><th>Last Fill</th></tr></thead><tbody>'
+      + topMarkets.map((market) => '<tr>'
+        + '<td>' + esc(String(market.coin || '')) + '</td>'
+        + '<td>' + esc(formatUsd(market.volume_usd || 0)) + '</td>'
+        + '<td>' + esc(String(market.fills || 0)) + '</td>'
+        + '<td>' + esc(formatUsd(market.buy_volume_usd || 0)) + '</td>'
+        + '<td>' + esc(formatUsd(market.sell_volume_usd || 0)) + '</td>'
+        + '<td>' + esc(String(market.last_fill_at || '—')) + '</td>'
+        + '</tr>').join('')
+      + '</tbody></table></div>';
+  } else {
+    html += '<div class="search-result-empty" style="margin-top:12px;">No Trade.xyz fills were found for this wallet in the scanned history.</div>';
+  }
+
+  html += '<div class="volume-footer">Checked at ' + esc(String(payload.checked_at || '--')) + ' • DEX ' + esc(String(payload.dex || 'xyz').toUpperCase()) + '</div>';
+  result.innerHTML = html;
+}
+
+function radarSideLabel(item) {
+  const side = String((item || {}).side || '').toLowerCase();
+  if (side === 'bullish') return 'Bullish';
+  if (side === 'bearish') return 'Bearish';
+  return 'Watch';
+}
+
+function radarSideChip(item) {
+  const side = String((item || {}).side || '').toLowerCase();
+  const klass = side === 'bullish' ? biasClass('bullish') : side === 'bearish' ? biasClass('bearish') : biasClass('neutral');
+  return '<span class="' + klass + '">' + esc(radarSideLabel(item)) + '</span>';
+}
+
+function radarStatusChip(item) {
+  const safe = item || {};
+  const modeClass = safe.tradable ? 'signal-mode-tradable' : 'signal-mode-watch';
+  const status = String(safe.status || (safe.tradable ? 'READY' : 'TRACK')).toUpperCase();
+  return '<span class="' + modeClass + '">' + esc(status) + '</span>';
+}
+
+function radarStepsHtml(item) {
+  const steps = Array.isArray((item || {}).first_principles) ? item.first_principles.slice(0, 4) : [];
+  if (!steps.length) return '';
+  return '<div class="radar-step-row">'
+    + steps.map((step) => {
+      const label = String((step || {}).label || 'Check');
+      const text = String((step || {}).text || 'Still forming.');
+      const score = Number((step || {}).score || 0);
+      return '<div class="radar-step">'
+        + '<div class="radar-step-label">' + esc(label + (score > 0 ? ' ' + Math.round(score) : '')) + '</div>'
+        + '<div class="radar-step-text">' + esc(shortText(text, 58)) + '</div>'
+      + '</div>';
+    }).join('')
+  + '</div>';
+}
+
+function radarItemHtml(item) {
+  const safe = item || {};
+  const score = Number(safe.radar_score || 0);
+  return '<div class="radar-item">'
+    + '<div class="radar-item-top">'
+      + '<div class="token-line"><div class="radar-symbol">' + esc(safe.coin || '--') + '</div>' + radarSideChip(safe) + radarStatusChip(safe) + (safe.add_candidate ? '<span class="review-chip event-chip-starter">ADD SCOPE</span>' : '') + '</div>'
+      + '<div class="radar-score">' + esc(score ? Math.round(score) + '/100' : '--') + '</div>'
+    + '</div>'
+    + '<div class="radar-line"><strong>Why:</strong> ' + esc(shortText(safe.why || 'Merit still forming.', 104)) + '</div>'
+    + '<div class="radar-line"><strong>Next:</strong> ' + esc(shortText(safe.next || 'Wait for trigger.', 92)) + '</div>'
+    + '<div class="radar-line"><strong>Invalid:</strong> ' + esc(shortText(safe.invalidation || 'Invalidation forming.', 88)) + '</div>'
+    + '<div class="radar-line"><strong>Scope:</strong> ' + esc(shortText(safe.scope || 'Track only.', 88)) + '</div>'
+    + radarStepsHtml(safe)
+  + '</div>';
+}
+
+function renderDailyRadar(report) {
+  const meta = document.getElementById('daily-radar-meta');
+  const body = document.getElementById('daily-radar-body');
+  if (!meta || !body) return;
+  const safe = report || {};
+  const summary = safe.summary || {};
+  const assets = Array.isArray(safe.top_assets) ? safe.top_assets.filter((item) => item && item.coin) : [];
+  const themes = summary.themes || {};
+  const themeText = Object.entries(themes).slice(0, 3).map(([theme, count]) => humanizeKey(theme) + ' ' + count).join(' • ');
+  meta.textContent = [
+    String(summary.focus_count || assets.length || 0) + ' focus',
+    String(summary.add_candidate_count || 0) + ' add scope',
+    String(summary.open_count || 0) + ' open',
+    themeText,
+  ].filter(Boolean).join(' • ');
+  if (!assets.length) {
+    body.innerHTML = '<div class="empty-state">No strong radar list yet. The agent is waiting for fundamentals, attention, flows, and price to agree.</div>';
+    return;
+  }
+  const visible = assets.slice(0, 8);
+  const hidden = Math.max(0, assets.length - visible.length);
+  body.innerHTML = '<div class="radar-shell">'
+    + '<div class="radar-summary">' + esc(shortText(summary.top_line || 'Focus list is active.', 180)) + '</div>'
+    + '<div class="radar-grid">' + visible.map(radarItemHtml).join('') + '</div>'
+    + (hidden ? '<div class="search-hint">+' + esc(String(hidden)) + ' more lower-priority radar names are being tracked in the backend.</div>' : '')
+  + '</div>';
+}
+
+function normalizeActionGroups(board) {
+  const groups = emptyBucketGroups();
+  const items = Array.isArray((board || {}).items) ? board.items.filter((item) => item && item.coin) : [];
+  items.forEach((item) => {
+    const bucket = item.asset_bucket || assetBucketForCoin(item.coin);
+    if (!groups[bucket]) return;
+    groups[bucket].items.push(item);
+    if (item.tradable) groups[bucket].tradable_items.push(item);
+    else groups[bucket].observation_items.push(item);
+    groups[bucket].count += 1;
+    if (item.tradable) groups[bucket].tradable_count += 1;
+    else groups[bucket].observation_count += 1;
+    const status = String(item.status || '').toUpperCase();
+    if (item.tradable && ['OPEN_LONG', 'OPEN_SHORT', 'READY_LONG', 'READY_SHORT'].includes(status)) {
+      groups[bucket].active_count += 1;
+    }
+    if (status === 'PENDING_ENTRY') groups[bucket].pending_count += 1;
+  });
+  return groups;
+}
+
+function groupTrackedCoinsByBucket(coins) {
+  const groups = emptyBucketGroups();
+  (coins || []).forEach((coin) => {
+    const ticker = String(coin || '').trim().toUpperCase();
+    if (!ticker) return;
+    const bucket = assetBucketForCoin(ticker);
+    if (!groups[bucket]) return;
+    groups[bucket].items.push(ticker);
+    groups[bucket].count += 1;
+  });
+  return groups;
+}
+
+function sortCoinsForBucket(coins) {
+  return Array.from(coins || []).sort((a, b) => {
+    const sigA = ((((latestState || {}).signals || {})[a]) || {});
+    const sigB = ((((latestState || {}).signals || {})[b]) || {});
+    const tradableA = String(sigA.execution_mode || 'observation_only') === 'tradable' ? 1 : 0;
+    const tradableB = String(sigB.execution_mode || 'observation_only') === 'tradable' ? 1 : 0;
+    const scoreA = Math.abs(Number(sigA.score || 50) - 50);
+    const scoreB = Math.abs(Number(sigB.score || 50) - 50);
+    return (tradableB - tradableA) || (scoreB - scoreA) || String(a).localeCompare(String(b));
+  });
+}
+
+async function lookupTradexyzVolume() {
+  if (tradexyzLookupBusy) return;
+  const input = document.getElementById('tradexyz-wallet-input');
+  const button = document.getElementById('tradexyz-check-btn');
+  const result = document.getElementById('tradexyz-result');
+  const wallet = String((input && input.value) || '').trim();
+  if (!wallet) {
+    setTradexyzStatus('Paste a wallet address first.', 'error');
+    return;
+  }
+
+  tradexyzLookupBusy = true;
+  if (button) button.textContent = 'CHECKING...';
+  setTradexyzStatus('Checking Hyperliquid fill history and matching it against the live Trade.xyz universe...', 'info');
+  if (result) {
+    result.innerHTML = '<div class="search-result-empty">Working through Hyperliquid history now. Busy wallets can take a few extra seconds because the scanner splits crowded windows automatically.</div>';
+  }
+
+  try {
+    const response = await fetch('/api/tradexyz-volume?wallet=' + encodeURIComponent(wallet));
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error || 'Trade.xyz volume lookup failed.');
+    }
+    renderTradexyzVolume(payload);
+    setTradexyzStatus('Volume loaded successfully.', 'ok');
+  } catch (error) {
+    setTradexyzStatus(error instanceof Error ? error.message : 'Trade.xyz volume lookup failed.', 'error');
+    if (result) {
+      result.innerHTML = '<div class="search-result-empty">The lookup did not complete. Check the wallet address and try again.</div>';
+    }
+  } finally {
+    tradexyzLookupBusy = false;
+    if (button) button.textContent = 'CHECK VOLUME';
+  }
+}
+
+function marketMapBiasMixText(coins, entries) {
+  const counts = { BULLISH: 0, BEARISH: 0, NEUTRAL: 0 };
+  (coins || []).forEach((coin) => {
+    const entry = (entries || {})[coin] || {};
+    const signal = ((((latestState || {}).signals || {})[coin]) || {});
+    const bias = String(signal.market_map_bias || entry.bias || 'NEUTRAL').toUpperCase();
+    if (bias === 'BULLISH') counts.BULLISH += 1;
+    else if (bias === 'BEARISH') counts.BEARISH += 1;
+    else counts.NEUTRAL += 1;
+  });
+  const parts = [];
+  if (counts.BULLISH) parts.push(counts.BULLISH + ' bullish');
+  if (counts.BEARISH) parts.push(counts.BEARISH + ' bearish');
+  if (counts.NEUTRAL) parts.push(counts.NEUTRAL + ' neutral');
+  return parts.join(' • ') || 'No directional bias yet.';
+}
+
+function marketMapCompactRowHtml(coin, item) {
+  const safeItem = item || {
+    coin,
+    tradable: false,
+    mode_badge: 'TRACK',
+    label: 'Tracking',
+    bias: 'NEUTRAL',
+    headline: 'Waiting for a clearer daily read.',
+    entry_status: 'Still mapping structure.',
+    trigger: 'No trigger set yet.',
+    risk: 'Invalidation still forming.',
+  };
+  const tradable = Boolean(safeItem.tradable);
+  const modeClass = tradable ? 'signal-mode-tradable' : 'signal-mode-watch';
+  const categoryBadge = assetCategoryBadgeHtml(safeItem);
+  const stanceChip = setupStanceChipHtml(safeItem);
+  return '<div class="daily-sheet-row" data-tradable="' + (tradable ? 'true' : 'false') + '">'
+    + '<div class="daily-sheet-main">'
+      + '<div class="token-line"><div class="map-coin">' + esc(safeItem.coin || coin) + '</div><span class="' + modeClass + '">' + esc(surfaceModeBadge(safeItem.mode_badge, tradable)) + '</span>' + stanceChip + probabilityChipHtml(safeItem) + eventChipHtml(safeItem) + categoryBadge + '</div>'
+      + '<div class="token-subline token-subline-simple">' + esc(simpleThesisText(safeItem, 84)) + '</div>'
+    + '</div>'
+    + '<div class="daily-sheet-stat"><div class="daily-sheet-label">Now</div><div class="daily-sheet-value">' + esc(simpleActionText(safeItem)) + '</div></div>'
+    + '<div class="daily-sheet-stat"><div class="daily-sheet-label">Next</div><div class="daily-sheet-value">' + esc(simpleNextText(safeItem, 88)) + '</div></div>'
+    + '<div class="daily-sheet-stat"><div class="daily-sheet-label">Inval</div><div class="daily-sheet-value">' + esc(simpleInvalidationText(safeItem, 88)) + '</div></div>'
+  + '</div>';
+}
+
+function marketMapDetailCardHtml(coin, entry, signal, item) {
+  const safeSignal = signal || {};
+  const safeItem = item || dashboardItemForCoin(coin) || {};
+  const isTradable = Boolean(safeItem.tradable) || String(safeSignal.execution_mode || 'observation_only') === 'tradable';
+  const modeLabel = surfaceModeBadge(safeItem.mode_badge, isTradable);
+  const modeClass = isTradable ? 'signal-mode-tradable' : 'signal-mode-watch';
+  const modeNote = isTradable
+    ? 'Executable on the active venue, but still needs a qualified thesis and clean execution.'
+    : 'Tracking only until the reclaim, breakdown, and live market quality line up cleanly.';
+  const signalAction = String(safeSignal.action || 'FLAT').toUpperCase();
+  const signalState = String(safeSignal.asset_state || '').toUpperCase();
+  const shouldOpen = isTradable && (signalAction !== 'FLAT' || signalState === 'PENDING_ENTRY');
+  if (!entry) {
+    return '<details class="map-card map-card-empty" data-tradable="' + (isTradable ? 'true' : 'false') + '"' + (shouldOpen ? ' open' : '') + '>'
+      + '<summary class="map-card-summary">'
+        + '<div class="map-summary-main">'
+          + '<div class="token-line"><div class="map-coin">' + esc(coin) + '</div><span class="' + modeClass + '">' + esc(modeLabel) + '</span>' + probabilityChipHtml(safeItem) + '<span class="review-chip">AUTO PENDING</span></div>'
+          + '<div class="token-subline">No structure map is available yet for this asset. Add a manual override if you want custom levels immediately.</div>'
+        + '</div>'
+        + '<div class="map-summary-side"><div class="token-preview">' + esc(modeNote) + '</div><span class="token-chevron">⌄</span></div>'
+      + '</summary>'
+      + '<div class="map-card-body">'
+        + '<div class="token-detail-grid">'
+          + '<div class="token-detail"><span class="token-detail-label">Execution</span><div class="token-detail-value">' + esc(surfaceModeMeta(safeItem.mode_meta, isTradable)) + '</div></div>'
+          + '<div class="token-detail"><span class="token-detail-label">Map status</span><div class="token-detail-value">Waiting for a stronger daily structure map.</div></div>'
+        + '</div>'
+        + '<div class="map-card-actions"><button class="tool-btn" onclick="editMarketMap(' + JSON.stringify(coin) + ')">OVERRIDE</button></div>'
+      + '</div>'
+      + '</details>';
+  }
+
+  const source = String(entry.source || (entry.auto_generated ? 'AUTO' : 'MANUAL')).toUpperCase();
+  const longTrigger = pickLevel(entry.daily_close_long_above, null, 'min');
+  const shortTrigger = pickLevel(entry.daily_close_short_below, null, 'max');
+  const mapBias = String(entry.bias || 'NEUTRAL').toUpperCase();
+  const support = pickLevel(entry.supports, entry.demand_zone && entry.demand_zone.high, 'max');
+  const resistance = pickLevel(entry.resistances, entry.supply_zone && entry.supply_zone.low, 'min');
+  let setupLine = 'No clear directional edge from the daily view yet.';
+  if (mapBias === 'BULLISH' && longTrigger) {
+    setupLine = 'Bullish bias only. Longs earn permission after a daily close above ' + fmt(longTrigger) + '.';
+  } else if (mapBias === 'BEARISH' && shortTrigger) {
+    setupLine = 'Bearish bias only. Shorts earn permission after a daily close below ' + fmt(shortTrigger) + '.';
+  } else if (mapBias === 'BULLISH') {
+    setupLine = 'Bullish bias, but the exact long trigger is still forming.';
+  } else if (mapBias === 'BEARISH') {
+    setupLine = 'Bearish bias, but the exact short trigger is still forming.';
+  }
+  const preview = safeItem.trigger
+    ? shortText(safeItem.trigger, 60)
+    : mapBias === 'BULLISH'
+      ? 'Long above ' + (longTrigger ? fmt(longTrigger) : '--')
+      : mapBias === 'BEARISH'
+        ? 'Short below ' + (shortTrigger ? fmt(shortTrigger) : '--')
+        : 'No directional edge';
+  const previewRisk = safeItem.risk
+    ? shortText(safeItem.risk, 60)
+    : 'Risk below ' + (shortTrigger ? fmt(shortTrigger) : '--');
+  const stanceChip = setupStanceChipHtml(safeItem);
+  return '<details class="map-card" data-tradable="' + (isTradable ? 'true' : 'false') + '"' + (shouldOpen ? ' open' : '') + '>'
+    + '<summary class="map-card-summary">'
+      + '<div class="map-summary-main">'
+        + '<div class="token-line"><div class="map-coin">' + esc(coin) + '</div><span class="' + modeClass + '">' + esc(modeLabel) + '</span>' + stanceChip + probabilityChipHtml(safeItem) + '<span class="review-chip">' + esc(source === 'AUTO' ? 'AUTO MAP' : 'MANUAL') + '</span></div>'
+        + '<div class="token-subline">' + esc(shortText(setupLine, 150)) + '</div>'
+      + '</div>'
+      + '<div class="map-summary-side"><div class="token-preview">' + esc(preview) + '<br>' + esc(previewRisk) + '</div><span class="token-chevron">⌄</span></div>'
+    + '</summary>'
+    + '<div class="map-card-body">'
+        + '<div class="token-detail-grid">'
+          + '<div class="token-detail"><span class="token-detail-label">Support</span><div class="token-detail-value">' + esc(support ? fmt(support) : csvText(entry.supports)) + '</div></div>'
+          + '<div class="token-detail"><span class="token-detail-label">Resistance</span><div class="token-detail-value">' + esc(resistance ? fmt(resistance) : csvText(entry.resistances)) + '</div></div>'
+          + '<div class="token-detail"><span class="token-detail-label">Long trigger</span><div class="token-detail-value">' + esc(longTrigger ? fmt(longTrigger) : '--') + '</div></div>'
+          + '<div class="token-detail"><span class="token-detail-label">Risk below</span><div class="token-detail-value">' + esc(shortTrigger ? fmt(shortTrigger) : '--') + '</div></div>'
+          + '<div class="token-detail"><span class="token-detail-label">Odds</span><div class="token-detail-value">' + esc(shortText(safeItem.probability_detail || safeItem.probability_text || 'No odds yet.', 140)) + '</div></div>'
+          + '<div class="token-detail"><span class="token-detail-label">Playbook</span><div class="token-detail-value">' + esc(String(entry.trade_mode || '--')) + '</div></div>'
+          + '<div class="token-detail"><span class="token-detail-label">Execution</span><div class="token-detail-value">' + esc(surfaceModeMeta(safeItem.mode_meta, isTradable)) + '</div></div>'
+        + '</div>'
+      + '<div class="map-zone"><strong>Daily take:</strong> ' + esc(setupLine) + '</div>'
+      + '<div class="map-zone"><strong>Demand:</strong> ' + esc(zoneText(entry.demand_zone)) + ' • <strong>Supply:</strong> ' + esc(zoneText(entry.supply_zone)) + '</div>'
+      + '<div class="map-notes"><strong>Map:</strong> ' + esc(shortText(entry.summary || entry.notes || 'No coin-specific notes yet.', 180)) + '</div>'
+      + '<div class="map-card-actions">'
+        + '<button class="tool-btn" onclick="editMarketMap(' + JSON.stringify(coin) + ')">' + (source === 'AUTO' ? 'OVERRIDE' : 'EDIT') + '</button>'
+        + (source === 'AUTO' ? '' : '<button class="tool-btn" onclick="deleteMarketMap(' + JSON.stringify(coin) + ')">DELETE</button>')
+      + '</div>'
+    + '</div>'
+    + '</details>';
+}
+
+function renderMarketMapSummary(summary, marketMap) {
+  const meta = document.getElementById('market-map-meta');
+  const body = document.getElementById('market-map-body');
+  const coins = trackedCoins();
+  const entries = (marketMap || {}).coins || {};
+  const globalNotes = String((marketMap || {}).global_notes || '').trim();
+  const groups = groupTrackedCoinsByBucket(coins);
+  marketMapBucket = chooseBucket(marketMapBucket, groups);
+  const selected = groups[marketMapBucket] || groups.coin;
+  const metaBits = ['Map read only'];
+  ['coin', 'equity'].forEach((bucket) => {
+    const group = groups[bucket];
+    if (group && group.count > 0) metaBits.push(bucketLabel(bucket) + ' ' + group.count);
+  });
+  if (marketMapBucket === 'equity' && marketMapCategory !== 'all') metaBits.push(assetCategoryLabel(marketMapCategory));
+  metaBits.push('Updated ' + stampText(summary.updated_at || (marketMap || {}).updated_at));
+  meta.textContent = metaBits.join(' • ');
+
+  if (!coins.length && !Object.keys(entries).length) {
+    body.innerHTML = '<div class="empty-state"><div class="empty-icon">--</div>No daily market map yet.</div>';
+    return;
+  }
+
+  const selectedCoins = sortCoinsForBucket(selected.items || []);
+  const categoryGroups = groupAssetItemsByCategory(selectedCoins, (coin) => assetCategoriesForCoin(coin));
+  marketMapCategory = chooseAssetCategory(marketMapCategory, categoryGroups, marketMapBucket);
+  const visibleCoins = marketMapBucket === 'equity' && marketMapCategory !== 'all'
+    ? sortCoinsForBucket((categoryGroups[marketMapCategory] || {}).items || [])
+    : selectedCoins;
+
+  let html = '';
+  html += renderBucketTabs(marketMapBucket, groups, 'market');
+  html += renderDeskOverview(groups, 'market', marketMapBucket, marketMapCategory);
+  html += renderCategoryTabs(marketMapCategory, categoryGroups, 'market', marketMapBucket);
+  const categoryNote = marketMapBucket === 'equity' && marketMapCategory !== 'all'
+    ? ' Focus: ' + assetCategoryDescription(marketMapCategory)
+    : '';
+  html += '<div class="asset-bucket-note">' + esc(bucketDescription(marketMapBucket) + categoryNote) + '</div>';
+
+  if (!visibleCoins.length) {
+    body.innerHTML = html + '<div class="empty-state">No assets are being tracked in this lane yet.</div>';
+    return;
+  }
+
+  const itemByCoin = {};
+  visibleCoins.forEach((coin) => {
+    itemByCoin[coin] = dashboardItemForCoin(coin);
+  });
+  const tradableCount = visibleCoins.filter((coin) => Boolean((itemByCoin[coin] || {}).tradable)).length;
+  const latestWin = latestWinningLesson(latestLearningSummary);
+  const deskLabel = marketMapBucket === 'equity' ? assetCategoryLabel(marketMapCategory) : bucketLabel(marketMapBucket);
+  const biasMixText = marketMapBiasMixText(visibleCoins, entries);
+
+  html += '<div class="daily-briefing">'
+    + '<div class="daily-briefing-header"><div class="daily-briefing-title">Desk Briefing</div><div class="daily-briefing-pills">'
+      + '<span class="daily-briefing-pill">' + esc(deskLabel) + '</span>'
+      + '<span class="daily-briefing-pill">' + esc(String(visibleCoins.length) + ' tracked') + '</span>'
+      + '<span class="daily-briefing-pill">' + esc(String(tradableCount) + ' executable') + '</span>'
+    + '</div></div>'
+    + '<div class="daily-briefing-line"><div class="daily-briefing-label">Bias Mix</div><div class="daily-briefing-text">' + esc(biasMixText) + '</div></div>'
+    + (latestWin ? '<div class="daily-briefing-line"><div class="daily-briefing-label">Latest Win</div><div class="daily-briefing-text">' + esc(latestWinSummaryText(latestWin)) + '</div></div>' : '')
+    + (globalNotes ? '<div class="daily-briefing-line"><div class="daily-briefing-label">Today</div><div class="daily-briefing-text">' + esc(shortText(globalNotes, 180)) + '</div></div>' : '')
+    + '</div>';
+
+  html += '<details class="card details-card daily-levels-panel"><summary class="asset-section-header"><div><div class="asset-section-title">Open Level Sheet</div><div class="asset-section-sub">All tracked assets, entry, trigger, invalidation, and full map notes for this desk.</div></div><div class="asset-section-sub">' + esc(String(visibleCoins.length) + ' tracked • ' + String(tradableCount) + ' executable') + '</div></summary><div class="daily-sheet">'
+    + '<div class="daily-sheet-header"><div>Asset</div><div>Entry</div><div>Trigger</div><div>Risk</div></div>'
+    + visibleCoins.map((coin) => marketMapCompactRowHtml(coin, itemByCoin[coin])).join('')
+    + '</div><div class="daily-levels-separator">Full setup notes</div><div class="market-map-grid daily-levels-detail-grid">'
+    + visibleCoins.map((coin) => marketMapDetailCardHtml(coin, entries[coin], ((((latestState || {}).signals || {})[coin]) || {}), itemByCoin[coin])).join('')
+    + '</div></details>';
+  body.innerHTML = html;
+}
+
+function renderLearningSummary(summary, trades) {
+  const meta = document.getElementById('review-meta');
+  const missedCount = Number((((latestMissedMoveReport || {}).summary || {}).missed_win_count) || 0);
+  const dossierCount = Number((latestAssetDossiers || {}).count || 0);
+  const distilledFamilies = Number((((latestPlaybookDistillerReport || {}).summary || {}).working_family_count) || 0);
+  meta.textContent = 'Lessons ' + (summary.count || 0)
+    + ' • missed winners ' + missedCount
+    + ' • dossiers ' + dossierCount
+    + ' • playbooks ' + distilledFamilies;
+
+  const body = document.getElementById('review-body');
+  const lessons = (summary.recent_lessons || []).slice(0, 5);
+  const latest = summary.latest || null;
+  const focusAssets = (((latestAssetDossiers || {}).summary || {}).focus_assets || []).slice(0, 6);
+  const missedFamilies = ((latestMissedMoveReport || {}).top_missed_families || []).slice(0, 4);
+  const refereeVerdicts = Object.entries(((latestLLMRefereeReport || {}).verdicts || {}))
+    .slice(0, 4)
+    .map(([coin, verdict]) => ({ coin, verdict: verdict || {} }));
+  const workingFamilies = (((latestPlaybookDistillerReport || {}).summary || {}).top_working_families || []).slice(0, 3);
+  const failingFamilies = (((latestPlaybookDistillerReport || {}).summary || {}).top_failing_families || []).slice(0, 3);
+  const perf = latestPerformanceEdges || {};
+  const perfSummary = perf.summary || {};
+  const workingEdges = Array.isArray(perf.working_edges) ? perf.working_edges.slice(0, 3) : [];
+  const failingEdges = Array.isArray(perf.failing_edges) ? perf.failing_edges.slice(0, 3) : [];
+  const edgeLine = (edge) => String(edge.label || 'bucket') + ' ' + Math.round(Number(edge.win_rate || 0) * 100) + '% ' + fmtD(Number(edge.pnl_usd || 0));
+  let html = '<div class="review-stack"><div class="review-summary-grid">'
+    + '<div class="review-summary-box"><div class="card-label">Closed Trades</div><div class="review-count">' + esc(String(summary.count || 0)) + '</div><div class="review-count-sub">recent lessons absorbed</div></div>'
+    + '<div class="review-summary-box"><div class="card-label">Winning Lessons</div><div class="review-count green">' + esc(String(summary.wins || 0)) + '</div><div class="review-count-sub">setups that paid</div></div>'
+    + '<div class="review-summary-box"><div class="card-label">Losing Lessons</div><div class="review-count red">' + esc(String(summary.losses || 0)) + '</div><div class="review-count-sub">mistakes now tracked</div></div>'
+    + '<div class="review-summary-box"><div class="card-label">Edge Read</div><div class="review-notes">' + esc(shortText(perfSummary.top_lesson || 'Not enough closed trades to isolate the edge yet.', 130)) + '</div></div>'
+    + '</div>';
+
+  html += '<div class="review-summary-grid">'
+    + '<div class="review-summary-box"><div class="card-label">Asset Dossiers</div><div class="review-notes">' + esc(dossierCount ? ('Focus: ' + focusAssets.join(', ')) : 'Dossiers will populate as the agent refreshes its universe.') + '</div></div>'
+    + '<div class="review-summary-box"><div class="card-label">LLM Referee</div><div class="review-notes">' + (refereeVerdicts.length
+      ? esc(refereeVerdicts.map((item) => item.coin + ' ' + String(item.verdict.verdict || 'WAIT')).join(' • '))
+      : 'OpenAI referee is optional. Once enabled, high-value setups will show structured SUPPORT / WAIT / BLOCK calls here.') + '</div></div>'
+    + '<div class="review-summary-box"><div class="card-label">Missed-Move Lab</div><div class="review-notes">' + (missedFamilies.length
+      ? esc(missedFamilies.map((item) => item.family + ' ' + item.misses).join(' • '))
+      : 'No obvious skipped winners are labeled yet.') + '</div></div>'
+    + '<div class="review-summary-box"><div class="card-label">Playbook Distiller</div><div class="review-notes">' + (workingFamilies.length
+      ? esc(workingFamilies.map((item) => item.coin + ' ' + item.direction + ' ' + item.regime + ' ' + Math.round((Number(item.win_rate || 0)) * 100) + '%').join(' • '))
+      : 'The weekly rewrite is still waiting for enough closed-trade history.') + '</div></div>'
+    + '</div>';
+
+  html += '<div class="review-summary-grid">'
+    + '<div class="review-summary-box"><div class="card-label">What Pays</div><div class="review-notes">' + esc(workingEdges.length ? workingEdges.map(edgeLine).join(' • ') : 'No repeatable winning bucket yet.') + '</div></div>'
+    + '<div class="review-summary-box"><div class="card-label">What Hurts</div><div class="review-notes">' + esc(failingEdges.length ? failingEdges.map(edgeLine).join(' • ') : 'No toxic bucket is clear yet.') + '</div></div>'
+    + '</div>';
+
+  if (workingFamilies.length || failingFamilies.length) {
+    html += '<div class="review-summary-box">'
+      + '<div class="card-label-row"><div class="card-label">Weekly Rewrite</div><div class="muted">' + esc(String(((latestPlaybookDistillerReport || {}).lookback_days || 28)) + 'd view') + '</div></div>'
+      + '<div class="review-notes"><strong>Lean into:</strong> ' + esc(workingFamilies.length
+        ? workingFamilies.map((item) => item.coin + ' ' + item.direction + ' in ' + item.regime).join(' • ')
+        : 'Nothing has earned a strong push yet.') + '</div>'
+      + '<div class="review-notes"><strong>Stay away from:</strong> ' + esc(failingFamilies.length
+        ? failingFamilies.map((item) => item.coin + ' ' + item.direction + ' in ' + item.regime).join(' • ')
+        : 'No clearly toxic family is standing out right now.') + '</div>'
+      + '</div>';
+  }
+
+  if (latest) {
+    html += '<div class="review-summary-box">'
+      + '<div class="card-label-row"><div class="card-label">Latest Closed Trade</div><div class="' + (latest.result === 'WIN' ? 'green' : latest.result === 'LOSS' ? 'red' : 'muted') + '">' + esc(String(latest.coin || '')) + ' ' + esc(String(latest.direction || '')) + ' • ' + fmtD(Number(latest.pnl_usd || 0)) + '</div></div>'
+      + '<div class="review-notes"><strong>Opened because:</strong> ' + esc(plainTradeReason(latest.open_logic || 'No opening logic recorded', 'open', 86)) + '</div>'
+      + '<div class="review-notes"><strong>Closed because:</strong> ' + esc(shortText(latest.close_logic || 'No closing logic recorded', 110)) + '</div>'
+      + '<div class="review-notes"><strong>Lesson:</strong> ' + esc(shortText(latest.lesson || 'No lesson recorded yet.', 120)) + '</div>'
+      + '</div>';
+  }
+
+  if (lessons.length) {
+    html += '<div class="review-summary-box"><div class="card-label">Recent Lessons</div><div class="review-queue">'
+      + lessons.map((lesson) => '<div class="review-queue-item">'
+        + '<div class="review-queue-main"><div class="review-queue-title">' + esc(String(lesson.coin || '')) + ' ' + esc(String(lesson.direction || '')) + '</div>'
+        + '<div class="review-queue-sub">' + fmtD(Number(lesson.pnl_usd || 0)) + ' • ' + esc(shortText(lesson.lesson || 'No lesson recorded yet.', 130)) + '</div></div>'
+        + '</div>').join('')
+      + '</div></div>';
+  } else {
+    html += '<div class="empty-state" style="padding:18px 0 6px;">Once a few trades close, the agent will surface the main lesson from each one here.</div>';
+  }
+  html += '</div>';
+  body.innerHTML = html;
+}
+
+function renderLatestLesson(summary) {
+  const body = document.getElementById('latest-lesson-body');
+  if (!body) return;
+  const latest = (summary || {}).latest;
+  if (!latest) {
+    body.innerHTML = '<div class="empty-state">No closed trades yet. The first trade lesson will show up here with why it opened, why it closed, and what the agent should repeat or avoid.</div>';
+    return;
+  }
+  const pnl = Number(latest.pnl_usd || 0);
+  const pnlClass = pnl > 0 ? 'green' : pnl < 0 ? 'red' : 'muted';
+  body.innerHTML = '<div class="review-summary-box">'
+    + '<div class="card-label-row"><div class="card-label">Most recent close</div><div class="' + pnlClass + '">' + esc(String(latest.coin || '')) + ' ' + esc(String(latest.direction || '')) + ' • ' + fmtD(pnl) + '</div></div>'
+    + '<div class="review-notes"><strong>Opened because:</strong> ' + esc(plainTradeReason(latest.open_logic || 'No opening logic recorded.', 'open', 86)) + '</div>'
+    + '<div class="review-notes"><strong>Closed because:</strong> ' + esc(shortText(latest.close_logic || 'No closing logic recorded.', 110)) + '</div>'
+    + '<div class="review-notes"><strong>Lesson:</strong> ' + esc(shortText(latest.lesson || 'No lesson recorded yet.', 120)) + '</div>'
+    + '</div>';
+}
+
+function renderActionBoard(board) {
+  const meta = document.getElementById('action-board-meta');
+  const body = document.getElementById('signals-body');
+  const allItems = Array.isArray((board || {}).items) ? board.items.filter((item) => item) : [];
+  const groups = normalizeActionGroups(board);
+  const lead = (board || {}).lead || null;
+  if (!allItems.length) {
+    meta.textContent = 'No tracked setup yet.';
+    body.innerHTML = '<div class="empty-state">Waiting for the first clean setup...</div>';
+    return;
+  }
+  actionBoardBucket = chooseBucket(actionBoardBucket, groups);
+  const selected = groups[actionBoardBucket] || groups.coin;
+  const tradableItems = selected.tradable_items || [];
+  const categoryResolver = (item) => itemAssetCategories(item);
+  const categoryGroups = groupAssetItemsByCategory(selected.items || [], categoryResolver);
+  actionBoardCategory = chooseAssetCategory(actionBoardCategory, categoryGroups, actionBoardBucket);
+  const visibleTradableItems = actionBoardBucket === 'equity' && actionBoardCategory !== 'all'
+    ? tradableItems.filter((item) => normalizeAssetCategories(categoryResolver(item)).includes(actionBoardCategory))
+    : tradableItems;
+  const visibleLead = visibleTradableItems[0] || tradableItems[0] || ((selected.items || [])[0]) || lead;
+  const tradableCount = Number(visibleTradableItems.length || 0);
+  const activeTradableCount = visibleTradableItems.filter((item) => ['OPEN_LONG', 'OPEN_SHORT', 'READY_LONG', 'READY_SHORT'].includes(String((item || {}).status || '').toUpperCase())).length;
+  const pendingCount = visibleTradableItems.filter((item) => String((item || {}).status || '').toUpperCase() === 'PENDING_ENTRY').length;
+  const visibleLimit = actionBoardBucket === 'equity' ? 8 : 10;
+  const primaryTradableItems = visibleTradableItems.slice(0, visibleLimit);
+  const hiddenTradableItems = visibleTradableItems.slice(visibleLimit);
+  const stanceMixText = itemBiasMixText(visibleTradableItems);
+  const metaBits = [
+    bucketLabel(actionBoardBucket),
+    'Live ' + tradableCount,
+  ];
+  if (actionBoardBucket === 'equity' && actionBoardCategory !== 'all') metaBits.push(assetCategoryLabel(actionBoardCategory));
+  if (activeTradableCount > 0) metaBits.push('Actionable ' + activeTradableCount);
+  if (pendingCount > 0) metaBits.push('Working orders ' + pendingCount);
+  if (visibleLead) metaBits.push('Lead: ' + visibleLead.coin + ' • ' + setupStanceText(visibleLead, 'title'));
+  meta.textContent = metaBits.join(' • ');
+
+  let html = renderCallWatchlist(allItems);
+  html += renderBucketTabs(actionBoardBucket, groups, 'action');
+  html += renderDeskOverview(groups, 'action', actionBoardBucket, actionBoardCategory);
+  html += renderCategoryTabs(actionBoardCategory, categoryGroups, 'action', actionBoardBucket);
+  const categoryNote = actionBoardBucket === 'equity' && actionBoardCategory !== 'all'
+    ? ' Focus: ' + assetCategoryDescription(actionBoardCategory)
+    : '';
+  html += '<div class="asset-bucket-note">' + esc('Calls are grouped by direction. Top executable setups are below.' + categoryNote) + '</div>';
+  if (visibleLead) {
+    html += '<div class="lead-callout"><strong>Lead:</strong> ' + esc(visibleLead.coin + ' - ' + simpleNextText(visibleLead, 88)) + '<br><strong>Inval:</strong> ' + esc(simpleInvalidationText(visibleLead, 92)) + '<br><strong>Why:</strong> ' + esc(simpleThesisText(visibleLead, 92)) + '</div>';
+  }
+  html += '<div class="decision-board asset-section-stack">';
+  if (visibleTradableItems.length) {
+    const tradableSub = pendingCount > 0
+      ? 'Working orders stay expanded.'
+      : 'Highest-priority setups only.';
+    html += '<div><div class="asset-section-header"><div class="asset-section-title">Executable Now</div><div class="asset-section-sub">' + esc(tradableSub) + '</div></div><div class="asset-section-grid">'
+    + primaryTradableItems.map((item) => {
+      const status = String(item.status || 'NO_SETUP');
+      const highlightBase = status.includes('LONG')
+        ? 'decision-card decision-card-tradable decision-card-long'
+        : status.includes('SHORT')
+          ? 'decision-card decision-card-tradable decision-card-short'
+          : 'decision-card decision-card-tradable';
+      const highlight = status === 'PENDING_ENTRY' ? highlightBase + ' decision-card-pending' : highlightBase;
+      const shouldOpen = status === 'PENDING_ENTRY' || status === 'OPEN_LONG' || status === 'OPEN_SHORT';
+      const categoryBadge = assetCategoryBadgeHtml(item);
+      const stanceChip = setupStanceChipHtml(item);
+      return '<details class="' + highlight + ' decision-box"' + (shouldOpen ? ' open' : '') + '>'
+        + '<summary class="decision-summary">'
+          + '<div class="decision-summary-main">'
+            + '<div class="token-line"><div class="decision-coin">' + esc(item.coin) + '</div><span class="signal-mode-tradable">' + esc(item.mode_badge || 'LIVE') + '</span>' + stanceChip + probabilityChipHtml(item) + eventChipHtml(item) + categoryBadge + (status === 'PENDING_ENTRY' ? '<span class="review-chip">ORDER LIVE</span>' : '') + '</div>'
+            + '<div class="token-subline token-subline-simple">' + esc(simpleThesisText(item, 88)) + '</div>'
+          + '</div>'
+          + '<div class="decision-summary-side"><div class="token-preview">' + esc(simpleNextText(item, 76)) + '<br>' + esc(simpleInvalidationText(item, 68)) + '</div><span class="token-chevron">⌄</span></div>'
+        + '</summary>'
+        + '<div class="decision-body">'
+          + '<div class="token-detail-grid">'
+            + '<div class="token-detail"><span class="token-detail-label">Now</span><div class="token-detail-value">' + esc(simpleActionText(item)) + '</div></div>'
+            + '<div class="token-detail"><span class="token-detail-label">Next</span><div class="token-detail-value">' + esc(simpleNextText(item, 96)) + '</div></div>'
+            + '<div class="token-detail"><span class="token-detail-label">Invalid if</span><div class="token-detail-value">' + esc(simpleInvalidationText(item, 92)) + '</div></div>'
+            + '<div class="token-detail"><span class="token-detail-label">Why</span><div class="token-detail-value">' + esc(simpleThesisText(item, 96)) + '</div></div>'
+          + '</div>'
+          + priceSourceHtml(item)
+        + '</div>'
+      + '</details>';
+    }).join('')
+    + '</div>'
+    + (hiddenTradableItems.length
+      ? '<details class="quiet-more"><summary>Show ' + esc(String(hiddenTradableItems.length)) + ' more executable names</summary><div class="decision-compact-list">' + hiddenTradableItems.map(actionCompactRowHtml).join('') + '</div></details>'
+      : '')
+    + '</div>';
+  } else {
+    html += '<div class="empty-state">No executable assets are active in this desk right now. Use the daily view below for the compact watchlist and levels.</div>';
+  }
+  html += '</div>';
+  body.innerHTML = html;
+}
+
+function proactiveCallText(call) {
+  if (!call) return 'No call yet';
+  const side = String(call.direction || '').toUpperCase() === 'SHORT' ? 'Bearish' : 'Bullish';
+  const score = Number(call.scout_score || 0);
+  return String(call.coin || '--') + ' • ' + side + (score > 0 ? ' • ' + score.toFixed(0) : '');
+}
+
+function proactiveRows(items, emptyText) {
+  const visible = Array.isArray(items) ? items.slice(0, 4) : [];
+  if (!visible.length) return '<div class="proactive-sub">' + esc(emptyText || 'Nothing ranked yet.') + '</div>';
+  return '<div class="proactive-list">' + visible.map((item) => {
+    const left = item.coin ? String(item.coin) + ' ' + String(item.direction || '') : String(item.source || '--') + ' -> ' + String(item.target || '--');
+    const right = item.reason ? shortText(item.reason, 34) : (item.size_usd ? ('$' + fmt(item.size_usd, 0)) : (item.scout_score ? Number(item.scout_score).toFixed(0) : (item.score ? Number(item.score).toFixed(0) : '')));
+    return '<div class="proactive-row"><span>' + esc(left) + '</span><span>' + esc(right) + '</span></div>';
+  }).join('') + '</div>';
+}
+
+function renderProactiveDesk(report) {
+  const meta = document.getElementById('proactive-meta');
+  const body = document.getElementById('proactive-body');
+  if (!meta || !body) return;
+  const safe = report || {};
+  if (safe.enabled === false) {
+    meta.textContent = 'Proactive research disabled.';
+    body.innerHTML = '<div class="empty-state">Proactive trader report is disabled.</div>';
+    return;
+  }
+  const summary = safe.summary || {};
+  const scout = safe.morning_scout_book || {};
+  const basket = safe.starter_basket_optimizer || {};
+  const execution = safe.starter_execution || {};
+  const read = safe.read_through_engine || {};
+  const forecast = safe.forecast_calibration || {};
+  const top = summary.top_call || ((scout.summary || {}).top_call) || null;
+  const forecastSummary = forecast.summary || {};
+  const executionSummary = execution.summary || {};
+  meta.textContent = [
+    'Theses ' + String(summary.active_thesis_count || 0),
+    'Starters ' + String(summary.starter_plan_count || 0),
+    'Opened ' + String(executionSummary.opened_count || 0),
+    'Read-through ' + String(summary.read_through_count || 0),
+    forecastSummary.calibration_note || ''
+  ].filter(Boolean).join(' • ');
+  body.innerHTML = '<div class="proactive-grid">'
+    + '<div class="proactive-card"><div class="proactive-title">Morning Scout Book</div><div class="proactive-main">' + esc(proactiveCallText(top)) + '</div><div class="proactive-sub">' + esc(shortText((top || {}).why || 'Ranked pre-market style calls across tokens and equities.', 130)) + '</div>' + proactiveRows((scout.bullish_calls || []).concat(scout.bearish_calls || []), 'No directional scout calls yet.') + '</div>'
+    + '<div class="proactive-card"><div class="proactive-title">Starter Basket</div><div class="proactive-main">' + esc(String(((basket.summary || {}).allocation_count) || 0)) + ' planned starter(s)</div><div class="proactive-sub">' + esc('$' + fmt(((basket.summary || {}).planned_usd) || 0, 0) + ' planned inside event-risk budget') + '</div>' + proactiveRows(basket.allocations || [], 'No starter allocations right now.') + '</div>'
+    + '<div class="proactive-card"><div class="proactive-title">Read-Through</div><div class="proactive-main">' + esc(String(((read.summary || {}).impact_count) || 0)) + ' linked impact(s)</div><div class="proactive-sub">' + esc(shortText(((read.summary || {}).top_line) || 'No strong cross-asset read-through yet.', 140)) + '</div>' + proactiveRows(read.top_impacts || [], 'No linked impacts yet.') + '</div>'
+    + '<div class="proactive-card"><div class="proactive-title">Thesis Ledger</div><div class="proactive-main">' + esc(String(summary.active_thesis_count || 0)) + ' active thesis record(s)</div><div class="proactive-sub">Each proactive setup now carries why-now, expected surprise, invalidation, and bull/base/bear cases.</div></div>'
+    + '<div class="proactive-card"><div class="proactive-title">Forecast Calibration</div><div class="proactive-main">' + esc(String((forecastSummary.open_count || 0))) + ' open forecast(s)</div><div class="proactive-sub">' + esc(forecastSummary.calibration_note || 'Collecting forecasts.') + '</div></div>'
+    + '<div class="proactive-card"><div class="proactive-title">Starter Execution</div><div class="proactive-main">' + esc(String(executionSummary.opened_count || 0)) + ' opened / ' + esc(String(executionSummary.attempted_count || 0)) + ' attempted</div><div class="proactive-sub">' + esc('$' + fmt(executionSummary.opened_usd || 0, 0) + ' deployed through capped event-risk execution') + '</div>' + proactiveRows((execution.opened || []).concat(execution.skipped || []), 'No starter execution this cycle.') + '</div>'
+  + '</div>';
+}
+
+async function postJson(path, payload) {
+  if (STATIC_GITHUB_PAGES_MODE) {
+    throw new Error('This hosted mirror is view-only. Use the local dashboard for edits.');
+  }
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {}),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || data.message || response.statusText || 'Request failed');
+  }
+  return data;
+}
+
+async function fetchDashboardState(signal) {
+  const sources = ['/api/state'];
+  if (STATIC_GITHUB_PAGES_MODE) {
+    sources.push(STATIC_STATE_FALLBACK_URL + '?ts=' + Date.now());
+  }
+  let lastError = null;
+  for (const source of sources) {
+    try {
+      const response = await fetch(source, {
+        signal,
+        cache: 'no-store',
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      const data = await response.json();
+      if (!data || !data.state) throw new Error('Missing dashboard state');
+      if (source !== '/api/state') {
+        data.runtime = Object.assign({}, data.runtime || {}, { hosted_static_fallback: true });
+      }
+      return data;
+    } catch (error) {
+      lastError = error;
+      if (error && error.name === 'AbortError') break;
+    }
+  }
+  throw lastError || new Error('Dashboard state unavailable');
+}
+
+async function editGlobalMapNotes() {
+  const current = String((latestMarketMap || {}).global_notes || '');
+  const next = prompt('Global market-map notes for the day', current);
+  if (next === null) return;
+  try {
+    await postJson('/api/market-map', {
+      ...(latestMarketMap || {}),
+      global_notes: next,
+    });
+    await refresh();
+  } catch (error) {
+    alert('Failed to save market-map notes: ' + error.message);
+  }
+}
+
+async function editMarketMap(coin = '') {
+  const existingCoin = String(coin || '').trim().toUpperCase();
+  const existing = ((latestMarketMap || {}).coins || {})[existingCoin] || {};
+  const nextCoin = String(prompt('Coin symbol', existingCoin || '') || '').trim().toUpperCase();
+  if (!nextCoin) return;
+  const biasInput = prompt('Bias: BULLISH / BEARISH / NEUTRAL', existing.bias || 'NEUTRAL');
+  if (biasInput === null) return;
+  const bias = normalizeChoice(biasInput, ['BULLISH', 'BEARISH', 'NEUTRAL'], existing.bias || 'NEUTRAL');
+  const confidenceInput = prompt('Confidence: LOW / MEDIUM / HIGH', existing.confidence || 'MEDIUM');
+  if (confidenceInput === null) return;
+  const confidence = normalizeChoice(confidenceInput, ['LOW', 'MEDIUM', 'HIGH'], existing.confidence || 'MEDIUM');
+  const supports = prompt('Supports (comma-separated)', Array.isArray(existing.supports) ? existing.supports.join(', ') : '');
+  if (supports === null) return;
+  const resistances = prompt('Resistances (comma-separated)', Array.isArray(existing.resistances) ? existing.resistances.join(', ') : '');
+  if (resistances === null) return;
+  const longAbove = prompt('Daily close LONG above levels (comma-separated)', Array.isArray(existing.daily_close_long_above) ? existing.daily_close_long_above.join(', ') : '');
+  if (longAbove === null) return;
+  const shortBelow = prompt('Daily close SHORT below levels (comma-separated)', Array.isArray(existing.daily_close_short_below) ? existing.daily_close_short_below.join(', ') : '');
+  if (shortBelow === null) return;
+  const demandLow = prompt('Demand zone low', existing.demand_zone && existing.demand_zone.low ? existing.demand_zone.low : '');
+  if (demandLow === null) return;
+  const demandHigh = prompt('Demand zone high', existing.demand_zone && existing.demand_zone.high ? existing.demand_zone.high : '');
+  if (demandHigh === null) return;
+  const supplyLow = prompt('Supply zone low', existing.supply_zone && existing.supply_zone.low ? existing.supply_zone.low : '');
+  if (supplyLow === null) return;
+  const supplyHigh = prompt('Supply zone high', existing.supply_zone && existing.supply_zone.high ? existing.supply_zone.high : '');
+  if (supplyHigh === null) return;
+  const tradeMode = prompt('Playbook / trade mode (optional)', existing.trade_mode || '');
+  if (tradeMode === null) return;
+  const notes = prompt('Notes', existing.notes || '');
+  if (notes === null) return;
+  try {
+    await postJson('/api/market-map', {
+      coin: nextCoin,
+      bias,
+      confidence,
+      supports,
+      resistances,
+      daily_close_long_above: longAbove,
+      daily_close_short_below: shortBelow,
+      demand_zone: { low: demandLow, high: demandHigh },
+      supply_zone: { low: supplyLow, high: supplyHigh },
+      trade_mode: tradeMode,
+      notes,
+    });
+    await refresh();
+  } catch (error) {
+    alert('Failed to save market map: ' + error.message);
+  }
+}
+
+async function deleteMarketMap(coin) {
+  if (!coin) return;
+  if (!confirm('Delete the market map entry for ' + coin + '?')) return;
+  try {
+    await postJson('/api/market-map', { coin, delete: true });
+    await refresh();
+  } catch (error) {
+    alert('Failed to delete market map: ' + error.message);
+  }
+}
+
+async function saveTradeReview(tradeId, coin, direction) {
+  const current = (((latestReviewStore || {}).reviews || {})[String(tradeId)] || {});
+  const verdictInput = prompt('Verdict: GOOD_TRADE / BAD_THESIS / BAD_EXECUTION / BOTH_BAD / MISS', current.verdict || 'GOOD_TRADE');
+  if (verdictInput === null) return;
+  const verdict = normalizeChoice(verdictInput, ['GOOD_TRADE', 'BAD_THESIS', 'BAD_EXECUTION', 'BOTH_BAD', 'MISS'], current.verdict || 'GOOD_TRADE');
+  const thesisInput = prompt('Thesis quality: STRONG / MIXED / WEAK / GOOD / OK / POOR', current.thesis_quality || 'MIXED');
+  if (thesisInput === null) return;
+  const thesisQuality = normalizeChoice(thesisInput, ['STRONG', 'MIXED', 'WEAK', 'GOOD', 'OK', 'POOR'], current.thesis_quality || 'MIXED');
+  const executionInput = prompt('Execution quality: STRONG / MIXED / WEAK / GOOD / OK / POOR', current.execution_quality || 'OK');
+  if (executionInput === null) return;
+  const executionQuality = normalizeChoice(executionInput, ['STRONG', 'MIXED', 'WEAK', 'GOOD', 'OK', 'POOR'], current.execution_quality || 'OK');
+  const tags = prompt('Tags (comma-separated)', Array.isArray(current.tags) ? current.tags.join(', ') : '');
+  if (tags === null) return;
+  const notes = prompt('Review notes', current.notes || '');
+  if (notes === null) return;
+  try {
+    await postJson('/api/reviews', {
+      trade_id: String(tradeId),
+      coin: String(coin || ''),
+      direction: String(direction || ''),
+      verdict,
+      thesis_quality: thesisQuality,
+      execution_quality: executionQuality,
+      tags,
+      notes,
+    });
+    await refresh();
+  } catch (error) {
+    alert('Failed to save trade review: ' + error.message);
+  }
+}
+
+function reviewNextTrade() {
+  const next = (latestTrades || []).find((trade) => !trade.review);
+  if (!next) {
+    alert('All recent closed trades are already reviewed.');
+    return;
+  }
+  saveTradeReview(String(next.trade_id || ''), String(next.coin || ''), String(next.direction || ''));
+}
+
+async function refresh() {
+  if (refreshRequest) return refreshRequest;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REFRESH_TIMEOUT_MS);
+  refreshRequest = (async () => {
+  try {
+    const data = await fetchDashboardState(controller.signal);
+    const s    = data.state;
+    const st   = data.stats;
+    const tr   = data.trades;
+    const runtime = data.runtime || {};
+    latestControl = data.control || null;
+    latestState = s || {};
+    latestTrades = Array.isArray(tr) ? tr : [];
+    latestMarketMap = data.market_map || { coins: {} };
+    latestMarketMapSummary = data.market_map_summary || {};
+    latestReviewStore = data.trade_reviews || { reviews: {} };
+    latestReviewSummary = data.review_summary || {};
+    latestLearningSummary = data.learning_summary || {};
+    latestPerformanceEdges = data.performance_edges || ((s || {}).performance_edges) || { summary: {}, working_edges: [], failing_edges: [] };
+    latestAssetDossiers = data.asset_dossiers || { assets: {}, summary: {} };
+    latestMissedMoveReport = data.missed_move_report || { summary: {} };
+    latestLLMRefereeReport = data.llm_referee_report || { verdicts: {} };
+    latestPlaybookDistillerReport = data.playbook_distiller_report || { summary: {}, assets: {} };
+    latestProactiveTraderReport = data.proactive_trader_report || { summary: {} };
+    latestDailyRadar = data.daily_radar || ((s || {}).daily_radar) || { summary: {}, top_assets: [] };
+    const actionBoard = data.action_board || { items: [], lead: null };
+    latestActionBoard = actionBoard;
+
+    // Header
+    let updateText = 'Updated: ' + data.server_time;
+    if (runtime.state_age_seconds != null) {
+      updateText += ' • age ' + runtime.state_age_seconds + 's';
+    }
+    if (runtime.stale) {
+      updateText += ' • STALE';
+    }
+    if (runtime.hosted_static_fallback) {
+      updateText += ' • HOSTED MIRROR';
+    }
+    const power = (s && s.power) || {};
+    if (power.available) {
+      const source = power.source || (power.on_ac_power ? 'AC' : 'Battery');
+      const battery = power.battery_pct != null ? ` ${power.battery_pct}%` : '';
+      updateText += ` • ${source}${battery}`;
+    }
+    document.getElementById('last-update').textContent = updateText;
+    const badge = document.getElementById('mode-badge');
+    if (s.status === 'offline') {
+      badge.className = 'badge badge-offline'; badge.textContent = 'OFFLINE';
+    } else if (s.mode === 'dry_run') {
+      badge.className = 'badge badge-dry'; badge.textContent = 'DRY RUN';
+    } else {
+      badge.className = 'badge badge-live'; badge.textContent = 'LIVE';
+    }
+
+    const killBtn = document.getElementById('kill-btn');
+    if (latestControl && latestControl.kill && latestControl.kill.active) {
+      killBtn.textContent = 'KILL ACTIVE — CLICK TO CLEAR';
+      killBtn.className = 'kill-btn confirming';
+      killConfirm = false;
+    } else if (!killConfirm) {
+      killBtn.textContent = 'KILL SWITCH';
+      killBtn.className = 'kill-btn';
+      killBtn.disabled = false;
+    }
+
+    // KPIs
+    document.getElementById('portfolio').textContent = '$' + fmt(s.portfolio_usd);
+    document.getElementById('available').textContent = 'Available: $' + fmt(s.available_usd);
+
+    const pnlEl = document.getElementById('total-pnl');
+    pnlEl.textContent = fmtD(st.total_pnl);
+    pnlEl.className = 'card-value ' + cls(st.total_pnl);
+
+    const openN = (s.positions || []).length;
+    const closedN = st.total || 0;
+    document.getElementById('win-rate').textContent = 'Across all closed trades';
+    document.getElementById('trade-count').textContent = (st.win_rate || 0) + '%';
+    document.getElementById('wins-losses').textContent = 'Closed: ' + closedN + ' • Wins: ' + (st.wins||0) + ' • Losses: ' + (st.losses||0);
+    if (actionBoard.lead) {
+      document.getElementById('cycle').textContent = actionBoard.lead.coin + ' • ' + setupStanceText(actionBoard.lead, 'title');
+      document.getElementById('sentiment').textContent = leadSummaryText(actionBoard.lead, 210);
+    } else {
+      document.getElementById('cycle').textContent = openN ? 'Managing trades' : 'No setup';
+      document.getElementById('sentiment').textContent = openN ? 'The agent is managing open exposure.' : 'Waiting for the next clean setup.';
+    }
+
+    // Open Trades
+    const openBody = document.getElementById('open-trades-body');
+    const countBadge = document.getElementById('open-count');
+    const openCard = document.getElementById('open-trades-card');
+    countBadge.style.display = 'inline-flex';
+    if (s.positions && s.positions.length) {
+      countBadge.textContent = s.positions.length;
+      countBadge.className = 'open-count';
+      openCard.className = 'card card-highlight';
+      openBody.innerHTML = s.positions.map(p => {
+        const pnlCls = cls(p.unrealised_pnl);
+        const dirCls = p.direction === 'LONG' ? 'pos-long' : 'pos-short';
+        const pnlPct = p.entry_price > 0
+          ? ((p.current_price - p.entry_price) / p.entry_price * 100 * (p.direction === 'LONG' ? 1 : -1))
+          : 0;
+        const arrow = p.direction === 'LONG' ? '↑' : '↓';
+        return '<div class="pos-grid">' +
+          '<div><div class="pos-meta">Coin</div><div class="pos-val" style="font-size:18px;">' + p.coin + '</div></div>' +
+          '<div><div class="pos-meta">Direction</div><div class="pos-val"><span class="pos-direction ' + dirCls + '">' + arrow + ' ' + p.direction + '</span></div></div>' +
+          '<div><div class="pos-meta">Entry</div><div class="pos-val">$' + fmt(p.entry_price) + '</div></div>' +
+          '<div><div class="pos-meta">Current</div><div class="pos-val ' + pnlCls + '">$' + fmt(p.current_price) + '</div></div>' +
+          '<div><div class="pos-meta">Invalid If</div><div class="pos-val red">$' + fmt(p.stop_loss) + '</div></div>' +
+          '<div><div class="pos-meta">Take Profit</div><div class="pos-val green">$' + fmt(p.take_profit) + '</div></div>' +
+          '<div><div class="pos-meta">Margin</div><div class="pos-val">$' + fmt(p.size_usd, 0) + '</div></div>' +
+          '<div><div class="pos-meta">Notional</div><div class="pos-val blue">$' + fmt(p.size_usd * (s.leverage || 2), 0) + '</div></div>' +
+          '<div><div class="pos-meta">Unrealised P&L</div><div class="pos-val ' + pnlCls + '" style="font-size:16px;">' + fmtD(p.unrealised_pnl) + '<span style="font-size:12px;opacity:0.7;margin-left:4px;">(' + (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%)</span></div></div>' +
+        '</div>' +
+        priceSourceHtml(p) +
+        '<div class="signal-reason"><strong>Invalid if:</strong> ' + esc(simpleInvalidationText(p, 92)) + '</div>' +
+        '<div class="signal-reason"><strong>Opened because:</strong> ' + esc(p.entry_logic_short || plainTradeReason(p.entry_logic || 'No opening logic recorded.', 'open', 86)) + '</div>' +
+        '<div class="signal-reason"><strong>Holding because:</strong> ' + esc(p.current_logic_short || plainTradeReason(p.current_logic || 'Holding while the thesis stays valid.', 'hold', 86)) + '</div>';
+      }).join('');
+    } else {
+      countBadge.textContent = '0';
+      countBadge.className = 'open-count open-count-flat';
+      openCard.className = 'card';
+      const leadEmpty = actionBoard.lead
+        ? '<div style="margin-top:8px;"><strong>Best setup:</strong> ' + esc(actionBoard.lead.coin + ' • ' + setupStanceText(actionBoard.lead, 'title')) + ' — ' + esc(leadSummaryText(actionBoard.lead, 170)) + '</div>'
+        : '<div style="margin-top:8px;">The agent is flat and waiting for a clean, high-conviction setup.</div>';
+      openBody.innerHTML =
+        '<div class="empty-state">' +
+          '<div class="empty-icon">--</div>' +
+          '<div><strong>FLAT — no open positions</strong></div>' +
+          leadEmpty +
+        '</div>';
+    }
+
+    renderDailyRadar(latestDailyRadar);
+    renderActionBoard(actionBoard);
+    renderProactiveDesk(latestProactiveTraderReport);
+    if (commandSearchOpen) renderCommandSearch();
+
+    // Performance Stats
+    document.getElementById('stat-best').innerHTML   = '<span class="green">' + fmtD(st.best) + '</span>';
+    document.getElementById('stat-worst').innerHTML  = '<span class="red">' + fmtD(st.worst) + '</span>';
+    document.getElementById('stat-avgwin').innerHTML = '<span class="green">' + fmtD(st.avg_win) + '</span>';
+    document.getElementById('stat-avgloss').innerHTML= '<span class="red">' + fmtD(st.avg_loss) + '</span>';
+    const dailyPnl = s.daily_pnl_usd || 0;
+    document.getElementById('stat-daily-pnl').innerHTML = '<span class="' + cls(dailyPnl) + '">' + fmtD(dailyPnl) + '</span>';
+
+    renderMarketMapSummary(data.market_map_summary || {}, latestMarketMap);
+    renderLearningSummary(latestLearningSummary, latestTrades);
+
+    // Closed Trades
+    const tradBody = document.getElementById('trades-body');
+    const closedLabel = document.getElementById('closed-count-label');
+    if (tr && tr.length) {
+      closedLabel.textContent = '(' + tr.length + ' trades)';
+      tradBody.innerHTML = tr.map(t => {
+        const pnl    = parseFloat(t.pnl_usd || 0);
+        const pnlPct = parseFloat(t.pnl_pct || 0);
+        const pnlCls = cls(pnl);
+        const dir    = t.direction || '';
+        return '<tr>' +
+          '<td class="muted">' + t.trade_id + '</td>' +
+          '<td><strong>' + t.coin + '</strong></td>' +
+          '<td><span class="pos-direction pos-' + dir.toLowerCase() + '">' + (dir === 'LONG' ? '↑' : '↓') + ' ' + dir + '</span></td>' +
+          '<td class="muted" style="font-size:11px;">' + (t.opened_at||'').slice(0,16) + '</td>' +
+          '<td class="muted" style="font-size:11px;">' + ((t.closed_at||'').slice(0,16)||'open') + '</td>' +
+          '<td class="' + pnlCls + '">' + fmtD(pnl) + '</td>' +
+          '<td class="' + pnlCls + '">' + fmtP(pnlPct) + '</td>' +
+          '<td class="muted" style="font-size:11px;max-width:220px;">' + esc(plainTradeReason(t.open_logic || 'No opening logic recorded.', 'open', 86)) + '</td>' +
+          '<td class="muted" style="font-size:11px;max-width:220px;">' + esc(shortText(t.close_logic || (t.exit_reason || '--'), 100)) + '</td>' +
+          '<td class="muted" style="font-size:11px;max-width:240px;">' + esc(shortText(t.agent_lesson || 'No lesson recorded yet.', 110)) + '</td>' +
+        '</tr>';
+      }).join('');
+    } else {
+      closedLabel.textContent = '';
+      tradBody.innerHTML = '<tr><td colspan="10" class="muted" style="text-align:center;padding:24px;">No closed trades yet</td></tr>';
+    }
+
+    refreshFailureCount = 0;
+    const nextDelay = runtime.stale ? REFRESH_STALE_MS : REFRESH_BASE_MS;
+    scheduleRefresh(nextDelay);
+  } catch(e) {
+    refreshFailureCount += 1;
+    const retryDelay = Math.min(
+      REFRESH_MAX_MS,
+      Math.max(REFRESH_BASE_MS, REFRESH_BASE_MS * (2 ** Math.min(refreshFailureCount - 1, 2)))
+    );
+    const retrySeconds = Math.round(retryDelay / 1000);
+    const stamp = new Date().toLocaleTimeString();
+    const message = latestState
+      ? ('Live refresh delayed — retrying in ' + retrySeconds + 's • ' + stamp)
+      : ('Agent refresh delayed — retrying in ' + retrySeconds + 's • ' + stamp);
+    document.getElementById('last-update').textContent = message;
+    scheduleRefresh(retryDelay);
+  } finally {
+    clearTimeout(timeoutId);
+    refreshRequest = null;
+  }
+  })();
+  return refreshRequest;
+}
+
+function scheduleRefresh(delayMs = REFRESH_BASE_MS) {
+  if (refreshTimer) clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => {
+    refresh();
+  }, Math.max(1000, Number(delayMs || REFRESH_BASE_MS)));
+}
+
+let killConfirm = false;
+function handleKill() {
+  const btn = document.getElementById('kill-btn');
+  if (STATIC_GITHUB_PAGES_MODE) {
+    alert('Hosted mirror is view-only. Use the local dashboard kill switch for live control.');
+    return;
+  }
+  if (latestControl && latestControl.kill && latestControl.kill.active) {
+    btn.textContent = 'Clearing...';
+    btn.disabled = true;
+    fetch('/api/kill', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active: false, reason: 'Operator cleared kill switch' })
+    }).then(r => r.json()).then(() => {
+      btn.textContent = 'Kill cleared';
+      btn.className = 'kill-btn';
+      setTimeout(() => {
+        btn.textContent = 'KILL SWITCH';
+        btn.disabled = false;
+      }, 3000);
+    }).catch(() => {
+      btn.textContent = 'Clear failed';
+      btn.disabled = false;
+      setTimeout(() => { btn.textContent = 'KILL ACTIVE — CLICK TO CLEAR'; btn.className = 'kill-btn confirming'; }, 3000);
+    });
+    return;
+  }
+  if (!killConfirm) {
+    killConfirm = true;
+    btn.textContent = 'CONFIRM: CLOSE ALL & STOP';
+    btn.className = 'kill-btn confirming';
+    setTimeout(() => {
+      killConfirm = false;
+      btn.textContent = 'KILL SWITCH';
+      btn.className = 'kill-btn';
+    }, 5000);
+    return;
+  }
+  btn.textContent = 'Sending...';
+  btn.disabled = true;
+  fetch('/api/kill', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason: 'Dashboard kill switch activated' })
+  }).then(r => r.json()).then(d => {
+    btn.textContent = 'Kill signal sent';
+    btn.className = 'kill-btn';
+    setTimeout(() => {
+      btn.textContent = 'KILL SWITCH';
+      btn.disabled = false;
+      killConfirm = false;
+    }, 10000);
+  }).catch(e => {
+    btn.textContent = 'Failed — try again';
+    btn.disabled = false;
+    killConfirm = false;
+    setTimeout(() => { btn.textContent = 'KILL SWITCH'; btn.className = 'kill-btn'; }, 3000);
+  });
+}
+
+const tradexyzWalletInput = document.getElementById('tradexyz-wallet-input');
+if (tradexyzWalletInput) {
+  tradexyzWalletInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      lookupTradexyzVolume();
+    }
+  });
+}
+
+refresh();
+</script>
+</body>
+</html>

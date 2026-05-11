@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Punky Trading Agent — P&L Card</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #06080f;
+    --green: #00e68a;
+    --red: #ff4d6a;
+    --blue: #5b8cff;
+    --yellow: #ffb84d;
+    --purple: #a78bfa;
+    --muted: rgba(255,255,255,0.4);
+    --text: rgba(255,255,255,0.95);
+    --mono: 'JetBrains Mono', monospace;
+    --font: 'Inter', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    font-family: var(--font);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px;
+  }
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse at 15% 15%, rgba(0,230,138,0.06) 0%, transparent 50%),
+      radial-gradient(ellipse at 85% 85%, rgba(91,140,255,0.06) 0%, transparent 50%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .page-title {
+    color: var(--muted);
+    font-size: 13px;
+    font-family: var(--mono);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 32px;
+    z-index: 1;
+  }
+
+  /* ── The Card ─── */
+  .card {
+    width: 100%;
+    max-width: 560px;
+    border-radius: 24px;
+    padding: 36px;
+    position: relative;
+    overflow: hidden;
+    z-index: 1;
+    background: rgba(14,18,30,0.85);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04);
+  }
+
+  /* Gradient line at top of card changes based on PnL */
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent, #00e68a), transparent);
+  }
+  .card.negative { --accent: #ff4d6a; }
+
+  /* Corner glow */
+  .card::after {
+    content: '';
+    position: absolute;
+    top: -80px; right: -80px;
+    width: 200px; height: 200px;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--accent, rgba(0,230,138,0.08)), transparent 70%);
+    pointer-events: none;
+  }
+
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 28px;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .brand-icon {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, var(--green), var(--blue));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: 900;
+    color: #000;
+  }
+  .brand-name {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.7);
+  }
+  .brand-sub {
+    font-size: 10px;
+    color: var(--muted);
+    font-family: var(--mono);
+    margin-top: 2px;
+  }
+
+  .mode-badge {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    font-family: var(--mono);
+  }
+  .badge-dry { background: rgba(255,184,77,0.12); color: var(--yellow); border: 1px solid rgba(255,184,77,0.25); }
+  .badge-live { background: rgba(255,77,106,0.12); color: var(--red); border: 1px solid rgba(255,77,106,0.25); }
+
+  /* ── Big PnL number ── */
+  .pnl-hero {
+    text-align: center;
+    margin: 8px 0 28px;
+  }
+  .pnl-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .pnl-value {
+    font-size: 64px;
+    font-weight: 900;
+    font-family: var(--mono);
+    letter-spacing: -2px;
+    line-height: 1;
+    color: var(--green);
+    text-shadow: 0 0 40px rgba(0,230,138,0.3);
+  }
+  .pnl-value.negative {
+    color: var(--red);
+    text-shadow: 0 0 40px rgba(255,77,106,0.3);
+  }
+  .pnl-pct {
+    font-size: 20px;
+    font-weight: 700;
+    font-family: var(--mono);
+    color: var(--muted);
+    margin-top: 6px;
+  }
+
+  /* ── Stats row ── */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .stat {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px;
+    padding: 12px;
+    text-align: center;
+  }
+  .stat-label {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .stat-value {
+    font-size: 16px;
+    font-weight: 800;
+    font-family: var(--mono);
+  }
+
+  /* ── Trade bars ── */
+  .trades-section {
+    margin-bottom: 24px;
+  }
+  .trades-title {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .trade-bars {
+    display: flex;
+    gap: 3px;
+    height: 28px;
+    align-items: flex-end;
+  }
+  .trade-bar {
+    flex: 1;
+    border-radius: 2px;
+    min-height: 4px;
+    max-height: 28px;
+    transition: all 0.3s;
+  }
+  .trade-bar.win { background: var(--green); }
+  .trade-bar.loss { background: var(--red); }
+  .trade-bar.flat { background: rgba(255,255,255,0.15); height: 4px; }
+
+  /* ── Win rate bar ── */
+  .wr-bar-wrap {
+    background: rgba(255,255,255,0.06);
+    border-radius: 4px;
+    height: 6px;
+    overflow: hidden;
+    margin-top: 8px;
+  }
+  .wr-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    background: linear-gradient(90deg, var(--green), #00b36b);
+    transition: width 1s ease;
+  }
+
+  /* ── Footer ── */
+  .card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 20px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+  .footer-coin-badges {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .coin-badge {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 10px;
+    font-weight: 700;
+    font-family: var(--mono);
+    color: rgba(255,255,255,0.7);
+  }
+  .footer-timestamp {
+    font-size: 10px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+
+  /* ── Controls ── */
+  .controls {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+    z-index: 1;
+  }
+  .btn {
+    padding: 12px 24px;
+    border-radius: 12px;
+    font-size: 13px;
+    font-weight: 700;
+    font-family: var(--mono);
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s ease;
+    letter-spacing: 0.5px;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--green), #00b36b);
+    color: #000;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(0,230,138,0.25); }
+  .btn-secondary {
+    background: rgba(255,255,255,0.07);
+    color: rgba(255,255,255,0.8);
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .btn-secondary:hover { background: rgba(255,255,255,0.1); }
+
+  .share-hint {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--mono);
+    margin-top: 12px;
+    z-index: 1;
+    text-align: center;
+  }
+
+  .green { color: var(--green); }
+  .red { color: var(--red); }
+  .blue { color: var(--blue); }
+  .yellow { color: var(--yellow); }
+</style>
+</head>
+<body>
+
+<div class="page-title">📊 Performance Card</div>
+
+<div class="card" id="share-card">
+  <div class="card-header">
+    <div class="brand">
+      <div class="brand-icon">P</div>
+      <div>
+        <div class="brand-name">Punky Trading Agent</div>
+        <div class="brand-sub" id="header-cycles">-- cycles</div>
+      </div>
+    </div>
+    <span class="mode-badge badge-dry" id="mode-badge">DRY RUN</span>
+  </div>
+
+  <div class="pnl-hero">
+    <div class="pnl-label">Total P&L</div>
+    <div class="pnl-value" id="pnl-value">$0.00</div>
+    <div class="pnl-pct" id="pnl-pct">+0.00%</div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat">
+      <div class="stat-label">Win Rate</div>
+      <div class="stat-value" id="stat-wr">--%</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Trades</div>
+      <div class="stat-value" id="stat-trades">--</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Best</div>
+      <div class="stat-value green" id="stat-best">--</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Worst</div>
+      <div class="stat-value red" id="stat-worst">--</div>
+    </div>
+  </div>
+
+  <div class="trades-section">
+    <div class="trades-title">Trade History</div>
+    <div class="trade-bars" id="trade-bars">
+      <div class="trade-bar flat"></div>
+    </div>
+    <div class="wr-bar-wrap">
+      <div class="wr-bar-fill" id="wr-bar" style="width:0%"></div>
+    </div>
+  </div>
+
+  <div class="card-footer">
+    <div class="footer-coin-badges" id="coin-badges">
+      <span class="coin-badge">BTC</span>
+      <span class="coin-badge">ETH</span>
+      <span class="coin-badge">SOL</span>
+      <span class="coin-badge">HYPE</span>
+    </div>
+    <div class="footer-timestamp" id="footer-ts">--</div>
+  </div>
+</div>
+
+<div class="controls">
+  <button class="btn btn-primary" onclick="copyShareLink()">🔗 Copy Share Link</button>
+  <button class="btn btn-secondary" onclick="downloadCard()">⬇️ Download Card</button>
+</div>
+<div class="share-hint" id="share-hint">Screenshot the card above to share your performance</div>
+
+<script>
+const fmt  = (n, dec=2) => n == null ? '--' : Number(n).toLocaleString('en-US', {minimumFractionDigits:dec, maximumFractionDigits:dec});
+const fmtD = (n) => n == null ? '--' : (n >= 0 ? '+$' : '-$') + fmt(Math.abs(n));
+
+async function loadCard() {
+  try {
+    const res  = await fetch('/api/state');
+    const data = await res.json();
+    const s    = data.state;
+    const st   = data.stats;
+    const tr   = data.trades || [];
+
+    const pnl = st.total_pnl || 0;
+    const pct = s.portfolio_usd > 0 ? (pnl / (s.portfolio_usd - pnl)) * 100 : 0;
+
+    // Card positive/negative class
+    const card = document.getElementById('share-card');
+    card.className = 'card' + (pnl < 0 ? ' negative' : '');
+
+    // Mode badge
+    const badge = document.getElementById('mode-badge');
+    if (s.mode === 'live') {
+      badge.className = 'mode-badge badge-live';
+      badge.textContent = 'LIVE';
+    } else {
+      badge.className = 'mode-badge badge-dry';
+      badge.textContent = 'DRY RUN';
+    }
+
+    // Header
+    document.getElementById('header-cycles').textContent = (s.cycle_number || '--') + ' cycles · ' + (st.total || 0) + ' trades';
+
+    // Big PnL
+    const pnlEl = document.getElementById('pnl-value');
+    pnlEl.textContent = fmtD(pnl);
+    pnlEl.className = 'pnl-value' + (pnl < 0 ? ' negative' : '');
+    document.getElementById('pnl-pct').textContent = (pct >= 0 ? '+' : '') + fmt(pct) + '%';
+
+    // Stats
+    document.getElementById('stat-wr').textContent = (st.win_rate || 0) + '%';
+    document.getElementById('stat-wr').className   = 'stat-value ' + ((st.win_rate || 0) >= 50 ? 'green' : 'red');
+    document.getElementById('stat-trades').textContent = st.total || 0;
+    document.getElementById('stat-best').textContent   = fmtD(st.best);
+    document.getElementById('stat-worst').textContent  = fmtD(st.worst);
+
+    // Win rate bar
+    document.getElementById('wr-bar').style.width = (st.win_rate || 0) + '%';
+
+    // Trade bars — last 40 trades
+    const recent = tr.slice(0, 40).reverse();
+    const barsEl = document.getElementById('trade-bars');
+    if (recent.length) {
+      const maxAbs = Math.max(...recent.map(t => Math.abs(parseFloat(t.pnl_usd || 0))));
+      barsEl.innerHTML = recent.map(t => {
+        const pnl = parseFloat(t.pnl_usd || 0);
+        const h   = maxAbs > 0 ? Math.max(4, Math.round((Math.abs(pnl) / maxAbs) * 28)) : 4;
+        const cls = pnl > 0 ? 'win' : pnl < 0 ? 'loss' : 'flat';
+        return `<div class="trade-bar ${cls}" style="height:${h}px;" title="${t.coin} ${fmtD(pnl)}"></div>`;
+      }).join('');
+    }
+
+    // Footer timestamp
+    document.getElementById('footer-ts').textContent = data.server_time || '--';
+
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+function copyShareLink() {
+  const url = window.location.origin + '/share';
+  navigator.clipboard.writeText(url).then(() => {
+    const hint = document.getElementById('share-hint');
+    hint.textContent = '✅ Link copied! Anyone with this URL can see your live P&L card';
+    setTimeout(() => { hint.textContent = 'Screenshot the card above to share your performance'; }, 4000);
+  });
+}
+
+function downloadCard() {
+  // Simple: open print dialog focused on card (screenshot-friendly)
+  const hint = document.getElementById('share-hint');
+  hint.textContent = '📸 Use your Mac screenshot shortcut: Cmd+Shift+4 → click & drag around the card';
+  setTimeout(() => { hint.textContent = 'Screenshot the card above to share your performance'; }, 5000);
+}
+
+loadCard();
+setInterval(loadCard, 15000);
+</script>
+</body>
+</html>
