@@ -195,6 +195,8 @@ class CheckpointManager:
                     'lowest_price': getattr(pos, 'lowest_price', None),
                     'opened_at': getattr(pos, 'opened_at', datetime.now().isoformat()),
                     'exchange': getattr(pos, 'exchange', ''),
+                    'leverage': getattr(pos, 'leverage', 1.0),
+                    'margin_usd': getattr(pos, 'margin_usd', 0.0),
                     'metadata': getattr(pos, 'metadata', {}) or {},
                 }
             else:
@@ -216,6 +218,8 @@ class CheckpointManager:
                     'take_profit': getattr(order, 'take_profit', 0.0),
                     'signal_score': getattr(order, 'signal_score', 0.0),
                     'exchange': getattr(order, 'exchange', ''),
+                    'leverage': getattr(order, 'leverage', 1),
+                    'margin_usd': getattr(order, 'margin_usd', 0.0),
                     'exchange_order_id': getattr(order, 'exchange_order_id', ''),
                     'cycles_waiting': getattr(order, 'cycles_waiting', 0),
                     'reprice_count': getattr(order, 'reprice_count', 0),

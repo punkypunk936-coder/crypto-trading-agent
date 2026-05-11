@@ -32,6 +32,7 @@ class DryRunExchange(BaseExchange):
             str(symbol).upper(): bool(value)
             for symbol, value in (shortable_map or {}).items()
         }
+        self._leverage_by_coin: Dict[str, int] = {}
         # Pending limit orders: order_id → {coin, direction, limit_price, size_coin, size_usd}
         self._pending_limits: Dict[str, dict] = {}
 
@@ -59,13 +60,15 @@ class DryRunExchange(BaseExchange):
                 pnl = (price - p["entry_price"]) / p["entry_price"] * p["size_usd"]
             else:
                 pnl = (p["entry_price"] - price) / p["entry_price"] * p["size_usd"]
-            total_equity += pnl
+            total_equity += float(p.get("margin_usd", p.get("size_usd", 0.0)) or 0.0) + pnl
             positions.append({
                 "coin":           coin,
                 "size":           p["size_coin"],
                 "direction":      p["direction"],
                 "entry_price":    p["entry_price"],
                 "unrealised_pnl": pnl,
+                "leverage":       p.get("leverage", 1),
+                "margin_usd":     p.get("margin_usd", p.get("size_usd", 0.0)),
             })
         return AccountState(
             total_equity_usd = total_equity,
@@ -74,8 +77,12 @@ class DryRunExchange(BaseExchange):
         )
 
     def set_leverage(self, coin: str, leverage: int) -> bool:
+        self._leverage_by_coin[str(coin or "").upper()] = max(1, int(leverage or 1))
         log.info(f"[DRY RUN] [{coin}] Leverage set to {leverage}× (simulated)")
         return True
+
+    def _current_leverage(self, coin: str) -> int:
+        return max(1, int(self._leverage_by_coin.get(str(coin or "").upper(), 1) or 1))
 
     # ── Market orders ─────────────────────────────────────
 
@@ -108,12 +115,16 @@ class DryRunExchange(BaseExchange):
         self.order_count += 1
         oid = f"DRY-LMT-{self.order_count:04d}"
         size_usd = size_coin * limit_price
+        leverage = self._current_leverage(coin)
+        margin_usd = size_usd / max(leverage, 1)
         self._pending_limits[oid] = {
             "coin":        coin,
             "direction":   direction,
             "limit_price": limit_price,
             "size_coin":   size_coin,
             "size_usd":    size_usd,
+            "leverage":    leverage,
+            "margin_usd":  margin_usd,
             "placed_at":   time.time(),
         }
         log.info(
@@ -157,14 +168,20 @@ class DryRunExchange(BaseExchange):
             # Simulate the fill
             size_coin = pending["size_coin"]
             size_usd  = pending["size_usd"]
+            leverage = int(pending.get("leverage", 1) or 1)
+            margin_usd = float(pending.get("margin_usd", 0.0) or 0.0)
+            if margin_usd <= 0:
+                margin_usd = size_usd / max(leverage, 1)
             self.positions[coin] = {
                 "direction":   direction,
                 "entry_price": price,
                 "size_coin":   size_coin,
                 "size_usd":    size_usd,
+                "leverage":    leverage,
+                "margin_usd":  margin_usd,
                 "opened_at":   time.time(),
             }
-            self.balance -= size_usd
+            self.balance -= margin_usd
             del self._pending_limits[order_id]
             log.info(
                 f"[DRY RUN] [{coin}] Limit {direction} FILLED @ ${price:.2f} "
@@ -189,18 +206,25 @@ class DryRunExchange(BaseExchange):
         size_coin: float,
         limit_price: float,
         size_usd: float = 0.0,
+        leverage: int = 1,
+        margin_usd: float = 0.0,
     ) -> bool:
         """Rehydrate a pending paper limit order from the agent checkpoint."""
         coin = str(coin or "").upper()
         direction = str(direction or "").upper()
         if not order_id or coin not in self._supported_symbols or direction not in {"LONG", "SHORT"}:
             return False
+        size_usd = float(size_usd or 0.0) or float(size_coin or 0.0) * float(limit_price or 0.0)
+        leverage = max(1, int(leverage or 1))
+        margin_usd = float(margin_usd or 0.0) or size_usd / max(leverage, 1)
         self._pending_limits[order_id] = {
             "coin": coin,
             "direction": direction,
             "limit_price": float(limit_price or 0.0),
             "size_coin": float(size_coin or 0.0),
-            "size_usd": float(size_usd or 0.0) or float(size_coin or 0.0) * float(limit_price or 0.0),
+            "size_usd": size_usd,
+            "leverage": leverage,
+            "margin_usd": margin_usd,
             "placed_at": time.time(),
         }
         try:
@@ -234,6 +258,8 @@ class DryRunExchange(BaseExchange):
             return OrderResult(success=False, error=f"Could not get price for {coin}")
 
         size_usd = size_coin * price
+        leverage = self._current_leverage(coin)
+        margin_usd = size_usd / max(leverage, 1)
         self.order_count += 1
         oid = f"DRY-MKT-{self.order_count:04d}"
 
@@ -242,13 +268,16 @@ class DryRunExchange(BaseExchange):
             "entry_price": price,
             "size_coin":   size_coin,
             "size_usd":    size_usd,
+            "leverage":    leverage,
+            "margin_usd":  margin_usd,
             "opened_at":   time.time(),
         }
-        self.balance -= size_usd    # margin reservation
+        self.balance -= margin_usd    # margin reservation
 
         log.info(
             f"[DRY RUN] [{coin}] Simulated {direction}: "
-            f"{size_coin:.6f} coins @ ${price:.2f}  (${size_usd:.2f})"
+            f"{size_coin:.6f} coins @ ${price:.2f}  "
+            f"(${size_usd:.2f} notional / ${margin_usd:.2f} margin @ {leverage}x)"
         )
         return OrderResult(
             success      = True,
@@ -266,7 +295,8 @@ class DryRunExchange(BaseExchange):
             pnl = (price - pos["entry_price"]) / pos["entry_price"] * pos["size_usd"]
         else:
             pnl = (pos["entry_price"] - price) / pos["entry_price"] * pos["size_usd"]
-        self.balance += pos["size_usd"] + pnl
+        margin_usd = float(pos.get("margin_usd", pos["size_usd"]) or 0.0)
+        self.balance += margin_usd + pnl
         pnl_pct = pnl / pos["size_usd"] * 100
         log.info(
             f"[DRY RUN] [{coin}] Position closed @ ${price:.2f} "

@@ -66,6 +66,7 @@ from circuit_breaker import CircuitBreakerError
 from dashboard import app as dashboard_module
 from dashboard.snapshot import build_dashboard_snapshot
 from exchanges.base import AccountState, BaseExchange, OrderResult, LimitOrderStatus
+from exchanges import dry_run as dry_run_module
 from exchanges.dry_run import DryRunExchange
 from exchanges import hyperliquid_client as hyperliquid_client_module
 from exchanges import hyperliquid_markets as hyperliquid_markets_module
@@ -81,6 +82,7 @@ class StubExchange(BaseExchange):
         self.should_fill = should_fill
         self.market_buy_calls = 0
         self.close_calls = 0
+        self.leverage_calls = []
         self._positions = []
 
     def connect(self) -> bool:
@@ -90,6 +92,7 @@ class StubExchange(BaseExchange):
         return AccountState(total_equity_usd=1000.0, available_usd=1000.0, positions=list(self._positions))
 
     def set_leverage(self, coin: str, leverage: int) -> bool:
+        self.leverage_calls.append((coin, leverage))
         return True
 
     def market_buy(self, coin: str, size_coin: float, slippage: float = 0.01) -> OrderResult:
@@ -251,12 +254,14 @@ def test_execute_order_stops_after_first_success() -> None:
             price=100.0,
             stop_loss=90.0,
             take_profit=150.0,
-            leverage=2,
+            leverage=5,
+            margin_usd=20.0,
             approved=True,
         )
         agent._execute_order("BTC", Signal("LONG"), order)
         assert first.market_buy_calls == 1, "first exchange should execute once"
         assert second.market_buy_calls == 0, "agent should stop after first successful execution"
+        assert first.leverage_calls[-1] == ("BTC", 5), "execution should use the order-specific leverage"
     checkpoint_module.checkpoint_manager = original_manager
     agent_module.checkpoint_manager = original_manager
 
@@ -2334,6 +2339,118 @@ def test_order_sizing_scales_with_conviction_and_tempers_euphoria() -> None:
     assert low_conviction.approved and high_conviction.approved
     assert high_conviction.size_usd > low_conviction.size_usd, "higher conviction should allocate more capital"
     assert supported_extreme.size_usd > cautious_extreme.size_usd, "weak RL history should dampen euphoric sizing"
+
+
+def test_adaptive_leverage_scales_high_conviction_notional_with_margin_cap() -> None:
+    cfg = build_config()
+    cfg.trading.adaptive_leverage_enabled = True
+    cfg.trading.leverage = 2
+    cfg.trading.base_leverage = 2
+    cfg.trading.max_leverage = 5
+    cfg.trading.max_trade_usd = 1000.0
+    cfg.trading.max_trade_notional_usd = 5000.0
+    cfg.trading.max_position_pct = 0.10
+    cfg.trading.max_total_exposure_pct = 1.0
+    cfg.trading.max_levered_position_pct = 0.50
+    cfg.trading.min_trade_usd = 25.0
+    risk = __import__("risk.risk_manager", fromlist=["RiskManager"]).RiskManager(cfg.trading)
+
+    order = risk.compute_order(
+        coin="BTC",
+        direction="LONG",
+        signal_score=94.0,
+        current_price=100.0,
+        stop_loss_price=92.0,
+        take_profit_price=130.0,
+        portfolio_usd=10_000.0,
+        rl_win_rate=76.0,
+        rl_pattern_boost=0.10,
+        expectancy_score=88.0,
+        win_probability=0.70,
+        expected_r=0.45,
+        uncertainty=0.25,
+        thesis_conviction=94.0,
+    )
+
+    assert order.approved
+    assert order.leverage == 5
+    assert order.margin_usd <= 1000.01
+    assert order.size_usd > order.margin_usd
+    assert order.size_usd >= 4000.0, "A+ setups should get levered notional, not only bigger labels"
+
+
+def test_adaptive_leverage_caps_event_starters_and_shaky_setups() -> None:
+    cfg = build_config()
+    cfg.trading.adaptive_leverage_enabled = True
+    cfg.trading.max_trade_usd = 1000.0
+    cfg.trading.max_trade_notional_usd = 5000.0
+    cfg.trading.max_position_pct = 0.10
+    cfg.trading.max_total_exposure_pct = 1.0
+    cfg.trading.max_levered_position_pct = 0.50
+    risk = __import__("risk.risk_manager", fromlist=["RiskManager"]).RiskManager(cfg.trading)
+
+    event_order = risk.compute_order(
+        coin="BTC",
+        direction="LONG",
+        signal_score=94.0,
+        current_price=100.0,
+        stop_loss_price=92.0,
+        take_profit_price=130.0,
+        portfolio_usd=10_000.0,
+        rl_win_rate=76.0,
+        rl_pattern_boost=0.10,
+        expectancy_score=88.0,
+        win_probability=0.70,
+        expected_r=0.45,
+        uncertainty=0.25,
+        thesis_conviction=94.0,
+        sizing_multiplier=0.35,
+        event_starter=True,
+    )
+    shaky_order = risk.compute_order(
+        coin="ETH",
+        direction="LONG",
+        signal_score=66.0,
+        current_price=100.0,
+        stop_loss_price=94.0,
+        take_profit_price=112.0,
+        portfolio_usd=10_000.0,
+        rl_win_rate=50.0,
+        rl_pattern_boost=0.0,
+        expectancy_score=58.0,
+        win_probability=0.54,
+        expected_r=0.05,
+        uncertainty=0.55,
+        thesis_conviction=66.0,
+    )
+
+    assert event_order.approved
+    assert event_order.leverage <= cfg.trading.event_starter_max_leverage
+    assert shaky_order.approved
+    assert shaky_order.leverage <= 2
+
+
+def test_dry_run_reserves_margin_not_full_notional_for_levered_orders() -> None:
+    original_price = dry_run_module.get_current_price
+    try:
+        dry_run_module.get_current_price = lambda coin: 100.0
+        ex = DryRunExchange(starting_balance_usd=10_000.0, supported_symbols=["BTC"])
+        ex.connect()
+        ex.set_leverage("BTC", 5)
+        result = ex.market_buy("BTC", 10.0)
+        assert result.success
+        assert abs(ex.balance - 9800.0) < 1e-6, "paper exchange should reserve 5x margin, not full notional"
+        state = ex.get_account_state()
+        assert abs(state.total_equity_usd - 10_000.0) < 1e-6
+
+        dry_run_module.get_current_price = lambda coin: 110.0
+        state = ex.get_account_state()
+        assert abs(state.total_equity_usd - 10_100.0) < 1e-6
+        close = ex.close_position("BTC")
+        assert close.success
+        assert abs(ex.balance - 10_100.0) < 1e-6
+    finally:
+        dry_run_module.get_current_price = original_price
 
 
 def test_immediate_limit_scale_in_updates_open_trade_record() -> None:
@@ -8149,6 +8266,12 @@ def run_all() -> None:
     print("PASS pending limit scale-in logging")
     test_order_sizing_scales_with_conviction_and_tempers_euphoria()
     print("PASS conviction sizing")
+    test_adaptive_leverage_scales_high_conviction_notional_with_margin_cap()
+    print("PASS adaptive leverage high-conviction sizing")
+    test_adaptive_leverage_caps_event_starters_and_shaky_setups()
+    print("PASS adaptive leverage caps")
+    test_dry_run_reserves_margin_not_full_notional_for_levered_orders()
+    print("PASS dry-run levered margin accounting")
     test_narrative_gate_blocks_event_risk_without_exceptional_expectancy()
     print("PASS narrative event gate")
     test_backtest_summary_includes_baselines()

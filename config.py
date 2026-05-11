@@ -242,9 +242,18 @@ class TradingConfig:
     max_flat_cycles_with_position: int = 3  # Legacy input into conviction-decay logic, not a hard close alone
 
     # ── Position sizing ─────────────────────────────────
-    max_position_pct: float       = 0.05   # Max 5% of portfolio per trade (was 2%)
-    max_total_exposure_pct: float = 0.40   # Max 40% total deployed at once (was 20%)
-    leverage: int                 = 2      # Safer default for small live capital
+    max_position_pct: float       = 0.10   # Max 10% margin budget per trade before adaptive leverage
+    max_total_exposure_pct: float = 0.65   # Max 65% total notional exposure at once
+    leverage: int                 = 2      # Base leverage; conviction can raise/lower it per order
+    adaptive_leverage_enabled: bool = True
+    min_leverage: int             = 1
+    base_leverage: int            = 2
+    max_leverage: int             = 5
+    starter_max_leverage: int     = 2
+    event_starter_max_leverage: int = 3
+    scale_in_max_leverage: int    = 4
+    max_trade_notional_usd: float = 4000.0
+    max_levered_position_pct: float = 0.35
     conviction_size_floor: float  = 0.30   # Minimum size factor at threshold conviction
     conviction_size_curve: float  = 0.85   # <1 ramps size faster, >1 slower
     euphoria_conviction_threshold: float = 38.0
@@ -494,7 +503,7 @@ class TradingConfig:
 
     # ── Trade size limits ───────────────────────────────
     min_trade_usd: float         = 100.0   # Small-capital friendly minimum
-    max_trade_usd: float         = 600.0   # Cap single-trade notional — rises with conviction
+    max_trade_usd: float         = 1000.0  # Cap single-trade margin budget; notional may rise with leverage
 
     # ── Dry-run (paper trading — no real orders sent) ───
     dry_run: bool                = True   # Explicit --live required for real orders

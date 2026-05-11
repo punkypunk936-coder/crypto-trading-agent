@@ -28,6 +28,8 @@ class OpenPosition:
     trailing_stop_price: float = 0.0
     opened_at: float = field(default_factory=time.time)
     exchange: str = ""
+    leverage: float = 1.0
+    margin_usd: float = 0.0
     metadata: dict = field(default_factory=dict)
 
 
@@ -41,6 +43,8 @@ class OrderRequest:
     stop_loss: float
     take_profit: float
     leverage: int           = 1
+    margin_usd: float       = 0.0
+    leverage_note: str      = ""
     approved: bool          = True
     rejection_reason: str   = ""
     conviction_tier: str    = ""
@@ -93,6 +97,106 @@ class RiskManager:
 
     # ── Order sizing ───────────────────────────────────────────
 
+    def _cfg_float(self, name: str, default: float) -> float:
+        try:
+            return float(getattr(self.cfg, name, default))
+        except Exception:
+            return float(default)
+
+    def _cfg_int(self, name: str, default: int) -> int:
+        try:
+            return int(getattr(self.cfg, name, default))
+        except Exception:
+            return int(default)
+
+    def select_adaptive_leverage(
+        self,
+        *,
+        conviction_tier: str,
+        conviction: float,
+        probability: float,
+        expectancy_r: float,
+        uncertainty: float,
+        rl_win_rate: float,
+        rl_pattern_boost: float,
+        starter_multiplier: float = 1.0,
+        event_starter: bool = False,
+        scale_in: bool = False,
+    ) -> tuple[int, str]:
+        """Choose per-order leverage from conviction, learned edge, and uncertainty."""
+        configured = max(1, self._cfg_int("leverage", 1))
+        min_lev = max(1, self._cfg_int("min_leverage", 1))
+        max_lev = max(min_lev, self._cfg_int("max_leverage", configured))
+        if not bool(getattr(self.cfg, "adaptive_leverage_enabled", False)):
+            fixed = max(min_lev, min(configured, max_lev))
+            return fixed, f"fixed {fixed}x"
+
+        base_lev = max(min_lev, min(self._cfg_int("base_leverage", configured), max_lev))
+        tier = str(conviction_tier or "").upper()
+        notes: List[str] = []
+
+        if tier.startswith("EXTREME"):
+            lev = base_lev + 2
+            notes.append("extreme conviction")
+        elif tier.startswith("HIGH"):
+            lev = base_lev + 1
+            notes.append("high conviction")
+        elif tier.startswith("MEDIUM"):
+            lev = base_lev
+            notes.append("medium conviction")
+        elif tier.startswith("BASE+"):
+            lev = max(min_lev, base_lev)
+            notes.append("base+ conviction")
+        else:
+            lev = min_lev
+            notes.append("base conviction")
+
+        if probability >= 0.68 and expectancy_r >= 0.35 and uncertainty <= 0.34:
+            lev += 2
+            notes.append("A+ forecast")
+        elif probability >= 0.62 and expectancy_r >= 0.22 and uncertainty <= 0.42:
+            lev += 1
+            notes.append("forecast edge")
+
+        if rl_win_rate >= 72.0:
+            lev += 1
+            notes.append("RL validated")
+        elif rl_win_rate <= 30.0:
+            lev -= 2
+            notes.append("poor RL history")
+        elif rl_win_rate <= 40.0:
+            lev -= 1
+            notes.append("weak RL history")
+
+        if rl_pattern_boost >= 0.08 and rl_win_rate >= 58.0:
+            lev += 1
+            notes.append("winning pattern")
+        elif rl_pattern_boost < 0:
+            lev -= 1
+            notes.append("pattern penalty")
+
+        max_allowed = max_lev
+        if scale_in:
+            max_allowed = min(max_allowed, max(1, self._cfg_int("scale_in_max_leverage", 4)))
+            notes.append("scale-in cap")
+        if event_starter:
+            max_allowed = min(max_allowed, max(1, self._cfg_int("event_starter_max_leverage", 3)))
+            notes.append("event-risk cap")
+        elif starter_multiplier < 0.999:
+            max_allowed = min(max_allowed, max(1, self._cfg_int("starter_max_leverage", 2)))
+            notes.append("starter cap")
+
+        if uncertainty >= 0.60 or probability < 0.53:
+            max_allowed = min(max_allowed, 1)
+            notes.append("low clarity")
+        elif uncertainty >= 0.50 or probability < 0.58 or expectancy_r < 0.10:
+            max_allowed = min(max_allowed, 2)
+            notes.append("clarity cap")
+
+        lev = max(min_lev, min(int(round(lev)), max_allowed))
+        note = f"{lev}x: " + ", ".join(notes[:4])
+        return lev, note
+
     def compute_order(
         self,
         coin: str,
@@ -110,6 +214,7 @@ class RiskManager:
         uncertainty: float | None = None,
         thesis_conviction: float | None = None,
         sizing_multiplier: float | None = None,
+        event_starter: bool = False,
     ) -> OrderRequest:
         """
         Conviction-aware order sizing.
@@ -120,8 +225,11 @@ class RiskManager:
           • Extreme conviction without learned edge gets dampened to avoid euphoria
         Returns approved=False if any rule is violated.
         """
-        # ── Maximum size for this trade ───────────────────
-        max_trade_usd = portfolio_usd * self.cfg.max_position_pct
+        # ── Maximum margin budget for this trade ───────────────────
+        max_margin_usd = min(
+            portfolio_usd * self.cfg.max_position_pct,
+            self._cfg_float("max_trade_usd", portfolio_usd * self.cfg.max_position_pct),
+        )
 
         # ── Continuous conviction sizing ────────────────────────────────
         # conviction: score distance from neutral (50).
@@ -205,11 +313,32 @@ class RiskManager:
         starter_multiplier = max(0.10, min(starter_multiplier, 1.0))
         total_factor *= starter_multiplier
 
-        size_usd = min(max_trade_usd * total_factor, self.cfg.max_trade_usd)
+        leverage, leverage_note = self.select_adaptive_leverage(
+            conviction_tier=conviction_tier,
+            conviction=conviction,
+            probability=probability,
+            expectancy_r=expectancy_r,
+            uncertainty=uncertainty_level,
+            rl_win_rate=rl_win_rate,
+            rl_pattern_boost=rl_pattern_boost,
+            starter_multiplier=starter_multiplier,
+            event_starter=event_starter,
+            scale_in=False,
+        )
+
+        margin_usd = min(max_margin_usd * total_factor, self._cfg_float("max_trade_usd", max_margin_usd))
+        max_notional_cfg = self._cfg_float(
+            "max_trade_notional_usd",
+            self._cfg_float("max_trade_usd", margin_usd) * max(leverage, 1),
+        )
+        max_notional_portfolio = portfolio_usd * self._cfg_float("max_levered_position_pct", self.cfg.max_position_pct)
+        max_notional_usd = max(0.0, min(max_notional_cfg, max_notional_portfolio))
+        size_usd = min(margin_usd * max(leverage, 1), max_notional_usd)
 
         # Cap at available capital
         avail    = self.available_capital(portfolio_usd)
         size_usd = min(size_usd, avail)
+        margin_usd = size_usd / max(leverage, 1)
 
         # ── Minimum trade check ───────────────────────────
         if size_usd < self.cfg.min_trade_usd:
@@ -255,9 +384,23 @@ class RiskManager:
                                 f"skipping HYPE-style add"
                             ),
                         )
+                    scale_leverage, scale_leverage_note = self.select_adaptive_leverage(
+                        conviction_tier=conviction_tier,
+                        conviction=conviction,
+                        probability=probability,
+                        expectancy_r=expectancy_r,
+                        uncertainty=uncertainty_level,
+                        rl_win_rate=rl_win_rate,
+                        rl_pattern_boost=rl_pattern_boost,
+                        starter_multiplier=starter_multiplier,
+                        event_starter=event_starter,
+                        scale_in=True,
+                    )
                     scale_coin = scale_usd / current_price if current_price > 0 else 0.0
+                    scale_margin = scale_usd / max(scale_leverage, 1)
                     log.info(
-                        f"[{coin}] 📈 SCALE-IN approved: {direction} +${scale_usd:.2f} "
+                        f"[{coin}] 📈 SCALE-IN approved: {direction} +${scale_usd:.2f} notional "
+                        f"(${scale_margin:.2f} margin @ {scale_leverage}x) "
                         f"(50%% add to profitable {pos.direction} @ "
                         f"entry=${pos.entry_price:.2f} cur=${current_price:.2f}) "
                         f"| Conviction: {conviction_tier}"
@@ -270,7 +413,9 @@ class RiskManager:
                         price           = current_price,
                         stop_loss       = stop_loss_price,
                         take_profit     = take_profit_price,
-                        leverage        = self.cfg.leverage,
+                        leverage        = scale_leverage,
+                        margin_usd      = scale_margin,
+                        leverage_note   = scale_leverage_note,
                         approved        = True,
                         conviction_tier = conviction_tier + "_SCALEIN",
                         conviction_pct  = total_factor * 100,
@@ -315,10 +460,13 @@ class RiskManager:
             sizing_parts.append(f"pattern={rl_pattern_boost*100:+.0f}%")
         if euphoria_penalty:
             sizing_parts.append(f"euphoria={euphoria_penalty*100:.0f}%")
+        sizing_parts.append(f"lev={leverage}x")
+        sizing_parts.append(f"margin=${margin_usd:.0f}")
         sizing_summary = " ".join(sizing_parts)
         log.info(
             f"[{coin}] ✅ Order approved: {direction} "
-            f"${size_usd:.2f} ({size_coin:.6f} coins) "
+            f"${size_usd:.2f} notional (${margin_usd:.2f} margin @ {leverage}x) "
+            f"({size_coin:.6f} coins) "
             f"SL=${stop_loss_price:.2f} TP=${take_profit_price:.2f} "
             f"({abs(current_price - stop_loss_price) / max(current_price, 1e-9) * 100:.1f}% SL / "
             f"{abs(take_profit_price - current_price) / max(current_price, 1e-9) * 100:.1f}% TP) "
@@ -334,7 +482,9 @@ class RiskManager:
             price           = current_price,
             stop_loss       = stop_loss_price,
             take_profit     = take_profit_price,
-            leverage        = self.cfg.leverage,
+            leverage        = leverage,
+            margin_usd      = margin_usd,
+            leverage_note   = leverage_note,
             approved        = True,
             conviction_tier = conviction_tier,
             conviction_pct  = total_factor * 100,
@@ -349,6 +499,15 @@ class RiskManager:
         else:
             trail_price = order.price * (1 + self.cfg.trailing_stop_pct)
 
+        leverage = max(1, int(getattr(order, "leverage", None) or self.cfg.leverage or 1))
+        margin_usd = float(getattr(order, "margin_usd", 0.0) or 0.0)
+        if margin_usd <= 0:
+            margin_usd = float(order.size_usd or 0.0) / max(leverage, 1)
+        metadata_payload = dict(metadata or {})
+        metadata_payload.setdefault("leverage", leverage)
+        metadata_payload.setdefault("margin_usd", margin_usd)
+        metadata_payload.setdefault("leverage_note", getattr(order, "leverage_note", ""))
+
         pos = OpenPosition(
             coin               = order.coin,
             direction          = order.direction,
@@ -359,22 +518,29 @@ class RiskManager:
             take_profit        = order.take_profit,
             trailing_stop_price= trail_price,
             exchange           = exchange,
-            metadata           = dict(metadata or {}),
+            leverage           = float(leverage),
+            margin_usd         = margin_usd,
+            metadata           = metadata_payload,
         )
         self.positions[order.coin] = pos
         log.info(
             f"[{order.coin}] 📈 Position OPENED: {order.direction} "
-            f"entry=${order.price:.2f} "
+            f"entry=${order.price:.2f} notional=${order.size_usd:.2f} "
+            f"margin=${margin_usd:.2f} lev={leverage}x "
             f"SL=${order.stop_loss:.2f} ({abs(order.price - order.stop_loss) / max(order.price, 1e-9) * 100:.1f}%) "
             f"TP=${order.take_profit:.2f} ({abs(order.take_profit - order.price) / max(order.price, 1e-9) * 100:.1f}%)"
         )
 
     def restore_position(self, position: OpenPosition):
         """Restore a position into the in-memory risk state after restart."""
+        if float(getattr(position, "margin_usd", 0.0) or 0.0) <= 0:
+            leverage = max(1.0, float(getattr(position, "leverage", 1.0) or 1.0))
+            position.margin_usd = float(getattr(position, "size_usd", 0.0) or 0.0) / leverage
         self.positions[position.coin] = position
         log.info(
             f"[{position.coin}] Restored position: {position.direction} "
-            f"entry=${position.entry_price:.2f} size=${position.size_usd:.2f} "
+            f"entry=${position.entry_price:.2f} notional=${position.size_usd:.2f} "
+            f"margin=${getattr(position, 'margin_usd', 0.0):.2f} lev={getattr(position, 'leverage', 1.0)}x "
             f"exchange={position.exchange or 'unknown'}"
         )
 
@@ -408,6 +574,14 @@ class RiskManager:
         pos.entry_price = weighted_entry
         pos.size_usd = new_size_usd
         pos.size_coin = new_size_coin
+        existing_margin = float(getattr(pos, "margin_usd", 0.0) or 0.0)
+        if existing_margin <= 0:
+            existing_margin = float(pos.size_usd - order.size_usd) / max(float(getattr(pos, "leverage", 1.0) or 1.0), 1.0)
+        added_margin = float(getattr(order, "margin_usd", 0.0) or 0.0)
+        if added_margin <= 0:
+            added_margin = float(order.size_usd or 0.0) / max(int(getattr(order, "leverage", 1) or 1), 1)
+        pos.margin_usd = existing_margin + added_margin
+        pos.leverage = round(new_size_usd / max(pos.margin_usd, 1e-9), 2)
         pos.stop_loss = order.stop_loss
         pos.take_profit = order.take_profit
         pos.exchange = exchange or pos.exchange
@@ -418,7 +592,8 @@ class RiskManager:
         )
         log.info(
             f"[{order.coin}] 📈 Scale-in filled: new entry=${weighted_entry:.2f} "
-            f"size=${new_size_usd:.2f} exchange={pos.exchange or 'unknown'}"
+            f"notional=${new_size_usd:.2f} margin=${pos.margin_usd:.2f} "
+            f"effective_lev={pos.leverage}x exchange={pos.exchange or 'unknown'}"
         )
 
     def record_close(self, coin: str, exit_price: float, reason: str = "signal",
@@ -454,6 +629,8 @@ class RiskManager:
             "entry":     pos.entry_price,
             "exit":      exit_price,
             "size_usd":  pos.size_usd,
+            "margin_usd": getattr(pos, "margin_usd", 0.0),
+            "leverage": getattr(pos, "leverage", 1.0),
             "pnl_pct":   pnl_pct,
             "pnl_usd":   pnl_usd,
             "reason":    reason,

@@ -67,6 +67,8 @@ class PendingOrder:
     take_profit: float
     signal_score: float
     exchange: str = ""
+    leverage: int = 1
+    margin_usd: float = 0.0
     exchange_order_id: Optional[str] = None   # filled by exchange after placement
     state: OrderState = OrderState.PENDING
     cycles_waiting: int = 0
@@ -286,6 +288,8 @@ class OrderManager:
                     "tp":        tp,
                     "score":     watch.signal_score,
                     "reason":    "re_entry",
+                    "leverage":  int((watch.entry_context or {}).get("leverage", 1) or 1),
+                    "margin_usd": float((watch.entry_context or {}).get("margin_usd", 0.0) or 0.0),
                     "entry_context": dict(watch.entry_context or {}),
                     "trade_plan": dict(watch.trade_plan or {}),
                 })

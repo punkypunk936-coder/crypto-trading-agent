@@ -478,7 +478,14 @@ class TradingAgent:
         log.info(f"  Trade coins: {self._tradable_coins}")
         log.info(f"  Watchlist : {self._analysis_coins}")
         log.info(f"  Exchanges : {[e.name for e in self.exchanges]}")
-        log.info(f"  Leverage  : {self.cfg.trading.leverage}×")
+        if getattr(self.cfg.trading, "adaptive_leverage_enabled", False):
+            log.info(
+                f"  Leverage  : adaptive {getattr(self.cfg.trading, 'min_leverage', 1)}×-"
+                f"{getattr(self.cfg.trading, 'max_leverage', self.cfg.trading.leverage)}× "
+                f"(base {getattr(self.cfg.trading, 'base_leverage', self.cfg.trading.leverage)}×)"
+            )
+        else:
+            log.info(f"  Leverage  : {self.cfg.trading.leverage}×")
         if getattr(self.cfg.trading, "dynamic_trade_planning", True):
             log.info("  Trade plan: dynamic ATR + structure-based SL/TP")
         else:
@@ -891,6 +898,8 @@ class TradingAgent:
                     trailing_stop_price=float(trail or 0.0),
                     opened_at=opened_at,
                     exchange=pos.get("exchange", ""),
+                    leverage=float(pos.get("leverage", self.cfg.trading.leverage) or self.cfg.trading.leverage),
+                    margin_usd=float(pos.get("margin_usd", 0.0) or 0.0),
                     metadata=pos.get("metadata", {}) or {},
                 )
             )
@@ -901,7 +910,7 @@ class TradingAgent:
                 size_usd=float(pos.get("size_usd", 0.0) or 0.0),
                 stop_loss=float(pos.get("stop_loss", 0.0) or 0.0),
                 take_profit=float(pos.get("take_profit", 0.0) or 0.0),
-                leverage=self.cfg.trading.leverage,
+                leverage=int(float(pos.get("leverage", self.cfg.trading.leverage) or self.cfg.trading.leverage)),
                 opened_at=datetime.utcfromtimestamp(opened_at).strftime("%Y-%m-%d %H:%M"),
             )
 
@@ -919,6 +928,8 @@ class TradingAgent:
                 take_profit=float(order.get("take_profit", 0.0) or 0.0),
                 signal_score=float(order.get("signal_score", 0.0) or 0.0),
                 exchange=order.get("exchange", ""),
+                leverage=int(order.get("leverage", self.cfg.trading.leverage) or self.cfg.trading.leverage),
+                margin_usd=float(order.get("margin_usd", 0.0) or 0.0),
                 exchange_order_id=order.get("exchange_order_id", ""),
                 cycles_waiting=int(order.get("cycles_waiting", 0) or 0),
                 reprice_count=int(order.get("reprice_count", 0) or 0),
@@ -926,6 +937,8 @@ class TradingAgent:
                 placed_at=float(order.get("placed_at", time.time()) or time.time()),
                 metadata=order.get("metadata", {}) or {},
             )
+            if float(getattr(restored_order, "margin_usd", 0.0) or 0.0) <= 0:
+                restored_order.margin_usd = restored_order.size_usd / max(int(restored_order.leverage or 1), 1)
             self.order_mgr.restore_pending_order(restored_order)
             self._restore_exchange_pending_limit(restored_order)
 
@@ -992,6 +1005,7 @@ class TradingAgent:
                     if direction == "LONG"
                     else entry_price * (1 + self.cfg.trading.trailing_stop_pct)
                 )
+                leverage = float(pos.get("leverage", self.cfg.trading.leverage) or self.cfg.trading.leverage)
                 reconciled[coin] = OpenPosition(
                     coin=coin,
                     direction=direction,
@@ -1002,6 +1016,8 @@ class TradingAgent:
                     take_profit=take_profit,
                     trailing_stop_price=trailing_stop_price,
                     exchange=ex.name,
+                    leverage=leverage,
+                    margin_usd=size_usd / max(leverage, 1.0),
                 )
                 trade_logger.restore_open(
                     coin=coin,
@@ -1010,7 +1026,7 @@ class TradingAgent:
                     size_usd=size_usd,
                     stop_loss=stop_loss,
                     take_profit=take_profit,
-                    leverage=self.cfg.trading.leverage,
+                    leverage=int(leverage),
                 )
         if reconciled:
             self.risk.replace_positions(reconciled)
@@ -2205,6 +2221,11 @@ class TradingAgent:
         # ── Pull RL stats to inform position sizing ────────────────────────
         # Risk-check & size the order (conviction + RL win-rate aware)
         conviction_entry = dict((getattr(signal, "thesis", {}) or {}).get("conviction_entry") or {})
+        pre_ipo_event = self._is_pre_ipo_asset(coin)
+        event_starter = bool(
+            (conviction_entry.get("active") and conviction_entry.get("event_conviction"))
+            or pre_ipo_event
+        )
         order = self.risk.compute_order(
             coin              = coin,
             direction         = signal.action,
@@ -2221,6 +2242,7 @@ class TradingAgent:
             uncertainty       = float((getattr(signal, "expectancy", {}) or {}).get("uncertainty", 0.50) or 0.50),
             thesis_conviction = float((getattr(signal, "thesis", {}) or {}).get("conviction_score", signal.score) or signal.score),
             sizing_multiplier = float(conviction_entry.get("size_multiplier", 1.0) or 1.0),
+            event_starter     = event_starter,
         )
 
         if not order.approved:
@@ -2235,15 +2257,15 @@ class TradingAgent:
             )
             return
 
-        pre_ipo_event = self._is_pre_ipo_asset(coin)
-        event_starter = bool(
-            (conviction_entry.get("active") and conviction_entry.get("event_conviction"))
-            or pre_ipo_event
-        )
         if pre_ipo_event:
             self._last_signals.setdefault(coin, {})
             self._last_signals[coin]["pre_ipo_event"] = True
             self._last_signals[coin]["conviction_entry_event"] = True
+        self._last_signals.setdefault(coin, {})
+        self._last_signals[coin]["leverage"] = getattr(order, "leverage", self.cfg.trading.leverage)
+        self._last_signals[coin]["margin_usd"] = getattr(order, "margin_usd", 0.0)
+        self._last_signals[coin]["leverage_note"] = getattr(order, "leverage_note", "")
+        self._last_signals[coin]["order_notional_usd"] = getattr(order, "size_usd", 0.0)
         if not self._apply_north_star_guard_to_order(
             coin,
             signal,
@@ -2333,6 +2355,9 @@ class TradingAgent:
                         return
                 order.size_usd = trimmed_size_usd
                 order.size_coin = trimmed_size_usd / max(float(getattr(order, "price", signal.price) or signal.price), 1e-9)
+                order.margin_usd = trimmed_size_usd / max(self._order_leverage(order), 1)
+                self._last_signals[coin]["margin_usd"] = getattr(order, "margin_usd", 0.0)
+                self._last_signals[coin]["order_notional_usd"] = getattr(order, "size_usd", 0.0)
                 self._last_signals[coin]["portfolio_guard_summary"] = (
                     f"{portfolio_theme_guard.get('summary', '')} Size trimmed to ${trimmed_size_usd:.2f}."
                 ).strip()
@@ -2408,6 +2433,8 @@ class TradingAgent:
                     entry_context=self._build_entry_context(coin, signal, order, entry_type="initial_limit"),
                     trade_plan=dict(getattr(signal, "trade_plan", {}) or {}),
                     maker_only=(plan_mode == "maker_limit"),
+                    leverage=getattr(order, "leverage", self.cfg.trading.leverage),
+                    margin_usd=getattr(order, "margin_usd", 0.0),
                 )
                 log.info(
                     f"[{coin}] 📋 Planned {plan_mode} entry @ ${limit_price:.2f} "
@@ -3211,6 +3238,9 @@ class TradingAgent:
             trimmed = max(min_trade if event_starter or pair_trade else 0.0, trimmed)
             order.size_usd = trimmed
             order.size_coin = trimmed / max(float(getattr(order, "price", getattr(signal, "price", 0.0)) or 0.0), 1e-9)
+            order.margin_usd = trimmed / max(self._order_leverage(order), 1)
+            self._last_signals[coin]["margin_usd"] = getattr(order, "margin_usd", 0.0)
+            self._last_signals[coin]["order_notional_usd"] = getattr(order, "size_usd", 0.0)
             log.info(
                 f"[{coin}] 🧭 North-star recovery trims size ${original_size:.2f} → "
                 f"${trimmed:.2f}: {guard.get('summary', '')}"
@@ -4315,6 +4345,9 @@ class TradingAgent:
             "execution_coach_stretch_bps": sig.get("execution_coach_stretch_bps", 0.0),
             "estimated_slippage_bps": sig.get("estimated_slippage_bps", 0.0),
             "execution_persistence_cycles": sig.get("execution_persistence_cycles", 0),
+            "leverage": getattr(order, "leverage", self.cfg.trading.leverage),
+            "margin_usd": getattr(order, "margin_usd", 0.0),
+            "leverage_note": getattr(order, "leverage_note", ""),
             "conviction_tier": getattr(order, "conviction_tier", ""),
             "conviction_pct": getattr(order, "conviction_pct", 0.0),
         }
@@ -4448,14 +4481,35 @@ class TradingAgent:
             ctx["remaining_to_sl_pct"] = round(remaining_to_sl / entry * 100, 3)
         return ctx
 
+    def _order_leverage(self, order=None) -> int:
+        try:
+            leverage = int(getattr(order, "leverage", None) or self.cfg.trading.leverage or 1)
+        except Exception:
+            leverage = int(getattr(self.cfg.trading, "leverage", 1) or 1)
+        return max(1, leverage)
+
+    def _order_margin_usd(self, order=None) -> float:
+        leverage = self._order_leverage(order)
+        try:
+            margin = float(getattr(order, "margin_usd", 0.0) or 0.0)
+        except Exception:
+            margin = 0.0
+        if margin <= 0 and order is not None:
+            margin = float(getattr(order, "size_usd", 0.0) or 0.0) / max(leverage, 1)
+        return max(0.0, margin)
+
     def _execute_order(self, coin, signal, order):
         exchanges = self._eligible_exchanges(coin)
         if not exchanges:
             log.error(f"[{coin}] No exchange supports this symbol")
             return False
 
+        order_leverage = self._order_leverage(order)
+        if getattr(order, "margin_usd", 0.0) <= 0:
+            order.margin_usd = self._order_margin_usd(order)
+
         for ex in exchanges:
-            ex.set_leverage(coin, self.cfg.trading.leverage)
+            ex.set_leverage(coin, order_leverage)
 
             result = None
             for attempt in range(1, 4):
@@ -4512,7 +4566,7 @@ class TradingAgent:
                                 size_usd=pos.size_usd,
                                 stop_loss=pos.stop_loss,
                                 take_profit=pos.take_profit,
-                                leverage=self.cfg.trading.leverage,
+                                leverage=order_leverage,
                                 signal_score=signal.score,
                             )
                     log.warning(f"[{coin}] Verification recovered from reconciliation on {ex.name}")
@@ -4542,7 +4596,7 @@ class TradingAgent:
                             stop_loss    = order.stop_loss,
                             take_profit  = order.take_profit,
                             signal_score = signal.score,
-                            leverage     = self.cfg.trading.leverage,
+                            leverage     = order_leverage,
                         )
                     log.info(f"[{coin}] Position verified on {ex.name}")
 
@@ -4566,6 +4620,7 @@ class TradingAgent:
                 log.info(
                     f"[{coin}] ✅ {'scale-in added' if order.is_scale_in else signal.action + ' opened'} on {ex.name}: "
                     f"{order.size_coin:.6f} @ ${fill_price:.2f} "
+                    f"| ${order.size_usd:.2f} notional / ${self._order_margin_usd(order):.2f} margin @ {order_leverage}x "
                     f"| SL ${order.stop_loss:.2f} TP ${order.take_profit:.2f}"
                 )
                 return True
@@ -4585,6 +4640,8 @@ class TradingAgent:
                 "direction": pos.direction,
                 "entry_price": pos.entry_price,
                 "size_usd": pos.size_usd,
+                "margin_usd": getattr(pos, "margin_usd", 0.0),
+                "leverage": getattr(pos, "leverage", 1.0),
                 "entry_context": entry_context,
             })
 
@@ -4596,6 +4653,8 @@ class TradingAgent:
                 "direction": pending.direction,
                 "limit_price": pending.limit_price,
                 "size_usd": pending.size_usd,
+                "margin_usd": getattr(pending, "margin_usd", 0.0),
+                "leverage": getattr(pending, "leverage", 1),
                 "entry_context": entry_context,
             })
 
@@ -4958,6 +5017,18 @@ class TradingAgent:
                 )
                 continue
 
+            starter_leverage, starter_leverage_note = self.risk.select_adaptive_leverage(
+                conviction_tier="MEDIUM" if signal.score < 75 else "HIGH",
+                conviction=abs(signal.score - 50.0),
+                probability=float(expectancy.get("probability") or 0.55),
+                expectancy_r=float(expectancy.get("expected_r") or 0.15),
+                uncertainty=float(expectancy.get("uncertainty") or 0.55),
+                rl_win_rate=50.0,
+                rl_pattern_boost=0.0,
+                starter_multiplier=float(thesis["conviction_entry"].get("size_multiplier") or 1.0),
+                event_starter=not is_pair_trade,
+                scale_in=False,
+            )
             order = OrderRequest(
                 coin=coin,
                 direction=direction,
@@ -4966,7 +5037,9 @@ class TradingAgent:
                 price=price,
                 stop_loss=signal.stop_loss_price,
                 take_profit=signal.take_profit_price,
-                leverage=self.cfg.trading.leverage,
+                leverage=starter_leverage,
+                margin_usd=final_size / max(starter_leverage, 1),
+                leverage_note=starter_leverage_note,
                 approved=True,
                 conviction_tier="PROACTIVE_EVENT_STARTER",
                 conviction_pct=signal.score,
@@ -4990,11 +5063,14 @@ class TradingAgent:
                 })
                 continue
             final_size = float(order.size_usd or final_size)
+            order.margin_usd = final_size / max(self._order_leverage(order), 1)
             execution["summary"]["attempted_count"] += 1
             execution["attempts"].append({
                 "coin": coin,
                 "direction": direction,
                 "size_usd": round(final_size, 2),
+                "margin_usd": round(float(getattr(order, "margin_usd", 0.0) or 0.0), 2),
+                "leverage": getattr(order, "leverage", self.cfg.trading.leverage),
                 "theme": guard.get("theme", ""),
                 "scout_score": signal.score,
                 "portfolio_guard": guard,
@@ -5002,7 +5078,8 @@ class TradingAgent:
             self._proactive_starter_attempt_ts[coin] = time.time()
             log.info(
                 f"[{coin}] 🧭 {'Pair hedge' if is_pair_trade else 'Proactive starter'} executing: {direction} "
-                f"${final_size:.2f} via starter basket | {guard.get('summary', '')}"
+                f"${final_size:.2f} notional / ${getattr(order, 'margin_usd', 0.0):.2f} margin "
+                f"@ {getattr(order, 'leverage', self.cfg.trading.leverage)}x via starter basket | {guard.get('summary', '')}"
             )
             executed = self._execute_order(coin, signal, order)
             self._record_decision_snapshot(
@@ -5018,6 +5095,8 @@ class TradingAgent:
                     "coin": coin,
                     "direction": direction,
                     "size_usd": round(final_size, 2),
+                    "margin_usd": round(float(getattr(order, "margin_usd", 0.0) or 0.0), 2),
+                    "leverage": getattr(order, "leverage", self.cfg.trading.leverage),
                     "theme": guard.get("theme", ""),
                     "scout_score": signal.score,
                 }
@@ -5037,14 +5116,20 @@ class TradingAgent:
                            entry_context: Optional[dict] = None,
                            trade_plan: Optional[dict] = None,
                            maker_only: bool = False,
-                           extra_metadata: Optional[dict] = None) -> dict:
+                           extra_metadata: Optional[dict] = None,
+                           leverage: Optional[int] = None,
+                           margin_usd: float = 0.0) -> dict:
         """Place a limit order on the first eligible exchange and register or book any fill."""
         exchanges = [ex for ex in self._eligible_exchanges(coin) if ex.supports_limit_orders()]
         if not exchanges:
             log.error(f"[{coin}] No exchange supports limit orders for this symbol")
             return {"success": False, "pending": False, "filled": False}
+        order_leverage = max(1, int(leverage or getattr(self.cfg.trading, "leverage", 1) or 1))
+        order_margin_usd = float(margin_usd or 0.0)
+        if order_margin_usd <= 0:
+            order_margin_usd = float(size_usd or 0.0) / max(order_leverage, 1)
         for ex in exchanges:
-            ex.set_leverage(coin, self.cfg.trading.leverage)
+            ex.set_leverage(coin, order_leverage)
             size_coin = size_usd / limit_price if limit_price > 0 else 0
 
             if direction == "LONG":
@@ -5060,15 +5145,20 @@ class TradingAgent:
                 same_direction_position = self.risk.has_position(coin) and self.risk.position_direction(coin) == direction
 
                 if filled_size_coin > 0 and fill_price > 0:
+                    filled_size_usd = filled_size_coin * fill_price
+                    fill_margin_usd = (
+                        order_margin_usd * min(1.0, filled_size_usd / max(float(size_usd or 0.0), 1e-9))
+                    )
                     filled_order = OrderRequest(
                         coin=coin,
                         direction=direction,
-                        size_usd=filled_size_coin * fill_price,
+                        size_usd=filled_size_usd,
                         size_coin=filled_size_coin,
                         price=fill_price,
                         stop_loss=sl,
                         take_profit=tp,
-                        leverage=self.cfg.trading.leverage,
+                        leverage=order_leverage,
+                        margin_usd=fill_margin_usd,
                         approved=True,
                     )
                     entry_payload = {
@@ -5110,7 +5200,7 @@ class TradingAgent:
                             stop_loss=sl,
                             take_profit=tp,
                             signal_score=score,
-                            leverage=self.cfg.trading.leverage,
+                            leverage=order_leverage,
                         )
                     self.notifier.trade_opened(
                         coin=coin,
@@ -5126,7 +5216,8 @@ class TradingAgent:
                     )
                     log.info(
                         f"[{coin}] ✅ Limit {'scale-in' if same_direction_position else direction} immediately filled on {ex.name}: "
-                        f"{filled_size_coin:.6f} @ ${fill_price:.2f}"
+                        f"{filled_size_coin:.6f} @ ${fill_price:.2f} "
+                        f"| ${filled_order.size_usd:.2f} notional / ${filled_order.margin_usd:.2f} margin @ {order_leverage}x"
                     )
 
                 if remaining_size_coin <= 1e-9 or not result.order_id:
@@ -5142,10 +5233,14 @@ class TradingAgent:
                     take_profit       = tp,
                     signal_score      = score,
                     exchange          = ex.name,
+                    leverage          = order_leverage,
+                    margin_usd        = remaining_size_usd / max(order_leverage, 1),
                     exchange_order_id = result.order_id,
                     reprice_count     = int((extra_metadata or {}).get("reprice_count", 0) or 0),
                     reason            = reason,
                     metadata          = {
+                        "leverage": order_leverage,
+                        "margin_usd": remaining_size_usd / max(order_leverage, 1),
                         "entry_context": (
                             dict(entry_context or {})
                             or self._build_entry_context(
@@ -5182,6 +5277,7 @@ class TradingAgent:
                 self.order_mgr.register_limit_order(pending)
                 log.info(
                     f"[{coin}] 📋 Limit {direction} placed @ ${limit_price:.2f} "
+                    f"${remaining_size_usd:.2f} notional / ${remaining_size_usd / max(order_leverage, 1):.2f} margin @ {order_leverage}x "
                     f"SL=${sl:.2f} TP=${tp:.2f} (reason={reason})"
                 )
                 return {"success": True, "pending": True, "filled": filled_size_coin > 0}
@@ -5197,12 +5293,24 @@ class TradingAgent:
             coin      = action["coin"]
             direction = action["direction"]
             price     = action["price"]
-            size_usd  = min(action.get("size_usd", self.cfg.trading.max_trade_usd),
-                            self.cfg.trading.max_trade_usd)
+            notional_cap = float(
+                getattr(
+                    self.cfg.trading,
+                    "max_trade_notional_usd",
+                    getattr(self.cfg.trading, "max_trade_usd", 0.0),
+                )
+                or getattr(self.cfg.trading, "max_trade_usd", 0.0)
+            )
+            size_usd  = min(action.get("size_usd", notional_cap), notional_cap)
             sl        = action["sl"]
             tp        = action["tp"]
             score     = action.get("score", 60.0)
             reason    = action.get("reason", "re_entry")
+            entry_context = dict(action.get("entry_context") or {})
+            leverage = int(action.get("leverage") or entry_context.get("leverage") or self.cfg.trading.leverage or 1)
+            margin_usd = float(action.get("margin_usd") or entry_context.get("margin_usd") or 0.0)
+            if margin_usd <= 0:
+                margin_usd = size_usd / max(leverage, 1)
 
             # Final sanity check: don't open if we already have this position
             if self.risk.has_position(coin):
@@ -5211,8 +5319,10 @@ class TradingAgent:
 
             self._place_limit_order(
                 coin, direction, price, size_usd, sl, tp, score, reason,
-                entry_context=action.get("entry_context"),
+                entry_context=entry_context,
                 trade_plan=action.get("trade_plan"),
+                leverage=leverage,
+                margin_usd=margin_usd,
             )
 
         elif action["type"] == "cancel_limit":
@@ -5272,7 +5382,8 @@ class TradingAgent:
                     price       = fill_price,
                     stop_loss   = pending.stop_loss,
                     take_profit = pending.take_profit,
-                    leverage    = self.cfg.trading.leverage,
+                    leverage    = getattr(pending, "leverage", self.cfg.trading.leverage),
+                    margin_usd  = getattr(pending, "margin_usd", 0.0) or (pending.size_usd / max(int(getattr(pending, "leverage", self.cfg.trading.leverage) or 1), 1)),
                     approved    = True,
                 )
                 if recovered:
@@ -5294,7 +5405,7 @@ class TradingAgent:
                                 size_usd=pos.size_usd,
                                 stop_loss=pos.stop_loss,
                                 take_profit=pos.take_profit,
-                                leverage=self.cfg.trading.leverage,
+                                leverage=getattr(pending, "leverage", self.cfg.trading.leverage),
                                 signal_score=pending.signal_score,
                             )
                 else:
@@ -5347,7 +5458,7 @@ class TradingAgent:
                             stop_loss    = pending.stop_loss,
                             take_profit  = pending.take_profit,
                             signal_score = pending.signal_score,
-                            leverage     = self.cfg.trading.leverage,
+                            leverage     = getattr(pending, "leverage", self.cfg.trading.leverage),
                         )
                 self.notifier.trade_opened(
                     coin     = coin,
@@ -5491,6 +5602,8 @@ class TradingAgent:
                         "prior_size_usd": float(pending.size_usd or 0.0),
                         "north_star_guard": guard,
                     },
+                    leverage=getattr(pending, "leverage", self.cfg.trading.leverage),
+                    margin_usd=target_size / max(int(getattr(pending, "leverage", self.cfg.trading.leverage) or 1), 1),
                 )
                 self._record_decision_snapshot(
                     coin,
@@ -5532,6 +5645,8 @@ class TradingAgent:
                 "prior_limit_price": float(getattr(pending, "limit_price", 0.0) or 0.0),
                 "pending_management_reason": reason,
             },
+            leverage=getattr(pending, "leverage", self.cfg.trading.leverage),
+            margin_usd=getattr(pending, "margin_usd", 0.0),
         )
         if result.get("success"):
             log.info(
@@ -5557,7 +5672,10 @@ class TradingAgent:
             price=float(live_price or pending.limit_price or 0.0),
             stop_loss=pending.stop_loss,
             take_profit=pending.take_profit,
-            leverage=self.cfg.trading.leverage,
+            leverage=getattr(pending, "leverage", self.cfg.trading.leverage),
+            margin_usd=getattr(pending, "margin_usd", 0.0) or (
+                pending.size_usd / max(int(getattr(pending, "leverage", self.cfg.trading.leverage) or 1), 1)
+            ),
             approved=True,
         )
         synthetic_signal = self._build_pending_signal(pending, live_price=live_price, reason=reason)
@@ -5699,7 +5817,10 @@ class TradingAgent:
                         price=live_price,
                         stop_loss=pending.stop_loss,
                         take_profit=pending.take_profit,
-                        leverage=self.cfg.trading.leverage,
+                        leverage=getattr(pending, "leverage", self.cfg.trading.leverage),
+                        margin_usd=getattr(pending, "margin_usd", 0.0) or (
+                            pending.size_usd / max(int(getattr(pending, "leverage", self.cfg.trading.leverage) or 1), 1)
+                        ),
                         approved=True,
                     )
                     execution_quality = self._assess_execution_quality(coin, pending.direction, order, orderbook_signal)
@@ -6092,6 +6213,8 @@ class TradingAgent:
                 size_coin=order.size_coin,
                 limit_price=order.limit_price,
                 size_usd=order.size_usd,
+                leverage=getattr(order, "leverage", self.cfg.trading.leverage),
+                margin_usd=getattr(order, "margin_usd", 0.0),
             )
         except Exception as exc:
             log.warning(f"[{order.coin}] Could not restore pending limit on {ex.name}: {exc}")
@@ -6142,6 +6265,8 @@ class TradingAgent:
                 "take_profit":   p.take_profit,
                 "trailing_stop": p.trailing_stop_price,
                 "size_usd":      p.size_usd,
+                "margin_usd":    getattr(p, "margin_usd", 0.0),
+                "leverage":      getattr(p, "leverage", 1.0),
                 "unrealised_pnl":round(upnl, 2),
                 "opened_at":     getattr(p, "opened_at", None),
                 "invalidation":  self._invalidation_text(p.direction, p.stop_loss),
@@ -6170,6 +6295,8 @@ class TradingAgent:
                 "direction":   o.direction,
                 "limit_price": o.limit_price,
                 "size_usd":    o.size_usd,
+                "margin_usd":  getattr(o, "margin_usd", 0.0),
+                "leverage":    getattr(o, "leverage", 1),
                 "stop_loss":   o.stop_loss,
                 "take_profit": o.take_profit,
                 "invalidation": self._invalidation_text(o.direction, o.stop_loss),
@@ -6247,6 +6374,7 @@ class TradingAgent:
             "status":        "running",
             "mode":          "dry_run" if self.cfg.is_dry_run else "live",
             "leverage":      self.cfg.trading.leverage,
+            "adaptive_leverage_enabled": getattr(self.cfg.trading, "adaptive_leverage_enabled", False),
             "last_cycle":    __import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "cycle_number":  self._cycle,
             "portfolio_usd": round(portfolio_usd, 2),
@@ -6271,6 +6399,12 @@ class TradingAgent:
                 "index_min_hold_minutes": self.cfg.trading.index_min_hold_minutes,
                 "reversal_boost":        self.cfg.trading.reversal_threshold_boost,
                 "check_interval_seconds": self.cfg.trading.check_interval_seconds,
+                "adaptive_leverage_enabled": getattr(self.cfg.trading, "adaptive_leverage_enabled", False),
+                "min_leverage":           getattr(self.cfg.trading, "min_leverage", 1),
+                "base_leverage":          getattr(self.cfg.trading, "base_leverage", self.cfg.trading.leverage),
+                "max_leverage":           getattr(self.cfg.trading, "max_leverage", self.cfg.trading.leverage),
+                "max_trade_usd":          getattr(self.cfg.trading, "max_trade_usd", 0.0),
+                "max_trade_notional_usd": getattr(self.cfg.trading, "max_trade_notional_usd", 0.0),
                 "use_daily_market_map":  getattr(self.cfg.trading, "use_daily_market_map", True),
                 "coins":                 self._tradable_coins,
                 "analysis_coins":        self._analysis_coins,
