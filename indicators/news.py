@@ -588,6 +588,17 @@ EQUITY_EVENT_CALENDAR: Dict[str, List[Dict[str, str]]] = {
             "expected": "true",
         }
     ],
+    "HIMS": [
+        {
+            "company": "Hims & Hers",
+            "label": "Q1 2026 earnings",
+            "date": "2026-05-11",
+            "timing": "after market close, with the call at 5:00 p.m. ET",
+            "focus": "subscriber growth, GLP-1/weight-loss demand, CAC, retention, margins, guidance",
+            "source": "Hims & Hers Investor Relations",
+            "url": "https://investors.hims.com/news/news-details/2026/Hims--Hers-to-Announce-First-Quarter-2026-Financial-Results-on-May-11-2026/default.aspx",
+        }
+    ],
 }
 
 RELEVANCE_THRESHOLD = 0.35

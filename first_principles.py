@@ -36,6 +36,31 @@ ATTENTION_THEMES: dict[str, dict[str, Any]] = {
         "what_matters": "crypto beta, ETF/treasury flows, market liquidity",
         "base_attention": 61.0,
     },
+    "biotech_glp1": {
+        "label": "Telehealth/GLP-1",
+        "what_matters": "earnings, subscriber growth, GLP-1 access, CAC, retention, guidance",
+        "base_attention": 66.0,
+    },
+    "consumer": {
+        "label": "Consumer growth",
+        "what_matters": "earnings, demand elasticity, customer growth, margins, guidance",
+        "base_attention": 57.0,
+    },
+    "growth": {
+        "label": "Growth stocks",
+        "what_matters": "earnings growth, guidance, revisions, rates, risk appetite",
+        "base_attention": 58.0,
+    },
+    "financials": {
+        "label": "Financials",
+        "what_matters": "earnings, deposits, credit quality, rates, capital return",
+        "base_attention": 55.0,
+    },
+    "software": {
+        "label": "Software growth",
+        "what_matters": "ARR growth, margins, AI product adoption, guidance, revisions",
+        "base_attention": 59.0,
+    },
     "crypto": {
         "label": "Crypto",
         "what_matters": "liquidity, leverage, funding, token catalyst, unlock risk",
@@ -65,6 +90,29 @@ def _clip(value: Any, limit: int = 140) -> str:
 
 def _clamp(value: float, lower: float = 0.0, upper: float = 100.0) -> float:
     return max(lower, min(upper, value))
+
+
+def _first_text(*values: Any) -> str:
+    for value in values:
+        text = _safe_str(value)
+        if text:
+            return text
+    return ""
+
+
+def _join_unique(parts: list[str], limit: int = 160) -> str:
+    out: list[str] = []
+    seen: set[str] = set()
+    for part in parts:
+        text = " ".join(_safe_str(part).split())
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(text)
+    return _clip("; ".join(out), limit)
 
 
 def _as_categories(raw: Any) -> list[str]:
@@ -153,6 +201,13 @@ def _level_text(direction: str, signal: dict) -> str:
     return "until direction becomes explicit"
 
 
+def _plain_driver_summary(coin: str, side: str, driver: str, theme: dict[str, Any]) -> str:
+    driver = _safe_str(driver) or _safe_str(theme.get("what_matters"))
+    if driver:
+        return f"{side.title()} thesis: {_clip(driver, 88)}"
+    return f"{side.title()} thesis: driver is still being established."
+
+
 def build_first_principles_view(coin: str, signal: dict | None, config: Any = None) -> dict:
     signal = dict(signal or {})
     coin = _safe_str(coin).upper()
@@ -201,37 +256,63 @@ def build_first_principles_view(coin: str, signal: dict | None, config: Any = No
         + 25.0
     )
     price_score = _clamp(50.0 + abs(score - 50.0) * 1.6 + _safe_float(signal.get("market_map_score_adjustment")) * 1.2)
-    sequence_score = _clamp(fundamental_score * 0.42 + attention_score * 0.28 + flow_score * 0.18 + price_score * 0.12)
+    sequence_score = _clamp(fundamental_score * 0.44 + attention_score * 0.28 + flow_score * 0.18 + price_score * 0.10)
 
-    event_summary = _safe_str(
+    event_summary = _first_text(
         signal.get("official_event_summary")
-        or signal.get("sec_event_summary")
-        or signal.get("news_event_summary")
+        or "",
+        signal.get("news_event_summary")
+        or "",
+        signal.get("sec_event_summary")
+        or "",
     )
-    catalyst_summary = _safe_str(
+    catalyst_summary = _first_text(
         signal.get("analyst_revision_summary")
-        or signal.get("news_catalyst_summary")
-        or signal.get("news_headline")
+        or "",
+        signal.get("news_catalyst_summary")
+        or "",
+        signal.get("options_summary")
+        or "",
+        signal.get("news_headline")
+        or "",
     )
     social_summary = _safe_str(signal.get("social_attention_summary"))
     map_summary = _safe_str(signal.get("market_map_summary") or signal.get("price_action_summary"))
 
-    fundamentals_text = event_summary or catalyst_summary or theme.get("what_matters", "")
+    fundamental_driver = _join_unique([event_summary, catalyst_summary, theme.get("what_matters", "")], limit=180)
+    attention_driver = social_summary or f"{theme.get('label', 'Theme')} attention is the main flow read"
+    flow_driver = _safe_str(
+        signal.get("funding_oi_cvd_summary")
+        or signal.get("orderbook_summary")
+        or signal.get("execution_quality_summary")
+        or signal.get("funding_label")
+        or signal.get("orderbook_interaction")
+        or "positioning read is still forming"
+    )
+    price_confirmation = map_summary or _safe_str(
+        signal.get("decision_reason") or signal.get("flat_reason"),
+        "price action is only the timing/confirmation layer",
+    )
+
+    primary_driver = event_summary or catalyst_summary or theme.get("what_matters", "")
     flow_text = social_summary or f"{theme.get('label', 'Theme')} attention is the main flow read"
-    price_text = map_summary or _safe_str(signal.get("decision_reason") or signal.get("flat_reason"), "price action is a final confirmation layer")
+    price_text = price_confirmation
 
     if direction == "FLAT":
         likely_path = "No prediction yet; wait for fundamentals/flows to point one way."
         plain_thesis = "No clean thesis yet."
+    elif price_score > 70.0 and fundamental_score < 55.0:
+        likely_path = f"{coin} needs a real driver before trusting the chart move."
+        plain_thesis = f"{side.title()} wait: chart is moving, but the driver is not strong yet."
     elif sequence_score >= 72.0 and fundamental_score >= 64.0:
-        likely_path = f"{coin} can keep moving {side} if fundamentals and attention stay aligned."
-        plain_thesis = f"{side.title()} thesis: fundamentals and flows line up before price confirmation."
+        likely_path = f"{coin} can keep moving {side} if the driver and attention stay aligned."
+        plain_thesis = _plain_driver_summary(coin, side, primary_driver, theme)
     elif fundamental_score >= 62.0 or attention_score >= 66.0:
-        likely_path = f"{coin} deserves starter-size {side} exposure only while the thesis stays intact."
-        plain_thesis = f"{side.title()} watch: thesis is early, so keep risk small."
+        likely_path = f"{coin} deserves starter-size {side} exposure only while the driver stays intact."
+        plain_thesis = _plain_driver_summary(coin, side, primary_driver, theme)
     else:
         likely_path = f"{coin} needs stronger fundamentals/flows before trusting the {side} setup."
-        plain_thesis = f"{side.title()} idea is not proven yet."
+        plain_thesis = f"{side.title()} idea is not proven yet: {_clip(primary_driver or theme.get('what_matters', ''), 74)}"
 
     wrong_if = f"Wrong { _level_text(direction, signal) }"
     if direction == "FLAT":
@@ -263,14 +344,19 @@ def build_first_principles_view(coin: str, signal: dict | None, config: Any = No
         "social_attention_score": round(social_score, 2),
         "social_attention_mentions": social_mentions,
         "decision": decision,
+        "why_now": _clip(fundamental_driver or plain_thesis, 150),
+        "fundamental_driver": _clip(fundamental_driver, 180),
+        "attention_driver": _clip(attention_driver, 140),
+        "flow_driver": _clip(flow_driver, 140),
+        "price_confirmation": _clip(price_confirmation, 140),
         "plain_thesis": _clip(plain_thesis, 110),
         "likely_path": _clip(likely_path, 130),
         "wrong_if": _clip(wrong_if, 110),
         "summary": _clip(f"{plain_thesis} {likely_path} {wrong_if}", 220),
         "sequence": [
-            {"step": "Fundamentals", "score": round(fundamental_score, 1), "takeaway": _clip(fundamentals_text, 105)},
+            {"step": "Fundamentals", "score": round(fundamental_score, 1), "takeaway": _clip(fundamental_driver, 105)},
             {"step": "Attention", "score": round(attention_score, 1), "takeaway": _clip(flow_text, 105)},
-            {"step": "Flows", "score": round(flow_score, 1), "takeaway": _clip(_safe_str(signal.get("funding_label") or signal.get("orderbook_interaction") or "positioning read is neutral"), 105)},
+            {"step": "Flows", "score": round(flow_score, 1), "takeaway": _clip(flow_driver, 105)},
             {"step": "Price", "score": round(price_score, 1), "takeaway": _clip(price_text, 105)},
         ],
         "expectancy_probability": round(expectancy_probability, 4),

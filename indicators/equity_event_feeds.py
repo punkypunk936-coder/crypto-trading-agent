@@ -118,6 +118,18 @@ OFFICIAL_IR_SOURCES: dict[str, list[dict[str, str]]] = {
     "INTC": [{"company": "Intel", "url": "https://www.intc.com/news-events/ir-calendar", "source": "Intel Investor Relations"}],
     "AMD": [{"company": "AMD", "url": "https://ir.amd.com/news-events/ir-calendar", "source": "AMD Investor Relations"}],
     "MU": [{"company": "Micron", "url": "https://investors.micron.com/events-and-presentations", "source": "Micron Investor Relations"}],
+    "HIMS": [
+        {
+            "company": "Hims & Hers",
+            "url": "https://investors.hims.com/news/news-details/2026/Hims--Hers-to-Announce-First-Quarter-2026-Financial-Results-on-May-11-2026/default.aspx",
+            "source": "Hims & Hers Investor Relations",
+        },
+        {
+            "company": "Hims & Hers",
+            "url": "https://investors.hims.com/events-and-presentations/events-calendar/event-details/2026/Hims--Hers-First-Quarter-2026-Earnings-Call/default.aspx",
+            "source": "Hims & Hers Investor Relations",
+        },
+    ],
 }
 
 

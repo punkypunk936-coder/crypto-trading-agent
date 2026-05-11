@@ -1569,6 +1569,53 @@ def test_macro_news_adds_upcoming_mag7_earnings_calendar_when_feeds_are_sparse()
         news_module._source_backoff.update(original_backoff)
 
 
+def test_macro_news_adds_hims_same_day_earnings_calendar_when_feeds_are_sparse() -> None:
+    class _Resp:
+        def __init__(self, status_code: int, *, content: bytes = b""):
+            self.status_code = status_code
+            self.content = content
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise requests.HTTPError(f"{self.status_code} boom")
+
+    import requests
+
+    original_get = news_module.requests.get
+    original_cache = dict(news_module._cache)
+    original_backoff = dict(news_module._source_backoff)
+    original_now = news_module._utc_now
+    try:
+        news_module._cache.clear()
+        news_module._source_backoff.clear()
+        news_module._utc_now = lambda: datetime(2026, 5, 11, tzinfo=timezone.utc)
+
+        def fake_get(url, params=None, **kwargs):
+            if "feeds.finance.yahoo.com" in url or "news.google.com" in url:
+                return _Resp(404)
+            raise AssertionError(f"unexpected url {url}")
+
+        news_module.requests.get = fake_get
+        signal = news_module.get_news_signal("HIMS", auth_token="")
+        assert signal.valid is True
+        assert signal.article_count >= 1
+        assert signal.score >= 60.0
+        assert signal.catalyst_score >= 4.0
+        assert signal.top_headlines
+        assert "today" in signal.top_headlines[0].lower()
+        assert "q1 2026 earnings" in signal.top_headlines[0].lower()
+        assert "calendar_event" in signal.catalyst_tags
+        assert "earnings_event" in signal.event_tags
+        assert "pre_event_setup" in signal.event_tags
+    finally:
+        news_module.requests.get = original_get
+        news_module._utc_now = original_now
+        news_module._cache.clear()
+        news_module._cache.update(original_cache)
+        news_module._source_backoff.clear()
+        news_module._source_backoff.update(original_backoff)
+
+
 def test_narrative_signal_boosts_major_catalyst_and_blocks_fading_it() -> None:
     news_signal = SimpleNamespace(
         valid=True,
@@ -7774,8 +7821,10 @@ def test_first_principles_view_sequences_fundamentals_before_price() -> None:
             "score": 66.0,
             "instrument_type": "equity",
             "official_event_score": 3.0,
+            "official_event_summary": "Alphabet official IR calendar confirms Q1 earnings today; watch Search, Cloud, Gemini, TPU capacity, and guidance.",
             "news_catalyst_score": 2.5,
             "analyst_revision_score": 1.2,
+            "analyst_revision_summary": "Analyst revision feed is positive into the report.",
             "social_attention_score": 64.0,
             "social_attention_mentions": 5,
             "expectancy_probability": 0.57,
@@ -7786,6 +7835,9 @@ def test_first_principles_view_sequences_fundamentals_before_price() -> None:
     assert [step["step"] for step in view["sequence"]] == ["Fundamentals", "Attention", "Flows", "Price"]
     assert view["direction"] == "LONG"
     assert view["fundamental_score"] >= 62
+    assert "Q1 earnings today" in view["why_now"]
+    assert "official IR" in view["plain_thesis"]
+    assert "Q1 earnings today" in view["sequence"][0]["takeaway"]
     assert "175" in view["wrong_if"]
 
 
@@ -7852,7 +7904,9 @@ def test_daily_radar_surfaces_first_principles_and_add_scope() -> None:
                 "instrument_type": "equity",
                 "asset_categories": ["mag7", "ai_infra"],
                 "first_principles": {
-                    "plain_thesis": "Cloud acceleration and AI capex keep the upside case alive.",
+                    "why_now": "Alphabet earnings today; Cloud acceleration and AI capex are the real driver.",
+                    "fundamental_driver": "Alphabet earnings today; Cloud acceleration and AI capex are the real driver.",
+                    "plain_thesis": "Chart reclaim is active.",
                     "wrong_if": "Invalid below 178.",
                     "fundamental_score": 78.0,
                     "attention_score": 69.0,
@@ -7892,7 +7946,8 @@ def test_daily_radar_surfaces_first_principles_and_add_scope() -> None:
     radar = daily_radar_module.build_daily_radar(state, market_map, board, limit=4)
     assert radar["top_assets"][0]["coin"] == "GOOGL"
     assert radar["top_assets"][0]["add_candidate"] is True
-    assert "Cloud" in radar["top_assets"][0]["why"]
+    assert "earnings today" in radar["top_assets"][0]["why"]
+    assert "Chart reclaim" not in radar["top_assets"][0]["why"]
     assert [step["label"] for step in radar["top_assets"][0]["first_principles"]] == [
         "Fundamentals",
         "Attention",
@@ -8060,6 +8115,8 @@ def run_all() -> None:
     print("PASS equity event feed Nasdaq fallback")
     test_macro_news_adds_upcoming_mag7_earnings_calendar_when_feeds_are_sparse()
     print("PASS macro news MAG7 earnings calendar")
+    test_macro_news_adds_hims_same_day_earnings_calendar_when_feeds_are_sparse()
+    print("PASS macro news HIMS same-day earnings calendar")
     test_narrative_signal_boosts_major_catalyst_and_blocks_fading_it()
     print("PASS narrative catalyst boost")
     test_market_data_reuses_stale_yahoo_candles_when_live_fetch_fails()

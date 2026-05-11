@@ -641,6 +641,30 @@ def _clip_text(text: Any, limit: int = 120) -> str:
     return clipped.rstrip(" ,.;:-") + "…"
 
 
+def _first_nonempty_text(*values: Any) -> str:
+    for value in values:
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _fundamental_driver_text(sig: dict, fp_view: dict | None = None, *, limit: int = 130) -> str:
+    fp = dict(fp_view or sig.get("first_principles") or {})
+    driver = _first_nonempty_text(
+        fp.get("why_now"),
+        fp.get("fundamental_driver"),
+        sig.get("first_principles_why_now"),
+        sig.get("first_principles_fundamental_driver"),
+        sig.get("official_event_summary"),
+        sig.get("news_event_summary"),
+        sig.get("analyst_revision_summary"),
+        sig.get("news_catalyst_summary"),
+        sig.get("options_summary"),
+    )
+    return _clip_text(driver, limit)
+
+
 def _contains_any(text: Any, keywords: Iterable[str]) -> bool:
     haystack = str(text or "").strip().lower()
     return any(str(keyword or "").strip().lower() in haystack for keyword in keywords if str(keyword or "").strip())
@@ -961,6 +985,9 @@ def _build_why_this_lead(
 ) -> str:
     direction = _setup_direction(status, action, bias)
     reasons: list[str] = []
+    driver = _fundamental_driver_text(sig, limit=118)
+    if driver:
+        reasons.append(driver)
     probability_pct = _safe_int(probability.get("probability_pct"))
     probability_label = str(probability.get("probability_label") or "").strip().lower()
     if probability_pct > 0:
@@ -985,7 +1012,8 @@ def _build_why_this_lead(
     reasons.append(_remaining_gate_blurb(status, sig, direction))
 
     fallback = (
-        _primary_reason(sig.get("expectancy_summary"))
+        driver
+        or _primary_reason(sig.get("expectancy_summary"))
         or _primary_reason(sig.get("analog_summary"))
         or _primary_reason(sig.get("thesis_summary"))
         or _remaining_gate_blurb(status, sig, direction)
@@ -1674,12 +1702,13 @@ def action_board(
             or sig.get("first_principles_likely_path")
             or ""
         ).strip()
+        first_principles_driver = _fundamental_driver_text(sig, first_principles_view)
 
         if pos:
             direction = str(pos.get("direction") or "").upper() or action
             status = f"OPEN_{direction or 'LONG'}"
             label = f"In {direction or 'LONG'}"
-            headline = _primary_reason(current_logic) or "Trade is live and being managed."
+            headline = first_principles_driver or _primary_reason(current_logic) or "Trade is live and being managed."
             stop = _safe_float(pos.get("stop_loss"))
             target = _safe_float(pos.get("take_profit"))
             live_reference = live_anchor or _safe_float(pos.get("current_price"))
@@ -1697,7 +1726,7 @@ def action_board(
         elif state_override or (asset_state == "EXECUTABLE" and action == "FLAT"):
             status = asset_state or "ARMED"
             label = asset_state_label or "Setup pending"
-            headline = _primary_reason(next_unblock or current_logic or blocker) or "The setup is still gated."
+            headline = first_principles_driver or _primary_reason(next_unblock or current_logic or blocker) or "The setup is still gated."
             if action == "LONG" and live_anchor > 0:
                 entry_status = _entry_status_text(live_anchor, long_trigger, "trigger")
                 trigger = _numeric_level_text("Trigger", long_trigger, live_anchor) or f"Live {live_anchor:,.2f}"
@@ -1722,7 +1751,7 @@ def action_board(
         elif action == "LONG":
             status = "READY_LONG"
             label = "Long thesis live"
-            headline = first_principles_thesis or _primary_reason(sig.get("decision_reason") or current_logic) or "Long thesis is live."
+            headline = first_principles_driver or first_principles_thesis or _primary_reason(sig.get("decision_reason") or current_logic) or "Long thesis is live."
             entry_status = _entry_status_text(live_anchor, long_trigger, "trigger")
             trigger_level = long_trigger or _safe_float(sig.get("price")) or _safe_float(sig.get("live_price"))
             trigger = _numeric_level_text("Entry", trigger_level, live_anchor)
@@ -1735,7 +1764,7 @@ def action_board(
         elif action == "SHORT":
             status = "READY_SHORT"
             label = "Short thesis live"
-            headline = first_principles_thesis or _primary_reason(sig.get("decision_reason") or current_logic) or "Short thesis is live."
+            headline = first_principles_driver or first_principles_thesis or _primary_reason(sig.get("decision_reason") or current_logic) or "Short thesis is live."
             entry_status = _entry_status_text(live_anchor, short_trigger, "trigger")
             trigger_level = short_trigger or _safe_float(sig.get("price")) or _safe_float(sig.get("live_price"))
             trigger = _numeric_level_text("Entry", trigger_level, live_anchor)
@@ -1749,9 +1778,10 @@ def action_board(
             status = "WATCH_LONG"
             label = catalyst_watch_label or "Bullish watch"
             headline = (
-                "Daily bias is bullish, and the reclaim is on the board."
+                first_principles_driver
+                or "Daily bias is bullish, and the reclaim is on the board."
                 if not map_summary
-                else f"Daily bias is bullish, and {map_summary}."
+                else first_principles_driver or f"Daily bias is bullish, and {map_summary}."
             )
             entry_status = _entry_status_text(live_anchor, long_trigger, "reclaim")
             if reclaim_lost and not live_reclaim:
@@ -1772,9 +1802,10 @@ def action_board(
             status = "WAIT_RECLAIM"
             label = catalyst_watch_label or "Wait for reclaim"
             headline = (
-                "Daily bias is bullish, but the long is still blocked until price reclaims resistance."
+                first_principles_driver
+                or "Daily bias is bullish, but the long is still blocked until price reclaims resistance."
                 if not map_summary
-                else f"Daily bias is bullish, but {map_summary}."
+                else first_principles_driver or f"Daily bias is bullish, but {map_summary}."
             )
             entry_status = _entry_status_text(live_anchor, long_trigger, "reclaim")
             trigger = _numeric_level_text("Reclaim", long_trigger, live_anchor)
@@ -1783,9 +1814,10 @@ def action_board(
             status = "WAIT_BREAKDOWN"
             label = catalyst_watch_label or "Wait for breakdown"
             headline = (
-                "Daily bias is bearish, but the short is still blocked until price breaks support."
+                first_principles_driver
+                or "Daily bias is bearish, but the short is still blocked until price breaks support."
                 if not map_summary
-                else f"Daily bias is bearish, but {map_summary}."
+                else first_principles_driver or f"Daily bias is bearish, but {map_summary}."
             )
             entry_status = _entry_status_text(live_anchor, short_trigger, "breakdown")
             trigger = _numeric_level_text("Break", short_trigger, live_anchor)
@@ -1794,9 +1826,10 @@ def action_board(
             status = "WATCH_LONG"
             label = catalyst_watch_label or "Bullish watch"
             headline = (
-                "Higher-timeframe bias is bullish, but the entry is not ready."
+                first_principles_driver
+                or "Higher-timeframe bias is bullish, but the entry is not ready."
                 if not map_summary
-                else f"Higher-timeframe bias is bullish, and {map_summary}."
+                else first_principles_driver or f"Higher-timeframe bias is bullish, and {map_summary}."
             )
             entry_status = _entry_status_text(live_anchor, long_trigger, "trigger")
             trigger = _numeric_level_text("Trigger", long_trigger, live_anchor) or "Wait for cleaner long confirmation."
@@ -1805,9 +1838,10 @@ def action_board(
             status = "WATCH_SHORT"
             label = catalyst_watch_label or "Bearish watch"
             headline = (
-                "Higher-timeframe bias is bearish, but the entry is not ready."
+                first_principles_driver
+                or "Higher-timeframe bias is bearish, but the entry is not ready."
                 if not map_summary
-                else f"Higher-timeframe bias is bearish, and {map_summary}."
+                else first_principles_driver or f"Higher-timeframe bias is bearish, and {map_summary}."
             )
             entry_status = _entry_status_text(live_anchor, short_trigger, "trigger")
             trigger = _numeric_level_text("Trigger", short_trigger, live_anchor) or "Wait for cleaner short confirmation."
@@ -2009,6 +2043,11 @@ def action_board(
                 "llm_referee_summary": str(sig.get("llm_referee_summary") or ""),
                 "llm_referee_why_now": str(sig.get("llm_referee_why_now") or ""),
                 "first_principles": first_principles_view,
+                "first_principles_why_now": first_principles_driver,
+                "fundamental_driver": first_principles_driver,
+                "attention_driver": str(first_principles_view.get("attention_driver") or sig.get("first_principles_attention_driver") or ""),
+                "flow_driver": str(first_principles_view.get("flow_driver") or sig.get("first_principles_flow_driver") or ""),
+                "price_confirmation": str(first_principles_view.get("price_confirmation") or sig.get("first_principles_price_confirmation") or ""),
                 "first_principles_plain_thesis": first_principles_thesis,
                 "first_principles_likely_path": first_principles_path,
                 "first_principles_wrong_if": str(first_principles_view.get("wrong_if") or sig.get("first_principles_wrong_if") or ""),

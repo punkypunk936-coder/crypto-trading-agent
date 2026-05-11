@@ -101,6 +101,11 @@ def _status_label(item: dict, signal: dict, position: dict, direction: str) -> s
 def _first_principles(signal: dict) -> dict:
     view = dict(signal.get("first_principles") or {})
     return {
+        "why_now": _safe_str(view.get("why_now") or signal.get("first_principles_why_now")),
+        "fundamental_driver": _safe_str(view.get("fundamental_driver") or signal.get("first_principles_fundamental_driver")),
+        "attention_driver": _safe_str(view.get("attention_driver") or signal.get("first_principles_attention_driver")),
+        "flow_driver": _safe_str(view.get("flow_driver") or signal.get("first_principles_flow_driver")),
+        "price_confirmation": _safe_str(view.get("price_confirmation") or signal.get("first_principles_price_confirmation")),
         "plain_thesis": _safe_str(view.get("plain_thesis") or signal.get("first_principles_plain_thesis")),
         "likely_path": _safe_str(view.get("likely_path") or signal.get("first_principles_likely_path")),
         "wrong_if": _safe_str(view.get("wrong_if") or signal.get("first_principles_wrong_if")),
@@ -116,13 +121,17 @@ def _first_principles(signal: dict) -> dict:
 
 def _merit_text(coin: str, direction: str, fp: dict, signal: dict, item: dict, map_entry: dict) -> str:
     explicit = _safe_str(
-        fp.get("plain_thesis")
+        fp.get("why_now")
+        or fp.get("fundamental_driver")
+        or signal.get("official_event_summary")
+        or signal.get("news_event_summary")
+        or signal.get("analyst_revision_summary")
+        or signal.get("news_catalyst_summary")
+        or fp.get("plain_thesis")
         or item.get("headline")
         or item.get("why_this_lead")
         or signal.get("thesis_summary")
         or signal.get("decision_reason")
-        or signal.get("news_catalyst_summary")
-        or signal.get("news_event_summary")
         or map_entry.get("summary")
     )
     if explicit:
@@ -207,24 +216,31 @@ def _scope_text(direction: str, signal: dict, item: dict, position: dict, score:
 
 def _sequence_steps(fp: dict, signal: dict, map_entry: dict) -> list[dict]:
     fundamentals = _safe_str(
-        fp.get("what_matters")
+        fp.get("fundamental_driver")
+        or fp.get("why_now")
         or signal.get("official_event_summary")
+        or signal.get("news_event_summary")
         or signal.get("analyst_revision_summary")
+        or signal.get("news_catalyst_summary")
+        or fp.get("what_matters")
         or "Business/fundamental edge is still being measured."
     )
     attention = _safe_str(
-        signal.get("social_attention_summary")
+        fp.get("attention_driver")
+        or signal.get("social_attention_summary")
         or signal.get("news_catalyst_summary")
         or "Attention/flow read is not loud yet."
     )
     flows = _safe_str(
-        signal.get("orderbook_summary")
+        fp.get("flow_driver")
+        or signal.get("orderbook_summary")
         or signal.get("funding_oi_cvd_summary")
         or signal.get("execution_quality_summary")
         or "Flow confirmation is still forming."
     )
     price = _safe_str(
-        signal.get("market_map_summary")
+        fp.get("price_confirmation")
+        or signal.get("market_map_summary")
         or map_entry.get("summary")
         or "Price map is waiting for the next trigger."
     )

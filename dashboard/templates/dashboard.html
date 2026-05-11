@@ -2683,8 +2683,17 @@ const simpleInvalidationText = (item, limit=78) => {
 };
 const simpleThesisText = (item, limit=84) => {
   const safe = item || {};
+  const driver = safe.first_principles_why_now
+    || safe.fundamental_driver
+    || safe.official_event_summary
+    || safe.news_event_summary
+    || safe.analyst_revision_summary
+    || safe.news_catalyst_summary
+    || safe.options_summary
+    || '';
   return plainTradeReason(
-    safe.current_logic_short
+    driver
+      || safe.current_logic_short
       || safe.entry_logic_short
       || safe.headline
       || safe.next_setup_reason
@@ -2698,7 +2707,9 @@ const simpleThesisText = (item, limit=84) => {
 const whyLeadText = (item, limit=170) => {
   const safe = item || {};
   return shortText(
-    safe.why_this_lead
+    safe.first_principles_why_now
+      || safe.fundamental_driver
+      || safe.why_this_lead
       || safe.probability_detail
       || safe.probability_text
       || setupReasonText(safe, limit),
