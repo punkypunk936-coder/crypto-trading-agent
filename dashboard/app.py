@@ -10,13 +10,14 @@ Deploy (Railway): set PORT env var, agent pushes to your Railway URL
 """
 
 import json
+import hmac
 import os
 import threading
 import time
 from datetime import datetime
 
 import decision_dataset
-from flask import Flask, render_template, jsonify, request, abort, send_file
+from flask import Flask, render_template, jsonify, request, abort, send_file, Response
 import market_map as market_map_store
 import trade_dataset
 import trade_logger
@@ -65,6 +66,7 @@ HOSTED_INDEX = CODE_ROOT / "netlify-dashboard" / "public" / "index.html"
 
 # Secret token for push endpoint (set DASHBOARD_TOKEN env var for security)
 PUSH_TOKEN = os.environ.get("DASHBOARD_TOKEN", "")
+DASHBOARD_BASIC_AUTH = os.environ.get("DASHBOARD_BASIC_AUTH", "")
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 
@@ -79,6 +81,21 @@ _local_snapshot_cache = {
     "last_refresh_error": "",
 }
 _lock = threading.Lock()
+
+
+@app.before_request
+def _require_dashboard_basic_auth():
+    if not DASHBOARD_BASIC_AUTH or request.path == "/api/push":
+        return None
+    auth = request.authorization
+    supplied = f"{auth.username}:{auth.password}" if auth else ""
+    if hmac.compare_digest(supplied, DASHBOARD_BASIC_AUTH):
+        return None
+    return Response(
+        "Authentication required",
+        401,
+        {"WWW-Authenticate": 'Basic realm="Trading Dashboard"'},
+    )
 
 def _load_state_local() -> dict:
     if STATE.exists():

@@ -8,6 +8,7 @@ Run:
 from __future__ import annotations
 
 import asyncio
+import base64
 import csv
 import json
 import os
@@ -3014,6 +3015,26 @@ def test_local_dashboard_serves_hosted_bundle() -> None:
     served = client.get("/").data
     hosted_bundle = Path("netlify-dashboard/public/index.html").read_bytes()
     assert served == hosted_bundle, "local dashboard root should serve the exact hosted UI bundle"
+
+
+def test_dashboard_basic_auth_is_optional_and_blocks_public_tunnels() -> None:
+    original_auth = dashboard_module.DASHBOARD_BASIC_AUTH
+    try:
+        dashboard_module.DASHBOARD_BASIC_AUTH = "boss:secret"
+        client = dashboard_module.app.test_client()
+        response = client.get("/health")
+        assert response.status_code == 401
+        assert "Basic" in response.headers.get("WWW-Authenticate", "")
+
+        token = base64.b64encode(b"boss:secret").decode()
+        authed = client.get("/health", headers={"Authorization": f"Basic {token}"})
+        assert authed.status_code == 200
+
+        dashboard_module.DASHBOARD_BASIC_AUTH = ""
+        open_response = client.get("/health")
+        assert open_response.status_code == 200
+    finally:
+        dashboard_module.DASHBOARD_BASIC_AUTH = original_auth
 
 
 def test_install_launchagent_preserves_learning_datasets() -> None:
@@ -8103,6 +8124,8 @@ def run_all() -> None:
     print("PASS shared asset context helpers")
     test_local_dashboard_serves_hosted_bundle()
     print("PASS local dashboard hosted bundle")
+    test_dashboard_basic_auth_is_optional_and_blocks_public_tunnels()
+    print("PASS dashboard basic auth guard")
     test_install_launchagent_preserves_learning_datasets()
     print("PASS runtime sync learning preservation")
     test_market_map_signal_respects_operator_daily_levels()
