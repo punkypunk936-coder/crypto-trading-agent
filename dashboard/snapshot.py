@@ -10,6 +10,12 @@ from datetime import datetime
 from typing import Any, Iterable
 
 import daily_radar
+from asset_context import (
+    asset_bucket as _asset_bucket,
+    asset_categories_for_coin as _shared_asset_categories_for_coin,
+    instrument_type_for_coin as _shared_instrument_type_for_coin,
+    normalize_asset_category_values as _normalize_asset_category_values,
+)
 
 
 def default_state() -> dict:
@@ -73,24 +79,6 @@ def _normalize_coin_list(values: Any) -> list[str]:
             seen.add(coin)
             items.append(coin)
     return items
-
-
-def _normalize_asset_category_values(value: Any) -> list[str]:
-    if isinstance(value, str):
-        raw_values = value.replace("|", ",").split(",")
-    elif isinstance(value, (list, tuple, set)):
-        raw_values = list(value)
-    else:
-        raw_values = [value]
-
-    categories: list[str] = []
-    seen: set[str] = set()
-    for raw in raw_values:
-        category = str(raw or "").strip().lower()
-        if category and category not in seen:
-            seen.add(category)
-            categories.append(category)
-    return categories
 
 
 def _normalize_asset_category_map(raw: Any) -> dict[str, list[str]]:
@@ -301,33 +289,11 @@ def _pick_level(values: Any, *, prefer: str = "min", fallback: Any = None) -> fl
 
 
 def _instrument_type_for_coin(coin: str, signal: dict | None, config: dict | None) -> str:
-    signal = dict(signal or {})
-    config = dict(config or {})
-    signal_type = str(signal.get("instrument_type") or "").strip().lower()
-    if signal_type:
-        return signal_type
-    instrument_types = dict(config.get("instrument_types") or {})
-    return str(instrument_types.get(str(coin or "").upper(), "crypto") or "crypto").strip().lower()
-
-
-def _asset_bucket(instrument_type: str) -> str:
-    normalized = str(instrument_type or "crypto").strip().lower()
-    return "coin" if normalized == "crypto" else "equity"
+    return _shared_instrument_type_for_coin(coin, signal=signal, config=config)
 
 
 def _asset_categories_for_coin(coin: str, instrument_type: str, config: dict | None) -> list[str]:
-    config = dict(config or {})
-    category_map = dict(config.get("asset_categories") or {})
-    key = str(coin or "").upper()
-    categories = _normalize_asset_category_values(category_map.get(key))
-    if categories:
-        return categories
-    normalized_type = str(instrument_type or "crypto").strip().lower()
-    if normalized_type == "index":
-        return ["indices_macro"]
-    if normalized_type == "equity":
-        return ["other_stocks"]
-    return ["crypto"]
+    return _shared_asset_categories_for_coin(coin, config=config, instrument_type=instrument_type)
 
 
 def _asset_category_for_coin(coin: str, instrument_type: str, config: dict | None) -> str:

@@ -10,6 +10,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from asset_context import asset_bucket, asset_categories_for_coin, instrument_type_for_coin
+
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
     try:
@@ -30,23 +32,6 @@ def _short(value: Any, limit: int = 120) -> str:
     return text[: max(0, limit - 1)].rstrip() + "..."
 
 
-def _as_list(value: Any) -> list[str]:
-    if isinstance(value, str):
-        raw = value.replace("|", ",").split(",")
-    elif isinstance(value, (list, tuple, set)):
-        raw = list(value)
-    else:
-        raw = []
-    out: list[str] = []
-    seen: set[str] = set()
-    for item in raw:
-        text = _safe_str(item).lower()
-        if text and text not in seen:
-            seen.add(text)
-            out.append(text)
-    return out
-
-
 def _coin_maps(state: dict, market_map: dict, action_board: dict) -> tuple[dict, dict, dict, dict]:
     signals = dict((state or {}).get("signals") or {})
     positions = {
@@ -61,38 +46,6 @@ def _coin_maps(state: dict, market_map: dict, action_board: dict) -> tuple[dict,
         if _safe_str((item or {}).get("coin"))
     }
     return signals, positions, map_entries, board_items
-
-
-def _instrument_type(coin: str, signal: dict, item: dict, state: dict) -> str:
-    config = dict((state or {}).get("config") or {})
-    types = dict(config.get("instrument_types") or {})
-    return _safe_str(
-        item.get("instrument_type") or signal.get("instrument_type") or types.get(coin),
-        "crypto",
-    ).lower()
-
-
-def _asset_bucket(instrument_type: str) -> str:
-    return "coin" if instrument_type == "crypto" else "equity"
-
-
-def _categories(coin: str, signal: dict, item: dict, state: dict) -> list[str]:
-    config = dict((state or {}).get("config") or {})
-    categories = _as_list(item.get("asset_categories") or item.get("asset_category"))
-    if categories:
-        return categories
-    categories = _as_list(signal.get("asset_categories") or signal.get("asset_category"))
-    if categories:
-        return categories
-    categories = _as_list((config.get("asset_categories") or {}).get(coin))
-    if categories:
-        return categories
-    itype = _instrument_type(coin, signal, item, state)
-    if itype == "equity":
-        return ["other_stocks"]
-    if itype == "index":
-        return ["indices_macro"]
-    return ["crypto"]
 
 
 def _direction(signal: dict, item: dict, position: dict, map_entry: dict) -> str:
@@ -364,8 +317,14 @@ def build_daily_radar(
         status = _status_label(item, signal, position, direction)
         if score < 36.0 and status not in {"OPEN", "ORDER LIVE", "READY"} and coin not in proactive_coins:
             continue
-        instrument_type = _instrument_type(coin, signal, item, safe_state)
-        categories = _categories(coin, signal, item, safe_state)
+        instrument_type = instrument_type_for_coin(coin, signal=signal, item=item, state=safe_state)
+        categories = asset_categories_for_coin(
+            coin,
+            signal=signal,
+            item=item,
+            state=safe_state,
+            instrument_type=instrument_type,
+        )
         scope, add_candidate = _scope_text(direction, signal, item, position, score)
         invalidation = _invalidation(direction, fp, signal, item, map_entry, position)
         rows.append({
@@ -375,7 +334,7 @@ def build_daily_radar(
             "status": status,
             "radar_score": score,
             "instrument_type": instrument_type,
-            "asset_bucket": _asset_bucket(instrument_type),
+            "asset_bucket": asset_bucket(instrument_type),
             "categories": categories,
             "theme": _safe_str(fp.get("theme") or (categories[0] if categories else ""), "crypto"),
             "tradable": bool(item.get("tradable")) or _safe_str(signal.get("execution_mode")) == "tradable" or bool(position),

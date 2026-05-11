@@ -24,6 +24,7 @@ import pandas as pd
 import checkpoint as checkpoint_module
 import agent as agent_module
 import analog_engine as analog_engine_module
+import asset_context as asset_context_module
 import asset_dossier as asset_dossier_module
 import asset_state_machine as asset_state_machine_module
 import backtest as backtest_module
@@ -2973,6 +2974,8 @@ def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> N
     assert "Starter Basket" in template
     assert "Starter Execution" in template
     assert "Forecast Calibration" in template
+    assert "STANCE SEARCH" in template
+    assert "commandSearchCandidates" in template
     assert "<strong>Lead:</strong>" in template
     assert "friction-stack" in template
     assert "catalyst-rail" in template
@@ -2980,9 +2983,30 @@ def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> N
     assert "AbortController" in template
     assert "scheduleRefresh(" in template
     assert "setInterval(refresh, 10000);" not in template
+    assert "Asset Lookup" not in template
+    assert "ticker-search-input" not in template
+    assert "fallbackSearchItem" not in template
+    assert "renderTickerSearch" not in template
     assert "Watching only" not in template
     assert "🧾 Latest Lesson" not in template
     assert '<div class="asset-section-title">Support Pending</div>' not in template
+
+
+def test_asset_context_helpers_are_single_source_for_product_surfaces() -> None:
+    state = {
+        "config": {
+            "instrument_types": {"GOOGL": "equity", "BTC": "crypto", "SP500": "index"},
+            "asset_categories": {"GOOGL": ["mag7", "ai_infra"]},
+            "portfolio_theme_map": {"GOOGL": "MEGA_CAP_AI"},
+        }
+    }
+
+    assert asset_context_module.instrument_type_for_coin("GOOGL", state=state) == "equity"
+    assert asset_context_module.asset_bucket("equity") == "equity"
+    assert asset_context_module.asset_bucket("crypto") == "coin"
+    assert asset_context_module.asset_categories_for_coin("GOOGL", state=state) == ["mag7", "ai_infra"]
+    assert asset_context_module.asset_categories_for_coin("SP500", state=state) == ["indices_macro"]
+    assert asset_context_module.theme_for_coin("GOOGL", ["mag7"], state=state) == "MEGA_CAP_AI"
 
 
 def test_local_dashboard_serves_hosted_bundle() -> None:
@@ -8075,6 +8099,8 @@ def run_all() -> None:
     print("PASS hosted dashboard bundle sync")
     test_dashboard_template_compacts_daily_view_and_hides_support_pending()
     print("PASS dashboard compact daily view")
+    test_asset_context_helpers_are_single_source_for_product_surfaces()
+    print("PASS shared asset context helpers")
     test_local_dashboard_serves_hosted_bundle()
     print("PASS local dashboard hosted bundle")
     test_install_launchagent_preserves_learning_datasets()

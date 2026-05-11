@@ -2269,30 +2269,6 @@
   </div>
 </div>
 
-<div class="full-width">
-  <div class="card quick-lookup-card" id="lookup-card">
-    <div class="card-label">Asset Lookup</div>
-    <div class="search-shell">
-      <div class="search-row">
-        <input
-          id="ticker-search-input"
-          class="search-input"
-          type="text"
-          placeholder="Search ticker..."
-          autocomplete="off"
-          list="ticker-search-options"
-          oninput="handleTickerSearch(this.value)"
-        />
-        <datalist id="ticker-search-options"></datalist>
-      </div>
-      <div class="search-hint" id="ticker-search-hint">Fast thesis lookup</div>
-      <div id="ticker-search-result" class="search-result">
-        <div class="search-result-empty">No ticker selected.</div>
-      </div>
-    </div>
-  </div>
-</div>
-
 <!-- Action Board -->
 <div class="full-width">
   <div class="card">
@@ -3126,8 +3102,9 @@ const setupProbabilityPayload = ({
   };
 };
 const dashboardItemForCoin = (coin) => {
-  const found = findActionBoardItem(coin);
-  return found.item || fallbackSearchItem(coin);
+  const ticker = String(coin || '').trim().toUpperCase();
+  if (!ticker) return null;
+  return actionBoardItems().find((item) => String(item.coin || '').trim().toUpperCase() === ticker) || null;
 };
 let latestControl = null;
 let latestState = null;
@@ -3145,7 +3122,6 @@ let latestLLMRefereeReport = { verdicts: {} };
 let latestPlaybookDistillerReport = { summary: {}, assets: {} };
 let latestProactiveTraderReport = { summary: {} };
 let latestDailyRadar = { summary: {}, top_assets: [] };
-let currentTickerSearchQuery = '';
 let commandSearchOpen = false;
 let commandSearchIndex = 0;
 let commandSearchQuery = '';
@@ -3598,293 +3574,19 @@ function humanizeKey(value) {
     .replace(/\b\w/g, (match) => match.toUpperCase());
 }
 
-function tickerSuggestions(query) {
-  const normalized = String(query || '').trim().toUpperCase();
-  const coins = trackedCoins();
-  if (!normalized) return coins.slice(0, 20);
-  const starts = coins.filter((coin) => coin.startsWith(normalized));
-  const contains = coins.filter((coin) => !starts.includes(coin) && coin.includes(normalized));
-  return starts.concat(contains).slice(0, 8);
-}
-
-function findActionBoardItem(query) {
-  const normalized = String(query || '').trim().toUpperCase();
-  const items = Array.isArray((latestActionBoard || {}).items) ? latestActionBoard.items.filter((item) => item && item.coin) : [];
-  if (!normalized || !items.length) return { item: null, match: null, suggestions: [] };
-  const exact = items.find((item) => String(item.coin || '').toUpperCase() === normalized);
-  if (exact) return { item: exact, match: 'exact', suggestions: [] };
-  const starts = items.filter((item) => String(item.coin || '').toUpperCase().startsWith(normalized));
-  if (starts.length === 1) return { item: starts[0], match: 'prefix', suggestions: [] };
-  const contains = items.filter((item) => String(item.coin || '').toUpperCase().includes(normalized));
-  if (contains.length === 1) return { item: contains[0], match: 'contains', suggestions: [] };
-  return { item: null, match: null, suggestions: tickerSuggestions(normalized) };
-}
-
-function fallbackSearchItem(coin) {
-  const ticker = String(coin || '').trim().toUpperCase();
-  if (!ticker) return null;
-  const signal = ((((latestState || {}).signals || {})[ticker]) || {});
-  const mapEntry = ((((latestMarketMap || {}).coins || {})[ticker]) || {});
-  const positions = Array.isArray(((latestState || {}).positions || [])) ? latestState.positions : [];
-  const position = positions.find((item) => String((item || {}).coin || '').trim().toUpperCase() === ticker) || null;
-  const tracked = trackedCoins().includes(ticker);
-  if (!tracked && !Object.keys(signal).length && !Object.keys(mapEntry).length && !position) {
-    return null;
-  }
-
-  const tradable = String(signal.execution_mode || 'observation_only') === 'tradable' || Boolean(position);
-  const bias = String(signal.market_map_bias || mapEntry.bias || 'NEUTRAL').toUpperCase();
-  const action = String(signal.action || '').toUpperCase();
-  const assetState = String(signal.asset_state || '').toUpperCase();
-  const assetStateLabel = String(signal.asset_state_label || '').trim();
-  const longTrigger = pickLevel(mapEntry.daily_close_long_above, mapEntry.resistances && pickLevel(mapEntry.resistances, null, 'min'), 'min');
-  const shortTrigger = pickLevel(mapEntry.daily_close_short_below, mapEntry.supports && pickLevel(mapEntry.supports, null, 'max'), 'max');
-  const support = pickLevel(mapEntry.supports, signal.market_map_nearest_support, 'max');
-  const resistance = pickLevel(mapEntry.resistances, signal.market_map_nearest_resistance, 'min');
-  const livePrice = Number(signal.live_price || signal.price || 0);
-  const priceDiagnostics = signal.price_diagnostics || (position ? position.price_diagnostics : {}) || {};
-  const fp = signal.first_principles || {};
-  const fpThesis = String(fp.plain_thesis || signal.first_principles_plain_thesis || '').trim();
-  const fpPath = String(fp.likely_path || signal.first_principles_likely_path || '').trim();
-  const fpWrong = String(fp.wrong_if || signal.first_principles_wrong_if || '').trim();
-
-  let status = 'NO_SETUP';
-  let label = 'Watching';
-  let headline = shortText(signal.flat_reason || signal.decision_reason || signal.market_map_summary || mapEntry.summary || 'Tracked by the agent, but it is not surfacing a live setup yet.', 180);
-  let trigger = 'Wait for a clearer thesis.';
-  let entryStatus = '';
-  let entryLogicShort = '';
-  let currentLogicShort = '';
-  let invalidation = '';
-  let executionNote = tradable
-    ? 'This market can execute on the active venue once the thesis, sizing, and fills all clear.'
-    : 'This market is being watched, but venue support or live market quality is not ready enough yet.';
-
-  if (position) {
-    const direction = String(position.direction || action || 'LONG').toUpperCase();
-    const liveReference = livePrice > 0 ? livePrice : Number(position.current_price || 0);
-    status = direction === 'SHORT' ? 'OPEN_SHORT' : 'OPEN_LONG';
-    label = 'In ' + direction;
-    entryLogicShort = position.entry_logic_short || plainTradeReason(position.entry_logic || '', 'open', 86);
-    currentLogicShort = position.current_logic_short || plainTradeReason(position.current_logic || position.entry_logic || '', 'hold', 86);
-    headline = currentLogicShort || 'Trade is live.';
-    entryStatus = entryStatusLine(liveReference, Number(position.entry_price || 0), 'entry');
-    trigger = stopTargetLine(liveReference, Number(position.stop_loss || 0), Number(position.take_profit || 0)) || 'Trade is already open.';
-    invalidation = (direction === 'SHORT' ? 'Invalid above ' : 'Invalid below ') + fmt(Number(position.stop_loss || 0));
-    executionNote = 'Position is already open and under active management.';
-  } else if (assetState === 'PENDING_ENTRY') {
-    status = 'PENDING_ENTRY';
-    label = assetStateLabel || 'Pending entry';
-    headline = shortText(signal.next_unblock_reason || 'A resting order is already on the book.', 180);
-    const anchorPrice = Number(signal.price || signal.live_price || 0);
-    entryStatus = entryStatusLine(livePrice, anchorPrice, 'limit');
-    trigger = numericLevel('Limit', anchorPrice, livePrice) || 'Waiting for the resting order to resolve.';
-    executionNote = String(signal.next_unblock_reason || signal.execution_quality_summary || 'The order is working and waiting for a fill, cancel, or expiry.');
-  } else if (action === 'LONG') {
-    status = 'READY_LONG';
-    label = 'Long thesis live';
-    headline = shortText(fpThesis || signal.decision_reason || 'Long thesis is live.', 180);
-    const triggerLevel = longTrigger || Number(signal.price || signal.live_price || 0);
-    entryStatus = entryStatusLine(livePrice, longTrigger, 'trigger');
-    trigger = numericLevel('Entry', triggerLevel, livePrice) || 'Watching for a clean long trigger.';
-    executionNote = tradable
-      ? (fpPath || 'The thesis qualifies, but the bot still waits for confirmation, sizing, and clean fills before sending the order.')
-      : 'The thesis qualifies, but venue support or live market quality is not ready enough yet.';
-  } else if (action === 'SHORT') {
-    status = 'READY_SHORT';
-    label = 'Short thesis live';
-    headline = shortText(fpThesis || signal.decision_reason || 'Short thesis is live.', 180);
-    const triggerLevel = shortTrigger || Number(signal.price || signal.live_price || 0);
-    entryStatus = entryStatusLine(livePrice, shortTrigger, 'trigger');
-    trigger = numericLevel('Entry', triggerLevel, livePrice) || 'Watching for a clean short trigger.';
-    executionNote = tradable
-      ? (fpPath || 'The thesis qualifies, but the bot still waits for confirmation, sizing, and clean fills before sending the order.')
-      : 'The thesis qualifies, but venue support or live market quality is not ready enough yet.';
-  } else if (assetState) {
-    status = assetState;
-    label = assetStateLabel || humanizeKey(assetState);
-    headline = shortText(signal.next_unblock_reason || signal.flat_reason || signal.decision_reason || 'The setup is still gated.', 180);
-    if (action === 'LONG' && livePrice > 0) {
-      entryStatus = entryStatusLine(livePrice, longTrigger, 'trigger');
-      trigger = numericLevel('Trigger', longTrigger, livePrice) || ('Live ' + fmt(livePrice));
-    } else if (action === 'SHORT' && livePrice > 0) {
-      entryStatus = entryStatusLine(livePrice, shortTrigger, 'trigger');
-      trigger = numericLevel('Trigger', shortTrigger, livePrice) || ('Live ' + fmt(livePrice));
-    } else if (longTrigger && bias === 'BULLISH') {
-      entryStatus = entryStatusLine(livePrice, longTrigger, 'trigger');
-      trigger = numericLevel('Trigger', longTrigger, livePrice);
-    } else if (shortTrigger && bias === 'BEARISH') {
-      entryStatus = entryStatusLine(livePrice, shortTrigger, 'trigger');
-      trigger = numericLevel('Trigger', shortTrigger, livePrice);
-    }
-    executionNote = String(signal.next_unblock_reason || signal.portfolio_guard_summary || signal.data_reliability_summary || signal.execution_quality_summary || executionNote);
-  } else if (bias === 'BULLISH') {
-    status = 'WATCH_LONG';
-    label = 'Bullish watch';
-    headline = shortText(signal.market_map_summary || mapEntry.summary || 'Higher-timeframe bias is bullish, but the entry is not ready.', 180);
-    entryStatus = entryStatusLine(livePrice, longTrigger, signal.market_map_reclaim_confirmed ? 'reclaim' : 'trigger');
-    trigger = numericLevel(signal.market_map_reclaim_confirmed ? 'Reclaim' : 'Trigger', longTrigger, livePrice) || 'Wait for cleaner long confirmation.';
-    executionNote = 'The agent is reading this as bullish context only. It still needs a qualified live thesis before any order can go out.';
-  } else if (bias === 'BEARISH') {
-    status = 'WATCH_SHORT';
-    label = 'Bearish watch';
-    headline = shortText(signal.market_map_summary || mapEntry.summary || 'Higher-timeframe bias is bearish, but the entry is not ready.', 180);
-    entryStatus = entryStatusLine(livePrice, shortTrigger, signal.market_map_breakdown_confirmed ? 'breakdown' : 'trigger');
-    trigger = numericLevel(signal.market_map_breakdown_confirmed ? 'Break' : 'Trigger', shortTrigger, livePrice) || 'Wait for cleaner short confirmation.';
-    executionNote = 'The agent is reading this as bearish context only. It still needs a qualified live thesis before any order can go out.';
-  }
-
-  let risk = shortText(mapEntry.summary || signal.market_map_summary || '', 120);
-  if (status.includes('LONG') && support) {
-    risk = numericLevel('Lose', support, livePrice) || ('Lose ' + fmt(support));
-  } else if (status.includes('SHORT') && resistance) {
-    risk = numericLevel('Reclaim', resistance, livePrice) || ('Reclaim ' + fmt(resistance));
-  }
-  if (!invalidation && risk) {
-    invalidation = simpleInvalidationText({ risk }, 90);
-  }
-  if (fpWrong) {
-    invalidation = shortText(fpWrong, 90);
-  }
-  const probability = setupProbabilityPayload({
-    signal,
-    status,
-    action,
-    confidence: String(signal.confidence || 'LOW').toUpperCase(),
-    score: Number(signal.score || 50),
-    convictionScore: Number(signal.thesis_conviction_score || signal.score || 50),
-    livePrice,
-    longTrigger,
-    shortTrigger,
-    bias,
-    tradable,
-    coachVerdict: String(signal.execution_coach_verdict || ''),
-  });
-
-  return {
-    coin: ticker,
-    tradable,
-    mode_badge: tradable ? 'EXEC' : 'TRACK',
-    mode_meta: tradable ? 'Executable' : 'Tracking only',
-    mode_detail: tradable
-      ? 'This market can execute on the active venue, but the bot still needs final entry checks to clear.'
-      : 'The agent is tracking this market and waiting for clearer confirmation before it becomes actionable.',
-    status,
-    label,
-    headline,
-    next_setup_reason: shortText(executionNote || headline || trigger, 180),
-    trigger,
-    entry_status: entryStatus || executionNote,
-    execution_note: executionNote,
-    risk,
-    invalidation,
-    invalidation_short: invalidation,
-    bias,
-    map_summary: shortText(mapEntry.summary || mapEntry.notes || signal.market_map_summary || '', 140),
-    entry_logic_short: entryLogicShort,
-    current_logic_short: currentLogicShort,
-    friction_stack: [],
-    catalyst_rail: [],
-    why_this_lead: shortText(probability.probability_detail || probability.probability_text || executionNote || headline, 160),
-    confidence: String(signal.confidence || 'LOW').toUpperCase(),
-    score: Number(signal.score || 50),
-    tracked,
-    live_price: livePrice,
-    price_diagnostics: priceDiagnostics,
-    price_source: signal.price_source || (position ? position.price_source : '') || priceDiagnostics.price_source || '',
-    price_source_label: signal.price_source_label || (position ? position.price_source_label : '') || priceDiagnostics.price_source_label || '',
-    venue_symbol: signal.venue_symbol || (position ? position.venue_symbol : '') || priceDiagnostics.venue_symbol || '',
-    reference_price: signal.reference_price || (position ? position.reference_price : 0) || priceDiagnostics.reference_price || 0,
-    reference_source: signal.reference_source || (position ? position.reference_source : '') || priceDiagnostics.reference_source || '',
-    price_deviation_pct: signal.price_deviation_pct ?? (position ? position.price_deviation_pct : priceDiagnostics.price_deviation_pct),
-    price_status: signal.price_status || (position ? position.price_status : '') || priceDiagnostics.price_status || '',
-    price_warning: signal.price_warning || (position ? position.price_warning : '') || priceDiagnostics.price_warning || '',
-    ...probability,
-  };
-}
-
-function updateTickerSearchOptions() {
-  const datalist = document.getElementById('ticker-search-options');
-  if (!datalist) return;
-  datalist.innerHTML = trackedCoins()
-    .map((coin) => '<option value="' + esc(coin) + '"></option>')
-    .join('');
-}
-
-function assetDossierForCoin(coin) {
-  return (((latestAssetDossiers || {}).assets || {})[String(coin || '').toUpperCase()]) || null;
-}
-
-function refereeVerdictForCoin(coin) {
-  return (((latestLLMRefereeReport || {}).verdicts || {})[String(coin || '').toUpperCase()]) || null;
-}
-
-function renderTickerSearch(value) {
-  currentTickerSearchQuery = String(value == null ? '' : value);
-  const normalized = String(currentTickerSearchQuery || '').trim().toUpperCase();
-  const hint = document.getElementById('ticker-search-hint');
-  const result = document.getElementById('ticker-search-result');
-  if (!hint || !result) return;
-
-  if (!normalized) {
-    hint.textContent = 'Try a live ticker from the active universe or scout watchlist.';
-    result.innerHTML = "<div class=\"search-result-empty\">Start typing a ticker and the dashboard will pull the thesis, trigger, and invalidation.</div>";
-    return;
-  }
-
-  const found = findActionBoardItem(normalized);
-  const item = found.item || fallbackSearchItem(normalized);
-  if (!item) {
-    const suggestions = found.suggestions && found.suggestions.length
-      ? 'Closest tracked tickers: ' + found.suggestions.join(', ') + '.'
-      : "This ticker is not currently in the agent's tracked universe.";
-    hint.textContent = normalized + ' is not in the current live universe.';
-    result.innerHTML = '<div class="search-result-empty"><strong>' + esc(normalized) + '</strong> is not currently tracked by the agent. ' + esc(suggestions) + '</div>';
-    return;
-  }
-
-  const tradableChip = item.tradable
-    ? '<span class="signal-mode-tradable">' + esc(item.mode_badge || 'LIVE') + '</span>'
-    : '<span class="signal-mode-watch">' + esc(surfaceModeBadge(item.mode_badge, false)) + '</span>';
-  const stanceChip = setupStanceChipHtml(item);
-  const trackedLine = item.tradable
-    ? item.mode_detail || 'Executable on the active venue.'
-    : item.mode_detail || 'Tracking only while the setup keeps developing.';
-  const matchNote = found.match && found.match !== 'exact'
-    ? 'Matched from ' + found.match + ' search on ' + item.coin + '.'
-    : 'Exact live dashboard read for ' + item.coin + '.';
-  const dossier = assetDossierForCoin(item.coin) || {};
-  const missed = dossier.missed_move_context || {};
-
-  hint.textContent = item.coin + ': ' + trackedLine;
-  result.innerHTML = '<div class="search-title">' + esc(item.coin) + ' • ' + esc(setupStanceText(item, 'title')) + '</div>'
-    + '<div class="search-chip-row">' + tradableChip + stanceChip + probabilityChipHtml(item) + '</div>'
-    + '<div class="search-summary"><strong>Next:</strong> ' + esc(simpleNextText(item, 110)) + '</div>'
-    + '<div class="search-summary"><strong>Why:</strong> ' + esc(simpleThesisText(item, 110)) + '</div>'
-    + priceSourceHtml(item)
-    + '<div class="search-grid">'
-      + '<div class="token-detail"><span class="token-detail-label">Call</span><div class="token-detail-value">' + esc(simpleActionText(item)) + '</div></div>'
-      + '<div class="token-detail"><span class="token-detail-label">Level</span><div class="token-detail-value">' + esc(simpleNextText(item, 96)) + '</div></div>'
-      + '<div class="token-detail"><span class="token-detail-label">Invalid if</span><div class="token-detail-value">' + esc(simpleInvalidationText(item, 96)) + '</div></div>'
-      + '<div class="token-detail"><span class="token-detail-label">Lane</span><div class="token-detail-value">' + esc(surfaceModeMeta(item.mode_meta, item.tradable)) + '</div></div>'
-    + '</div>'
-    + ((missed.miss_count || 0) > 0 ? '<div class="search-summary"><strong>Replay:</strong> ' + esc(String(missed.miss_count)) + ' recent missed winner(s).</div>' : '')
-    + '<div class="search-summary"><strong>Lookup:</strong> ' + esc(matchNote) + '</div>';
-}
-
-function handleTickerSearch(value) {
-  renderTickerSearch(value);
+function actionBoardItems() {
+  return Array.isArray((latestActionBoard || {}).items)
+    ? latestActionBoard.items.filter((item) => item && item.coin)
+    : [];
 }
 
 function commandSearchCandidates(query) {
   const normalized = String(query || '').trim().toUpperCase();
   const seen = new Set();
   const candidates = [];
-  trackedCoins().forEach((coin) => {
-    const ticker = String(coin || '').trim().toUpperCase();
+  actionBoardItems().forEach((item) => {
+    const ticker = String((item || {}).coin || '').trim().toUpperCase();
     if (!ticker || seen.has(ticker)) return;
-    const item = dashboardItemForCoin(ticker);
-    if (!item) return;
     let matchRank = 4;
     if (!normalized) {
       matchRank = 3;
@@ -3978,7 +3680,7 @@ function openCommandSearch(seed='') {
   const shell = document.getElementById('command-palette-shell');
   const input = document.getElementById('command-search-input');
   if (!shell || !input) return;
-  const nextValue = String(seed || currentTickerSearchQuery || '').trim().toUpperCase();
+  const nextValue = String(seed || '').trim().toUpperCase();
   shell.hidden = false;
   commandSearchOpen = true;
   commandSearchQuery = nextValue;
@@ -4002,12 +3704,9 @@ function selectCommandTicker(ticker) {
   const normalized = String(ticker || '').trim().toUpperCase();
   if (!normalized) return;
   commandSearchQuery = normalized;
-  currentTickerSearchQuery = normalized;
+  commandSearchIndex = 0;
   const commandInput = document.getElementById('command-search-input');
-  const legacyInput = document.getElementById('ticker-search-input');
   if (commandInput) commandInput.value = normalized;
-  if (legacyInput) legacyInput.value = normalized;
-  renderTickerSearch(normalized);
   renderCommandSearch();
 }
 
@@ -5013,9 +4712,6 @@ async function refresh() {
     renderDailyRadar(latestDailyRadar);
     renderActionBoard(actionBoard);
     renderProactiveDesk(latestProactiveTraderReport);
-    updateTickerSearchOptions();
-    const searchInput = document.getElementById('ticker-search-input');
-    renderTickerSearch(searchInput ? searchInput.value : currentTickerSearchQuery);
     if (commandSearchOpen) renderCommandSearch();
 
     // Performance Stats

@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+from asset_context import asset_bucket, asset_categories_for_coin, instrument_type_for_coin, theme_for_coin
 from logger import get_logger
 from paths import DATA_DIR, FORECAST_LEDGER_JSONL, PROACTIVE_TRADER_REPORT_JSON, THESIS_LEDGER_JSONL
 
@@ -138,48 +139,6 @@ def _parse_ts(value: Any) -> float:
         return 0.0
 
 
-def _config_maps(state: dict) -> tuple[dict, dict, dict]:
-    config = dict((state or {}).get("config") or {})
-    return (
-        dict(config.get("instrument_types") or {}),
-        dict(config.get("asset_categories") or {}),
-        dict(config.get("portfolio_theme_map") or {}),
-    )
-
-
-def _instrument_type(coin: str, signal: dict, state: dict) -> str:
-    types, _, _ = _config_maps(state)
-    return _safe_str(signal.get("instrument_type") or types.get(coin), "crypto").lower()
-
-
-def _categories(coin: str, signal: dict, state: dict) -> list[str]:
-    _, category_map, _ = _config_maps(state)
-    categories = _safe_list(signal.get("asset_categories") or signal.get("asset_category"))
-    if categories:
-        return categories
-    categories = _safe_list(category_map.get(coin))
-    if categories:
-        return categories
-    itype = _instrument_type(coin, signal, state)
-    if itype == "index":
-        return ["indices_macro"]
-    if itype == "equity":
-        return ["other_stocks"]
-    return ["crypto"]
-
-
-def _theme(coin: str, categories: list[str], state: dict) -> str:
-    _, _, theme_map = _config_maps(state)
-    explicit = _safe_str(theme_map.get(coin))
-    if explicit:
-        return explicit
-    return _safe_str((categories or ["crypto"])[0], "crypto").upper()
-
-
-def _asset_bucket(instrument_type: str) -> str:
-    return "coin" if _safe_str(instrument_type, "crypto").lower() == "crypto" else "equity"
-
-
 def _direction(coin: str, signal: dict, market_entry: dict | None = None) -> str:
     action = _safe_str(signal.get("action")).upper()
     if action in {"LONG", "SHORT"}:
@@ -287,17 +246,22 @@ def _candidate_rows(state: dict, market_map: dict, *, min_conviction: float = 48
         catalyst_score = _safe_float(signal.get("news_catalyst_score"))
         if conviction < min_conviction and event_score < 2.5 and catalyst_score < 2.5:
             continue
-        instrument_type = _instrument_type(coin, signal, state)
-        categories = _categories(coin, signal, state)
+        instrument_type = instrument_type_for_coin(coin, signal=signal, state=state)
+        categories = asset_categories_for_coin(
+            coin,
+            signal=signal,
+            state=state,
+            instrument_type=instrument_type,
+        )
         rows.append({
             "coin": coin,
             "direction": direction,
             "side": _side(direction),
             "instrument_type": instrument_type,
-            "asset_bucket": _asset_bucket(instrument_type),
+            "asset_bucket": asset_bucket(instrument_type),
             "categories": categories,
             "primary_category": categories[0] if categories else "crypto",
-            "theme": _theme(coin, categories, state),
+            "theme": theme_for_coin(coin, categories, state=state),
             "signal": signal,
             "market_entry": market_entry,
             "price": _live_price(signal),
@@ -509,8 +473,8 @@ def _existing_exposure(state: dict) -> tuple[float, dict[str, float], set[str]]:
             continue
         occupied.add(coin)
         signal = dict(signals.get(coin) or {})
-        categories = _categories(coin, signal, state)
-        theme = _theme(coin, categories, state)
+        categories = asset_categories_for_coin(coin, signal=signal, state=state)
+        theme = theme_for_coin(coin, categories, state=state)
         size = _safe_float((item or {}).get("size_usd"))
         total += size
         by_theme[theme] += size

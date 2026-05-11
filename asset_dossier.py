@@ -14,6 +14,7 @@ import json
 import time
 from typing import Any, Iterable
 
+from asset_context import asset_bucket, instrument_type_for_coin
 from logger import get_logger
 from paths import ASSET_DOSSIERS_JSON
 
@@ -46,10 +47,6 @@ def _pick_level(values: Any, *, prefer: str = "min", fallback: Any = None) -> fl
     return min(numbers) if prefer == "min" else max(numbers)
 
 
-def _asset_bucket(instrument_type: str) -> str:
-    return "coin" if str(instrument_type or "crypto").lower() == "crypto" else "equity"
-
-
 def _primary_reason(*values: Any) -> str:
     for raw in values:
         text = str(raw or "").replace("|", "·")
@@ -61,14 +58,6 @@ def _primary_reason(*values: Any) -> str:
                 continue
             return part
     return ""
-
-
-def _instrument_type_for_coin(coin: str, signal: dict | None, state: dict | None) -> str:
-    signal_type = _safe_str((signal or {}).get("instrument_type")).lower()
-    if signal_type:
-        return signal_type
-    instrument_types = dict(((state or {}).get("config") or {}).get("instrument_types") or {})
-    return _safe_str(instrument_types.get(str(coin or "").upper()), "crypto").lower()
 
 
 def _latest_trade_by_coin(trades: Iterable[dict] | None) -> dict[str, dict]:
@@ -169,8 +158,8 @@ def build_report(
         sig = dict(signals.get(coin) or {})
         pos = dict(position_map.get(coin) or {})
         entry = dict(map_entries.get(coin) or {})
-        instrument_type = _instrument_type_for_coin(coin, sig, safe_state)
-        asset_bucket = _asset_bucket(instrument_type)
+        instrument_type = instrument_type_for_coin(coin, signal=sig, state=safe_state)
+        bucket = asset_bucket(instrument_type)
         action = _safe_str(sig.get("action"), "FLAT").upper()
         bias = _safe_str(sig.get("market_map_bias") or entry.get("bias"), "NEUTRAL").upper()
         asset_state = _safe_str(sig.get("asset_state"), "OBSERVING").upper()
@@ -214,7 +203,7 @@ def build_report(
         assets[coin] = {
             "coin": coin,
             "instrument_type": instrument_type,
-            "asset_bucket": asset_bucket,
+            "asset_bucket": bucket,
             "tradable": tradable,
             "execution_mode": _safe_str(sig.get("execution_mode"), "observation_only"),
             "asset_state": asset_state,
