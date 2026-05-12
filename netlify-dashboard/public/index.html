@@ -3290,29 +3290,6 @@ const REFRESH_MAX_MS = 60000;
 const REFRESH_TIMEOUT_MS = 8000;
 const STATIC_GITHUB_PAGES_MODE = /\.github\.io$/i.test(window.location.hostname || '');
 const STATIC_STATE_FALLBACK_URL = 'https://raw.githubusercontent.com/punkypunk936-coder/crypto-trading-agent/dashboard-state-live/dashboard/dashboard_snapshot.json';
-const DEFAULT_ASSET_CATEGORY_LABELS = {
-  crypto: 'Coins',
-  pre_ipo: 'Pre-IPO',
-  indices_macro: 'Indices & Macro',
-  mag7: 'Mag7',
-  semis_memory: 'Semis & Memory',
-  neoclouds: 'Neoclouds',
-  ai_infra: 'AI Infra',
-  crypto_equities: 'Crypto Equities',
-  asia_macro: 'Asia Macro',
-  commodities_metals: 'Metals',
-  energy: 'Energy',
-  agriculture: 'Agriculture',
-  fx_rates: 'FX & Rates',
-  uranium: 'Uranium',
-  volatility: 'Volatility',
-  consumer: 'Consumer',
-  financials: 'Financials',
-  biotech_glp1: 'Biotech & GLP-1',
-  meme_momentum: 'Meme Momentum',
-  growth: 'Growth',
-  other_stocks: 'Other Stocks',
-};
 
 function toggleTrades() {
   const wrap = document.getElementById('trades-wrap');
@@ -3378,7 +3355,11 @@ function assetCategoryMap() {
 }
 
 function assetCategoryLabels() {
-  return Object.assign({}, DEFAULT_ASSET_CATEGORY_LABELS, ((((latestState || {}).config || {}).asset_category_labels) || {}));
+  return ((((latestState || {}).config || {}).asset_category_labels) || {});
+}
+
+function assetCategoryDescriptions() {
+  return ((((latestState || {}).config || {}).asset_category_descriptions) || {});
 }
 
 function normalizeAssetCategories(value) {
@@ -3467,26 +3448,7 @@ function assetCategoryBadgeHtml(item) {
 
 function assetCategoryDescription(category) {
   const key = String(category || '').trim().toLowerCase();
-  if (key === 'indices_macro') return 'Macro-linked index and ETF proxies with slower, cleaner tape.';
-  if (key === 'mag7') return 'The big US platform leaders where catalyst reactions matter most.';
-  if (key === 'semis_memory') return 'Chip, storage, and memory names that often move together on AI demand.';
-  if (key === 'neoclouds') return 'GPU-cloud and AI infrastructure names tied to compute demand.';
-  if (key === 'ai_infra') return 'AI infrastructure names where cloud commitments and capex cycles can drive re-rates.';
-  if (key === 'crypto_equities') return 'Public market crypto beta, brokers, exchanges, and treasury-linked stocks.';
-  if (key === 'asia_macro') return 'Asia-linked equity, index, and currency proxies for regional risk appetite.';
-  if (key === 'commodities_metals') return 'Metals and hard-asset proxies with macro and supply-chain sensitivity.';
-  if (key === 'energy') return 'Oil, gas, and energy equity proxies where inventory and geopolitical catalysts matter.';
-  if (key === 'agriculture') return 'Agricultural contracts with cleaner macro and weather-driven trend behavior.';
-  if (key === 'fx_rates') return 'Currency and dollar-index proxies that can anchor macro risk direction.';
-  if (key === 'uranium') return 'Uranium spot and miner exposure with policy, supply, and nuclear-demand catalysts.';
-  if (key === 'volatility') return 'Volatility instruments for stress, hedging, and regime-change reads.';
-  if (key === 'consumer') return 'Consumer and discretionary names where spending trends drive tape.';
-  if (key === 'financials') return 'Financials and private-market exposure with rate and liquidity sensitivity.';
-  if (key === 'biotech_glp1') return 'Healthcare and GLP-1-linked growth where product catalysts matter.';
-  if (key === 'meme_momentum') return 'High-reflexivity tickers where flow, attention, and positioning dominate.';
-  if (key === 'growth') return 'Single-name growth setups outside the big platform and chip baskets.';
-  if (key === 'other_stocks') return 'Everything executable that does not fit the main desks yet.';
-  return '';
+  return String((assetCategoryDescriptions() || {})[key] || '');
 }
 
 function emptyCategoryGroups() {
@@ -4061,17 +4023,27 @@ function renderDailyRadar(report) {
   + '</div>';
 }
 
-function xyzGroupMap(items) {
-  const groups = { all: { key: 'all', label: 'All', count: 0, htf_count: 0 } };
-  (items || []).forEach((item) => {
-    const key = String(item.segment_key || 'other').trim() || 'other';
-    if (!groups[key]) groups[key] = { key, label: String(item.segment || humanizeKey(key)), count: 0, htf_count: 0 };
-    groups[key].count += 1;
-    groups.all.count += 1;
-    if (item.htf_long_hold) {
-      groups[key].htf_count += 1;
-      groups.all.htf_count += 1;
-    }
+function xyzSegmentGroups(section) {
+  const safe = section || {};
+  const summary = safe.summary || {};
+  const items = Array.isArray(safe.items) ? safe.items : [];
+  const groups = {
+    all: {
+      key: 'all',
+      label: 'All',
+      count: Number(summary.count || items.length || 0),
+      htf_count: Number(summary.htf_long_count || 0),
+    },
+  };
+  (safe.segments || []).forEach((segment) => {
+    const key = String(segment.key || '').trim();
+    if (!key) return;
+    groups[key] = {
+      key,
+      label: String(segment.label || humanizeKey(key)),
+      count: Number(segment.count || 0),
+      htf_count: Number(segment.htf_count || 0),
+    };
   });
   return groups;
 }
@@ -4133,7 +4105,7 @@ function renderXyzSection(section) {
   const safe = section || {};
   const summary = safe.summary || {};
   const items = Array.isArray(safe.items) ? safe.items.filter((item) => item && item.coin) : [];
-  const groups = xyzGroupMap(items);
+  const groups = xyzSegmentGroups(safe);
   if (!items.length) {
     meta.textContent = 'No Trade.xyz universe in this snapshot.';
     body.innerHTML = '<div class="empty-state">Trade.xyz segments will appear after the next snapshot.</div>';

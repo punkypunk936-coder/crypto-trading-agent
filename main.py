@@ -35,6 +35,7 @@ from agent import TradingAgent
 from data.market_data import fetch_candles, get_current_price
 from market_universe import build_hyperliquid_market_cap_watchlist
 from runtime_power import get_power_status
+from asset_context import normalize_asset_category_values, theme_from_categories
 from paths import (
     CHECKPOINTS_DB,
     CONTROL_JSON,
@@ -111,42 +112,6 @@ def _normalise_coin_list(values) -> list[str]:
     return out
 
 
-def _theme_from_categories(categories: list[str], instrument_type: str) -> str:
-    primary = str((categories or [])[0] if categories else "").strip().lower()
-    theme_by_category = {
-        "crypto": "CRYPTO_BETA",
-        "indices_macro": "US_MACRO_BETA",
-        "pre_ipo": "PRE_IPO_EVENT",
-        "mag7": "MEGA_CAP_TECH",
-        "semis_memory": "SEMIS_MEMORY",
-        "neoclouds": "NEOCLOUDS",
-        "ai_infra": "AI_INFRA",
-        "crypto_equities": "CRYPTO_EQUITIES",
-        "asia_macro": "ASIA_MACRO",
-        "latam_macro": "LATAM_MACRO",
-        "commodities_metals": "COMMODITIES_METALS",
-        "energy": "ENERGY_COMPLEX",
-        "agriculture": "AGRICULTURE",
-        "fx_rates": "FX_RATES",
-        "uranium": "URANIUM",
-        "volatility": "VOLATILITY",
-        "consumer": "CONSUMER_GROWTH",
-        "financials": "FINANCIALS",
-        "biotech_glp1": "BIOTECH_GLP1",
-        "meme_momentum": "MEME_MOMENTUM",
-        "growth": "US_GROWTH",
-        "software": "SOFTWARE_GROWTH",
-        "other_stocks": "OTHER_STOCKS",
-    }
-    if primary in theme_by_category:
-        return theme_by_category[primary]
-    if str(instrument_type or "").lower() == "crypto":
-        return "CRYPTO_BETA"
-    if str(instrument_type or "").lower() == "index":
-        return "US_MACRO_BETA"
-    return (primary or "OTHER_STOCKS").upper()
-
-
 def _sync_config_market_metadata(coin: str, spec: dict | None = None) -> None:
     coin_upper = str(coin or "").upper().strip()
     if not coin_upper:
@@ -157,23 +122,10 @@ def _sync_config_market_metadata(coin: str, spec: dict | None = None) -> None:
         or config.trading.instrument_types.get(coin_upper)
         or hyperliquid_instrument_type(coin_upper, "crypto")
     ).strip().lower() or "crypto"
-    raw_categories = spec.get("categories")
-    if isinstance(raw_categories, str):
-        raw_categories = [raw_categories]
-    categories = [
-        str(category or "").strip().lower()
-        for category in list(raw_categories or [])
-        if str(category or "").strip()
-    ]
+    categories = normalize_asset_category_values(spec.get("categories"))
     if not categories:
         existing = (getattr(config.trading, "asset_category_map", {}) or {}).get(coin_upper, [])
-        if isinstance(existing, str):
-            existing = [existing]
-        categories = [
-            str(category or "").strip().lower()
-            for category in list(existing or [])
-            if str(category or "").strip()
-        ]
+        categories = normalize_asset_category_values(existing)
     if not categories:
         if instrument_type == "crypto":
             categories = ["crypto"]
@@ -186,7 +138,7 @@ def _sync_config_market_metadata(coin: str, spec: dict | None = None) -> None:
     config.trading.asset_category_map[coin_upper] = categories
     config.trading.portfolio_theme_map.setdefault(
         coin_upper,
-        _theme_from_categories(categories, instrument_type),
+        theme_from_categories(categories, instrument_type),
     )
 
 

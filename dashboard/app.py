@@ -42,12 +42,12 @@ from paths import (
 )
 from dashboard.snapshot import (
     augment_state,
-    build_xyz_section,
     build_dashboard_snapshot,
     default_control,
     default_state,
     normalize_control,
 )
+from tradexyz_profile import build_xyz_section
 
 STATE    = STATE_JSON
 LOG      = TRADES_CSV

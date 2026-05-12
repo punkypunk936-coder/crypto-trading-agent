@@ -3119,7 +3119,6 @@ def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> N
     assert "Latest Win" in template
     assert "daily-briefing" in template
     assert "Stock Desks" in template
-    assert "Mag7" in template
     assert "prob-chip" in template
     assert "Reclaim odds" in template
     assert "next_setup_reason" in template
@@ -3143,8 +3142,12 @@ def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> N
     assert "Forecast Calibration" in template
     assert '<div class="card-label">xyz</div>' in template
     assert "renderXyzSection" in template
+    assert "xyzSegmentGroups" in template
+    assert "xyzGroupMap" not in template
     assert "data-xyz-segment" in template
     assert "High timeframe" in template
+    assert "DEFAULT_ASSET_CATEGORY_LABELS" not in template
+    assert "if (key === 'indices_macro')" not in template
     assert "STANCE SEARCH" in template
     assert "commandSearchCandidates" in template
     assert "<strong>Lead:</strong>" in template
@@ -3177,6 +3180,9 @@ def test_asset_context_helpers_are_single_source_for_product_surfaces() -> None:
     assert asset_context_module.asset_bucket("crypto") == "coin"
     assert asset_context_module.asset_categories_for_coin("GOOGL", state=state) == ["mag7", "ai_infra"]
     assert asset_context_module.asset_categories_for_coin("SP500", state=state) == ["indices_macro"]
+    assert asset_context_module.asset_category_label("mag7") == "Mag7"
+    assert "platform" in asset_context_module.asset_category_description("mag7").lower()
+    assert asset_context_module.theme_from_categories(["semis_memory"], "equity") == "SEMIS_MEMORY"
     assert asset_context_module.theme_for_coin("GOOGL", ["mag7"], state=state) == "MEGA_CAP_AI"
 
 
@@ -3488,6 +3494,7 @@ def test_dashboard_snapshot_includes_xyz_tradexyz_segment_book() -> None:
     xyz = snapshot["xyz"]
     assert xyz["title"] == "xyz"
     assert xyz["summary"]["count"] >= len(hyperliquid_markets_module.TRADEXYZ_ASSET_METADATA)
+    assert snapshot["state"]["config"]["asset_category_descriptions"]["mag7"]
     by_coin = {item["coin"]: item for item in xyz["items"]}
     assert by_coin["LITE"]["segment"] == "Optics"
     assert by_coin["LITE"]["htf_long_hold"] is True

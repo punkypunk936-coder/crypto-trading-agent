@@ -8,6 +8,11 @@ from dataclasses import dataclass, field
 from typing import List
 from dotenv import load_dotenv
 
+from asset_context import (
+    DEFAULT_ASSET_CATEGORY_LABELS,
+    THEME_BY_CATEGORY,
+    normalize_asset_category_values,
+)
 from exchanges.hyperliquid_markets import TRADEXYZ_ASSET_METADATA
 
 load_dotenv()
@@ -40,59 +45,6 @@ _BASE_ASSET_CATEGORY_MAP = {
     "XAU": ["indices_macro"],
 }
 
-_ASSET_CATEGORY_LABELS = {
-    "crypto": "Coins",
-    "indices_macro": "Indices & Macro",
-    "pre_ipo": "Pre-IPO",
-    "mag7": "Mag7",
-    "semis_memory": "Semis & Memory",
-    "neoclouds": "Neoclouds",
-    "ai_infra": "AI Infra",
-    "crypto_equities": "Crypto Equities",
-    "asia_macro": "Asia Macro",
-    "latam_macro": "LatAm Macro",
-    "commodities_metals": "Metals",
-    "energy": "Energy",
-    "agriculture": "Agriculture",
-    "fx_rates": "FX & Rates",
-    "uranium": "Uranium",
-    "volatility": "Volatility",
-    "consumer": "Consumer",
-    "financials": "Financials",
-    "biotech_glp1": "Biotech & GLP-1",
-    "meme_momentum": "Meme Momentum",
-    "growth": "Growth",
-    "software": "Software",
-    "other_stocks": "Other Stocks",
-}
-
-_THEME_BY_CATEGORY = {
-    "crypto": "CRYPTO_BETA",
-    "indices_macro": "US_MACRO_BETA",
-    "pre_ipo": "PRE_IPO_EVENT",
-    "mag7": "MEGA_CAP_TECH",
-    "semis_memory": "SEMIS_MEMORY",
-    "neoclouds": "NEOCLOUDS",
-    "ai_infra": "AI_INFRA",
-    "crypto_equities": "CRYPTO_EQUITIES",
-    "asia_macro": "ASIA_MACRO",
-    "latam_macro": "LATAM_MACRO",
-    "commodities_metals": "COMMODITIES_METALS",
-    "energy": "ENERGY_COMPLEX",
-    "agriculture": "AGRICULTURE",
-    "fx_rates": "FX_RATES",
-    "uranium": "URANIUM",
-    "volatility": "VOLATILITY",
-    "consumer": "CONSUMER_GROWTH",
-    "financials": "FINANCIALS",
-    "biotech_glp1": "BIOTECH_GLP1",
-    "meme_momentum": "MEME_MOMENTUM",
-    "growth": "US_GROWTH",
-    "software": "SOFTWARE_GROWTH",
-    "other_stocks": "OTHER_STOCKS",
-}
-
-
 def _unique_coins(*groups) -> List[str]:
     seen = set()
     out: List[str] = []
@@ -123,11 +75,7 @@ def _default_instrument_types() -> dict:
 def _default_asset_category_map() -> dict:
     category_map = {coin: list(categories) for coin, categories in _BASE_ASSET_CATEGORY_MAP.items()}
     for coin, meta in TRADEXYZ_ASSET_METADATA.items():
-        categories = [
-            str(category or "").strip().lower()
-            for category in list(meta.get("categories") or ["other_stocks"])
-            if str(category or "").strip()
-        ]
+        categories = normalize_asset_category_values(meta.get("categories") or ["other_stocks"])
         category_map[str(coin).upper()] = categories or ["other_stocks"]
     return category_map
 
@@ -147,7 +95,7 @@ def _default_portfolio_theme_map() -> dict:
     }
     for coin, categories in _default_asset_category_map().items():
         primary_category = str((categories or ["other_stocks"])[0] or "other_stocks")
-        theme_map.setdefault(coin, _THEME_BY_CATEGORY.get(primary_category, primary_category.upper()))
+        theme_map.setdefault(coin, THEME_BY_CATEGORY.get(primary_category, primary_category.upper()))
     return theme_map
 
 
@@ -636,7 +584,7 @@ class TradingConfig:
     pre_ipo_event_size_multiplier: float = 0.60
 
     asset_category_map: dict = field(default_factory=_default_asset_category_map)
-    asset_category_labels: dict = field(default_factory=lambda: dict(_ASSET_CATEGORY_LABELS))
+    asset_category_labels: dict = field(default_factory=lambda: dict(DEFAULT_ASSET_CATEGORY_LABELS))
 
     # ── Smarter execution tactics ───────────────────────────────────────────
     execution_passive_rescue_enabled: bool = True

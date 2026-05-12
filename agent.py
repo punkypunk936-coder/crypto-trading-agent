@@ -75,6 +75,7 @@ import proactive_intelligence
 import trade_dataset
 import trade_logger
 import trade_review
+from asset_context import DEFAULT_ASSET_CATEGORY_DESCRIPTIONS, normalize_asset_category_values, theme_from_categories
 from asset_state_machine import build_asset_state
 from indicators.technical import compute_signals
 from indicators.advanced  import compute_advanced_signals
@@ -202,54 +203,14 @@ class TradingAgent:
 
     def _asset_categories_for_coin(self, coin: str) -> List[str]:
         raw = (getattr(self.cfg.trading, "asset_category_map", {}) or {}).get(str(coin or "").upper(), [])
-        if isinstance(raw, str):
-            values = [raw]
-        else:
-            values = list(raw or [])
-        return [
-            str(category or "").strip().lower()
-            for category in values
-            if str(category or "").strip()
-        ]
+        return normalize_asset_category_values(raw)
 
     def _is_pre_ipo_asset(self, coin: str) -> bool:
         return "pre_ipo" in self._asset_categories_for_coin(coin)
 
     @staticmethod
     def _theme_from_asset_categories(categories: List[str], instrument_type: str) -> str:
-        primary = str((categories or [])[0] if categories else "").strip().lower()
-        theme_by_category = {
-            "crypto": "CRYPTO_BETA",
-            "indices_macro": "US_MACRO_BETA",
-            "pre_ipo": "PRE_IPO_EVENT",
-            "mag7": "MEGA_CAP_TECH",
-            "semis_memory": "SEMIS_MEMORY",
-            "neoclouds": "NEOCLOUDS",
-            "ai_infra": "AI_INFRA",
-            "crypto_equities": "CRYPTO_EQUITIES",
-            "asia_macro": "ASIA_MACRO",
-            "latam_macro": "LATAM_MACRO",
-            "commodities_metals": "COMMODITIES_METALS",
-            "energy": "ENERGY_COMPLEX",
-            "agriculture": "AGRICULTURE",
-            "fx_rates": "FX_RATES",
-            "uranium": "URANIUM",
-            "volatility": "VOLATILITY",
-            "consumer": "CONSUMER_GROWTH",
-            "financials": "FINANCIALS",
-            "biotech_glp1": "BIOTECH_GLP1",
-            "meme_momentum": "MEME_MOMENTUM",
-            "growth": "US_GROWTH",
-            "software": "SOFTWARE_GROWTH",
-            "other_stocks": "OTHER_STOCKS",
-        }
-        if primary in theme_by_category:
-            return theme_by_category[primary]
-        if str(instrument_type or "").lower() == "crypto":
-            return "CRYPTO_BETA"
-        if str(instrument_type or "").lower() == "index":
-            return "US_MACRO_BETA"
-        return (primary or "OTHER_STOCKS").upper()
+        return theme_from_categories(categories, instrument_type)
 
     def _sync_runtime_market_metadata(self, coin: str, spec: dict | None = None) -> None:
         coin_upper = str(coin or "").upper().strip()
@@ -261,23 +222,10 @@ class TradingAgent:
             or self.cfg.trading.instrument_types.get(coin_upper)
             or hyperliquid_instrument_type(coin_upper, "crypto")
         ).strip().lower() or "crypto"
-        raw_categories = spec.get("categories")
-        if isinstance(raw_categories, str):
-            raw_categories = [raw_categories]
-        categories = [
-            str(category or "").strip().lower()
-            for category in list(raw_categories or [])
-            if str(category or "").strip()
-        ]
+        categories = normalize_asset_category_values(spec.get("categories"))
         if not categories:
             existing = (getattr(self.cfg.trading, "asset_category_map", {}) or {}).get(coin_upper, [])
-            if isinstance(existing, str):
-                existing = [existing]
-            categories = [
-                str(category or "").strip().lower()
-                for category in list(existing or [])
-                if str(category or "").strip()
-            ]
+            categories = normalize_asset_category_values(existing)
         if not categories:
             if instrument_type == "crypto":
                 categories = ["crypto"]
@@ -6415,6 +6363,7 @@ class TradingAgent:
                 "instrument_types":      self.cfg.trading.instrument_types,
                 "asset_categories":      getattr(self.cfg.trading, "asset_category_map", {}),
                 "asset_category_labels": getattr(self.cfg.trading, "asset_category_labels", {}),
+                "asset_category_descriptions": dict(DEFAULT_ASSET_CATEGORY_DESCRIPTIONS),
                 "portfolio_theme_map":   getattr(self.cfg.trading, "portfolio_theme_map", {}),
             },
         }
