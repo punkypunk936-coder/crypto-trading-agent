@@ -438,6 +438,123 @@
     color: var(--text);
     font-weight: 700;
   }
+  .xyz-card {
+    background: #111313;
+  }
+  .xyz-shell {
+    display: grid;
+    gap: 10px;
+  }
+  .xyz-filter {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+  .xyz-filter .asset-tab {
+    flex: 0 0 auto;
+  }
+  .xyz-table {
+    display: grid;
+    gap: 6px;
+  }
+  .xyz-row {
+    display: grid;
+    grid-template-columns: minmax(115px, 0.7fr) minmax(120px, 0.75fr) minmax(280px, 2fr) minmax(105px, 0.65fr);
+    gap: 12px;
+    align-items: start;
+    padding: 10px 0;
+    border-top: 1px solid rgba(235, 237, 229, 0.07);
+  }
+  .xyz-row:first-child {
+    border-top: 0;
+  }
+  .xyz-head {
+    padding: 0 0 7px;
+    border-top: 0;
+    color: var(--muted);
+    font-size: 10px;
+    font-family: var(--mono);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .xyz-name {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+  .xyz-symbol {
+    font-weight: 800;
+    font-size: 14px;
+    color: var(--text);
+  }
+  .xyz-display {
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.35;
+  }
+  .xyz-segment {
+    color: var(--cyan);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.35;
+  }
+  .xyz-cats {
+    color: var(--muted);
+    font-size: 10px;
+    line-height: 1.35;
+    margin-top: 2px;
+  }
+  .xyz-thesis {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+  }
+  .xyz-thesis-main {
+    color: var(--text);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .xyz-thesis-segment {
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.4;
+  }
+  .xyz-hold {
+    display: inline-flex;
+    width: fit-content;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(235, 237, 229, 0.10);
+    color: var(--text-secondary);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .xyz-hold-yes {
+    color: var(--green);
+    background: var(--green-dim);
+    border-color: rgba(0, 230, 138, 0.24);
+  }
+  .xyz-hold-starter {
+    color: var(--yellow);
+    background: var(--yellow-dim);
+    border-color: rgba(255, 184, 77, 0.24);
+  }
+  .xyz-hold-no {
+    color: var(--muted);
+    background: rgba(255,255,255,0.025);
+  }
+  .xyz-hold-note {
+    color: var(--text-secondary);
+    font-size: 10px;
+    line-height: 1.35;
+    margin-top: 5px;
+  }
   .radar-step-row {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2164,6 +2281,13 @@
       grid-template-columns: 1fr;
       gap: 10px;
     }
+    .xyz-row {
+      grid-template-columns: 1fr;
+      gap: 7px;
+    }
+    .xyz-head {
+      display: none;
+    }
     .daily-briefing-line {
       grid-template-columns: 1fr;
       gap: 6px;
@@ -2265,6 +2389,19 @@
     </div>
     <div id="daily-radar-body">
       <div class="empty-state">The agent will surface today's focus list after the next cycle.</div>
+    </div>
+  </div>
+</div>
+
+<!-- xyz -->
+<div class="full-width">
+  <div class="card xyz-card" id="xyz-card">
+    <div class="card-label-row">
+      <div class="card-label">xyz</div>
+      <div class="card-sub" id="xyz-meta">Loading Trade.xyz universe...</div>
+    </div>
+    <div id="xyz-body">
+      <div class="empty-state">Trade.xyz segments will appear after the next snapshot.</div>
     </div>
   </div>
 </div>
@@ -3133,6 +3270,7 @@ let latestLLMRefereeReport = { verdicts: {} };
 let latestPlaybookDistillerReport = { summary: {}, assets: {} };
 let latestProactiveTraderReport = { summary: {} };
 let latestDailyRadar = { summary: {}, top_assets: [] };
+let latestXyz = { summary: {}, items: [], segments: [] };
 let commandSearchOpen = false;
 let commandSearchIndex = 0;
 let commandSearchQuery = '';
@@ -3145,6 +3283,7 @@ let actionBoardBucket = 'coin';
 let marketMapBucket = 'coin';
 let actionBoardCategory = 'all';
 let marketMapCategory = 'all';
+let xyzSegment = 'all';
 const REFRESH_BASE_MS = 15000;
 const REFRESH_STALE_MS = 25000;
 const REFRESH_MAX_MS = 60000;
@@ -3152,6 +3291,8 @@ const REFRESH_TIMEOUT_MS = 8000;
 const STATIC_GITHUB_PAGES_MODE = /\.github\.io$/i.test(window.location.hostname || '');
 const STATIC_STATE_FALLBACK_URL = 'https://raw.githubusercontent.com/punkypunk936-coder/crypto-trading-agent/dashboard-state-live/dashboard/dashboard_snapshot.json';
 const DEFAULT_ASSET_CATEGORY_LABELS = {
+  crypto: 'Coins',
+  pre_ipo: 'Pre-IPO',
   indices_macro: 'Indices & Macro',
   mag7: 'Mag7',
   semis_memory: 'Semis & Memory',
@@ -3494,6 +3635,12 @@ function setMarketMapCategory(category) {
 }
 
 document.addEventListener('click', (event) => {
+  const xyzButton = event.target.closest('.asset-tab[data-xyz-segment]');
+  if (xyzButton) {
+    event.preventDefault();
+    setXyzSegment(xyzButton.dataset.xyzSegment);
+    return;
+  }
   const button = event.target.closest('.asset-tab[data-bucket-scope][data-bucket-value]');
   if (button) {
     event.preventDefault();
@@ -3911,6 +4058,104 @@ function renderDailyRadar(report) {
     + '<div class="radar-summary">' + esc(shortText(summary.top_line || 'Focus list is active.', 180)) + '</div>'
     + '<div class="radar-grid">' + visible.map(radarItemHtml).join('') + '</div>'
     + (hidden ? '<div class="search-hint">+' + esc(String(hidden)) + ' more lower-priority radar names are being tracked in the backend.</div>' : '')
+  + '</div>';
+}
+
+function xyzGroupMap(items) {
+  const groups = { all: { key: 'all', label: 'All', count: 0, htf_count: 0 } };
+  (items || []).forEach((item) => {
+    const key = String(item.segment_key || 'other').trim() || 'other';
+    if (!groups[key]) groups[key] = { key, label: String(item.segment || humanizeKey(key)), count: 0, htf_count: 0 };
+    groups[key].count += 1;
+    groups.all.count += 1;
+    if (item.htf_long_hold) {
+      groups[key].htf_count += 1;
+      groups.all.htf_count += 1;
+    }
+  });
+  return groups;
+}
+
+function renderXyzTabs(groups) {
+  const order = ['all'].concat((latestXyz.segments || []).map((segment) => String(segment.key || '')).filter(Boolean));
+  const seen = new Set();
+  Object.keys(groups || {}).forEach((key) => {
+    if (!order.includes(key)) order.push(key);
+  });
+  const tabs = order
+    .filter((key) => {
+      if (!groups[key] || Number(groups[key].count || 0) <= 0 || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((key) => {
+      const group = groups[key] || {};
+      const active = key === xyzSegment;
+      return '<button type="button" class="asset-tab' + (active ? ' active' : '') + '" data-xyz-segment="' + esc(key) + '">'
+        + esc(group.label || humanizeKey(key))
+        + '<span class="asset-tab-count">' + esc(String(group.count || 0)) + '</span>'
+      + '</button>';
+    });
+  return '<div class="xyz-filter">' + tabs.join('') + '</div>';
+}
+
+function xyzHoldClass(item) {
+  const label = String((item || {}).htf_label || '').toLowerCase();
+  if ((item || {}).htf_long_hold || label.includes('htf')) return 'xyz-hold xyz-hold-yes';
+  if (label.includes('starter')) return 'xyz-hold xyz-hold-starter';
+  return 'xyz-hold xyz-hold-no';
+}
+
+function xyzRowHtml(item) {
+  const safe = item || {};
+  const cats = Array.isArray(safe.category_labels) && safe.category_labels.length
+    ? safe.category_labels.slice(0, 3).join(' / ')
+    : '';
+  const htfText = String(safe.htf_label || 'No');
+  const holdNote = safe.htf_reason ? '<div class="xyz-hold-note">' + esc(shortText(safe.htf_reason, 74)) + '</div>' : '';
+  return '<div class="xyz-row">'
+    + '<div class="xyz-name"><div class="xyz-symbol">' + esc(safe.coin || '--') + '</div><div class="xyz-display">' + esc(shortText(safe.name || safe.venue_symbol || '', 36)) + '</div></div>'
+    + '<div><div class="xyz-segment">' + esc(safe.segment || 'Other Stocks') + '</div><div class="xyz-cats">' + esc(cats) + '</div></div>'
+    + '<div class="xyz-thesis"><div class="xyz-thesis-main">' + esc(shortText(safe.name_thesis || 'Name thesis forming.', 118)) + '</div><div class="xyz-thesis-segment">Segment: ' + esc(shortText(safe.segment_thesis || 'Segment thesis forming.', 118)) + '</div></div>'
+    + '<div><span class="' + xyzHoldClass(safe) + '">' + esc(htfText) + '</span>' + holdNote + '</div>'
+  + '</div>';
+}
+
+function setXyzSegment(segment) {
+  xyzSegment = String(segment || 'all');
+  renderXyzSection(latestXyz || {});
+}
+
+function renderXyzSection(section) {
+  const meta = document.getElementById('xyz-meta');
+  const body = document.getElementById('xyz-body');
+  if (!meta || !body) return;
+  const safe = section || {};
+  const summary = safe.summary || {};
+  const items = Array.isArray(safe.items) ? safe.items.filter((item) => item && item.coin) : [];
+  const groups = xyzGroupMap(items);
+  if (!items.length) {
+    meta.textContent = 'No Trade.xyz universe in this snapshot.';
+    body.innerHTML = '<div class="empty-state">Trade.xyz segments will appear after the next snapshot.</div>';
+    return;
+  }
+  if (!groups[xyzSegment] || Number(groups[xyzSegment].count || 0) <= 0) xyzSegment = 'all';
+  const visible = xyzSegment === 'all'
+    ? items
+    : items.filter((item) => String(item.segment_key || '') === xyzSegment);
+  meta.textContent = [
+    String(summary.count || items.length) + ' tickers',
+    String(summary.htf_long_count || 0) + ' HTF long/hold',
+    String(summary.starter_count || 0) + ' starter-only',
+    String(summary.segment_count || Object.keys(groups).length - 1) + ' segments',
+  ].join(' • ');
+  body.innerHTML = '<div class="xyz-shell">'
+    + renderXyzTabs(groups)
+    + '<div class="asset-bucket-note">Trade.xyz only. Name thesis, segment thesis, and high-timeframe hold status stay here so the main dashboard stays lighter.</div>'
+    + '<div class="xyz-table">'
+      + '<div class="xyz-row xyz-head"><div>Name</div><div>Segment</div><div>Thesis</div><div>High timeframe</div></div>'
+      + visible.map(xyzRowHtml).join('')
+    + '</div>'
   + '</div>';
 }
 
@@ -4641,6 +4886,7 @@ async function refresh() {
     latestPlaybookDistillerReport = data.playbook_distiller_report || { summary: {}, assets: {} };
     latestProactiveTraderReport = data.proactive_trader_report || { summary: {} };
     latestDailyRadar = data.daily_radar || ((s || {}).daily_radar) || { summary: {}, top_assets: [] };
+    latestXyz = data.xyz || ((s || {}).xyz) || { summary: {}, items: [], segments: [] };
     const actionBoard = data.action_board || { items: [], lead: null };
     latestActionBoard = actionBoard;
 
@@ -4751,6 +4997,7 @@ async function refresh() {
     }
 
     renderDailyRadar(latestDailyRadar);
+    renderXyzSection(latestXyz);
     renderActionBoard(actionBoard);
     renderProactiveDesk(latestProactiveTraderReport);
     if (commandSearchOpen) renderCommandSearch();

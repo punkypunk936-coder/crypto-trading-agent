@@ -42,6 +42,7 @@ from paths import (
 )
 from dashboard.snapshot import (
     augment_state,
+    build_xyz_section,
     build_dashboard_snapshot,
     default_control,
     default_state,
@@ -261,6 +262,11 @@ def _load_snapshot_local() -> dict | None:
     if not isinstance(payload, dict) or "state" not in payload:
         return None
     if _snapshot_is_prebuilt(payload) and "daily_radar" in payload:
+        if "xyz" not in payload:
+            try:
+                payload["xyz"] = build_xyz_section(augment_state(payload.get("state") or {}), payload.get("action_board") or {})
+            except Exception:
+                payload["xyz"] = {"title": "xyz", "summary": {}, "items": [], "segments": []}
         return _cache_local_snapshot(payload, mtime_ns=mtime_ns)
     hydrated = _hydrate_snapshot_payload({"snapshot": payload}, server_timestamp=payload.get("server_time"))
     return _cache_local_snapshot(hydrated, mtime_ns=mtime_ns)

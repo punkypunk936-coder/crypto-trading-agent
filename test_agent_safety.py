@@ -3042,6 +3042,7 @@ def test_dashboard_loads_prebuilt_snapshot_without_rehydrating() -> None:
             assert payload is not None
             assert payload["state"]["cycle_number"] == 77
             assert payload["runtime"]["state_age_seconds"] == 2
+            assert payload["xyz"]["title"] == "xyz"
         finally:
             dashboard_module.SNAPSHOT = original_snapshot
             dashboard_module.build_dashboard_snapshot = original_builder
@@ -3099,6 +3100,7 @@ def test_dashboard_upgrades_legacy_prebuilt_snapshot_with_daily_radar() -> None:
             assert payload is not None
             assert payload["state"]["cycle_number"] == 78
             assert payload["daily_radar"]["top_assets"][0]["coin"] == "GOOGL"
+            assert payload["xyz"]["title"] == "xyz"
         finally:
             dashboard_module.SNAPSHOT = original_snapshot
             dashboard_module._local_snapshot_cache = original_local_cache
@@ -3139,6 +3141,10 @@ def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> N
     assert "Starter Basket" in template
     assert "Starter Execution" in template
     assert "Forecast Calibration" in template
+    assert '<div class="card-label">xyz</div>' in template
+    assert "renderXyzSection" in template
+    assert "data-xyz-segment" in template
+    assert "High timeframe" in template
     assert "STANCE SEARCH" in template
     assert "commandSearchCandidates" in template
     assert "<strong>Lead:</strong>" in template
@@ -3435,6 +3441,60 @@ def test_dashboard_snapshot_backfills_stock_desks_from_runtime_defaults() -> Non
     assert by_coin["NVDA"]["tradable"] is True
     assert by_coin["NVDA"]["asset_categories"] == ["mag7", "semis_memory"]
     assert by_coin["CRWV"]["asset_category"] == "neoclouds"
+
+
+def test_dashboard_snapshot_includes_xyz_tradexyz_segment_book() -> None:
+    snapshot = build_dashboard_snapshot(
+        state={
+            "status": "online",
+            "cycle_number": 118,
+            "positions": [],
+            "signals": {
+                "LITE": {
+                    "action": "LONG",
+                    "score": 74.0,
+                    "confidence": "HIGH",
+                    "execution_mode": "tradable",
+                    "instrument_type": "equity",
+                    "venue_symbol": "xyz:LITE",
+                    "first_principles": {
+                        "fundamental_driver": "AI datacenter optics demand is improving before the tape confirms.",
+                        "fundamental_score": 78.0,
+                        "sequence_score": 76.0,
+                    },
+                },
+                "MU": {
+                    "action": "FLAT",
+                    "score": 58.0,
+                    "confidence": "MEDIUM",
+                    "execution_mode": "tradable",
+                    "instrument_type": "equity",
+                    "venue_symbol": "xyz:MU",
+                },
+            },
+            "mode": "dry_run",
+            "config": {
+                "coins": ["LITE", "MU"],
+                "analysis_coins": ["LITE", "MU", "CBRS"],
+                "asset_categories": {"LITE": ["growth"], "MU": ["semis_memory"], "CBRS": ["pre_ipo", "semis_memory", "ai_infra"]},
+                "instrument_types": {"LITE": "equity", "MU": "equity", "CBRS": "equity"},
+            },
+        },
+        trades=[],
+        control={"kill": {"active": False, "reason": "", "requested_at": None, "acknowledged_at": None}},
+        market_map={"coins": {"LITE": {"bias": "BULLISH"}, "MU": {"bias": "NEUTRAL"}}},
+        server_timestamp="2026-05-12 09:05:00",
+    )
+    xyz = snapshot["xyz"]
+    assert xyz["title"] == "xyz"
+    assert xyz["summary"]["count"] >= len(hyperliquid_markets_module.TRADEXYZ_ASSET_METADATA)
+    by_coin = {item["coin"]: item for item in xyz["items"]}
+    assert by_coin["LITE"]["segment"] == "Optics"
+    assert by_coin["LITE"]["htf_long_hold"] is True
+    assert "datacenter optics" in by_coin["LITE"]["name_thesis"].lower()
+    assert by_coin["MU"]["segment"] == "Memory"
+    assert "hbm" in by_coin["MU"]["segment_thesis"].lower()
+    assert by_coin["CBRS"]["venue_symbol"] == "xyz:CBRS"
 
 
 def test_default_stock_categories_keep_mag7_complete() -> None:
@@ -8318,6 +8378,8 @@ def run_all() -> None:
     print("PASS dashboard market-map snapshot")
     test_dashboard_snapshot_backfills_stock_desks_from_runtime_defaults()
     print("PASS dashboard stock desk backfill")
+    test_dashboard_snapshot_includes_xyz_tradexyz_segment_book()
+    print("PASS dashboard xyz Trade.xyz segment book")
     test_default_stock_categories_keep_mag7_complete()
     print("PASS default stock category completeness")
     test_default_crypto_category_includes_mon()
