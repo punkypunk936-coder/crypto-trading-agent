@@ -445,6 +445,37 @@
     display: grid;
     gap: 10px;
   }
+  .xyz-topline {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .xyz-count-note {
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.35;
+  }
+  .xyz-expand-btn {
+    appearance: none;
+    border: 1px solid rgba(235, 237, 229, 0.12);
+    background: rgba(235, 237, 229, 0.035);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0;
+    text-transform: uppercase;
+    cursor: pointer;
+    min-height: 30px;
+  }
+  .xyz-expand-btn:hover {
+    border-color: rgba(235, 237, 229, 0.22);
+    background: rgba(235, 237, 229, 0.06);
+  }
   .xyz-filter {
     display: flex;
     gap: 8px;
@@ -519,6 +550,35 @@
     color: var(--text-secondary);
     font-size: 11px;
     line-height: 1.4;
+  }
+  .xyz-row-detail {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.4;
+  }
+  .xyz-row-detail summary {
+    cursor: pointer;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0;
+    list-style: none;
+    text-transform: uppercase;
+    width: fit-content;
+  }
+  .xyz-row-detail summary::-webkit-details-marker {
+    display: none;
+  }
+  .xyz-row-detail summary::after {
+    content: " +";
+  }
+  .xyz-row-detail[open] summary::after {
+    content: " -";
+  }
+  .xyz-row-detail div {
+    margin-top: 5px;
   }
   .xyz-hold {
     display: inline-flex;
@@ -3284,10 +3344,12 @@ let marketMapBucket = 'coin';
 let actionBoardCategory = 'all';
 let marketMapCategory = 'all';
 let xyzSegment = 'all';
+let xyzExpanded = false;
 const REFRESH_BASE_MS = 15000;
 const REFRESH_STALE_MS = 25000;
 const REFRESH_MAX_MS = 60000;
 const REFRESH_TIMEOUT_MS = 8000;
+const XYZ_COLLAPSED_LIMIT = 8;
 const STATIC_GITHUB_PAGES_MODE = /\.github\.io$/i.test(window.location.hostname || '');
 const STATIC_STATE_FALLBACK_URL = 'https://raw.githubusercontent.com/punkypunk936-coder/crypto-trading-agent/dashboard-state-live/dashboard/dashboard_snapshot.json';
 
@@ -4085,16 +4147,25 @@ function xyzRowHtml(item) {
     : '';
   const htfText = String(safe.htf_label || 'No');
   const holdNote = safe.htf_reason ? '<div class="xyz-hold-note">' + esc(shortText(safe.htf_reason, 74)) + '</div>' : '';
+  const segmentDetail = safe.segment_thesis
+    ? '<details class="xyz-row-detail"><summary>Segment</summary><div>' + esc(shortText(safe.segment_thesis, 118)) + '</div></details>'
+    : '';
   return '<div class="xyz-row">'
     + '<div class="xyz-name"><div class="xyz-symbol">' + esc(safe.coin || '--') + '</div><div class="xyz-display">' + esc(shortText(safe.name || safe.venue_symbol || '', 36)) + '</div></div>'
     + '<div><div class="xyz-segment">' + esc(safe.segment || 'Other Stocks') + '</div><div class="xyz-cats">' + esc(cats) + '</div></div>'
-    + '<div class="xyz-thesis"><div class="xyz-thesis-main">' + esc(shortText(safe.name_thesis || 'Name thesis forming.', 118)) + '</div><div class="xyz-thesis-segment">Segment: ' + esc(shortText(safe.segment_thesis || 'Segment thesis forming.', 118)) + '</div></div>'
+    + '<div class="xyz-thesis"><div class="xyz-thesis-main">' + esc(shortText(safe.name_thesis || 'Name thesis forming.', 118)) + '</div>' + segmentDetail + '</div>'
     + '<div><span class="' + xyzHoldClass(safe) + '">' + esc(htfText) + '</span>' + holdNote + '</div>'
   + '</div>';
 }
 
 function setXyzSegment(segment) {
   xyzSegment = String(segment || 'all');
+  xyzExpanded = false;
+  renderXyzSection(latestXyz || {});
+}
+
+function toggleXyzExpanded() {
+  xyzExpanded = !xyzExpanded;
   renderXyzSection(latestXyz || {});
 }
 
@@ -4112,21 +4183,32 @@ function renderXyzSection(section) {
     return;
   }
   if (!groups[xyzSegment] || Number(groups[xyzSegment].count || 0) <= 0) xyzSegment = 'all';
-  const visible = xyzSegment === 'all'
+  const filteredItems = xyzSegment === 'all'
     ? items
     : items.filter((item) => String(item.segment_key || '') === xyzSegment);
+  const totalSelected = filteredItems.length;
+  const visibleCount = xyzExpanded ? totalSelected : Math.min(totalSelected, XYZ_COLLAPSED_LIMIT);
+  const visibleItems = filteredItems.slice(0, visibleCount);
+  const hiddenCount = Math.max(0, totalSelected - visibleItems.length);
   meta.textContent = [
     String(summary.count || items.length) + ' tickers',
     String(summary.htf_long_count || 0) + ' HTF long/hold',
     String(summary.starter_count || 0) + ' starter-only',
     String(summary.segment_count || Object.keys(groups).length - 1) + ' segments',
+    'showing ' + String(visibleItems.length) + '/' + String(totalSelected),
   ].join(' • ');
+  const expandControl = hiddenCount > 0 || xyzExpanded
+    ? '<div class="xyz-topline">'
+      + '<div class="xyz-count-note">' + esc(String(visibleItems.length)) + ' visible' + (hiddenCount > 0 ? ' • ' + esc(String(hiddenCount)) + ' hidden' : '') + '</div>'
+      + '<button type="button" class="xyz-expand-btn" onclick="toggleXyzExpanded()">' + (xyzExpanded ? 'Collapse' : 'Show all ' + esc(String(totalSelected))) + '</button>'
+    + '</div>'
+    : '<div class="xyz-topline"><div class="xyz-count-note">' + esc(String(visibleItems.length)) + ' visible</div></div>';
   body.innerHTML = '<div class="xyz-shell">'
     + renderXyzTabs(groups)
-    + '<div class="asset-bucket-note">Trade.xyz only. Name thesis, segment thesis, and high-timeframe hold status stay here so the main dashboard stays lighter.</div>'
+    + expandControl
     + '<div class="xyz-table">'
       + '<div class="xyz-row xyz-head"><div>Name</div><div>Segment</div><div>Thesis</div><div>High timeframe</div></div>'
-      + visible.map(xyzRowHtml).join('')
+      + visibleItems.map(xyzRowHtml).join('')
     + '</div>'
   + '</div>';
 }

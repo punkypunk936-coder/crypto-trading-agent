@@ -3143,6 +3143,9 @@ def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> N
     assert '<div class="card-label">xyz</div>' in template
     assert "renderXyzSection" in template
     assert "xyzSegmentGroups" in template
+    assert "toggleXyzExpanded" in template
+    assert "XYZ_COLLAPSED_LIMIT" in template
+    assert "xyz-row-detail" in template
     assert "xyzGroupMap" not in template
     assert "data-xyz-segment" in template
     assert "High timeframe" in template
