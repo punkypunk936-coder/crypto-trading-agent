@@ -1307,6 +1307,7 @@ class TradingAgent:
             orderbook_signal=orderbook_signal,
             market_map_signal=market_map_signal,
             narrative_signal=narrative_signal,
+            social_attention_signal=social_attention_signal,
         )
 
         log.info(
@@ -1501,6 +1502,9 @@ class TradingAgent:
             "conviction_entry_reason": conviction_entry.get("reason", ""),
             "conviction_entry_size_multiplier": conviction_entry.get("size_multiplier", 1.0),
             "conviction_entry_event": bool(conviction_entry.get("event_conviction", False)),
+            "scalp_trade": bool(conviction_entry.get("scalp", False) or (thesis.get("scalp") or {}).get("selected", False)),
+            "scalp_summary": (thesis.get("scalp") or {}).get("summary", ""),
+            "scalp_max_hold_minutes": (thesis.get("scalp") or {}).get("max_hold_minutes", 0.0),
             "thesis":          thesis,
             "expectancy_probability": getattr(signal, "expectancy", {}).get("probability", 0.50),
             "expectancy_expected_r": getattr(signal, "expectancy", {}).get("expected_r", 0.0),
@@ -1950,25 +1954,35 @@ class TradingAgent:
         if self.order_mgr.has_watch(coin):
             self.order_mgr.cancel_reentry_watch(coin, reason="new signal overrides watch")
 
+        signal_thesis = dict(getattr(signal, "thesis", {}) or {})
+        signal_conviction_entry = dict(signal_thesis.get("conviction_entry") or {})
+        signal_scalp_trade = bool(
+            signal_conviction_entry.get("scalp")
+            or (dict(signal_thesis.get("scalp") or {}).get("selected", False))
+        )
+
         # ── Post-reversal cooldown: skip this cycle if we just closed ──────────
         # Prevents the whipsaw pattern: close LONG → immediately open SHORT.
         # After any signal_reversal close we sit out one full cycle (~2 min).
         reversal_ts = self._reversal_cooldown.get(coin, 0)
         if reversal_ts and (time.time() - reversal_ts) < self.cfg.trading.check_interval_seconds:
-            log.info(
-                f"[{coin}] ⏸ Post-reversal cooldown — sitting out this cycle "
-                f"(closed {(time.time()-reversal_ts):.0f}s ago)"
-            )
-            self._signal_streak.pop(coin, None)   # reset streak too
-            self._record_decision_snapshot(
-                coin,
-                portfolio_usd=portfolio_usd,
-                stage="post_reversal_cooldown",
-                signal=signal,
-                current_position=current_pos,
-                blocked=True,
-            )
-            return
+            if signal_scalp_trade and getattr(self.cfg.trading, "scalp_reversal_open_immediately", True):
+                self._reversal_cooldown.pop(coin, None)
+            else:
+                log.info(
+                    f"[{coin}] ⏸ Post-reversal cooldown — sitting out this cycle "
+                    f"(closed {(time.time()-reversal_ts):.0f}s ago)"
+                )
+                self._signal_streak.pop(coin, None)   # reset streak too
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="post_reversal_cooldown",
+                    signal=signal,
+                    current_position=current_pos,
+                    blocked=True,
+                )
+                return
 
         # ── Anti-whipsaw: guard signal reversals ─────────────────────────────
         if current_pos and current_pos != signal.action:
@@ -1983,6 +1997,11 @@ class TradingAgent:
                     min_hold = getattr(self.cfg.trading, "equity_min_hold_minutes", self.cfg.trading.min_hold_minutes)
                 else:
                     min_hold = self.cfg.trading.min_hold_minutes
+                if signal_scalp_trade:
+                    min_hold = min(
+                        min_hold,
+                        float(getattr(self.cfg.trading, "scalp_min_hold_minutes", 8.0) or 8.0),
+                    )
                 if hold_minutes < min_hold:
                     log.info(
                         f"[{coin}] ⏳ Anti-whipsaw: position held only "
@@ -2000,7 +2019,11 @@ class TradingAgent:
                     return
 
             # Check reversal conviction — needs stronger signal than fresh entry
-            reversal_boost = self.cfg.trading.reversal_threshold_boost
+            reversal_boost = (
+                float(getattr(self.cfg.trading, "scalp_reversal_threshold_boost", 2.0) or 2.0)
+                if signal_scalp_trade else
+                self.cfg.trading.reversal_threshold_boost
+            )
             if signal.action == "LONG":
                 required_score = self.cfg.trading.signal_long_threshold + reversal_boost
                 if signal.score < required_score:
@@ -2038,6 +2061,10 @@ class TradingAgent:
             if (
                 getattr(self.cfg.trading, "thesis_runner_defer_soft_reversal", True)
                 and runner_profile.get("active")
+                and not (
+                    signal_scalp_trade
+                    and getattr(self.cfg.trading, "scalp_reversal_can_bypass_runner", True)
+                )
             ):
                 log.info(
                     f"[{coin}] Runner thesis blocks soft reversal {current_pos}->{signal.action}: "
@@ -2059,6 +2086,10 @@ class TradingAgent:
             if (
                 getattr(self.cfg.trading, "winner_stickiness_defer_soft_reversal", True)
                 and sticky_profile.get("active")
+                and not (
+                    signal_scalp_trade
+                    and getattr(self.cfg.trading, "scalp_reversal_can_bypass_runner", True)
+                )
             ):
                 log.info(
                     f"[{coin}] Winner stickiness blocks soft reversal {current_pos}->{signal.action}: "
@@ -2077,23 +2108,41 @@ class TradingAgent:
                 )
                 return
 
-            log.info(f"[{coin}] Closing {current_pos} (score={signal.score:.1f}) "
-                     f"— will re-evaluate next cycle before entering {signal.action}")
+            immediate_reversal = bool(
+                signal_scalp_trade
+                and getattr(self.cfg.trading, "scalp_reversal_open_immediately", True)
+            )
+            log.info(
+                f"[{coin}] Closing {current_pos} (score={signal.score:.1f}) "
+                f"— {'opening tactical reversal if close confirms' if immediate_reversal else f'will re-evaluate next cycle before entering {signal.action}'}"
+            )
             self._close_position(coin, "signal_reversal", signal.price)
-            # ✋ CRITICAL: do NOT open the opposite position immediately.
-            # Set cooldown — next cycle will re-evaluate with fresh data.
-            self._reversal_cooldown[coin] = time.time()
+            if self.risk.has_position(coin):
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="signal_reversal_close_failed",
+                    signal=signal,
+                    current_position=current_pos,
+                    blocked=True,
+                )
+                return
             self._signal_streak.pop(coin, None)
             self._flat_streak.pop(coin, None)
-            self._record_decision_snapshot(
-                coin,
-                portfolio_usd=portfolio_usd,
-                stage="signal_reversal_close",
-                signal=signal,
-                current_position=current_pos,
-                blocked=True,
-            )
-            return
+            if immediate_reversal:
+                self._reversal_cooldown.pop(coin, None)
+                current_pos = ""
+            else:
+                self._reversal_cooldown[coin] = time.time()
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="signal_reversal_close",
+                    signal=signal,
+                    current_position=current_pos,
+                    blocked=True,
+                )
+                return
 
         if not self._first_principles_entry_guard(
             coin,
@@ -2174,6 +2223,10 @@ class TradingAgent:
             (conviction_entry.get("active") and conviction_entry.get("event_conviction"))
             or pre_ipo_event
         )
+        scalp_trade = bool(
+            conviction_entry.get("scalp")
+            or (dict((getattr(signal, "thesis", {}) or {}).get("scalp") or {}).get("selected", False))
+        )
         order = self.risk.compute_order(
             coin              = coin,
             direction         = signal.action,
@@ -2191,6 +2244,7 @@ class TradingAgent:
             thesis_conviction = float((getattr(signal, "thesis", {}) or {}).get("conviction_score", signal.score) or signal.score),
             sizing_multiplier = float(conviction_entry.get("size_multiplier", 1.0) or 1.0),
             event_starter     = event_starter,
+            scalp             = scalp_trade,
         )
 
         if not order.approved:
@@ -2214,6 +2268,7 @@ class TradingAgent:
         self._last_signals[coin]["margin_usd"] = getattr(order, "margin_usd", 0.0)
         self._last_signals[coin]["leverage_note"] = getattr(order, "leverage_note", "")
         self._last_signals[coin]["order_notional_usd"] = getattr(order, "size_usd", 0.0)
+        self._last_signals[coin]["scalp_trade"] = scalp_trade
         if not self._apply_north_star_guard_to_order(
             coin,
             signal,
@@ -3467,6 +3522,13 @@ class TradingAgent:
         thesis_entry = thesis.get("conviction_entry")
         if isinstance(thesis_entry, dict) and not conviction_entry:
             conviction_entry = dict(thesis_entry)
+        if (
+            entry_ctx.get("scalp_trade")
+            or sig.get("scalp_trade")
+            or conviction_entry.get("scalp")
+            or dict(thesis.get("scalp") or {}).get("selected", False)
+        ):
+            return inactive
 
         instrument_type = str(
             sig.get("instrument_type")
@@ -3997,6 +4059,26 @@ class TradingAgent:
         thesis_supports_position = bool(thesis_permitted and signal_action in {"", "FLAT", str(current_pos or "").upper()})
         thesis_state = str(thesis.get("state", "") or "").upper()
         thesis_conflicts = float(thesis.get("conflict_points", 0.0) or 0.0)
+        conviction_entry = dict(sig.get("conviction_entry") or entry_ctx.get("conviction_entry") or {})
+        scalp_trade = bool(
+            entry_ctx.get("scalp_trade")
+            or sig.get("scalp_trade")
+            or conviction_entry.get("scalp")
+            or dict(thesis.get("scalp") or {}).get("selected", False)
+            or str((entry_ctx.get("trade_plan") or {}).get("trade_style", "")).lower() == "scalp"
+        )
+        if scalp_trade:
+            scalp_max_hold = float(
+                entry_ctx.get("scalp_max_hold_minutes")
+                or sig.get("scalp_max_hold_minutes")
+                or getattr(self.cfg.trading, "scalp_max_hold_minutes", 240.0)
+                or 240.0
+            )
+            scalp_min_hold = float(getattr(self.cfg.trading, "scalp_min_hold_minutes", 8.0) or 8.0)
+            if hold_minutes >= scalp_max_hold:
+                return "scalp_time_stop"
+            if hold_minutes >= scalp_min_hold and adverse_r >= 0.45 and not thesis_supports_position:
+                return "scalp_failed_followthrough"
 
         early_minutes = float(getattr(self.cfg.trading, "early_invalidation_minutes", 90.0) or 90.0)
         early_adverse_r = float(getattr(self.cfg.trading, "early_invalidation_adverse_r", 0.55) or 0.55)
@@ -4268,6 +4350,9 @@ class TradingAgent:
                 or sig.get("event_risk_budget_active", False)
                 or sig.get("pair_trade_overlay", False)
             ),
+            "scalp_trade": bool(sig.get("scalp_trade", False)),
+            "scalp_summary": sig.get("scalp_summary", ""),
+            "scalp_max_hold_minutes": sig.get("scalp_max_hold_minutes", 0.0),
             "conviction_entry": sig.get("conviction_entry", {}),
             "conviction_entry_active": sig.get("conviction_entry_active", False),
             "conviction_entry_event": sig.get("conviction_entry_event", False),

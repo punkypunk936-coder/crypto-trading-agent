@@ -200,6 +200,7 @@ class TradingConfig:
     starter_max_leverage: int     = 2
     event_starter_max_leverage: int = 3
     scale_in_max_leverage: int    = 4
+    scalp_max_leverage: int       = 3
     max_trade_notional_usd: float = 4000.0
     max_levered_position_pct: float = 0.35
     conviction_size_floor: float  = 0.30   # Minimum size factor at threshold conviction
@@ -398,6 +399,31 @@ class TradingConfig:
     conviction_entry_event_max_uncertainty: float = 0.62
     conviction_entry_event_size_multiplier: float = 0.30
     conviction_entry_event_max_size_multiplier: float = 0.46
+    conviction_entry_event_short_enabled: bool = True
+
+    # ── Tactical scalping ─────────────────────────────────
+    # Lets the agent take smaller, quicker long/short shots when the near-term
+    # evidence is lopsided, without converting every scalp into a thesis runner.
+    scalp_trading_enabled: bool = True
+    scalp_allow_equity_shorts: bool = True
+    scalp_min_alignment_points: float = 3.0
+    scalp_max_conflict_points: float = 3.0
+    scalp_score_buffer: float = 4.0
+    scalp_min_probability: float = 0.51
+    scalp_min_expected_r: float = 0.08
+    scalp_min_expectancy_score: float = 48.0
+    scalp_max_uncertainty: float = 0.62
+    scalp_size_multiplier: float = 0.42
+    scalp_stop_pct: float = 0.035
+    scalp_target_pct: float = 0.055
+    scalp_max_hold_minutes: float = 240.0
+    scalp_min_hold_minutes: float = 8.0
+    scalp_bearish_news_score: float = 45.0
+    scalp_bullish_news_score: float = 55.0
+    scalp_bypass_precision: bool = True
+    scalp_reversal_threshold_boost: float = 2.0
+    scalp_reversal_can_bypass_runner: bool = True
+    scalp_reversal_open_immediately: bool = True
 
     # ── Official event intelligence feeds ────────────────────
     official_event_feed_enabled: bool = True
@@ -679,6 +705,8 @@ class TradingConfig:
     social_attention_max_sources: int = 6
     social_attention_timeout_seconds: float = 4.0
     social_attention_cache_seconds: int = 300
+    social_attention_score_influence: float = 0.12
+    social_attention_min_mentions_for_signal: int = 2
     proactive_starter_execution_hard_block_stages: List[str] = field(default_factory=lambda: [
         "data_reliability_block",
         "execution_coach_skip",

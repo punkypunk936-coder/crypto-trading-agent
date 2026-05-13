@@ -122,6 +122,7 @@ class RiskManager:
         starter_multiplier: float = 1.0,
         event_starter: bool = False,
         scale_in: bool = False,
+        scalp: bool = False,
     ) -> tuple[int, str]:
         """Choose per-order leverage from conviction, learned edge, and uncertainty."""
         configured = max(1, self._cfg_int("leverage", 1))
@@ -179,6 +180,9 @@ class RiskManager:
         if scale_in:
             max_allowed = min(max_allowed, max(1, self._cfg_int("scale_in_max_leverage", 4)))
             notes.append("scale-in cap")
+        if scalp:
+            max_allowed = min(max_allowed, max(1, self._cfg_int("scalp_max_leverage", 3)))
+            notes.append("scalp cap")
         if event_starter:
             max_allowed = min(max_allowed, max(1, self._cfg_int("event_starter_max_leverage", 3)))
             notes.append("event-risk cap")
@@ -215,6 +219,7 @@ class RiskManager:
         thesis_conviction: float | None = None,
         sizing_multiplier: float | None = None,
         event_starter: bool = False,
+        scalp: bool = False,
     ) -> OrderRequest:
         """
         Conviction-aware order sizing.
@@ -324,6 +329,7 @@ class RiskManager:
             starter_multiplier=starter_multiplier,
             event_starter=event_starter,
             scale_in=False,
+            scalp=scalp,
         )
 
         margin_usd = min(max_margin_usd * total_factor, self._cfg_float("max_trade_usd", max_margin_usd))
@@ -395,6 +401,7 @@ class RiskManager:
                         starter_multiplier=starter_multiplier,
                         event_starter=event_starter,
                         scale_in=True,
+                        scalp=scalp,
                     )
                     scale_coin = scale_usd / current_price if current_price > 0 else 0.0
                     scale_margin = scale_usd / max(scale_leverage, 1)
@@ -451,6 +458,10 @@ class RiskManager:
         if starter_multiplier < 0.999:
             sizing_parts.append(f"starter={starter_multiplier*100:.0f}%")
             conviction_tier = f"{conviction_tier}_STARTER"
+        if scalp:
+            sizing_parts.append("style=scalp")
+            if "_SCALP" not in conviction_tier:
+                conviction_tier = f"{conviction_tier}_SCALP"
         sizing_parts.append(f"p={probability*100:.0f}%")
         sizing_parts.append(f"ev={expectancy_r:+.2f}R")
         sizing_parts.append(f"u={uncertainty_level*100:.0f}%")

@@ -75,6 +75,13 @@ class AggressiveStrategy:
 
         if self._coin_direction_embargoed(coin, action):
             blockers.append(f"{coin} {action} is embargoed until its recent edge improves")
+        scalp_profile = dict(thesis.get("scalp") or {})
+        if (
+            scalp_profile.get("selected")
+            and getattr(self.tcfg, "scalp_bypass_precision", True)
+            and not blockers
+        ):
+            return True, ""
         if conviction_entry.get("active") and conviction_entry.get("bypass_precision", False) and not blockers:
             return True, ""
 
@@ -200,7 +207,10 @@ class AggressiveStrategy:
     ) -> bool:
         if str(instrument_type or "crypto").lower() != "equity":
             return False
-        if str(action or "").upper() != "LONG":
+        action_text = str(action or "").upper()
+        if action_text not in {"LONG", "SHORT"}:
+            return False
+        if action_text == "SHORT" and not getattr(self.tcfg, "conviction_entry_event_short_enabled", True):
             return False
         if not news_signal or not getattr(news_signal, "valid", False):
             return False
@@ -226,7 +236,11 @@ class AggressiveStrategy:
         catalyst_score = float(getattr(news_signal, "catalyst_score", 0.0) or 0.0)
         min_news = float(getattr(self.tcfg, "conviction_entry_event_min_news_score", 60.0) or 60.0)
         min_catalyst = float(getattr(self.tcfg, "conviction_entry_event_min_catalyst_score", 4.0) or 4.0)
-        return news_score >= min_news and catalyst_score >= min_catalyst
+        if catalyst_score < min_catalyst:
+            return False
+        if action_text == "LONG":
+            return news_score >= min_news
+        return news_score <= (100.0 - min_news)
 
     def _conviction_probe_candidate(
         self,
@@ -271,13 +285,19 @@ class AggressiveStrategy:
             action="LONG",
             news_signal=news_signal,
         )
+        event_short = self._event_conviction_active(
+            instrument_type=instrument_type,
+            action="SHORT",
+            news_signal=news_signal,
+        )
         event_score_buffer = float(
             getattr(self.tcfg, "conviction_entry_event_score_buffer", score_buffer) or score_buffer
         )
         long_score_buffer = event_score_buffer if event_long else score_buffer
+        short_score_buffer = event_score_buffer if event_short else score_buffer
 
         if instrument == "equity":
-            catalyst_ready = catalyst_score >= min_catalyst or event_long
+            catalyst_ready = catalyst_score >= min_catalyst or event_long or event_short
         else:
             catalyst_ready = velocity in {"HIGH", "EXTREME"} and abs(news_score - 50.0) >= 14.0
         if not catalyst_ready:
@@ -327,20 +347,24 @@ class AggressiveStrategy:
                 return candidate
 
         bearish_news_floor = 100.0 - min_news
-        if short_gap <= score_buffer and news_score <= bearish_news_floor:
+        if short_gap <= short_score_buffer and (news_score <= bearish_news_floor or event_short):
             short_blocked = bool(getattr(narrative_signal, "block_shorts", False))
             short_blocked = short_blocked or bool(
                 market_map_signal
                 and getattr(market_map_signal, "block_shorts", False)
                 and not bearish_breakout_live
                 and not bool(getattr(market_map_signal, "live_below_breakdown_levels", []))
+                and not event_short
             )
             short_blocked = short_blocked or bool(
                 orderbook_signal
                 and getattr(orderbook_signal, "block_shorts", False)
                 and not bearish_breakout_live
+                and not event_short
             )
             if not short_blocked and (
+                event_short
+                or
                 narrative_bias == "BEARISH"
                 or market_bias == "BEARISH"
                 or bearish_breakout_live
@@ -350,8 +374,16 @@ class AggressiveStrategy:
                     "active": True,
                     "candidate_action": "SHORT",
                     "summary": (
-                        f"Conviction scout: score {raw_score:.1f} is {short_gap:.1f} pts above the "
-                        f"{float(self.tcfg.signal_short_threshold):.0f} short trigger with news {news_score:.0f}."
+                        (
+                            f"Pre-event conviction scout short: score {raw_score:.1f} is {short_gap:.1f} pts above the "
+                            f"{float(self.tcfg.signal_short_threshold):.0f} short trigger, but bearish catalyst "
+                            f"{catalyst_score:.2f} and news {news_score:.0f} justify starter risk."
+                        )
+                        if event_short else
+                        (
+                            f"Conviction scout: score {raw_score:.1f} is {short_gap:.1f} pts above the "
+                            f"{float(self.tcfg.signal_short_threshold):.0f} short trigger with news {news_score:.0f}."
+                        )
                     ),
                     "trigger_gap_points": round(short_gap, 2),
                 })
@@ -442,11 +474,11 @@ class AggressiveStrategy:
         else:
             if getattr(narrative_signal, "block_shorts", False):
                 blockers.append("headline flow still blocks shorts")
-            if orderbook_signal and getattr(orderbook_signal, "block_shorts", False) and not same_direction_breakout_live:
+            if orderbook_signal and getattr(orderbook_signal, "block_shorts", False) and not same_direction_breakout_live and not event_conviction:
                 blockers.append("orderbook still shows active demand under price")
             if market_map_signal and getattr(market_map_signal, "block_shorts", False):
                 live_breakdown = bool(getattr(market_map_signal, "live_below_breakdown_levels", []))
-                if not (same_direction_breakout_live or live_breakdown):
+                if not (same_direction_breakout_live or live_breakdown or event_conviction):
                     blockers.append("daily map still warns against shorts here")
 
         alignment = float(thesis.get("alignment_points", 0.0) or 0.0)
@@ -570,6 +602,271 @@ class AggressiveStrategy:
         if action == "LONG":
             return max(0.0, level - current)
         return max(0.0, current - level)
+
+    def _scalp_profile(
+        self,
+        *,
+        action: str,
+        score: float,
+        instrument_type: str = "crypto",
+        advanced=None,
+        regimes=None,
+        candle_patterns=None,
+        news_signal=None,
+        funding_oi_signal=None,
+        orderbook_signal=None,
+        market_map_signal=None,
+        narrative_signal=None,
+        social_attention_signal=None,
+        trade_plan: Dict | None = None,
+    ) -> dict:
+        profile = {
+            "active": False,
+            "style": "",
+            "alignment_points": 0.0,
+            "conflict_points": 0.0,
+            "summary": "",
+            "reasons": [],
+            "blockers": [],
+        }
+        action = str(action or "").upper()
+        if not getattr(self.tcfg, "scalp_trading_enabled", True) or action not in {"LONG", "SHORT"}:
+            return profile
+        instrument = str(instrument_type or "crypto").lower()
+        if instrument == "index":
+            return profile
+        if action == "SHORT" and instrument == "equity" and not getattr(self.tcfg, "scalp_allow_equity_shorts", True):
+            profile["blockers"] = ["equity scalp shorts are disabled"]
+            return profile
+
+        bullish = action == "LONG"
+        points = 0.0
+        conflicts = 0.0
+        reasons: List[str] = []
+        blockers: List[str] = []
+
+        breakout_state = str(getattr(orderbook_signal, "breakout_state", "NONE") or "NONE").upper()
+        if bullish:
+            same_breakout = (
+                self._is_confirmed_bullish_breakout(orderbook_signal)
+                or self._is_persistent_bullish_breakout(orderbook_signal)
+            )
+        else:
+            same_breakout = (
+                self._is_confirmed_bearish_breakdown(orderbook_signal)
+                or self._is_persistent_bearish_breakdown(orderbook_signal)
+            )
+        probing_breakout = breakout_state == (
+            "PROBING_BULLISH_BREAKOUT" if bullish else "PROBING_BEARISH_BREAKDOWN"
+        )
+        live_reclaim = bool(getattr(market_map_signal, "live_above_reclaim_levels", [])) if market_map_signal else False
+        live_breakdown = bool(getattr(market_map_signal, "live_below_breakdown_levels", [])) if market_map_signal else False
+
+        if narrative_signal and getattr(narrative_signal, "valid", False):
+            if bullish and getattr(narrative_signal, "block_longs", False):
+                blockers.append("headline flow blocks the long scalp")
+            elif (not bullish) and getattr(narrative_signal, "block_shorts", False):
+                blockers.append("headline flow blocks the short scalp")
+
+        if orderbook_signal and getattr(orderbook_signal, "valid", False):
+            level_interaction = str(getattr(orderbook_signal, "level_interaction", "BETWEEN_LEVELS") or "BETWEEN_LEVELS").upper()
+            if level_interaction == "RANGE_COMPRESSION" and not (same_breakout or probing_breakout):
+                blockers.append("range compression blocks the scalp")
+            if bullish and getattr(orderbook_signal, "block_longs", False) and not (same_breakout or live_reclaim):
+                blockers.append("nearby supply still blocks the long scalp")
+            elif (not bullish) and getattr(orderbook_signal, "block_shorts", False) and not (same_breakout or live_breakdown):
+                blockers.append("nearby demand still blocks the short scalp")
+
+        if market_map_signal and getattr(market_map_signal, "valid", False):
+            if bullish and getattr(market_map_signal, "block_longs", False) and not (same_breakout or live_reclaim):
+                blockers.append("daily map blocks the long scalp")
+            elif (not bullish) and getattr(market_map_signal, "block_shorts", False) and not (same_breakout or live_breakdown):
+                blockers.append("daily map blocks the short scalp")
+
+        if same_breakout:
+            points += 2.0
+            reasons.append("breakdown/breakout is confirmed")
+        elif probing_breakout:
+            points += 1.25
+            reasons.append("breakdown/breakout pressure is live")
+
+        msb = getattr(advanced, "msb", None)
+        msb_type = str(getattr(msb, "msb_type", "NONE") or "NONE").upper()
+        structure_trend = str(getattr(msb, "structure_trend", "RANGING") or "RANGING").upper()
+        if bullish:
+            if msb_type in {"BULLISH_CHOCH", "BULLISH_BOS"}:
+                points += 1.25
+                reasons.append("structure flipped up")
+            elif msb_type in {"BEARISH_CHOCH", "BEARISH_BOS"}:
+                conflicts += 0.75
+            if structure_trend == "UPTREND":
+                points += 0.75
+            elif structure_trend == "DOWNTREND":
+                conflicts += 0.75
+        else:
+            if msb_type in {"BEARISH_CHOCH", "BEARISH_BOS"}:
+                points += 1.25
+                reasons.append("structure flipped down")
+            elif msb_type in {"BULLISH_CHOCH", "BULLISH_BOS"}:
+                conflicts += 0.75
+            if structure_trend == "DOWNTREND":
+                points += 0.75
+            elif structure_trend == "UPTREND":
+                conflicts += 0.75
+                reasons.append("countertrend scalp only")
+
+        if regimes and getattr(regimes, "valid", False):
+            dom = str(getattr(regimes, "dominant_regime", "MIXED") or "MIXED").upper()
+            if dom in {"TREND", "MOMENTUM", "BREAKOUT"}:
+                points += 0.75
+            elif dom in {"ABSORPTION", "MIXED"}:
+                conflicts += 0.5
+
+        if candle_patterns and getattr(candle_patterns, "valid", False):
+            candle_score = float(getattr(candle_patterns, "score", 50.0) or 50.0)
+            candle_trend = str(getattr(candle_patterns, "trend_3", "FLAT") or "FLAT").upper()
+            if (bullish and (candle_score >= 58.0 or candle_trend == "UP" or self._bullish_candle_context(candle_patterns))) or (
+                (not bullish) and (candle_score <= 42.0 or candle_trend == "DOWN" or self._bearish_candle_context(candle_patterns))
+            ):
+                points += 1.0
+                reasons.append("recent candles confirm")
+            elif (bullish and (candle_score <= 42.0 or candle_trend == "DOWN")) or (
+                (not bullish) and (candle_score >= 58.0 or candle_trend == "UP")
+            ):
+                conflicts += 0.75
+
+        if news_signal and getattr(news_signal, "valid", False) and getattr(news_signal, "article_count", 0) > 0:
+            news_score = float(getattr(news_signal, "score", 50.0) or 50.0)
+            bull_news = float(getattr(self.tcfg, "scalp_bullish_news_score", 55.0) or 55.0)
+            bear_news = float(getattr(self.tcfg, "scalp_bearish_news_score", 45.0) or 45.0)
+            if bullish and news_score >= bull_news:
+                points += 1.25
+                reasons.append("newsflow backs the scalp")
+            elif (not bullish) and news_score <= bear_news:
+                points += 1.25
+                reasons.append("newsflow backs the scalp")
+            elif bullish and news_score <= bear_news:
+                conflicts += 1.0
+            elif (not bullish) and news_score >= bull_news:
+                conflicts += 1.0
+
+        if social_attention_signal and getattr(social_attention_signal, "valid", False):
+            mentions = int(getattr(social_attention_signal, "mentions", 0) or 0)
+            min_mentions = int(getattr(self.tcfg, "social_attention_min_mentions_for_signal", 2) or 2)
+            social_score = float(getattr(social_attention_signal, "score", 50.0) or 50.0)
+            attention = str(getattr(social_attention_signal, "attention_level", "LOW") or "LOW").upper()
+            enough_attention = mentions >= min_mentions or attention in {"MEDIUM", "HIGH"}
+            if enough_attention and ((bullish and social_score >= 58.0) or ((not bullish) and social_score <= 42.0)):
+                points += 1.0
+                reasons.append("trader attention is aligned")
+            elif enough_attention and ((bullish and social_score <= 42.0) or ((not bullish) and social_score >= 58.0)):
+                conflicts += 0.75
+
+        if funding_oi_signal and getattr(funding_oi_signal, "valid", False):
+            foc_score = float(getattr(funding_oi_signal, "composite_score", 50.0) or 50.0)
+            if (bullish and foc_score >= 58.0) or ((not bullish) and foc_score <= 42.0):
+                points += 0.75
+            elif (bullish and foc_score <= 42.0) or ((not bullish) and foc_score >= 58.0):
+                conflicts += 0.75
+
+        if orderbook_signal and getattr(orderbook_signal, "valid", False):
+            orderbook_score = float(getattr(orderbook_signal, "score", 50.0) or 50.0)
+            imbalance = float(getattr(orderbook_signal, "imbalance_mean", getattr(orderbook_signal, "imbalance_ratio", 0.0)) or 0.0)
+            if bullish and (getattr(orderbook_signal, "favor_longs", False) or orderbook_score >= 58.0 or imbalance >= 0.05):
+                points += 1.25
+                reasons.append("book pressure is long")
+            elif (not bullish) and (getattr(orderbook_signal, "favor_shorts", False) or orderbook_score <= 42.0 or imbalance <= -0.05):
+                points += 1.25
+                reasons.append("book pressure is short")
+            elif bullish and orderbook_score <= 45.0:
+                conflicts += 0.75
+            elif (not bullish) and orderbook_score >= 55.0:
+                conflicts += 0.75
+
+        if market_map_signal and getattr(market_map_signal, "valid", False):
+            market_bias = str(getattr(market_map_signal, "bias", "NEUTRAL") or "NEUTRAL").upper()
+            if bullish and (getattr(market_map_signal, "favor_longs", False) or market_bias == "BULLISH" or live_reclaim):
+                points += 1.0
+                reasons.append("daily map permits the long")
+            elif (not bullish) and (getattr(market_map_signal, "favor_shorts", False) or market_bias == "BEARISH" or live_breakdown):
+                points += 1.0
+                reasons.append("daily map permits the short")
+            elif bullish and market_bias == "BEARISH":
+                conflicts += 0.75
+            elif (not bullish) and market_bias == "BULLISH":
+                conflicts += 0.75
+
+        long_threshold = float(getattr(self.tcfg, "signal_long_threshold", 65.0) or 65.0)
+        short_threshold = float(getattr(self.tcfg, "signal_short_threshold", 35.0) or 35.0)
+        score_buffer = float(getattr(self.tcfg, "scalp_score_buffer", 4.0) or 4.0)
+        if bullish and score >= (long_threshold - score_buffer):
+            points += 0.75
+            reasons.append("score is close enough for a tactical long")
+        elif (not bullish) and score <= (short_threshold + score_buffer):
+            points += 0.75
+            reasons.append("score is close enough for a tactical short")
+
+        rr = float((trade_plan or {}).get("risk_reward_ratio", 0.0) or 0.0)
+        if rr > 0 and rr < 1.15:
+            blockers.append(f"scalp R:R {rr:.2f} is too thin")
+
+        min_points = float(getattr(self.tcfg, "scalp_min_alignment_points", 3.0) or 3.0)
+        max_conflicts = float(getattr(self.tcfg, "scalp_max_conflict_points", 3.0) or 3.0)
+        active = not blockers and points >= min_points and conflicts <= max_conflicts
+        direction_text = "long" if bullish else "short"
+        summary = (
+            f"Scalp {direction_text}: {', '.join(reasons[:3])}."
+            if active and reasons else
+            (blockers[0] if blockers else f"scalp checks {points:.1f}/{min_points:.1f}")
+        )
+        profile.update({
+            "active": bool(active),
+            "style": "SCALP_LONG" if bullish else "SCALP_SHORT",
+            "alignment_points": round(points, 2),
+            "conflict_points": round(conflicts, 2),
+            "summary": summary,
+            "reasons": reasons[:6],
+            "blockers": blockers[:4],
+            "max_hold_minutes": float(getattr(self.tcfg, "scalp_max_hold_minutes", 240.0) or 240.0),
+        })
+        return profile
+
+    def _apply_scalp_trade_plan(self, action: str, entry_price: float, trade_plan: Dict | None) -> Dict:
+        plan = dict(trade_plan or {})
+        action = str(action or "").upper()
+        entry = float(plan.get("entry_price", entry_price) or entry_price or 0.0)
+        if action not in {"LONG", "SHORT"} or entry <= 0:
+            return plan
+        stop_pct = max(0.001, float(getattr(self.tcfg, "scalp_stop_pct", 0.035) or 0.035))
+        target_pct = max(stop_pct * 1.05, float(getattr(self.tcfg, "scalp_target_pct", 0.055) or 0.055))
+        current_stop = float(plan.get("stop_loss", 0.0) or 0.0)
+        current_target = float(plan.get("take_profit", 0.0) or 0.0)
+        if action == "LONG":
+            scalp_stop = entry * (1.0 - stop_pct)
+            scalp_target = entry * (1.0 + target_pct)
+            stop = max(current_stop, scalp_stop) if 0 < current_stop < entry else scalp_stop
+            target = min(current_target, scalp_target) if current_target > entry else scalp_target
+        else:
+            scalp_stop = entry * (1.0 + stop_pct)
+            scalp_target = entry * (1.0 - target_pct)
+            stop = min(current_stop, scalp_stop) if current_stop > entry else scalp_stop
+            target = max(current_target, scalp_target) if 0 < current_target < entry else scalp_target
+        risk_pct = abs(entry - stop) / entry * 100.0
+        reward_pct = abs(target - entry) / entry * 100.0
+        plan.update({
+            "entry_price": round(entry, 6),
+            "stop_loss": round(stop, 6),
+            "take_profit": round(target, 6),
+            "risk_pct": round(risk_pct, 3),
+            "reward_pct": round(reward_pct, 3),
+            "risk_reward_ratio": round(reward_pct / max(risk_pct, 1e-9), 3),
+            "trade_style": "scalp",
+            "max_hold_minutes": float(getattr(self.tcfg, "scalp_max_hold_minutes", 240.0) or 240.0),
+            "stop_basis": "scalp_invalidation",
+            "target_basis": "scalp_target",
+            "price_action_summary": "tactical scalp with pre-set invalidation",
+        })
+        return plan
 
     @staticmethod
     def _is_confirmed_bullish_breakout(orderbook_signal) -> bool:
@@ -706,6 +1003,7 @@ class AggressiveStrategy:
         orderbook_signal=None,
         market_map_signal=None,
         narrative_signal=None,
+        social_attention_signal=None,
         instrument_type: str = "crypto",
         trade_plan: Dict | None = None,
     ) -> dict:
@@ -836,10 +1134,18 @@ class AggressiveStrategy:
                 alignment += 2.0
                 reasons.append("higher structure remains in a downtrend")
             elif structure_trend == "UPTREND":
-                conflicts += 2.0
-                blockers.append("higher structure is still an uptrend")
+                if event_conviction:
+                    conflicts += 0.75
+                    reasons.append("higher structure is still up, so bearish event exposure stays starter-sized")
+                else:
+                    conflicts += 2.0
+                    blockers.append("higher structure is still an uptrend")
             elif structure_trend == "RANGING" and getattr(self.tcfg, "thesis_block_on_range_conditions", True) and not (confirmed_breakout or persistent_breakout):
-                blockers.append("higher structure is still ranging")
+                if event_conviction:
+                    conflicts += 0.25
+                    reasons.append("higher structure is ranging, but bearish event flow allows starter risk")
+                else:
+                    blockers.append("higher structure is still ranging")
 
         if dominant_regime in {"TREND", "MOMENTUM", "BREAKOUT"}:
             alignment += 1.5
@@ -925,7 +1231,11 @@ class AggressiveStrategy:
                     reasons.append("orderbook still leans against the long")
             else:
                 if getattr(orderbook_signal, "block_shorts", False) and not (confirmed_breakout or persistent_breakout):
-                    blockers.append("demand/support is still defending below price")
+                    if event_conviction:
+                        conflicts += 0.75
+                        reasons.append("demand is still defending below price, so the bearish event short stays starter-sized")
+                    else:
+                        blockers.append("demand/support is still defending below price")
                 elif getattr(orderbook_signal, "favor_shorts", False) or orderbook_score <= 42.0:
                     alignment += 1.5
                     reasons.append("orderbook and key levels support the short")
@@ -970,7 +1280,12 @@ class AggressiveStrategy:
                     reasons.append("daily operator bias still leans bearish")
             else:
                 if getattr(market_map_signal, "block_shorts", False):
-                    blockers.append("daily market map still warns against shorts here")
+                    live_breakdown = bool(getattr(market_map_signal, "live_below_breakdown_levels", []))
+                    if event_conviction and (live_breakdown or market_bias != "BULLISH"):
+                        conflicts += 0.5
+                        reasons.append("daily map is not clean, so the bearish event short stays starter-sized")
+                    else:
+                        blockers.append("daily market map still warns against shorts here")
                 elif getattr(market_map_signal, "favor_shorts", False):
                     alignment += 1.5
                     reasons.append("daily market map supports the short")
@@ -998,6 +1313,19 @@ class AggressiveStrategy:
                 elif headline_bias == "BULLISH":
                     conflicts += 0.75
                     reasons.append("narrative flow still leans bullish")
+
+        if social_attention_signal and getattr(social_attention_signal, "valid", False):
+            mentions = int(getattr(social_attention_signal, "mentions", 0) or 0)
+            min_mentions = int(getattr(self.tcfg, "social_attention_min_mentions_for_signal", 2) or 2)
+            social_score = float(getattr(social_attention_signal, "score", 50.0) or 50.0)
+            attention = str(getattr(social_attention_signal, "attention_level", "LOW") or "LOW").upper()
+            enough_attention = mentions >= min_mentions or attention in {"MEDIUM", "HIGH"}
+            if enough_attention and ((bullish and social_score >= 58.0) or ((not bullish) and social_score <= 42.0)):
+                alignment += 0.75
+                reasons.append("trader attention is aligned")
+            elif enough_attention and ((bullish and social_score <= 42.0) or ((not bullish) and social_score >= 58.0)):
+                conflicts += 0.75
+                reasons.append("trader attention leans the other way")
 
         rr = float((trade_plan or {}).get("risk_reward_ratio", 0.0) or 0.0)
         min_rr = float(getattr(self.tcfg, "thesis_min_risk_reward_ratio", 1.75) or 1.75)
@@ -1043,10 +1371,47 @@ class AggressiveStrategy:
             conviction_score += 6.0
         conviction_score = max(0.0, min(100.0, conviction_score))
 
+        scalp_profile = self._scalp_profile(
+            action=action,
+            score=score,
+            instrument_type=instrument_type,
+            advanced=advanced,
+            regimes=regimes,
+            candle_patterns=candle_patterns,
+            news_signal=news_signal,
+            funding_oi_signal=funding_oi_signal,
+            orderbook_signal=orderbook_signal,
+            market_map_signal=market_map_signal,
+            narrative_signal=narrative_signal,
+            social_attention_signal=social_attention_signal,
+            trade_plan=trade_plan,
+        )
+        scalp_active = bool(scalp_profile.get("active", False))
+        scalp_selected = bool((not permitted) and scalp_active)
+        if scalp_selected:
+            permitted = True
+            alignment = max(alignment, float(scalp_profile.get("alignment_points", 0.0) or 0.0))
+            conflicts = min(conflicts, float(scalp_profile.get("conflict_points", conflicts) or conflicts))
+            conviction_score = max(
+                conviction_score,
+                58.0
+                + float(scalp_profile.get("alignment_points", 0.0) or 0.0) * 3.5
+                - float(scalp_profile.get("conflict_points", 0.0) or 0.0) * 2.5,
+            )
+            conviction_score = max(0.0, min(100.0, conviction_score))
+            scalp_summary = str(scalp_profile.get("summary", "") or "")
+            reasons = ([scalp_summary] if scalp_summary else []) + reasons
+            blockers = []
+
         if permitted:
             quality = "HIGH" if alignment >= (min_alignment + 2.0) and conflicts == 0 else "MEDIUM"
-            summary = "; ".join(reasons[:3]) if reasons else "Directional thesis qualified"
-            state = "QUALIFIED"
+            if scalp_selected:
+                quality = "MEDIUM"
+                summary = str(scalp_profile.get("summary") or "; ".join(reasons[:3]) or "Tactical scalp qualified")
+                state = str(scalp_profile.get("style") or "SCALP")
+            else:
+                summary = "; ".join(reasons[:3]) if reasons else "Directional thesis qualified"
+                state = "QUALIFIED"
         else:
             quality = "LOW"
             if blockers:
@@ -1068,6 +1433,9 @@ class AggressiveStrategy:
             archetype = "SUPPORT_DEFENSE_LONG"
         elif confirmed_breakout or persistent_breakout:
             archetype = "BREAKOUT_CONTINUATION"
+        if scalp_selected:
+            archetype = "TACTICAL_SCALP"
+        scalp_profile["selected"] = bool(scalp_selected)
 
         thesis.update({
             "state": state,
@@ -1078,6 +1446,7 @@ class AggressiveStrategy:
             "confirmed_breakout": bool(confirmed_breakout),
             "persistent_breakout": bool(persistent_breakout),
             "event_conviction": bool(event_conviction),
+            "scalp": scalp_profile,
             "alignment_points": round(alignment, 2),
             "conflict_points": round(conflicts, 2),
             "conviction_score": round(conviction_score, 2),
@@ -1100,6 +1469,7 @@ class AggressiveStrategy:
         news_signal=None,
         funding_oi_signal=None,
         narrative_signal=None,
+        social_attention_signal=None,
         current_position=None,
     ) -> dict:
         thesis = dict(thesis or {})
@@ -1119,6 +1489,8 @@ class AggressiveStrategy:
                 market_map_signal=market_map_signal,
             )
         )
+        scalp_active = bool((thesis.get("scalp") or {}).get("selected", False))
+        social_reason = ""
 
         probability = 0.50
         probability += ((conviction - 50.0) / 50.0) * 0.18
@@ -1198,6 +1570,21 @@ class AggressiveStrategy:
                 probability -= news_bonus
                 uncertainty += 0.04
 
+        if social_attention_signal and getattr(social_attention_signal, "valid", False):
+            mentions = int(getattr(social_attention_signal, "mentions", 0) or 0)
+            min_mentions = int(getattr(self.tcfg, "social_attention_min_mentions_for_signal", 2) or 2)
+            attention = str(getattr(social_attention_signal, "attention_level", "LOW") or "LOW").upper()
+            social_score = float(getattr(social_attention_signal, "score", 50.0) or 50.0)
+            enough_attention = mentions >= min_mentions or attention in {"MEDIUM", "HIGH"}
+            if enough_attention and ((bullish and social_score >= 58.0) or ((not bullish) and social_score <= 42.0)):
+                probability += 0.025
+                uncertainty -= 0.015
+                social_reason = "social attention confirms direction"
+            elif enough_attention and ((bullish and social_score <= 42.0) or ((not bullish) and social_score >= 58.0)):
+                probability -= 0.025
+                uncertainty += 0.025
+                social_reason = "social attention warns against direction"
+
         if funding_oi_signal and getattr(funding_oi_signal, "valid", False):
             foc_score = float(getattr(funding_oi_signal, "composite_score", 50.0) or 50.0)
             if (bullish and foc_score >= 55.0) or ((not bullish) and foc_score <= 45.0):
@@ -1242,6 +1629,11 @@ class AggressiveStrategy:
             )
             or (56.0 if not same_direction_position else 52.0)
         )
+        if scalp_active:
+            min_probability = float(getattr(self.tcfg, "scalp_min_probability", 0.51) or 0.51)
+            min_expected_r = float(getattr(self.tcfg, "scalp_min_expected_r", 0.08) or 0.08)
+            max_uncertainty = float(getattr(self.tcfg, "scalp_max_uncertainty", 0.62) or 0.62)
+            min_score = float(getattr(self.tcfg, "scalp_min_expectancy_score", 48.0) or 48.0)
 
         permitted = bool(thesis.get("permitted", False))
         blockers: List[str] = []
@@ -1252,6 +1644,8 @@ class AggressiveStrategy:
         ]
         if rr > 0:
             reasons.append(f"target profile {rr:.2f}R")
+        if social_reason:
+            reasons.append(social_reason)
 
         if probability < min_probability:
             blockers.append(f"win probability {probability * 100:.0f}% is below {min_probability * 100:.0f}%")
@@ -1639,6 +2033,7 @@ class AggressiveStrategy:
         orderbook_signal=None,
         market_map_signal=None,
         narrative_signal=None,
+        social_attention_signal=None,
     ):
         if not tech.valid:
             return TradeSignal(coin=tech.coin, action="FLAT", score=50.0,
@@ -1863,6 +2258,20 @@ class AggressiveStrategy:
                     f"summary={getattr(narrative_signal, 'summary', '')[:72]}"
                 )
 
+        if social_attention_signal and getattr(social_attention_signal, "valid", False):
+            mentions = int(getattr(social_attention_signal, "mentions", 0) or 0)
+            min_mentions = int(getattr(self.tcfg, "social_attention_min_mentions_for_signal", 2) or 2)
+            attention = str(getattr(social_attention_signal, "attention_level", "LOW") or "LOW").upper()
+            if mentions >= min_mentions or attention in {"MEDIUM", "HIGH"}:
+                social_score = float(getattr(social_attention_signal, "score", 50.0) or 50.0)
+                influence = float(getattr(self.tcfg, "social_attention_score_influence", 0.12) or 0.12)
+                social_adjustment = (social_score - 50.0) * influence
+                raw_score += social_adjustment
+                log.info(
+                    f"[{tech.coin}] SocialAttention: score={social_score:.1f} "
+                    f"mentions={mentions} attention={attention} adj={social_adjustment:+.1f}"
+                )
+
         raw_score = max(0.0, min(100.0, raw_score))
 
         # ── 14. Memory-based score adjustment ────────────────────────────────
@@ -2067,9 +2476,14 @@ class AggressiveStrategy:
                 orderbook_signal=orderbook_signal,
                 market_map_signal=market_map_signal,
                 narrative_signal=narrative_signal,
+                social_attention_signal=social_attention_signal,
                 instrument_type=instrument_type,
                 trade_plan=trade_plan,
             )
+            if (thesis.get("scalp") or {}).get("selected"):
+                trade_plan = self._apply_scalp_trade_plan(candidate_action, tech.price, trade_plan)
+                sl_price = float(trade_plan.get("stop_loss", sl_price) or sl_price)
+                tp_price = float(trade_plan.get("take_profit", tp_price) or tp_price)
             expectancy = self._derive_expectancy_profile(
                 action=candidate_action,
                 score=raw_score,
@@ -2081,6 +2495,7 @@ class AggressiveStrategy:
                 news_signal=news_signal,
                 funding_oi_signal=funding_oi_signal,
                 narrative_signal=narrative_signal,
+                social_attention_signal=social_attention_signal,
                 current_position=current_position,
             )
             conviction_entry = self._build_conviction_entry(
@@ -2095,6 +2510,27 @@ class AggressiveStrategy:
                 orderbook_signal=orderbook_signal,
                 market_map_signal=market_map_signal,
             )
+            if (thesis.get("scalp") or {}).get("selected") and not conviction_entry.get("active"):
+                scalp_profile = dict(thesis.get("scalp") or {})
+                scalp_size = float(getattr(self.tcfg, "scalp_size_multiplier", 0.42) or 0.42)
+                scalp_size = max(0.10, min(0.60, scalp_size))
+                scalp_summary = str(scalp_profile.get("summary") or "Tactical scalp qualified")
+                conviction_entry = {
+                    "active": True,
+                    "direction": candidate_action,
+                    "style": str(scalp_profile.get("style") or "SCALP"),
+                    "size_multiplier": round(scalp_size, 4),
+                    "summary": scalp_summary,
+                    "reason": scalp_summary,
+                    "blockers": [],
+                    "bypass_precision": bool(getattr(self.tcfg, "scalp_bypass_precision", True)),
+                    "event_conviction": False,
+                    "scalp": True,
+                    "max_hold_minutes": scalp_profile.get(
+                        "max_hold_minutes",
+                        float(getattr(self.tcfg, "scalp_max_hold_minutes", 240.0) or 240.0),
+                    ),
+                }
             thesis["conviction_entry"] = conviction_entry
             expectancy["conviction_entry"] = conviction_entry
             confidence = str(expectancy.get("quality", confidence) or confidence).upper()
@@ -2115,7 +2551,7 @@ class AggressiveStrategy:
             if starter_override_required:
                 action = candidate_action
                 thesis_guard_reason = str(conviction_entry.get("summary", "") or "")
-                thesis["state"] = "CONVICTION_ENTRY"
+                thesis["state"] = "SCALP_ENTRY" if conviction_entry.get("scalp") else "CONVICTION_ENTRY"
                 thesis["permitted"] = True
                 if str(thesis.get("quality", "LOW") or "LOW").upper() == "LOW":
                     thesis["quality"] = "MEDIUM"

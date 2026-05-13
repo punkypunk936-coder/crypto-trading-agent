@@ -2118,6 +2118,112 @@ def test_execution_plan_prefers_limit_entry_on_defended_support() -> None:
     assert "support" in plan["reason"].lower()
 
 
+def test_strategy_allows_bearish_event_starter_shorts() -> None:
+    cfg = build_config()
+    strategy = AggressiveStrategy(cfg.trading, cfg.indicators)
+    news_signal = SimpleNamespace(
+        valid=True,
+        score=38.0,
+        article_count=2,
+        catalyst_score=4.6,
+        catalyst_tags=["earnings_event", "analyst_revision"],
+        event_tags=[],
+        velocity="HIGH",
+        catalyst_summary="earnings/revision risk",
+    )
+    narrative_signal = SimpleNamespace(valid=True, headline_bias="BEARISH", block_longs=True, block_shorts=False)
+    orderbook_signal = SimpleNamespace(valid=True, score=39.0, favor_shorts=True, block_shorts=False, breakout_state="NONE")
+    market_map_signal = SimpleNamespace(
+        valid=True,
+        bias="BEARISH",
+        favor_shorts=True,
+        block_shorts=False,
+        live_below_breakdown_levels=[],
+    )
+
+    probe = strategy._conviction_probe_candidate(
+        instrument_type="equity",
+        action="FLAT",
+        raw_score=41.0,
+        news_signal=news_signal,
+        narrative_signal=narrative_signal,
+        orderbook_signal=orderbook_signal,
+        market_map_signal=market_map_signal,
+    )
+    assert probe["active"] is True
+    assert probe["candidate_action"] == "SHORT"
+
+    entry = strategy._build_conviction_entry(
+        coin="MU",
+        instrument_type="equity",
+        action="SHORT",
+        score=41.0,
+        thesis={"alignment_points": 1.2, "conflict_points": 3.2},
+        expectancy={"probability": 0.52, "score": 47.0, "uncertainty": 0.59},
+        news_signal=news_signal,
+        narrative_signal=narrative_signal,
+        orderbook_signal=orderbook_signal,
+        market_map_signal=market_map_signal,
+    )
+    assert entry["active"] is True
+    assert entry["style"] == "EVENT_STARTER"
+    assert entry["direction"] == "SHORT"
+
+
+def test_tactical_scalp_short_can_override_htf_uptrend_blocker() -> None:
+    cfg = build_config()
+    strategy = AggressiveStrategy(cfg.trading, cfg.indicators)
+    advanced = SimpleNamespace(
+        msb=SimpleNamespace(msb_type="NONE", structure_trend="UPTREND"),
+    )
+    regimes = SimpleNamespace(valid=True, dominant_regime="TREND")
+    candles = SimpleNamespace(valid=True, score=35.0, trend_3="DOWN", patterns=["Bearish Engulfing"])
+    news_signal = SimpleNamespace(valid=True, score=37.0, article_count=2)
+    social_signal = SimpleNamespace(valid=True, score=36.0, mentions=4, attention_level="HIGH")
+    orderbook_signal = SimpleNamespace(
+        valid=True,
+        score=35.0,
+        favor_shorts=True,
+        favor_longs=False,
+        block_shorts=False,
+        block_longs=True,
+        breakout_state="CONFIRMED_BEARISH_BREAKDOWN",
+        imbalance_ratio=-0.12,
+        imbalance_mean=-0.12,
+        level_interaction="BELOW_SUPPORT",
+        support_wall_persistence=0,
+        resistance_wall_persistence=2,
+    )
+    market_map_signal = SimpleNamespace(
+        valid=True,
+        bias="BEARISH",
+        favor_shorts=True,
+        block_shorts=False,
+        block_longs=True,
+        live_below_breakdown_levels=[99.0],
+    )
+
+    thesis = strategy._evaluate_trade_thesis(
+        action="SHORT",
+        score=36.5,
+        current_position=None,
+        advanced=advanced,
+        regimes=regimes,
+        candle_patterns=candles,
+        news_signal=news_signal,
+        orderbook_signal=orderbook_signal,
+        market_map_signal=market_map_signal,
+        social_attention_signal=social_signal,
+        instrument_type="equity",
+        trade_plan={"risk_reward_ratio": 1.57},
+    )
+
+    assert thesis["permitted"] is True
+    assert thesis["archetype"] == "TACTICAL_SCALP"
+    assert thesis["scalp"]["active"] is True
+    assert "SCALP_SHORT" in thesis["state"]
+
+
 def test_agent_uses_completed_candles_for_conviction_but_live_price_for_execution() -> None:
     cfg = build_config()
     cfg.trading.use_orderbook_levels = False
@@ -2428,6 +2534,42 @@ def test_adaptive_leverage_caps_event_starters_and_shaky_setups() -> None:
     assert event_order.leverage <= cfg.trading.event_starter_max_leverage
     assert shaky_order.approved
     assert shaky_order.leverage <= 2
+
+
+def test_scalp_orders_get_size_and_leverage_caps() -> None:
+    cfg = build_config()
+    cfg.trading.adaptive_leverage_enabled = True
+    cfg.trading.max_leverage = 5
+    cfg.trading.scalp_max_leverage = 3
+    cfg.trading.max_trade_usd = 1000.0
+    cfg.trading.max_trade_notional_usd = 5000.0
+    cfg.trading.max_position_pct = 0.10
+    cfg.trading.max_total_exposure_pct = 1.0
+    cfg.trading.max_levered_position_pct = 0.50
+    risk = __import__("risk.risk_manager", fromlist=["RiskManager"]).RiskManager(cfg.trading)
+
+    order = risk.compute_order(
+        coin="BTC",
+        direction="SHORT",
+        signal_score=12.0,
+        current_price=100.0,
+        stop_loss_price=103.5,
+        take_profit_price=94.5,
+        portfolio_usd=10_000.0,
+        rl_win_rate=76.0,
+        rl_pattern_boost=0.10,
+        expectancy_score=88.0,
+        win_probability=0.70,
+        expected_r=0.45,
+        uncertainty=0.25,
+        thesis_conviction=88.0,
+        sizing_multiplier=0.42,
+        scalp=True,
+    )
+
+    assert order.approved
+    assert order.leverage <= cfg.trading.scalp_max_leverage
+    assert "SCALP" in order.conviction_tier
 
 
 def test_dry_run_reserves_margin_not_full_notional_for_levered_orders() -> None:
@@ -8326,6 +8468,10 @@ def run_all() -> None:
     print("PASS MAG7 earnings calendar starters")
     test_execution_plan_prefers_limit_entry_on_defended_support()
     print("PASS planned limit execution")
+    test_strategy_allows_bearish_event_starter_shorts()
+    print("PASS bearish event starter shorts")
+    test_tactical_scalp_short_can_override_htf_uptrend_blocker()
+    print("PASS tactical scalp short override")
     test_agent_uses_completed_candles_for_conviction_but_live_price_for_execution()
     print("PASS completed-candle conviction split")
     test_scale_in_does_not_mutate_before_fill()
@@ -8340,6 +8486,8 @@ def run_all() -> None:
     print("PASS adaptive leverage high-conviction sizing")
     test_adaptive_leverage_caps_event_starters_and_shaky_setups()
     print("PASS adaptive leverage caps")
+    test_scalp_orders_get_size_and_leverage_caps()
+    print("PASS scalp leverage caps")
     test_dry_run_reserves_margin_not_full_notional_for_levered_orders()
     print("PASS dry-run levered margin accounting")
     test_narrative_gate_blocks_event_risk_without_exceptional_expectancy()
