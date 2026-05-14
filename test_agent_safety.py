@@ -2224,6 +2224,56 @@ def test_tactical_scalp_short_can_override_htf_uptrend_blocker() -> None:
     assert "SCALP_SHORT" in thesis["state"]
 
 
+def test_flat_bearish_flow_promotes_tactical_short_probe() -> None:
+    cfg = build_config()
+    strategy = AggressiveStrategy(cfg.trading, cfg.indicators)
+    advanced = SimpleNamespace(
+        msb=SimpleNamespace(msb_type="BEARISH_CHOCH", structure_trend="DOWNTREND"),
+    )
+    regimes = SimpleNamespace(valid=True, dominant_regime="TREND")
+    candles = SimpleNamespace(valid=True, score=38.0, trend_3="DOWN", patterns=["Bearish Engulfing"])
+    news_signal = SimpleNamespace(valid=True, score=40.0, article_count=2)
+    social_signal = SimpleNamespace(valid=True, score=38.0, mentions=5, attention_level="HIGH")
+    orderbook_signal = SimpleNamespace(
+        valid=True,
+        score=39.0,
+        favor_shorts=True,
+        favor_longs=False,
+        block_shorts=False,
+        block_longs=True,
+        breakout_state="PROBING_BEARISH_BREAKDOWN",
+        imbalance_ratio=-0.10,
+        imbalance_mean=-0.10,
+        level_interaction="BETWEEN_LEVELS",
+    )
+    market_map_signal = SimpleNamespace(
+        valid=True,
+        bias="BEARISH",
+        favor_shorts=True,
+        favor_longs=False,
+        block_shorts=False,
+        block_longs=True,
+        live_below_breakdown_levels=[99.0],
+    )
+
+    probe = strategy._tactical_scalp_probe_candidate(
+        instrument_type="equity",
+        action="FLAT",
+        raw_score=40.5,
+        advanced=advanced,
+        regimes=regimes,
+        candle_patterns=candles,
+        news_signal=news_signal,
+        orderbook_signal=orderbook_signal,
+        market_map_signal=market_map_signal,
+        social_attention_signal=social_signal,
+    )
+
+    assert probe["active"] is True
+    assert probe["candidate_action"] == "SHORT"
+    assert "tactical short" in probe["summary"].lower()
+
+
 def test_agent_uses_completed_candles_for_conviction_but_live_price_for_execution() -> None:
     cfg = build_config()
     cfg.trading.use_orderbook_levels = False
@@ -2532,6 +2582,7 @@ def test_adaptive_leverage_caps_event_starters_and_shaky_setups() -> None:
 
     assert event_order.approved
     assert event_order.leverage <= cfg.trading.event_starter_max_leverage
+    assert event_order.leverage >= cfg.trading.event_starter_min_leverage
     assert shaky_order.approved
     assert shaky_order.leverage <= 2
 
@@ -2569,7 +2620,41 @@ def test_scalp_orders_get_size_and_leverage_caps() -> None:
 
     assert order.approved
     assert order.leverage <= cfg.trading.scalp_max_leverage
+    assert order.leverage >= cfg.trading.scalp_min_leverage
     assert "SCALP" in order.conviction_tier
+
+
+def test_high_conviction_order_gets_leverage_floor() -> None:
+    cfg = build_config()
+    cfg.trading.adaptive_leverage_enabled = True
+    cfg.trading.max_leverage = 8
+    cfg.trading.max_trade_usd = 1000.0
+    cfg.trading.max_trade_notional_usd = 8000.0
+    cfg.trading.max_position_pct = 0.10
+    cfg.trading.max_total_exposure_pct = 1.0
+    cfg.trading.max_levered_position_pct = 0.80
+    cfg.trading.min_trade_usd = 25.0
+    risk = __import__("risk.risk_manager", fromlist=["RiskManager"]).RiskManager(cfg.trading)
+
+    order = risk.compute_order(
+        coin="GOOGL",
+        direction="LONG",
+        signal_score=82.0,
+        current_price=100.0,
+        stop_loss_price=94.0,
+        take_profit_price=116.0,
+        portfolio_usd=10_000.0,
+        rl_win_rate=52.0,
+        rl_pattern_boost=0.0,
+        expectancy_score=68.0,
+        win_probability=0.58,
+        expected_r=0.12,
+        uncertainty=0.50,
+        thesis_conviction=82.0,
+    )
+
+    assert order.approved
+    assert order.leverage >= cfg.trading.high_conviction_min_leverage
 
 
 def test_dry_run_reserves_margin_not_full_notional_for_levered_orders() -> None:
@@ -6365,6 +6450,30 @@ def test_hyperliquid_limit_order_returns_resting_order_id() -> None:
         hyperliquid_client_module.resolve_hyperliquid_symbol = original_resolve
 
 
+def test_hyperliquid_set_leverage_uses_sdk_name_parameter_for_tradexyz() -> None:
+    original_market_type = hyperliquid_client_module.hyperliquid_market_type
+    original_resolve = hyperliquid_client_module.resolve_hyperliquid_symbol
+    captured = {}
+    try:
+        hyperliquid_client_module.hyperliquid_market_type = lambda _coin: "perp"
+        hyperliquid_client_module.resolve_hyperliquid_symbol = lambda _coin: "xyz:GOOGL"
+
+        class FakeExchange:
+            def update_leverage(self, **kwargs):
+                captured.update(kwargs)
+                return {"status": "ok"}
+
+        client = hyperliquid_client_module.HyperliquidClient("pk", "0xabc")
+        client._connected = True
+        client._exchange = FakeExchange()
+
+        assert client.set_leverage("GOOGL", 4) is True
+        assert captured == {"leverage": 4, "name": "xyz:GOOGL", "is_cross": True}
+    finally:
+        hyperliquid_client_module.hyperliquid_market_type = original_market_type
+        hyperliquid_client_module.resolve_hyperliquid_symbol = original_resolve
+
+
 def test_hyperliquid_market_catalog_expands_unknown_live_perps() -> None:
     original_perps = hyperliquid_markets_module._fetch_perp_names
     original_spots = hyperliquid_markets_module._fetch_spot_pairs
@@ -8472,6 +8581,8 @@ def run_all() -> None:
     print("PASS bearish event starter shorts")
     test_tactical_scalp_short_can_override_htf_uptrend_blocker()
     print("PASS tactical scalp short override")
+    test_flat_bearish_flow_promotes_tactical_short_probe()
+    print("PASS flat bearish tactical short probe")
     test_agent_uses_completed_candles_for_conviction_but_live_price_for_execution()
     print("PASS completed-candle conviction split")
     test_scale_in_does_not_mutate_before_fill()
@@ -8488,6 +8599,8 @@ def run_all() -> None:
     print("PASS adaptive leverage caps")
     test_scalp_orders_get_size_and_leverage_caps()
     print("PASS scalp leverage caps")
+    test_high_conviction_order_gets_leverage_floor()
+    print("PASS high-conviction leverage floor")
     test_dry_run_reserves_margin_not_full_notional_for_levered_orders()
     print("PASS dry-run levered margin accounting")
     test_narrative_gate_blocks_event_risk_without_exceptional_expectancy()
@@ -8648,6 +8761,8 @@ def run_all() -> None:
     print("PASS long-only spot short block")
     test_hyperliquid_limit_order_returns_resting_order_id()
     print("PASS Hyperliquid limit order support")
+    test_hyperliquid_set_leverage_uses_sdk_name_parameter_for_tradexyz()
+    print("PASS Hyperliquid Trade.xyz leverage update")
     test_hyperliquid_market_catalog_expands_unknown_live_perps()
     print("PASS Hyperliquid market catalog expansion")
     test_hyperliquid_market_catalog_discovers_unknown_tradexyz_equities()

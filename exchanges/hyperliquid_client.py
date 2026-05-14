@@ -246,7 +246,7 @@ class HyperliquidClient(BaseExchange):
         try:
             venue_symbol = resolve_hyperliquid_symbol(coin)
             result = self._exchange.update_leverage(
-                leverage=leverage, coin=venue_symbol, is_cross=True
+                leverage=leverage, name=venue_symbol, is_cross=True
             )
             if result.get("status") == "ok":
                 log.info(f"[{coin}] Leverage set to {leverage}×")

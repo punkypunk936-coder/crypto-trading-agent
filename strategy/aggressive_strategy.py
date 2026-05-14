@@ -831,6 +831,87 @@ class AggressiveStrategy:
         })
         return profile
 
+    def _tactical_scalp_probe_candidate(
+        self,
+        *,
+        instrument_type: str,
+        action: str,
+        raw_score: float,
+        advanced=None,
+        regimes=None,
+        candle_patterns=None,
+        news_signal=None,
+        funding_oi_signal=None,
+        orderbook_signal=None,
+        market_map_signal=None,
+        narrative_signal=None,
+        social_attention_signal=None,
+    ) -> dict:
+        candidate = {
+            "active": False,
+            "candidate_action": str(action or "FLAT").upper(),
+            "summary": "",
+            "trigger_gap_points": 0.0,
+            "source": "scalp_probe",
+        }
+        if not getattr(self.tcfg, "scalp_probe_from_flat_enabled", True):
+            return candidate
+        if str(action or "").upper() != "FLAT":
+            return candidate
+        instrument = str(instrument_type or "crypto").lower()
+        if instrument == "index":
+            return candidate
+
+        ranked: List[tuple[float, str, dict]] = []
+        for direction in ("LONG", "SHORT"):
+            profile = self._scalp_profile(
+                action=direction,
+                score=raw_score,
+                instrument_type=instrument_type,
+                advanced=advanced,
+                regimes=regimes,
+                candle_patterns=candle_patterns,
+                news_signal=news_signal,
+                funding_oi_signal=funding_oi_signal,
+                orderbook_signal=orderbook_signal,
+                market_map_signal=market_map_signal,
+                narrative_signal=narrative_signal,
+                social_attention_signal=social_attention_signal,
+                trade_plan=None,
+            )
+            if not profile.get("active"):
+                continue
+            edge = float(profile.get("alignment_points", 0.0) or 0.0) - float(profile.get("conflict_points", 0.0) or 0.0)
+            if (direction == "LONG" and raw_score >= 50.0) or (direction == "SHORT" and raw_score <= 50.0):
+                edge += 0.35
+            ranked.append((edge, direction, profile))
+
+        if not ranked:
+            return candidate
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        edge, direction, profile = ranked[0]
+        min_edge = float(getattr(self.tcfg, "scalp_probe_min_edge_points", 1.0) or 1.0)
+        if edge < min_edge:
+            return candidate
+        if len(ranked) > 1 and edge - ranked[1][0] < 0.25:
+            return candidate
+
+        trigger = float(self.tcfg.signal_long_threshold if direction == "LONG" else self.tcfg.signal_short_threshold)
+        gap = max(0.0, trigger - raw_score) if direction == "LONG" else max(0.0, raw_score - trigger)
+        side = "long" if direction == "LONG" else "short"
+        reasons = list(profile.get("reasons") or [])
+        candidate.update({
+            "active": True,
+            "candidate_action": direction,
+            "summary": (
+                f"Tactical {side} probe: {', '.join(reasons[:3]) or 'near-term evidence is aligned'}; "
+                f"score is {gap:.1f} pts from the hard trigger."
+            ),
+            "trigger_gap_points": round(gap, 2),
+            "scalp_profile": dict(profile),
+        })
+        return candidate
+
     def _apply_scalp_trade_plan(self, action: str, entry_price: float, trade_plan: Dict | None) -> Dict:
         plan = dict(trade_plan or {})
         action = str(action or "").upper()
@@ -2391,6 +2472,25 @@ class AggressiveStrategy:
             if conviction_probe.get("active"):
                 candidate_action = str(conviction_probe.get("candidate_action", "FLAT") or "FLAT").upper()
                 log.info(f"[{tech.coin}] {conviction_probe.get('summary', '')}")
+            else:
+                scalp_probe = self._tactical_scalp_probe_candidate(
+                    instrument_type=instrument_type,
+                    action=action,
+                    raw_score=raw_score,
+                    advanced=advanced,
+                    regimes=regimes,
+                    candle_patterns=candle_patterns,
+                    news_signal=news_signal,
+                    funding_oi_signal=funding_oi_signal,
+                    orderbook_signal=orderbook_signal,
+                    market_map_signal=market_map_signal,
+                    narrative_signal=narrative_signal,
+                    social_attention_signal=social_attention_signal,
+                )
+                if scalp_probe.get("active"):
+                    conviction_probe = scalp_probe
+                    candidate_action = str(scalp_probe.get("candidate_action", "FLAT") or "FLAT").upper()
+                    log.info(f"[{tech.coin}] {scalp_probe.get('summary', '')}")
 
         # ── 16. Confidence ───────────────────────────────────────────────────
         distance = abs(raw_score - 50.0)

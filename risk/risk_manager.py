@@ -190,6 +190,20 @@ class RiskManager:
             max_allowed = min(max_allowed, max(1, self._cfg_int("starter_max_leverage", 2)))
             notes.append("starter cap")
 
+        hard_cap = max_allowed
+        leverage_floor = min_lev
+        if tier.startswith("EXTREME"):
+            leverage_floor = max(leverage_floor, self._cfg_int("extreme_conviction_min_leverage", 4))
+        elif tier.startswith("HIGH"):
+            leverage_floor = max(leverage_floor, self._cfg_int("high_conviction_min_leverage", 3))
+        if event_starter:
+            leverage_floor = max(leverage_floor, self._cfg_int("event_starter_min_leverage", 2))
+        elif starter_multiplier < 0.999:
+            leverage_floor = max(leverage_floor, self._cfg_int("starter_min_leverage", 1))
+        if scalp:
+            leverage_floor = max(leverage_floor, self._cfg_int("scalp_min_leverage", 1))
+        leverage_floor = min(leverage_floor, hard_cap)
+
         if uncertainty >= 0.60 or probability < 0.53:
             max_allowed = min(max_allowed, 1)
             notes.append("low clarity")
@@ -197,7 +211,21 @@ class RiskManager:
             max_allowed = min(max_allowed, 2)
             notes.append("clarity cap")
 
-        lev = max(min_lev, min(int(round(lev)), max_allowed))
+        floor_can_override_clarity = bool(
+            getattr(self.cfg, "conviction_leverage_floor_overrides_clarity_cap", True)
+        )
+        floor_is_earned = (
+            (tier.startswith(("HIGH", "EXTREME")) and probability >= 0.56 and uncertainty <= 0.58 and expectancy_r >= 0.08)
+            or (event_starter and probability >= 0.54 and uncertainty <= 0.66)
+            or (scalp and probability >= 0.52 and uncertainty <= 0.66)
+            or (starter_multiplier < 0.999 and probability >= 0.54 and uncertainty <= 0.62 and expectancy_r >= 0.06)
+        )
+        if leverage_floor > max_allowed and floor_can_override_clarity and floor_is_earned:
+            max_allowed = leverage_floor
+            notes.append("conviction floor")
+
+        effective_floor = leverage_floor if leverage_floor <= max_allowed else min_lev
+        lev = max(effective_floor, min(int(round(lev)), max_allowed))
         note = f"{lev}x: " + ", ".join(notes[:4])
         return lev, note
 
