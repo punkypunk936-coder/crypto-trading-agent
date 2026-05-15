@@ -1,42 +1,28 @@
 {
   "classifications": {
-    "BAD_TRADE": 103,
-    "CORRECT_PASS": 4809,
-    "GOOD_TRADE": 231,
-    "MISSED_WIN": 15853
+    "BAD_TRADE": 105,
+    "CORRECT_PASS": 4850,
+    "GOOD_TRADE": 240,
+    "MISSED_WIN": 15839
   },
   "daily_top_mover_replay": {
     "lessons": [
-      "RKLB moved +5.48% after a blocked LONG candidate; event starter was active, so replay should inspect sizing/execution."
+      "RKLB moved +4.98% after a blocked LONG candidate; event starter was active, so replay should inspect sizing/execution."
     ],
     "lookback_hours": 24,
     "missed_top_movers": [
       {
-        "blocked_at": "2026-05-15 01:43:50",
-        "blocked_stage": "execution_coach_skip",
+        "blocked_at": "2026-05-15 10:16:52",
+        "blocked_stage": "data_reliability_block",
         "coin": "RKLB",
         "conviction_entry_event": true,
         "direction": "LONG",
-        "event_budget_summary": "event budget has room for a starter",
-        "move_pct": 5.478,
+        "event_budget_summary": "",
+        "move_pct": 4.983,
         "news_catalyst_score": 6.45,
         "news_event_score": 6.45,
-        "probability": 0.7763,
+        "probability": 0.8884,
         "score": 96.0,
-        "summary": "orderbook/key levels are blocking this direction; spread too wide (13.6bps > 12.0bps); orderbook still shows range compression"
-      },
-      {
-        "blocked_at": "2026-05-15 01:22:34",
-        "blocked_stage": "data_reliability_block",
-        "coin": "COIN",
-        "conviction_entry_event": true,
-        "direction": "LONG",
-        "event_budget_summary": "",
-        "move_pct": 4.933,
-        "news_catalyst_score": 4.95,
-        "news_event_score": 4.95,
-        "probability": 0.9185,
-        "score": 98.28,
         "summary": "price moved too far since the conviction snapshot"
       },
       {
@@ -52,34 +38,6 @@
         "probability": 0.8916,
         "score": 96.11,
         "summary": "5 analogs \u2022 win 20% \u2022 avg pnl -0.37% \u2022 avg R -0.31 \u2022 reliability 0.74"
-      },
-      {
-        "blocked_at": "2026-05-15 00:42:48",
-        "blocked_stage": "execution_coach_skip",
-        "coin": "TSM",
-        "conviction_entry_event": true,
-        "direction": "LONG",
-        "event_budget_summary": "event budget has room for a starter",
-        "move_pct": 4.36,
-        "news_catalyst_score": 4.8,
-        "news_event_score": 4.8,
-        "probability": 0.917,
-        "score": 97.8,
-        "summary": "key level has only persisted 1/2 cycles"
-      },
-      {
-        "blocked_at": "2026-05-15 01:38:10",
-        "blocked_stage": "major_catalyst_watch",
-        "coin": "MSTR",
-        "conviction_entry_event": true,
-        "direction": "LONG",
-        "event_budget_summary": "",
-        "move_pct": 4.133,
-        "news_catalyst_score": 5.16,
-        "news_event_score": 5.16,
-        "probability": 0.7849,
-        "score": 97.82,
-        "summary": "embargoed after 8 LONG trades with 25% win rate"
       },
       {
         "blocked_at": "2026-05-15 00:30:40",
@@ -102,36 +60,78 @@
         "conviction_entry_event": true,
         "direction": "SHORT",
         "event_budget_summary": "event budget has room for a starter",
-        "move_pct": -3.619,
+        "move_pct": -3.697,
         "news_catalyst_score": 5.42,
         "news_event_score": 5.42,
         "probability": 0.5017,
         "score": 100.0,
         "summary": "north-star recovery needs better hit odds (50%)"
+      },
+      {
+        "blocked_at": "2026-05-15 10:12:48",
+        "blocked_stage": "setup_quality_guard_block",
+        "coin": "COIN",
+        "conviction_entry_event": true,
+        "direction": "LONG",
+        "event_budget_summary": "",
+        "move_pct": 3.476,
+        "news_catalyst_score": 5.2,
+        "news_event_score": 5.2,
+        "probability": 0.8538,
+        "score": 100.0,
+        "summary": "COIN LONG history is toxic: 6/13 wins, 0 reversal-losses; need A+ score/odds before adding risk"
+      },
+      {
+        "blocked_at": "2026-05-15 10:16:06",
+        "blocked_stage": "risk_rejected",
+        "coin": "NVDA",
+        "conviction_entry_event": true,
+        "direction": "LONG",
+        "event_budget_summary": "",
+        "move_pct": 3.106,
+        "news_catalyst_score": 7.33,
+        "news_event_score": 7.33,
+        "probability": 0.9167,
+        "score": 97.78,
+        "summary": "Thesis medium: Pre-event starter long allowed: catalyst 7.33, news 61, p 95%, score 71.1 vs 65 trigger. Begin 44% size before full confirmation. Thesis: platform anchor + partner attached + capacity lock-in + SEC filing flow + options implied move + analyst revision."
+      },
+      {
+        "blocked_at": "2026-05-15 00:21:32",
+        "blocked_stage": "flat_no_trade",
+        "coin": "ETC",
+        "conviction_entry_event": false,
+        "direction": "LONG",
+        "event_budget_summary": "",
+        "move_pct": 2.849,
+        "news_catalyst_score": 0.0,
+        "news_event_score": 0.0,
+        "probability": 0.9225,
+        "score": 98.17,
+        "summary": "5 analogs \u2022 win 41% \u2022 avg pnl +0.27% \u2022 avg R +0.29 \u2022 reliability 0.80"
       }
     ],
     "top_movers": [
       {
-        "coin": "RKLB",
-        "direction": "LONG",
-        "end_at": "2026-05-15 01:43:50",
-        "end_price": 132.48,
-        "end_ts": 1778789630.25045,
-        "move_pct": 5.478,
-        "start_at": "2026-05-14 06:30:05",
-        "start_price": 125.6,
-        "start_ts": 1778720405.018486
+        "coin": "LITE",
+        "direction": "SHORT",
+        "end_at": "2026-05-15 10:14:59",
+        "end_price": 969.41,
+        "end_ts": 1778820299.0447621,
+        "move_pct": -5.718,
+        "start_at": "2026-05-14 10:32:35",
+        "start_price": 1028.2,
+        "start_ts": 1778734955.545532
       },
       {
-        "coin": "COIN",
+        "coin": "RKLB",
         "direction": "LONG",
-        "end_at": "2026-05-15 01:22:34",
-        "end_price": 213.14,
-        "end_ts": 1778788354.27567,
-        "move_pct": 4.933,
-        "start_at": "2026-05-14 06:25:44",
-        "start_price": 203.12,
-        "start_ts": 1778720144.610775
+        "end_at": "2026-05-15 10:16:52",
+        "end_price": 130.21,
+        "end_ts": 1778820412.027582,
+        "move_pct": 4.983,
+        "start_at": "2026-05-14 10:24:59",
+        "start_price": 124.03,
+        "start_ts": 1778734499.237538
       },
       {
         "coin": "MON",
@@ -145,28 +145,6 @@
         "start_ts": 1778768326.252832
       },
       {
-        "coin": "TSM",
-        "direction": "LONG",
-        "end_at": "2026-05-15 00:42:48",
-        "end_price": 420.11,
-        "end_ts": 1778785968.657202,
-        "move_pct": 4.36,
-        "start_at": "2026-05-14 06:30:51",
-        "start_price": 402.56,
-        "start_ts": 1778720451.4443772
-      },
-      {
-        "coin": "MSTR",
-        "direction": "LONG",
-        "end_at": "2026-05-15 01:38:10",
-        "end_price": 186.69,
-        "end_ts": 1778789290.826796,
-        "move_pct": 4.133,
-        "start_at": "2026-05-14 06:51:04",
-        "start_price": 179.28,
-        "start_ts": 1778721664.15503
-      },
-      {
         "coin": "XRP",
         "direction": "LONG",
         "end_at": "2026-05-15 00:30:40",
@@ -178,36 +156,58 @@
         "start_ts": 1778773993.321266
       },
       {
-        "coin": "LITE",
-        "direction": "SHORT",
-        "end_at": "2026-05-15 00:40:33",
-        "end_price": 1000.6,
-        "end_ts": 1778785833.4715672,
-        "move_pct": -3.899,
-        "start_at": "2026-05-14 06:27:57",
-        "start_price": 1041.2,
-        "start_ts": 1778720277.960855
-      },
-      {
         "coin": "BABA",
         "direction": "SHORT",
-        "end_at": "2026-05-15 01:18:44",
-        "end_price": 141.13,
-        "end_ts": 1778788124.139616,
-        "move_pct": -3.619,
-        "start_at": "2026-05-14 06:25:06",
-        "start_price": 146.43,
-        "start_ts": 1778720106.216248
+        "end_at": "2026-05-15 10:12:17",
+        "end_price": 138.06,
+        "end_ts": 1778820137.255732,
+        "move_pct": -3.697,
+        "start_at": "2026-05-14 10:22:38",
+        "start_price": 143.36,
+        "start_ts": 1778734358.405056
+      },
+      {
+        "coin": "COIN",
+        "direction": "LONG",
+        "end_at": "2026-05-15 10:12:48",
+        "end_price": 208.98,
+        "end_ts": 1778820168.557085,
+        "move_pct": 3.476,
+        "start_at": "2026-05-14 10:22:53",
+        "start_price": 201.96,
+        "start_ts": 1778734373.954907
+      },
+      {
+        "coin": "NVDA",
+        "direction": "LONG",
+        "end_at": "2026-05-15 10:16:06",
+        "end_price": 235.02,
+        "end_ts": 1778820366.604939,
+        "move_pct": 3.106,
+        "start_at": "2026-05-14 10:24:33",
+        "start_price": 227.94,
+        "start_ts": 1778734473.824173
+      },
+      {
+        "coin": "ETC",
+        "direction": "LONG",
+        "end_at": "2026-05-15 00:21:32",
+        "end_price": 9.5678,
+        "end_ts": 1778784692.5042582,
+        "move_pct": 2.849,
+        "start_at": "2026-05-14 11:42:44",
+        "start_price": 9.3028,
+        "start_ts": 1778739164.8698711
       }
     ]
   },
   "data_dir": "/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime",
-  "decision_rows": 29224,
-  "episodes": 28961,
-  "generated_at": 1778816208,
+  "decision_rows": 29315,
+  "episodes": 29052,
+  "generated_at": 1778821069,
   "horizon_minutes": 720,
   "interval": "5m",
-  "labeled_episodes": 20996,
+  "labeled_episodes": 21034,
   "recent_missed_moves": [
     {
       "action": "LONG",
@@ -226,6 +226,20 @@
     {
       "action": "LONG",
       "breakout": "confirmed_bullish_breakout",
+      "coin": "HIMS",
+      "interaction": "at_support",
+      "probability": 0.8815,
+      "recorded_at": "2026-05-15 01:28:08",
+      "regime": "absorption",
+      "risk_reward_ratio": 3.11,
+      "score": 97.83,
+      "stage": "mtf_block",
+      "summary": "Thesis medium: Pre-event starter long allowed: catalyst 5.60, news 61, p 91%, score 65.5 vs 65 trigger. Begin 38% size before full confirmation. Thesis: platform anchor + earnings event + pre-event setup + SEC filing flow + options implied move + analyst revision.",
+      "ts": 1778788688.903578
+    },
+    {
+      "action": "LONG",
+      "breakout": "confirmed_bullish_breakout",
       "coin": "XMR",
       "interaction": "at_support",
       "probability": 0.89,
@@ -236,20 +250,6 @@
       "stage": "flat_no_trade",
       "summary": "5 analogs \u2022 win 0% \u2022 avg pnl -0.50% \u2022 avg R -0.71 \u2022 reliability 0.77",
       "ts": 1778787327.2460601
-    },
-    {
-      "action": "LONG",
-      "breakout": "confirmed_bullish_breakout",
-      "coin": "HIMS",
-      "interaction": "at_support",
-      "probability": 0.8861,
-      "recorded_at": "2026-05-15 00:52:00",
-      "regime": "absorption",
-      "risk_reward_ratio": 3.35,
-      "score": 97.91,
-      "stage": "mtf_block",
-      "summary": "Thesis medium: Pre-event starter long allowed: catalyst 5.60, news 61, p 92%, score 67.6 vs 65 trigger. Begin 38% size before full confirmation. Thesis: platform anchor + earnings event + pre-event setup + SEC filing flow + options implied move + analyst revision.",
-      "ts": 1778786520.895946
     },
     {
       "action": "LONG",
@@ -296,167 +296,167 @@
     {
       "action": "LONG",
       "breakout": "confirmed_bullish_breakout",
-      "coin": "HIMS",
+      "coin": "ETC",
       "interaction": "at_support",
-      "probability": 0.8781,
-      "recorded_at": "2026-05-15 00:27:58",
-      "regime": "absorption",
-      "risk_reward_ratio": 2.81,
-      "score": 96.0,
-      "stage": "mtf_block",
-      "summary": "Thesis medium: Pre-event starter long allowed: catalyst 5.60, news 61, p 94%, score 70.7 vs 65 trigger. Begin 44% size before full confirmation. Thesis: platform anchor + earnings event + pre-event setup + SEC filing flow + options implied move + analyst revision.",
-      "ts": 1778785078.1625469
-    },
-    {
-      "action": "LONG",
-      "breakout": "probing_bullish_breakout",
-      "coin": "LTC",
-      "interaction": "at_support",
-      "probability": 0.89,
-      "recorded_at": "2026-05-14 23:10:07",
+      "probability": 0.9225,
+      "recorded_at": "2026-05-15 00:21:32",
       "regime": "breakout",
-      "risk_reward_ratio": 2.5,
-      "score": 96.0,
+      "risk_reward_ratio": 2.45,
+      "score": 98.17,
       "stage": "flat_no_trade",
-      "summary": "5 analogs \u2022 win 21% \u2022 avg pnl -0.37% \u2022 avg R -0.25 \u2022 reliability 0.79",
-      "ts": 1778780407.726409
+      "summary": "5 analogs \u2022 win 41% \u2022 avg pnl +0.27% \u2022 avg R +0.29 \u2022 reliability 0.80",
+      "ts": 1778784692.5042582
     },
     {
       "action": "LONG",
       "breakout": "persistent_bullish_breakout",
-      "coin": "SP500",
+      "coin": "MSTR",
       "interaction": "at_support",
-      "probability": 0.8942,
-      "recorded_at": "2026-05-14 23:01:36",
+      "probability": 0.9196,
+      "recorded_at": "2026-05-14 23:30:20",
       "regime": "breakout",
-      "risk_reward_ratio": 3.7,
-      "score": 96.28,
-      "stage": "flat_no_trade",
-      "summary": "5 analogs \u2022 win 20% \u2022 avg pnl -0.15% \u2022 avg R -0.92 \u2022 reliability 0.71",
-      "ts": 1778779896.067803
+      "risk_reward_ratio": 4.69,
+      "score": 97.98,
+      "stage": "major_catalyst_watch",
+      "summary": "embargoed after 8 LONG trades with 25% win rate",
+      "ts": 1778781620.241633
     },
     {
       "action": "LONG",
       "breakout": "confirmed_bullish_breakout",
-      "coin": "MON",
-      "interaction": "above_support",
-      "probability": 0.8916,
-      "recorded_at": "2026-05-14 23:01:24",
-      "regime": "trend",
-      "risk_reward_ratio": 2.15,
-      "score": 96.11,
-      "stage": "flat_no_trade",
-      "summary": "5 analogs \u2022 win 20% \u2022 avg pnl -0.37% \u2022 avg R -0.31 \u2022 reliability 0.74",
-      "ts": 1778779884.120589
+      "coin": "AMD",
+      "interaction": "at_resistance",
+      "probability": 0.7364,
+      "recorded_at": "2026-05-14 23:27:49",
+      "regime": "absorption",
+      "risk_reward_ratio": 3.73,
+      "score": 96.0,
+      "stage": "setup_quality_guard_block",
+      "summary": "AMD LONG history is toxic: 2/5 wins, 0 reversal-losses; need A+ score/odds before adding risk",
+      "ts": 1778781469.14115
+    },
+    {
+      "action": "LONG",
+      "breakout": "confirmed_bullish_breakout",
+      "coin": "AMD",
+      "interaction": "at_support",
+      "probability": 0.9051,
+      "recorded_at": "2026-05-14 23:01:56",
+      "regime": "absorption",
+      "risk_reward_ratio": 3.87,
+      "score": 97.86,
+      "stage": "setup_quality_guard_block",
+      "summary": "AMD LONG history is toxic: 2/5 wins, 0 reversal-losses; need A+ score/odds before adding risk",
+      "ts": 1778779916.607897
     }
   ],
   "summary": {
-    "bad_trade_count": 103,
-    "correct_pass_count": 4809,
-    "good_trade_count": 231,
-    "missed_win_count": 15853
+    "bad_trade_count": 105,
+    "correct_pass_count": 4850,
+    "good_trade_count": 240,
+    "missed_win_count": 15839
   },
   "target_r": 0.25,
   "top_blockers": [
     {
       "blocker": "price moved too far since the conviction snapshot",
-      "misses": 1097
+      "misses": 1100
     },
     {
       "blocker": "embargoed after 8 LONG trades with 25% win rate",
-      "misses": 1003
+      "misses": 1017
     },
     {
       "blocker": "embargoed after 15 LONG trades with 20% win rate",
-      "misses": 647
+      "misses": 648
     },
     {
       "blocker": "event risk portfolio budget has only $60 left, below the $100 starter minimum",
       "misses": 641
     },
     {
-      "blocker": "event risk portfolio budget has only $50 left, below the $100 starter minimum",
-      "misses": 523
+      "blocker": "embargoed after 8 LONG trades with 12% win rate",
+      "misses": 525
     },
     {
-      "blocker": "embargoed after 8 LONG trades with 12% win rate",
-      "misses": 521
+      "blocker": "event risk portfolio budget has only $50 left, below the $100 starter minimum",
+      "misses": 524
     },
     {
       "blocker": "event risk budget is full at the portfolio level",
-      "misses": 431
+      "misses": 432
     },
     {
       "blocker": "Thesis medium: strong support defense is holding beneath price; pre-event catalyst flow supports taking starter risk before full price confirmation; demand/supply catalyst is directly tied to the equity theme",
-      "misses": 397
+      "misses": 398
     }
   ],
   "top_missed_assets": [
     {
-      "coin": "GOOGL",
-      "misses": 1024
+      "coin": "TSM",
+      "misses": 1027
     },
     {
-      "coin": "TSM",
-      "misses": 1019
+      "coin": "GOOGL",
+      "misses": 1012
     },
     {
       "coin": "AMZN",
-      "misses": 943
+      "misses": 944
     },
     {
       "coin": "MU",
-      "misses": 864
+      "misses": 861
     },
     {
       "coin": "NVDA",
-      "misses": 809
+      "misses": 811
     },
     {
       "coin": "MSTR",
-      "misses": 782
+      "misses": 794
     },
     {
       "coin": "TSLA",
-      "misses": 780
+      "misses": 786
     },
     {
       "coin": "MSFT",
-      "misses": 743
+      "misses": 736
     }
   ],
   "top_missed_families": [
     {
-      "family": "GOOGL:LONG",
-      "misses": 1024
+      "family": "TSM:LONG",
+      "misses": 1027
     },
     {
-      "family": "TSM:LONG",
-      "misses": 1019
+      "family": "GOOGL:LONG",
+      "misses": 1012
     },
     {
       "family": "AMZN:LONG",
-      "misses": 943
+      "misses": 944
     },
     {
       "family": "MU:LONG",
-      "misses": 864
+      "misses": 861
     },
     {
       "family": "NVDA:LONG",
-      "misses": 809
+      "misses": 811
     },
     {
       "family": "MSTR:LONG",
-      "misses": 782
+      "misses": 794
     },
     {
       "family": "TSLA:LONG",
-      "misses": 780
+      "misses": 786
     },
     {
       "family": "MSFT:LONG",
-      "misses": 743
+      "misses": 736
     }
   ],
   "top_missed_stages": [
@@ -465,19 +465,19 @@
       "stage": "portfolio_correlation_block"
     },
     {
-      "misses": 2979,
+      "misses": 3001,
       "stage": "major_catalyst_watch"
     },
     {
-      "misses": 2734,
+      "misses": 2726,
       "stage": "risk_rejected"
     },
     {
-      "misses": 2307,
+      "misses": 2300,
       "stage": "mtf_block"
     },
     {
-      "misses": 1247,
+      "misses": 1250,
       "stage": "data_reliability_block"
     },
     {
@@ -485,11 +485,11 @@
       "stage": "loss_circuit_breaker"
     },
     {
-      "misses": 505,
+      "misses": 488,
       "stage": "flat_no_trade"
     },
     {
-      "misses": 360,
+      "misses": 362,
       "stage": "guardrails_flat"
     }
   ]
