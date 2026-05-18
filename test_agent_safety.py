@@ -46,6 +46,7 @@ import missed_move_lab as missed_move_lab_module
 import narrative as narrative_module
 import portfolio_guard as portfolio_guard_module
 import performance_intelligence as performance_intelligence_module
+import policy_health as policy_health_module
 import playbook_distiller as playbook_distiller_module
 import precision_lab as precision_lab_module
 import proactive_intelligence as proactive_intelligence_module
@@ -8250,6 +8251,81 @@ def test_dashboard_snapshot_includes_playbook_distiller_report() -> None:
     assert snapshot["playbook_distiller_report"]["assets"]["BTC"]["playbook"] == "Test"
 
 
+def test_policy_health_flags_churn_attention_and_guard_gaps() -> None:
+    cfg = build_config()
+    cfg.trading.policy_health_large_decision_log_mb = 0.001
+    with tempfile.TemporaryDirectory() as tmpdir:
+        data_dir = Path(tmpdir)
+        trade_path = data_dir / "trades_log.csv"
+        with trade_path.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(
+                handle,
+                fieldnames=[
+                    "trade_id",
+                    "coin",
+                    "direction",
+                    "closed_at",
+                    "pnl_usd",
+                    "duration_mins",
+                    "exit_reason",
+                ],
+            )
+            writer.writeheader()
+            for idx in range(24):
+                writer.writerow({
+                    "trade_id": idx + 1,
+                    "coin": "INTC" if idx < 12 else "BTC",
+                    "direction": "LONG",
+                    "closed_at": "2026-05-18 10:00:00",
+                    "pnl_usd": "1.0" if idx in {0, 5, 10, 15, 20} else "-2.0",
+                    "duration_mins": "22",
+                    "exit_reason": "structure_invalidation" if idx < 20 else "take_profit",
+                })
+
+        decision_path = data_dir / "decision_dataset.jsonl"
+        with decision_path.open("w", encoding="utf-8") as handle:
+            for _ in range(120):
+                handle.write(json.dumps({
+                    "coin": "INTC",
+                    "stage": "setup_quality_guard_block",
+                    "candidate_action": "LONG",
+                    "final_action": "FLAT",
+                    "blocked": True,
+                    "executed": False,
+                    "signal_snapshot": {
+                        "action": "LONG",
+                        "news_event_score": 0,
+                        "news_catalyst_score": 0,
+                        "social_attention_sources_checked": 0,
+                        "social_attention_mentions": 0,
+                        "first_principles_price_score": 82,
+                        "first_principles_fundamental_score": 52,
+                        "first_principles_attention_score": 50,
+                    },
+                }) + "\n")
+
+        report = policy_health_module.build_report(
+            data_dir=data_dir,
+            config=cfg.trading,
+            decision_sample_lines=500,
+        )
+        areas = {item["area"] for item in report["findings"]}
+        assert report["trades"]["win_rate"] < 0.70
+        assert report["trades"]["short_hold_rate"] == 1.0
+        assert report["recent_decisions"]["missing_social_coverage_rate"] == 1.0
+        assert {"Exit Policy", "Attention Data", "Guard Stack", "Data Ops"}.issubset(areas)
+
+
+def test_dashboard_snapshot_includes_policy_health_report() -> None:
+    snapshot = build_dashboard_snapshot(
+        {"signals": {}, "positions": [], "config": {}, "cycle_number": 1},
+        [],
+        policy_health_report={"summary": {"finding_count": 3}, "findings": [{"area": "Exit Policy"}]},
+    )
+    assert snapshot["policy_health_report"]["summary"]["finding_count"] == 3
+    assert snapshot["policy_health_report"]["findings"][0]["area"] == "Exit Policy"
+
+
 def test_first_principles_view_sequences_fundamentals_before_price() -> None:
     cfg = build_config()
     cfg.trading.asset_category_map = {"GOOGL": ["mag7", "ai_infra"]}
@@ -8915,6 +8991,10 @@ def run_all() -> None:
     print("PASS playbook distiller")
     test_dashboard_snapshot_includes_playbook_distiller_report()
     print("PASS dashboard playbook distiller snapshot")
+    test_policy_health_flags_churn_attention_and_guard_gaps()
+    print("PASS policy health architecture gaps")
+    test_dashboard_snapshot_includes_policy_health_report()
+    print("PASS dashboard policy health snapshot")
     test_first_principles_view_sequences_fundamentals_before_price()
     print("PASS first-principles reasoning sequence")
     test_social_attention_scans_configured_public_feeds()

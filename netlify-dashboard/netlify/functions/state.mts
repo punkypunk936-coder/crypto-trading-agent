@@ -13,6 +13,7 @@ export default async (req: Request, context: Context) => {
 
   const stateBlob = await store.get("current-state", { type: "json" });
   const tradesBlob = await store.get("trades", { type: "json" });
+  const policyHealthBlob = await store.get("policy-health-report", { type: "json" });
 
   const state = stateBlob || {
     status: "offline",
@@ -59,6 +60,8 @@ export default async (req: Request, context: Context) => {
       state,
       trades: trades.slice(-50).reverse(),
       stats,
+      policy_health_report:
+        policyHealthBlob && typeof policyHealthBlob === "object" ? policyHealthBlob : {},
       server_time: new Date().toISOString().slice(0, 19).replace("T", " "),
     }),
     { headers: { "Content-Type": "application/json" } }

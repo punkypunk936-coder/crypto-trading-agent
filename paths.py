@@ -47,6 +47,7 @@ ASSET_DOSSIERS_JSON = DATA_DIR / "asset_dossiers.json"          # Living per-ass
 MISSED_MOVE_REPORT_JSON = DATA_DIR / "missed_move_report.json"  # Rich review of obvious winners the bot skipped
 LLM_REFEREE_REPORT_JSON = DATA_DIR / "llm_referee_report.json"  # Latest structured LLM referee verdicts
 PLAYBOOK_DISTILLER_REPORT_JSON = DATA_DIR / "playbook_distiller_report.json"  # Rolling rewrite of what is working by asset/regime
+POLICY_HEALTH_REPORT_JSON = DATA_DIR / "policy_health_report.json"  # Compact architecture/policy health report for win-rate leaks
 PROACTIVE_TRADER_REPORT_JSON = DATA_DIR / "proactive_trader_report.json"  # Research brain: scout book, theses, read-through, starter basket, forecast calibration
 THESIS_LEDGER_JSONL = DATA_DIR / "thesis_ledger.jsonl"      # Persistent structured pre-trade theses
 FORECAST_LEDGER_JSONL = DATA_DIR / "forecast_ledger.jsonl"  # Persistent probability forecasts and later outcomes

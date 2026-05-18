@@ -13,6 +13,7 @@ export const TRADE_REVIEWS_PATH = "dashboard/trade_reviews.json";
 export const DECISION_REVIEW_PATH = "dashboard/decision_review_report.json";
 export const CHALLENGER_REPORT_PATH = "dashboard/challenger_model_report.json";
 export const PLAYBOOK_DISTILLER_PATH = "dashboard/playbook_distiller_report.json";
+export const POLICY_HEALTH_REPORT_PATH = "dashboard/policy_health_report.json";
 export const FALLBACK_REPO_OWNER = "punkypunk936-coder";
 export const FALLBACK_REPO_NAME = "crypto-trading-agent";
 export const FALLBACK_REPO_TAG = "dashboard-state-live";
@@ -808,6 +809,7 @@ export function buildSnapshot(
   decisionReviewReport?: any,
   challengerReport?: any,
   playbookDistillerReport?: any,
+  policyHealthReport?: any,
 ) {
   const enrichedTrades = enrichTradesForLearning(Array.isArray(trades) ? trades : []);
   const safeTrades = mergeReviewsIntoTrades(enrichedTrades, tradeReviews);
@@ -828,6 +830,7 @@ export function buildSnapshot(
     decision_review_report: decisionReviewReport && typeof decisionReviewReport === "object" ? decisionReviewReport : {},
     challenger_report: challengerReport && typeof challengerReport === "object" ? challengerReport : {},
     playbook_distiller_report: playbookDistillerReport && typeof playbookDistillerReport === "object" ? playbookDistillerReport : {},
+    policy_health_report: policyHealthReport && typeof policyHealthReport === "object" ? policyHealthReport : {},
     runtime: runtimeStatus(shapedState),
     server_time: timestamp || serverTime(),
   };

@@ -32,6 +32,8 @@ export default async (req: Request, context: Context) => {
           market_map: data.market_map && typeof data.market_map === "object" ? data.market_map : {},
           trade_reviews:
             data.trade_reviews && typeof data.trade_reviews === "object" ? data.trade_reviews : {},
+          policy_health_report:
+            data.policy_health_report && typeof data.policy_health_report === "object" ? data.policy_health_report : {},
           server_time: new Date().toISOString().slice(0, 19).replace("T", " "),
         };
 
@@ -46,6 +48,7 @@ export default async (req: Request, context: Context) => {
   await store.setJSON("control", snapshot.control || data.control || {});
   await store.setJSON("market-map", snapshot.market_map || data.market_map || {});
   await store.setJSON("trade-reviews", snapshot.trade_reviews || data.trade_reviews || {});
+  await store.setJSON("policy-health-report", snapshot.policy_health_report || data.policy_health_report || {});
 
   return new Response(
     JSON.stringify({ ok: true, cycle: snapshot?.state?.cycle_number || data.state.cycle_number || 0 }),

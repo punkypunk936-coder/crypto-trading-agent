@@ -34,6 +34,7 @@ from paths import (
     KILL_FILE,
     LLM_REFEREE_REPORT_JSON,
     MISSED_MOVE_REPORT_JSON,
+    POLICY_HEALTH_REPORT_JSON,
     PLAYBOOK_DISTILLER_REPORT_JSON,
     PROACTIVE_TRADER_REPORT_JSON,
     STATE_JSON,
@@ -62,6 +63,7 @@ MISSED_MOVE_REPORT = MISSED_MOVE_REPORT_JSON
 ASSET_DOSSIERS = ASSET_DOSSIERS_JSON
 LLM_REFEREE_REPORT = LLM_REFEREE_REPORT_JSON
 PLAYBOOK_DISTILLER_REPORT = PLAYBOOK_DISTILLER_REPORT_JSON
+POLICY_HEALTH_REPORT = POLICY_HEALTH_REPORT_JSON
 PROACTIVE_TRADER_REPORT = PROACTIVE_TRADER_REPORT_JSON
 HOSTED_INDEX = CODE_ROOT / "netlify-dashboard" / "public" / "index.html"
 
@@ -198,6 +200,15 @@ def _load_playbook_distiller_report_local() -> dict:
     return {}
 
 
+def _load_policy_health_report_local() -> dict:
+    if POLICY_HEALTH_REPORT.exists():
+        try:
+            return json.loads(POLICY_HEALTH_REPORT.read_text())
+        except Exception:
+            pass
+    return {}
+
+
 def _load_proactive_trader_report_local() -> dict:
     if PROACTIVE_TRADER_REPORT.exists():
         try:
@@ -291,7 +302,7 @@ def _snapshot_needs_refresh() -> bool:
         snapshot_mtime = SNAPSHOT.stat().st_mtime
     except Exception:
         return True
-    for path in (STATE, LOG, CONTROL, MARKET_MAP, REVIEWS, DECISION_REVIEW, CHALLENGER_REPORT, MISSED_MOVE_REPORT, ASSET_DOSSIERS, LLM_REFEREE_REPORT, PLAYBOOK_DISTILLER_REPORT, PROACTIVE_TRADER_REPORT):
+    for path in (STATE, LOG, CONTROL, MARKET_MAP, REVIEWS, DECISION_REVIEW, CHALLENGER_REPORT, MISSED_MOVE_REPORT, ASSET_DOSSIERS, LLM_REFEREE_REPORT, PLAYBOOK_DISTILLER_REPORT, POLICY_HEALTH_REPORT, PROACTIVE_TRADER_REPORT):
         try:
             if path.exists() and path.stat().st_mtime > snapshot_mtime:
                 return True
@@ -321,6 +332,7 @@ def _build_local_snapshot(server_timestamp: str | None = None) -> dict:
         asset_dossiers=_load_asset_dossiers_local(),
         llm_referee_report=_load_llm_referee_report_local(),
         playbook_distiller_report=_load_playbook_distiller_report_local(),
+        policy_health_report=_load_policy_health_report_local(),
         proactive_trader_report=_load_proactive_trader_report_local(),
         server_timestamp=server_timestamp,
     )
@@ -376,6 +388,7 @@ def _hydrate_snapshot_payload(data: dict, *, server_timestamp: str | None = None
             asset_dossiers=snapshot.get("asset_dossiers"),
             llm_referee_report=snapshot.get("llm_referee_report"),
             playbook_distiller_report=snapshot.get("playbook_distiller_report"),
+            policy_health_report=snapshot.get("policy_health_report"),
             proactive_trader_report=snapshot.get("proactive_trader_report"),
             server_timestamp=server_timestamp or snapshot.get("server_time"),
         )
@@ -392,6 +405,7 @@ def _hydrate_snapshot_payload(data: dict, *, server_timestamp: str | None = None
         asset_dossiers=data.get("asset_dossiers"),
         llm_referee_report=data.get("llm_referee_report"),
         playbook_distiller_report=data.get("playbook_distiller_report"),
+        policy_health_report=data.get("policy_health_report"),
         proactive_trader_report=data.get("proactive_trader_report"),
         server_timestamp=server_timestamp,
     )

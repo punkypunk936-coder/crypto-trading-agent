@@ -3328,6 +3328,7 @@ let latestAssetDossiers = { assets: {}, summary: {} };
 let latestMissedMoveReport = { summary: {} };
 let latestLLMRefereeReport = { verdicts: {} };
 let latestPlaybookDistillerReport = { summary: {}, assets: {} };
+let latestPolicyHealthReport = { summary: {}, findings: [], roadmap: [] };
 let latestProactiveTraderReport = { summary: {} };
 let latestDailyRadar = { summary: {}, top_assets: [] };
 let latestXyz = { summary: {}, items: [], segments: [] };
@@ -4525,6 +4526,12 @@ function renderLearningSummary(summary, trades) {
   const workingEdges = Array.isArray(perf.working_edges) ? perf.working_edges.slice(0, 3) : [];
   const failingEdges = Array.isArray(perf.failing_edges) ? perf.failing_edges.slice(0, 3) : [];
   const edgeLine = (edge) => String(edge.label || 'bucket') + ' ' + Math.round(Number(edge.win_rate || 0) * 100) + '% ' + fmtD(Number(edge.pnl_usd || 0));
+  const policy = latestPolicyHealthReport || {};
+  const policySummary = policy.summary || {};
+  const policyFindings = Array.isArray(policy.findings) ? policy.findings.slice(0, 3) : [];
+  const policyLine = policyFindings.length
+    ? policyFindings.map((item) => String(item.priority || '') + ' ' + String(item.area || '') + ': ' + String(item.title || '')).join(' • ')
+    : (policySummary.headline || 'No policy-health gaps detected yet.');
   let html = '<div class="review-stack"><div class="review-summary-grid">'
     + '<div class="review-summary-box"><div class="card-label">Closed Trades</div><div class="review-count">' + esc(String(summary.count || 0)) + '</div><div class="review-count-sub">recent lessons absorbed</div></div>'
     + '<div class="review-summary-box"><div class="card-label">Winning Lessons</div><div class="review-count green">' + esc(String(summary.wins || 0)) + '</div><div class="review-count-sub">setups that paid</div></div>'
@@ -4548,6 +4555,7 @@ function renderLearningSummary(summary, trades) {
   html += '<div class="review-summary-grid">'
     + '<div class="review-summary-box"><div class="card-label">What Pays</div><div class="review-notes">' + esc(workingEdges.length ? workingEdges.map(edgeLine).join(' • ') : 'No repeatable winning bucket yet.') + '</div></div>'
     + '<div class="review-summary-box"><div class="card-label">What Hurts</div><div class="review-notes">' + esc(failingEdges.length ? failingEdges.map(edgeLine).join(' • ') : 'No toxic bucket is clear yet.') + '</div></div>'
+    + '<div class="review-summary-box"><div class="card-label">Policy Health</div><div class="review-notes">' + esc(shortText(policyLine, 170)) + '</div></div>'
     + '</div>';
 
   if (workingFamilies.length || failingFamilies.length) {
@@ -4938,6 +4946,7 @@ async function refresh() {
     latestMissedMoveReport = data.missed_move_report || { summary: {} };
     latestLLMRefereeReport = data.llm_referee_report || { verdicts: {} };
     latestPlaybookDistillerReport = data.playbook_distiller_report || { summary: {}, assets: {} };
+    latestPolicyHealthReport = data.policy_health_report || ((s || {}).policy_health) || { summary: {}, findings: [], roadmap: [] };
     latestProactiveTraderReport = data.proactive_trader_report || { summary: {} };
     latestDailyRadar = data.daily_radar || ((s || {}).daily_radar) || { summary: {}, top_assets: [] };
     latestXyz = data.xyz || ((s || {}).xyz) || { summary: {}, items: [], segments: [] };

@@ -689,6 +689,10 @@ class TradingConfig:
     playbook_distiller_min_samples: int = 3
     playbook_distiller_min_win_rate: float = 0.55
     playbook_distiller_max_losing_win_rate: float = 0.45
+    policy_health_enabled: bool = True
+    policy_health_decision_sample_lines: int = 5000
+    policy_health_short_hold_minutes: float = 60.0
+    policy_health_large_decision_log_mb: float = 500.0
     proactive_trader_enabled: bool = True
     thesis_ledger_enabled: bool = True
     morning_scout_book_enabled: bool = True

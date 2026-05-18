@@ -43,6 +43,7 @@ from paths import (
     KILL_FILE,
     LLM_REFEREE_REPORT_JSON,
     MISSED_MOVE_REPORT_JSON,
+    POLICY_HEALTH_REPORT_JSON,
     PLAYBOOK_DISTILLER_REPORT_JSON,
     PROACTIVE_TRADER_REPORT_JSON,
     STATE_JSON,
@@ -69,6 +70,7 @@ import hosted_state_sync
 import market_map
 import missed_move_lab
 import performance_intelligence
+import policy_health
 import playbook_distiller
 import portfolio_guard
 import proactive_intelligence
@@ -753,6 +755,7 @@ class TradingAgent:
             or getattr(self.cfg.trading, "challenger_model_enabled", True)
             or getattr(self.cfg.trading, "missed_move_lab_enabled", True)
             or getattr(self.cfg.trading, "playbook_distiller_enabled", True)
+            or getattr(self.cfg.trading, "policy_health_enabled", True)
         ):
             return
 
@@ -795,6 +798,11 @@ class TradingAgent:
                 playbook_distiller.build_and_save_report(
                     self.cfg,
                     data_dir=DATA_DIR,
+                )
+            if getattr(self.cfg.trading, "policy_health_enabled", True):
+                policy_health.build_and_save_report(
+                    data_dir=DATA_DIR,
+                    config=self.cfg.trading,
                 )
             self._last_learning_report_refresh_ts = now
         except Exception as exc:
@@ -6740,6 +6748,25 @@ class TradingAgent:
                 playbook_distiller_report_data = json.loads(PLAYBOOK_DISTILLER_REPORT_JSON.read_text())
             except Exception as e:
                 log.debug(f"playbook_distiller_report.json read failed: {e}")
+        policy_health_report_data = {}
+        if POLICY_HEALTH_REPORT_JSON.exists():
+            try:
+                policy_health_report_data = json.loads(POLICY_HEALTH_REPORT_JSON.read_text())
+            except Exception as e:
+                log.debug(f"policy_health_report.json read failed: {e}")
+        elif getattr(self.cfg.trading, "policy_health_enabled", True):
+            try:
+                policy_health_report_data = policy_health.build_and_save_report(
+                    data_dir=DATA_DIR,
+                    config=self.cfg.trading,
+                )
+            except Exception as e:
+                log.debug(f"policy_health_report.json write failed: {e}")
+        state["policy_health"] = policy_health_report_data
+        try:
+            state_path.write_text(json.dumps(state, indent=2))
+        except Exception as e:
+            log.debug(f"state.json policy-health write failed: {e}")
         llm_referee_report_data = self._llm_referee.default_report()
         if LLM_REFEREE_REPORT_JSON.exists():
             try:
@@ -6818,6 +6845,7 @@ class TradingAgent:
             asset_dossiers=asset_dossier_data,
             llm_referee_report=llm_referee_report_data,
             playbook_distiller_report=playbook_distiller_report_data,
+            policy_health_report=policy_health_report_data,
             proactive_trader_report=proactive_trader_data,
         )
         try:
@@ -6847,6 +6875,7 @@ class TradingAgent:
                     "asset_dossiers": asset_dossier_data,
                     "llm_referee_report": llm_referee_report_data,
                     "playbook_distiller_report": playbook_distiller_report_data,
+                    "policy_health_report": policy_health_report_data,
                 }).encode()
                 req = urllib.request.Request(
                     remote_url.rstrip("/") + "/api/push",
@@ -6939,6 +6968,7 @@ class TradingAgent:
                 asset_dossiers=asset_dossier_data,
                 llm_referee_report=llm_referee_report_data,
                 playbook_distiller_report=playbook_distiller_report_data,
+                policy_health_report=policy_health_report_data,
             )
 
     def _print_final_summary(self):
