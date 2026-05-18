@@ -2152,6 +2152,14 @@ class TradingAgent:
         ):
             return
 
+        if not self._win_rate_recovery_context_guard(
+            coin,
+            signal,
+            portfolio_usd=portfolio_usd,
+            current_position=current_pos,
+        ):
+            return
+
         if not self._setup_quality_guard(
             coin,
             signal,
@@ -3358,6 +3366,209 @@ class TradingAgent:
             coin,
             portfolio_usd=portfolio_usd,
             stage="first_principles_guard_block",
+            signal=signal,
+            current_position=current_position,
+            blocked=True,
+        )
+        return False
+
+    def _win_rate_recovery_context_guard(self, coin: str, signal, *, portfolio_usd: float, current_position: str | None) -> bool:
+        if not getattr(self.cfg.trading, "win_rate_recovery_context_guard_enabled", True):
+            return True
+        direction = str(getattr(signal, "action", "") or "").upper()
+        if current_position or direction not in {"LONG", "SHORT"}:
+            return True
+
+        scorecard = self._north_star_scorecard()
+        if not scorecard.get("enabled", True) or not scorecard.get("active", False):
+            self._last_signals.setdefault(coin, {})
+            self._last_signals[coin]["win_rate_context_guard"] = {
+                "active": False,
+                "permitted": True,
+                "summary": scorecard.get("summary", ""),
+            }
+            return True
+
+        self._refresh_first_principles_view(coin)
+        sig = dict(self._last_signals.get(coin, {}) or {})
+        view = dict(sig.get("first_principles") or {})
+        expectancy = dict(getattr(signal, "expectancy", {}) or sig.get("expectancy", {}) or {})
+        thesis = dict(getattr(signal, "thesis", {}) or sig.get("thesis", {}) or {})
+        conviction_entry = dict(thesis.get("conviction_entry") or sig.get("conviction_entry") or {})
+
+        score = float(getattr(signal, "score", sig.get("score", 50.0)) or 50.0)
+        probability = float(expectancy.get("probability", sig.get("expectancy_probability", 0.50)) or 0.50)
+        expected_r = float(expectancy.get("expected_r", sig.get("expectancy_expected_r", 0.0)) or 0.0)
+        uncertainty = float(expectancy.get("uncertainty", sig.get("expectancy_uncertainty", 0.50)) or 0.50)
+        fundamental_score = float(view.get("fundamental_score") or sig.get("first_principles_fundamental_score") or 0.0)
+        attention_score = float(view.get("attention_score") or sig.get("first_principles_attention_score") or 0.0)
+        flow_score = float(view.get("flow_score") or sig.get("first_principles_flow_score") or 0.0)
+        price_score = float(view.get("price_score") or sig.get("first_principles_price_score") or 0.0)
+        sequence_score = float(view.get("sequence_score") or sig.get("first_principles_sequence_score") or 0.0)
+        social_score = float(sig.get("social_attention_score") or view.get("social_attention_score") or 50.0)
+        social_mentions = int(float(sig.get("social_attention_mentions") or view.get("social_attention_mentions") or 0.0))
+        social_sentiment = str(sig.get("social_attention_sentiment") or "").upper()
+        narrative_bias = str(sig.get("narrative_headline_bias") or "").upper()
+
+        event_score = max(
+            float(sig.get("news_event_score") or 0.0),
+            float(sig.get("official_event_score") or 0.0),
+            float(sig.get("sec_event_score") or 0.0),
+        )
+        catalyst_score = max(
+            float(sig.get("news_catalyst_score") or 0.0),
+            max(0.0, float(sig.get("analyst_revision_score") or 0.0)),
+        )
+        event_like = bool(
+            sig.get("conviction_entry_event")
+            or conviction_entry.get("event_conviction")
+            or event_score >= float(getattr(self.cfg.trading, "win_rate_recovery_event_score", 2.75) or 2.75)
+            or catalyst_score >= float(getattr(self.cfg.trading, "win_rate_recovery_catalyst_score", 3.0) or 3.0)
+        )
+        pair_like = bool(sig.get("pair_trade_overlay") or conviction_entry.get("pair_trade"))
+        critical = bool(scorecard.get("critical"))
+
+        min_fundamental = float(getattr(self.cfg.trading, "win_rate_recovery_min_fundamental_score", 62.0) or 62.0)
+        min_attention = float(getattr(self.cfg.trading, "win_rate_recovery_min_attention_score", 62.0) or 62.0)
+        min_flow = float(getattr(self.cfg.trading, "win_rate_recovery_min_flow_score", 58.0) or 58.0)
+        min_sequence = float(
+            getattr(
+                self.cfg.trading,
+                "win_rate_recovery_critical_min_sequence_score" if critical else "win_rate_recovery_min_sequence_score",
+                70.0 if critical else 66.0,
+            )
+            or (70.0 if critical else 66.0)
+        )
+        min_probability = float(
+            getattr(
+                self.cfg.trading,
+                "win_rate_recovery_critical_min_probability" if critical else "win_rate_recovery_min_probability",
+                0.61 if critical else 0.58,
+            )
+            or (0.61 if critical else 0.58)
+        )
+        event_min_probability = float(getattr(self.cfg.trading, "win_rate_recovery_event_min_probability", 0.55) or 0.55)
+        min_expected_r = float(getattr(self.cfg.trading, "win_rate_recovery_min_expected_r", 0.18) or 0.18)
+        max_uncertainty = float(getattr(self.cfg.trading, "win_rate_recovery_max_uncertainty", 0.46) or 0.46)
+        min_social_score = float(getattr(self.cfg.trading, "win_rate_recovery_min_social_attention_score", 64.0) or 64.0)
+        min_social_mentions = int(getattr(self.cfg.trading, "win_rate_recovery_min_social_mentions", 2) or 2)
+
+        context_stack_ok = bool(
+            fundamental_score >= min_fundamental
+            and attention_score >= min_attention
+            and flow_score >= min_flow
+            and sequence_score >= min_sequence
+        )
+        odds_ok = bool(
+            probability >= min_probability
+            and expected_r >= min_expected_r
+            and uncertainty <= max_uncertainty
+        )
+        event_context_ok = bool(
+            event_like
+            and probability >= event_min_probability
+            and expected_r >= max(0.06, min_expected_r * 0.55)
+            and uncertainty <= max_uncertainty + 0.08
+            and (
+                fundamental_score >= min_fundamental - 8.0
+                or attention_score >= min_attention - 8.0
+                or sequence_score >= min_sequence - 10.0
+            )
+        )
+        side_aligned_attention = bool(
+            (direction == "LONG" and social_sentiment in {"BULLISH", "POSITIVE"})
+            or (direction == "SHORT" and social_sentiment in {"BEARISH", "NEGATIVE"})
+            or (direction == "LONG" and narrative_bias == "BULLISH")
+            or (direction == "SHORT" and narrative_bias == "BEARISH")
+        )
+        attention_context_ok = bool(
+            side_aligned_attention
+            and social_score >= min_social_score
+            and social_mentions >= min_social_mentions
+            and probability >= min_probability
+            and expected_r >= max(0.10, min_expected_r * 0.75)
+            and uncertainty <= max_uncertainty + 0.06
+            and (sequence_score >= min_sequence - 6.0 or flow_score >= min_flow + 4.0)
+        )
+        pair_context_ok = bool(
+            pair_like
+            and probability >= min_probability
+            and expected_r >= min_expected_r
+            and uncertainty <= max_uncertainty
+            and sequence_score >= min_sequence - 4.0
+        )
+        price_only = bool(price_score >= 70.0 and fundamental_score < min_fundamental and attention_score < min_attention)
+
+        performance_verdict = {"active": False, "permitted": True, "summary": ""}
+        if getattr(self.cfg.trading, "performance_edge_guard_enabled", True):
+            performance_verdict = performance_intelligence.setup_edge_verdict(
+                self._performance_edge_rows(),
+                coin=coin,
+                direction=direction,
+                score=score,
+                min_samples=int(getattr(self.cfg.trading, "performance_edge_guard_min_samples", 4) or 4),
+                min_win_rate=float(getattr(self.cfg.trading, "performance_edge_guard_min_win_rate", 0.52) or 0.52),
+            )
+        toxic_history = bool(performance_verdict.get("active") and not performance_verdict.get("permitted", True))
+
+        permitted = bool(
+            (context_stack_ok and odds_ok)
+            or event_context_ok
+            or attention_context_ok
+            or pair_context_ok
+        )
+        if toxic_history and not (event_context_ok or attention_context_ok or (context_stack_ok and odds_ok)):
+            permitted = False
+
+        blockers: list[str] = []
+        if not context_stack_ok:
+            blockers.append("needs fundamentals, attention, and flow to line up")
+        if not odds_ok and not event_context_ok:
+            blockers.append("needs cleaner odds/expected-R before adding risk")
+        if price_only:
+            blockers.append("raw chart strength is price-only")
+        if toxic_history and performance_verdict.get("summary"):
+            blockers.append(str(performance_verdict["summary"]))
+
+        summary = (
+            "win-rate recovery allows entry: fundamentals/attention/flows support the trade"
+            if permitted
+            else f"win-rate recovery blocks {direction}: {blockers[0] if blockers else 'context is not strong enough'}"
+        )
+        self._last_signals.setdefault(coin, {})
+        self._last_signals[coin]["win_rate_context_guard"] = {
+            "active": True,
+            "critical": critical,
+            "permitted": permitted,
+            "summary": summary,
+            "blockers": blockers[:4],
+            "north_star_quality_win_rate": scorecard.get("quality_win_rate", 0.0),
+            "fundamental_score": round(fundamental_score, 2),
+            "attention_score": round(attention_score, 2),
+            "flow_score": round(flow_score, 2),
+            "price_score": round(price_score, 2),
+            "sequence_score": round(sequence_score, 2),
+            "probability": round(probability, 4),
+            "expected_r": round(expected_r, 4),
+            "uncertainty": round(uncertainty, 4),
+            "event_like": event_like,
+            "attention_like": attention_context_ok,
+            "pair_like": pair_like,
+            "performance_edge": performance_verdict,
+        }
+        self._last_signals[coin]["win_rate_context_guard_summary"] = summary
+        if permitted:
+            return True
+
+        log.info(f"[{coin}] 🎯 {summary}")
+        signal.action = "FLAT"
+        signal.flat_reason = summary
+        signal.reason = summary
+        self._sync_signal_snapshot(coin, signal)
+        self._record_decision_snapshot(
+            coin,
+            portfolio_usd=portfolio_usd,
+            stage="win_rate_context_guard_block",
             signal=signal,
             current_position=current_position,
             blocked=True,

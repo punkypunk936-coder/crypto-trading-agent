@@ -149,6 +149,7 @@ def build_config() -> Config:
     cfg.trading.require_notifications_for_live = False
     cfg.trading.setup_quality_guard_enabled = False
     cfg.trading.first_principles_guard_enabled = False
+    cfg.trading.win_rate_recovery_context_guard_enabled = False
     cfg.trading.performance_edge_guard_enabled = False
     cfg.trading.use_social_attention = False
     return cfg
@@ -8500,6 +8501,111 @@ def test_first_principles_guard_allows_marginal_event_attention_starter() -> Non
     assert agent._first_principles_entry_guard("GOOGL", signal, portfolio_usd=1000.0, current_position=None) is True
 
 
+def test_win_rate_recovery_context_guard_blocks_high_score_price_only_entry() -> None:
+    cfg = build_config()
+    cfg.trading.win_rate_recovery_context_guard_enabled = True
+    cfg.trading.performance_edge_guard_enabled = False
+    cfg.trading.decision_dataset_enabled = False
+    agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=1000.0)])
+    agent._north_star_scorecard = lambda force=False: {
+        "enabled": True,
+        "active": True,
+        "critical": False,
+        "quality_win_rate": 0.45,
+        "summary": "quality WR 45% vs target 70%",
+    }
+    signal = SimpleNamespace(
+        action="LONG",
+        score=84.0,
+        confidence="HIGH",
+        reason="breakout-only long",
+        flat_reason="",
+        stop_loss_price=95.0,
+        take_profit_price=130.0,
+        trade_plan={},
+        thesis={"state": "ACTIVE", "permitted": True, "conviction_score": 84.0},
+        expectancy={"probability": 0.62, "expected_r": 0.26, "uncertainty": 0.34, "score": 72.0},
+        execution_plan={},
+    )
+    agent._last_signals["BTC"] = {
+        "action": "LONG",
+        "score": 84.0,
+        "instrument_type": "crypto",
+        "planned_stop_loss": 95.0,
+        "expectancy_probability": 0.62,
+        "expectancy_expected_r": 0.26,
+        "expectancy_uncertainty": 0.34,
+        "news_event_score": 0.0,
+        "news_catalyst_score": 0.0,
+        "social_attention_score": 50.0,
+        "social_attention_mentions": 0,
+    }
+    allowed = agent._win_rate_recovery_context_guard("BTC", signal, portfolio_usd=1000.0, current_position=None)
+
+    assert allowed is False
+    assert signal.action == "FLAT"
+    assert "win-rate recovery blocks" in signal.reason
+    assert agent._last_signals["BTC"]["win_rate_context_guard"]["price_score"] >= 70.0
+
+
+def test_win_rate_recovery_context_guard_allows_fundamental_attention_stack() -> None:
+    cfg = build_config()
+    cfg.trading.win_rate_recovery_context_guard_enabled = True
+    cfg.trading.performance_edge_guard_enabled = False
+    cfg.trading.decision_dataset_enabled = False
+    agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=1000.0)])
+    agent._north_star_scorecard = lambda force=False: {
+        "enabled": True,
+        "active": True,
+        "critical": True,
+        "quality_win_rate": 0.42,
+        "summary": "quality WR 42% vs target 70%",
+    }
+    signal = SimpleNamespace(
+        action="LONG",
+        score=76.0,
+        confidence="HIGH",
+        reason="fundamentals and attention aligned",
+        flat_reason="",
+        stop_loss_price=175.0,
+        take_profit_price=240.0,
+        trade_plan={},
+        thesis={
+            "state": "ACTIVE",
+            "permitted": True,
+            "conviction_score": 76.0,
+            "conviction_entry": {"active": True, "event_conviction": True},
+        },
+        expectancy={"probability": 0.64, "expected_r": 0.32, "uncertainty": 0.30, "score": 74.0},
+        execution_plan={},
+    )
+    agent._last_signals["GOOGL"] = {
+        "action": "LONG",
+        "score": 76.0,
+        "instrument_type": "equity",
+        "asset_categories": ["mag7", "ai_infra"],
+        "planned_stop_loss": 175.0,
+        "expectancy_probability": 0.64,
+        "expectancy_expected_r": 0.32,
+        "expectancy_uncertainty": 0.30,
+        "official_event_score": 3.2,
+        "news_catalyst_score": 3.1,
+        "analyst_revision_score": 1.0,
+        "options_implied_move_pct": 5.0,
+        "social_attention_score": 72.0,
+        "social_attention_mentions": 6,
+        "social_attention_sentiment": "BULLISH",
+        "conviction_entry_event": True,
+    }
+    allowed = agent._win_rate_recovery_context_guard("GOOGL", signal, portfolio_usd=1000.0, current_position=None)
+
+    assert allowed is True
+    guard = agent._last_signals["GOOGL"]["win_rate_context_guard"]
+    assert guard["active"] is True
+    assert guard["permitted"] is True
+    assert guard["fundamental_score"] >= cfg.trading.win_rate_recovery_min_fundamental_score
+
+
 def run_all() -> None:
     test_checkpoint_recovery()
     print("PASS checkpoint recovery")
@@ -8825,6 +8931,10 @@ def run_all() -> None:
     print("PASS first-principles marginal block")
     test_first_principles_guard_allows_marginal_event_attention_starter()
     print("PASS first-principles event starter")
+    test_win_rate_recovery_context_guard_blocks_high_score_price_only_entry()
+    print("PASS win-rate recovery price-only block")
+    test_win_rate_recovery_context_guard_allows_fundamental_attention_stack()
+    print("PASS win-rate recovery context stack")
     test_llm_referee_returns_disabled_without_api_key()
     print("PASS LLM referee disabled fallback")
     test_llm_referee_parses_structured_openai_verdict()
