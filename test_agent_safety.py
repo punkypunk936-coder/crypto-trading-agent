@@ -4243,6 +4243,110 @@ def test_winner_stickiness_blocks_conviction_churn_exit() -> None:
     assert agent._last_signals["BTC"]["winner_stickiness"]["active"] is True
 
 
+def test_soft_exit_discipline_defers_fresh_thesis_churn() -> None:
+    cfg = build_config()
+    cfg.trading.coins = ["BTC"]
+    cfg.trading.decision_dataset_enabled = False
+    cfg.trading.feature_store_enabled = False
+    cfg.trading.soft_exit_min_hold_minutes = 240.0
+    cfg.trading.soft_exit_max_adverse_r = 0.55
+    agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=10000.0, supported_symbols=["BTC"])])
+    agent.risk.positions = {
+        "BTC": OpenPosition(
+            coin="BTC",
+            direction="LONG",
+            entry_price=100.0,
+            size_usd=200.0,
+            size_coin=2.0,
+            stop_loss=90.0,
+            take_profit=130.0,
+            trailing_stop_price=88.0,
+            opened_at=time.time() - 45 * 60,
+            exchange="UnitTest",
+            metadata={"entry_context": {"score": 68.0, "planned_stop_loss": 90.0, "planned_take_profit": 130.0}},
+        )
+    }
+    agent._last_signals = {
+        "BTC": {
+            "action": "FLAT",
+            "score": 50.0,
+            "live_price": 98.5,
+            "thesis": {"state": "NO_TRADE", "permitted": False, "conflict_points": 0},
+            "expectancy": {"score": 42.0, "uncertainty": 0.55},
+        }
+    }
+    signal = SimpleNamespace(
+        action="FLAT",
+        score=50.0,
+        price=98.5,
+        expectancy={"score": 42.0, "uncertainty": 0.55},
+        thesis={"state": "NO_TRADE", "permitted": False, "conflict_points": 0},
+    )
+
+    profile = agent._soft_exit_discipline_profile(
+        "BTC",
+        "LONG",
+        signal,
+        {"should_exit": True, "score": 72.0, "summary": "flat conviction faded"},
+    )
+
+    assert profile["defer"] is True
+    assert profile["reason"] == "fresh_thesis_needs_time"
+    assert profile["adverse_r"] < cfg.trading.soft_exit_max_adverse_r
+
+
+def test_soft_exit_discipline_allows_exit_when_invalidation_near() -> None:
+    cfg = build_config()
+    cfg.trading.coins = ["BTC"]
+    cfg.trading.decision_dataset_enabled = False
+    cfg.trading.feature_store_enabled = False
+    cfg.trading.soft_exit_min_hold_minutes = 240.0
+    cfg.trading.soft_exit_max_adverse_r = 0.55
+    agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=10000.0, supported_symbols=["BTC"])])
+    agent.risk.positions = {
+        "BTC": OpenPosition(
+            coin="BTC",
+            direction="LONG",
+            entry_price=100.0,
+            size_usd=200.0,
+            size_coin=2.0,
+            stop_loss=90.0,
+            take_profit=130.0,
+            trailing_stop_price=88.0,
+            opened_at=time.time() - 45 * 60,
+            exchange="UnitTest",
+            metadata={"entry_context": {"score": 68.0, "planned_stop_loss": 90.0, "planned_take_profit": 130.0}},
+        )
+    }
+    agent._last_signals = {
+        "BTC": {
+            "action": "FLAT",
+            "score": 50.0,
+            "live_price": 94.0,
+            "thesis": {"state": "NO_TRADE", "permitted": False, "conflict_points": 0},
+            "expectancy": {"score": 42.0, "uncertainty": 0.55},
+        }
+    }
+    signal = SimpleNamespace(
+        action="FLAT",
+        score=50.0,
+        price=94.0,
+        expectancy={"score": 42.0, "uncertainty": 0.55},
+        thesis={"state": "NO_TRADE", "permitted": False, "conflict_points": 0},
+    )
+
+    profile = agent._soft_exit_discipline_profile(
+        "BTC",
+        "LONG",
+        signal,
+        {"should_exit": True, "score": 72.0, "summary": "flat conviction faded"},
+    )
+
+    assert profile["defer"] is False
+    assert profile["reason"] == "adverse_r_allows_exit"
+    assert profile["adverse_r"] >= cfg.trading.soft_exit_max_adverse_r
+
+
 def test_pair_trade_book_builds_equity_long_crypto_short_overlay() -> None:
     cfg = build_config()
     cfg.trading.min_trade_usd = 100.0
@@ -8857,6 +8961,10 @@ def run_all() -> None:
     print("PASS stale adverse loser invalidation")
     test_winner_stickiness_blocks_conviction_churn_exit()
     print("PASS winner stickiness churn guard")
+    test_soft_exit_discipline_defers_fresh_thesis_churn()
+    print("PASS soft-exit fresh-thesis deferral")
+    test_soft_exit_discipline_allows_exit_when_invalidation_near()
+    print("PASS soft-exit adverse-risk release")
     test_pair_trade_book_builds_equity_long_crypto_short_overlay()
     print("PASS pair trade overlay book")
     test_setup_quality_guard_blocks_toxic_reversal_family()

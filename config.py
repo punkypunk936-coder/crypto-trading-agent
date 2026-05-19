@@ -473,6 +473,11 @@ class TradingConfig:
     conviction_decay_microstructure_weight: float = 14.0
     conviction_decay_structure_weight: float = 12.0
     conviction_decay_expectancy_weight: float = 16.0
+    soft_exit_discipline_enabled: bool = True
+    soft_exit_min_hold_minutes: float = 240.0
+    soft_exit_event_min_hold_minutes: float = 1440.0
+    soft_exit_max_adverse_r: float = 0.55
+    soft_exit_apply_to_scalps: bool = False
     use_daily_market_map: bool = True
     market_map_guard_distance_pct: float = 1.10
     market_map_score_influence: float = 1.00

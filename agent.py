@@ -1628,6 +1628,21 @@ class TradingAgent:
                 decay = self._assess_conviction_decay(coin, current_pos, signal)
                 self._last_signals[coin]["conviction_decay"] = decay
                 if decay.get("should_exit", False):
+                    soft_exit = self._soft_exit_discipline_profile(coin, current_pos, signal, decay)
+                    self._last_signals[coin]["soft_exit_discipline"] = soft_exit
+                    if soft_exit.get("defer", False):
+                        log.info(
+                            f"[{coin}] 🧷 Soft-exit discipline holds {current_pos}: "
+                            f"{soft_exit.get('summary', '')}"
+                        )
+                        self._record_decision_snapshot(
+                            coin,
+                            portfolio_usd=portfolio_usd,
+                            stage="soft_exit_deferred",
+                            signal=signal,
+                            current_position=current_pos,
+                        )
+                        return
                     log.info(
                         f"[{coin}] 🏳️ Conviction decay {decay.get('score', 0):.0f} "
                         f"— closing {current_pos}. {decay.get('summary', '')}"
@@ -4250,6 +4265,142 @@ class TradingAgent:
         if score >= hold_threshold:
             return {"should_exit": False, "score": round(score, 2), "summary": f"watch closely: {summary}"}
         return {"should_exit": False, "score": round(score, 2), "summary": summary}
+
+    def _soft_exit_discipline_profile(self, coin: str, current_pos: str, signal, decay: dict | None = None) -> dict:
+        profile = {
+            "active": bool(getattr(self.cfg.trading, "soft_exit_discipline_enabled", True)),
+            "defer": False,
+            "summary": "",
+            "hold_minutes": 0.0,
+            "min_hold_minutes": 0.0,
+            "adverse_r": 0.0,
+            "max_adverse_r": float(getattr(self.cfg.trading, "soft_exit_max_adverse_r", 0.55) or 0.55),
+            "reason": "",
+        }
+        if not profile["active"]:
+            profile["reason"] = "disabled"
+            return profile
+
+        pos = self.risk.positions.get(coin)
+        if not pos:
+            profile["reason"] = "no_open_position"
+            profile["summary"] = "no open position to protect"
+            return profile
+
+        sig = dict(self._last_signals.get(coin, {}) or {})
+        metadata = dict(pos.metadata or {})
+        entry_ctx = dict(metadata.get("entry_context", {}) or {})
+        thesis = dict(sig.get("thesis") or entry_ctx.get("thesis") or getattr(signal, "thesis", {}) or {})
+        conviction_entry = dict(sig.get("conviction_entry") or entry_ctx.get("conviction_entry") or {})
+
+        scalp_trade = bool(
+            entry_ctx.get("scalp_trade")
+            or sig.get("scalp_trade")
+            or conviction_entry.get("scalp")
+            or dict(thesis.get("scalp") or {}).get("selected", False)
+            or str((entry_ctx.get("trade_plan") or {}).get("trade_style", "")).lower() == "scalp"
+        )
+        if scalp_trade and not getattr(self.cfg.trading, "soft_exit_apply_to_scalps", False):
+            profile["reason"] = "scalp_trade"
+            profile["summary"] = "scalp trades keep their faster exit rules"
+            return profile
+
+        def _as_float(value, default: float = 0.0) -> float:
+            try:
+                if value is None:
+                    return default
+                return float(value)
+            except Exception:
+                return default
+
+        direction = str(current_pos or pos.direction or "").upper()
+        hold_minutes = (time.time() - pos.opened_at) / 60.0 if pos.opened_at else 0.0
+        instrument_type = str(
+            sig.get("instrument_type")
+            or entry_ctx.get("instrument_type")
+            or self.cfg.trading.instrument_types.get(coin)
+            or hyperliquid_instrument_type(coin)
+            or "crypto"
+        ).lower()
+
+        min_hold = float(getattr(self.cfg.trading, "soft_exit_min_hold_minutes", 240.0) or 240.0)
+        if instrument_type == "equity":
+            min_hold = max(min_hold, float(getattr(self.cfg.trading, "equity_min_hold_minutes", min_hold) or min_hold))
+        elif instrument_type == "index":
+            min_hold = max(min_hold, float(getattr(self.cfg.trading, "index_min_hold_minutes", min_hold) or min_hold))
+
+        event_score = max(
+            _as_float(sig.get("news_event_score")),
+            _as_float(entry_ctx.get("news_event_score")),
+            _as_float(sig.get("official_event_score")),
+            _as_float(entry_ctx.get("official_event_score")),
+            _as_float(sig.get("sec_event_score")),
+            _as_float(entry_ctx.get("sec_event_score")),
+        )
+        catalyst_score = max(
+            _as_float(sig.get("news_catalyst_score")),
+            _as_float(entry_ctx.get("news_catalyst_score")),
+            max(0.0, _as_float(sig.get("analyst_revision_score"))),
+            max(0.0, _as_float(entry_ctx.get("analyst_revision_score"))),
+        )
+        event_setup = bool(
+            entry_ctx.get("conviction_entry_event")
+            or entry_ctx.get("event_risk_budget_active")
+            or sig.get("conviction_entry_event")
+            or event_score >= float(getattr(self.cfg.trading, "thesis_runner_min_event_score", 2.75) or 2.75)
+            or catalyst_score >= float(getattr(self.cfg.trading, "thesis_runner_min_catalyst_score", 3.0) or 3.0)
+        )
+        if event_setup:
+            min_hold = max(
+                min_hold,
+                float(getattr(self.cfg.trading, "soft_exit_event_min_hold_minutes", 1440.0) or 1440.0),
+            )
+
+        live_price = _as_float(
+            sig.get("live_price")
+            or sig.get("price")
+            or getattr(signal, "price", None)
+            or pos.entry_price,
+            pos.entry_price,
+        )
+        planned_stop = _as_float(entry_ctx.get("planned_stop_loss") or pos.stop_loss)
+        risk_distance = abs(float(pos.entry_price or 0.0) - planned_stop) if planned_stop > 0 else 0.0
+        if risk_distance <= 0 and pos.entry_price > 0:
+            risk_distance = float(pos.entry_price) * float(getattr(self.cfg.trading, "stop_loss_pct", 0.10) or 0.10)
+        favorable_move = self._signed_move(direction, float(pos.entry_price or 0.0), live_price)
+        adverse_move = max(0.0, -favorable_move)
+        adverse_r = adverse_move / max(risk_distance, 1e-9) if risk_distance > 0 else 0.0
+        max_adverse_r = float(getattr(self.cfg.trading, "soft_exit_max_adverse_r", 0.55) or 0.55)
+
+        profile.update({
+            "instrument_type": instrument_type,
+            "direction": direction,
+            "hold_minutes": round(hold_minutes, 2),
+            "min_hold_minutes": round(min_hold, 2),
+            "hold_remaining_minutes": round(max(0.0, min_hold - hold_minutes), 2),
+            "adverse_r": round(adverse_r, 4),
+            "max_adverse_r": max_adverse_r,
+            "event_setup": event_setup,
+            "decay_score": round(_as_float((decay or {}).get("score")), 2),
+        })
+
+        if hold_minutes >= min_hold:
+            profile["reason"] = "minimum_hold_satisfied"
+            profile["summary"] = "minimum thesis hold is satisfied; soft exit may proceed"
+            return profile
+        if adverse_r >= max_adverse_r:
+            profile["reason"] = "adverse_r_allows_exit"
+            profile["summary"] = f"adverse move is {adverse_r:.2f}R, enough to allow the soft exit"
+            return profile
+
+        profile["defer"] = True
+        profile["reason"] = "fresh_thesis_needs_time"
+        event_text = "event " if event_setup else ""
+        profile["summary"] = (
+            f"fresh {event_text}{instrument_type} thesis held {hold_minutes:.0f}/{min_hold:.0f}m; "
+            f"adverse {adverse_r:.2f}R is below {max_adverse_r:.2f}R, so wait for invalidation"
+        )
+        return profile
 
     def _detect_position_invalidation(self, coin: str, current_pos: str, signal) -> str:
         pos = self.risk.positions.get(coin)
