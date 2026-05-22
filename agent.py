@@ -138,11 +138,14 @@ class TradingAgent:
         self._running      = False
         self._last_portfolio_usd = 0.0
         self._last_available_usd = 0.0
+        self._last_sentiment: Dict[str, object] = {}
         self._last_signals: Dict[str, dict] = {}
         self._last_power_status: Dict[str, object] = {}
         self._orderbook_history: Dict[str, List[dict]] = {}
         self._last_proactive_execution: Dict[str, object] = {}
         self._proactive_starter_attempt_ts: Dict[str, float] = {}
+        self._trigger_watch_last_prices: Dict[str, float] = {}
+        self._trigger_watch_attempt_ts: Dict[str, float] = {}
         self._north_star_cache: Dict[str, object] = {}
         self._setup_quality_cache: Dict[str, object] = {}
         self._performance_edge_cache: Dict[str, object] = {}
@@ -460,13 +463,68 @@ class TradingAgent:
                 self._save_checkpoint()
                 secs = self.cfg.trading.check_interval_seconds
                 log.info(f"Sleeping {secs}s…")
-                time.sleep(secs)
+                self._sleep_with_trigger_monitor(secs)
         except KeyboardInterrupt:
             log.info("\nStopped by user (Ctrl+C)")
             self._save_checkpoint()
             self._print_final_summary()
         finally:
             self._stop_background_orderbook_feed()
+
+    def _sleep_with_trigger_monitor(self, seconds: int) -> None:
+        """Sleep in small slices so mapped bullish triggers can fire between full cycles."""
+        if not getattr(self.cfg.trading, "trigger_watch_enabled", True):
+            time.sleep(seconds)
+            return
+        poll_seconds = max(5, int(getattr(self.cfg.trading, "trigger_watch_poll_seconds", 20) or 20))
+        deadline = time.time() + max(0, int(seconds or 0))
+        while self._running:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                break
+            time.sleep(min(poll_seconds, remaining))
+            if deadline - time.time() <= 0 or not self._running:
+                break
+            try:
+                self._poll_trigger_watch_once()
+            except Exception as exc:
+                log.warning(f"Trigger-watch poll skipped: {exc}")
+
+    def _poll_trigger_watch_once(self) -> None:
+        if not getattr(self.cfg.trading, "trigger_watch_enabled", True):
+            return
+        portfolio_usd = float(self._last_portfolio_usd or 0.0)
+        if portfolio_usd <= 0:
+            return
+        candidates = self._trigger_watch_candidates_from_signals(self._last_signals)
+        if not candidates:
+            return
+
+        prices = {}
+        for coin in candidates:
+            try:
+                circuit = self._price_circuits.get(coin)
+                price = circuit.call(get_current_price, coin) if circuit else get_current_price(coin)
+                if price:
+                    prices[coin] = float(price)
+            except CircuitBreakerError:
+                log.warning(f"[{coin}] Trigger-watch price feed circuit open")
+            except Exception as exc:
+                log.debug(f"[{coin}] Trigger-watch price fetch failed: {exc}")
+        if not prices:
+            return
+
+        executed = self._execute_active_trigger_entries(
+            prices,
+            portfolio_usd,
+            self._last_sentiment,
+            candidate_coins=candidates,
+            signal_context=self._last_signals,
+            source="micro_poll",
+        )
+        if executed:
+            self._write_state(portfolio_usd, self._last_sentiment)
+            self._save_checkpoint()
 
     def stop(self):
         self._running = False
@@ -1075,6 +1133,7 @@ class TradingAgent:
         if not sentiment:
             log.warning("Sentiment unavailable - using neutral")
             sentiment = {'raw_score': 50, 'label': 'Neutral', 'signal_score': 50, 'is_extreme': False}
+        self._last_sentiment = dict(sentiment or {})
         log.info(sentiment_summary(sentiment))
 
         # 3. Exit monitoring (SL / TP / trailing)
@@ -1095,9 +1154,22 @@ class TradingAgent:
         self._memory.tick_cooldowns()
         log.info(self._memory.summary())
 
-        # 7. Analyse each coin for new positions
+        # 7. Execute mapped trigger hits before the slower full analysis pass.
+        prior_signals = dict(self._last_signals or {})
         self._last_signals = {}
+        trigger_executed = self._execute_active_trigger_entries(
+            current_prices,
+            portfolio_usd,
+            sentiment,
+            signal_context=prior_signals,
+            source="cycle_pre_analysis",
+        )
+
+        # 8. Analyse each coin for new positions
         for coin in self._analysis_coins:
+            if coin in trigger_executed:
+                log.info(f"[{coin}] Trigger-watch entry fired — skipping slower re-analysis until next cycle")
+                continue
             # Skip if we already have a pending limit order for this coin
             if self.order_mgr.has_pending(coin):
                 log.info(f"[{coin}] Skipping analysis — limit order pending")
@@ -1141,6 +1213,504 @@ class TradingAgent:
         # 8. Heartbeat notification every 6 cycles
         if self._cycle % 6 == 0:
             self.notifier.heartbeat(portfolio_usd, len(self.risk.positions))
+
+    # ── Active trigger watch ───────────────────────────────────
+
+    @staticmethod
+    def _label_rank(value: str, labels: tuple[str, ...] = ("LOW", "MEDIUM", "HIGH")) -> int:
+        try:
+            return labels.index(str(value or "").upper())
+        except ValueError:
+            return -1
+
+    def _snapshot_is_bullish_call(self, snapshot: dict) -> bool:
+        snap = dict(snapshot or {})
+        if not snap:
+            return False
+        directional_fields = [
+            snap.get("action"),
+            snap.get("decision"),
+            snap.get("thesis_candidate_action"),
+            snap.get("first_principles_direction"),
+        ]
+        if any(str(value or "").upper() == "LONG" for value in directional_fields):
+            return True
+        min_conf = str(getattr(self.cfg.trading, "trigger_watch_min_confidence", "MEDIUM") or "MEDIUM").upper()
+        return (
+            str(snap.get("market_map_bias") or "").upper() == "BULLISH"
+            and self._label_rank(str(snap.get("confidence") or "LOW").upper()) >= self._label_rank(min_conf)
+        )
+
+    def _trigger_watch_candidates_from_signals(self, signals: dict) -> list[str]:
+        max_candidates = int(getattr(self.cfg.trading, "trigger_watch_max_candidates", 25) or 25)
+        out: list[str] = []
+        for coin, snapshot in (signals or {}).items():
+            coin_upper = str(coin or "").upper().strip()
+            if not coin_upper or coin_upper not in self._tradable_coin_set:
+                continue
+            if self.risk.has_position(coin_upper) or self.order_mgr.has_pending(coin_upper):
+                continue
+            if self._snapshot_is_bullish_call(dict(snapshot or {})):
+                out.append(coin_upper)
+            if len(out) >= max_candidates:
+                break
+        return out
+
+    def _trigger_watch_trade_plan(
+        self,
+        *,
+        price: float,
+        trigger_price: float,
+        market_map_signal,
+        previous_snapshot: dict,
+    ) -> dict:
+        cfg_stop = max(0.01, min(float(getattr(self.cfg.trading, "stop_loss_pct", 0.08) or 0.08), 0.08))
+        support = float(getattr(market_map_signal, "nearest_support", 0.0) or 0.0)
+        support_stop = support * 0.997 if support > 0 and support < trigger_price else 0.0
+        fallback_stop = trigger_price * (1.0 - cfg_stop)
+        stop = support_stop if support_stop > 0 and (price - support_stop) / max(price, 1e-9) <= cfg_stop * 1.65 else fallback_stop
+        stop = min(stop, price * 0.995)
+
+        risk_per_unit = max(price - stop, price * 0.006)
+        target_r = max(1.0, float(getattr(self.cfg.trading, "trigger_watch_target_r", 2.0) or 2.0))
+        take_profit = price + risk_per_unit * target_r
+        resistance = float(getattr(market_map_signal, "nearest_resistance", 0.0) or 0.0)
+        if resistance > price and resistance >= price + risk_per_unit * 1.15:
+            take_profit = max(take_profit, resistance)
+
+        trade_plan = dict((previous_snapshot or {}).get("trade_plan") or {})
+        trade_plan.update({
+            "entry_price": round(price, 6),
+            "trigger_price": round(trigger_price, 6),
+            "stop_loss": round(stop, 6),
+            "take_profit": round(take_profit, 6),
+            "risk_per_unit": round(price - stop, 6),
+            "reward_per_unit": round(take_profit - price, 6),
+            "risk_pct": round((price - stop) / max(price, 1e-9) * 100.0, 3),
+            "reward_pct": round((take_profit - price) / max(price, 1e-9) * 100.0, 3),
+            "risk_reward_ratio": round((take_profit - price) / max(price - stop, 1e-9), 3),
+            "stop_basis": "trigger reclaim failed below mapped support/trigger",
+            "target_basis": "trigger watch target from mapped R multiple",
+            "price_action_summary": f"Live price crossed bullish trigger ${trigger_price:,.2f}.",
+            "trade_style": "trigger_watch",
+        })
+        return trade_plan
+
+    def _trigger_watch_score(self, market_map_signal, previous_snapshot: dict, trigger_chase_pct: float) -> float:
+        confidence = str(getattr(market_map_signal, "confidence", "") or previous_snapshot.get("confidence", "MEDIUM")).upper()
+        score = 74.0 if confidence == "HIGH" else 68.0 if confidence == "MEDIUM" else 63.0
+        if previous_snapshot.get("thesis_candidate_action") == "LONG" or previous_snapshot.get("action") == "LONG":
+            score += 3.0
+        if previous_snapshot.get("first_principles_direction") == "LONG":
+            score += 2.0
+        if trigger_chase_pct <= 0.35:
+            score += 2.0
+        return round(max(60.0, min(88.0, score)), 2)
+
+    def _build_trigger_watch_snapshot(
+        self,
+        coin: str,
+        *,
+        price: float,
+        trigger_price: float,
+        trigger_chase_pct: float,
+        market_map_signal,
+        previous_snapshot: dict,
+        price_diagnostics: dict,
+        score: float,
+        trade_plan: dict,
+        source: str,
+    ) -> dict:
+        previous = dict(previous_snapshot or {})
+        confidence = str(getattr(market_map_signal, "confidence", "") or previous.get("confidence", "MEDIUM")).upper()
+        expectancy = dict(previous.get("expectancy") or {})
+        expectancy.setdefault("probability", 0.60 if confidence == "HIGH" else 0.56)
+        expectancy.setdefault("expected_r", 0.22)
+        expectancy.setdefault("uncertainty", 0.38 if confidence == "HIGH" else 0.45)
+        expectancy.setdefault("score", score)
+        expectancy.setdefault("summary", "Bullish trigger fired from the active trigger watch.")
+
+        thesis = dict(previous.get("thesis") or {})
+        reasons = list(thesis.get("reasons") or previous.get("thesis_reasons") or [])
+        reasons.insert(0, f"price crossed mapped bullish trigger ${trigger_price:,.2f}")
+        thesis.update({
+            "candidate_action": "LONG",
+            "state": "TRIGGER_HIT",
+            "permitted": True,
+            "quality": confidence,
+            "conviction_score": max(score, float(previous.get("thesis_conviction_score") or score)),
+            "summary": f"Bullish trigger hit: live ${price:,.2f} vs trigger ${trigger_price:,.2f}.",
+            "reasons": reasons[:5],
+            "conviction_entry": {
+                **dict(thesis.get("conviction_entry") or previous.get("conviction_entry") or {}),
+                "active": True,
+                "style": "trigger_watch",
+                "reason": "mapped bullish trigger crossed",
+                "size_multiplier": float(getattr(self.cfg.trading, "trigger_watch_size_multiplier", 0.45) or 0.45),
+            },
+        })
+
+        trigger_watch = {
+            "active": True,
+            "source": source,
+            "direction": "LONG",
+            "trigger_price": round(trigger_price, 6),
+            "trigger_chase_pct": round(trigger_chase_pct, 4),
+            "hit_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "poll_seconds": int(getattr(self.cfg.trading, "trigger_watch_poll_seconds", 20) or 20),
+        }
+        snap = dict(previous)
+        snap.update({
+            "action": "LONG",
+            "decision": "LONG",
+            "score": score,
+            "confidence": confidence,
+            "price": price,
+            "analysis_price": price,
+            "live_price": price,
+            "price_diagnostics": price_diagnostics,
+            "price_source": price_diagnostics.get("price_source", previous.get("price_source", "")),
+            "price_source_label": price_diagnostics.get("price_source_label", previous.get("price_source_label", "")),
+            "venue_symbol": price_diagnostics.get("venue_symbol", previous.get("venue_symbol", "")),
+            "venue_price": price_diagnostics.get("venue_price", price),
+            "reference_price": price_diagnostics.get("reference_price", 0.0),
+            "reference_source": price_diagnostics.get("reference_source", ""),
+            "price_deviation_pct": price_diagnostics.get("price_deviation_pct"),
+            "price_status": price_diagnostics.get("price_status", "UNKNOWN"),
+            "price_warning": price_diagnostics.get("price_warning", ""),
+            "reason": f"Bullish trigger hit: live ${price:,.2f} crossed ${trigger_price:,.2f}.",
+            "flat_reason": "",
+            "decision_reason": f"Bullish trigger hit: live ${price:,.2f} crossed ${trigger_price:,.2f}.",
+            "instrument_type": previous.get("instrument_type") or hyperliquid_instrument_type(coin, "crypto"),
+            "market_map_available": True,
+            "market_map_bias": getattr(market_map_signal, "bias", "BULLISH"),
+            "market_map_summary": getattr(market_map_signal, "summary", ""),
+            "market_map_score_adjustment": getattr(market_map_signal, "score_adjustment", 0.0),
+            "market_map_favor_longs": True,
+            "market_map_block_shorts": True,
+            "market_map_live_reclaim": True,
+            "market_map_reclaim_confirmed": bool(getattr(market_map_signal, "above_reclaim_levels", [])),
+            "market_map_nearest_support": getattr(market_map_signal, "nearest_support", 0.0),
+            "market_map_nearest_resistance": getattr(market_map_signal, "nearest_resistance", 0.0),
+            "market_map_notes": getattr(market_map_signal, "notes", ""),
+            "daily_breakout_level": trigger_price,
+            "planned_stop_loss": trade_plan.get("stop_loss", 0.0),
+            "planned_take_profit": trade_plan.get("take_profit", 0.0),
+            "planned_risk_pct": trade_plan.get("risk_pct", 0.0),
+            "planned_reward_pct": trade_plan.get("reward_pct", 0.0),
+            "planned_risk_reward_ratio": trade_plan.get("risk_reward_ratio", 0.0),
+            "stop_basis": trade_plan.get("stop_basis", ""),
+            "target_basis": trade_plan.get("target_basis", ""),
+            "price_action_summary": trade_plan.get("price_action_summary", ""),
+            "trade_plan": trade_plan,
+            "thesis": thesis,
+            "thesis_candidate_action": "LONG",
+            "thesis_state": "TRIGGER_HIT",
+            "thesis_permitted": True,
+            "thesis_quality": confidence,
+            "thesis_conviction_score": thesis.get("conviction_score", score),
+            "thesis_summary": thesis.get("summary", ""),
+            "thesis_reasons": thesis.get("reasons", []),
+            "expectancy": expectancy,
+            "expectancy_probability": expectancy.get("probability", 0.56),
+            "expectancy_expected_r": expectancy.get("expected_r", 0.22),
+            "expectancy_uncertainty": expectancy.get("uncertainty", 0.45),
+            "expectancy_score": expectancy.get("score", score),
+            "expectancy_summary": expectancy.get("summary", ""),
+            "execution_plan": {
+                "mode": "market",
+                "entry_price": price,
+                "trigger_price": trigger_price,
+                "reason": "active bullish trigger crossed",
+            },
+            "execution_mode": "tradable",
+            "decision_stage": "trigger_watch_hit",
+            "trigger_entry": True,
+            "trigger_watch": trigger_watch,
+            "entry_trigger_price": trigger_price,
+            "entry_trigger_chase_pct": trigger_chase_pct,
+            "conviction_entry": thesis.get("conviction_entry", {}),
+            "conviction_entry_active": True,
+            "conviction_entry_style": "trigger_watch",
+            "conviction_entry_reason": "mapped bullish trigger crossed",
+            "conviction_entry_size_multiplier": float(getattr(self.cfg.trading, "trigger_watch_size_multiplier", 0.45) or 0.45),
+        })
+        return snap
+
+    def _signal_from_trigger_snapshot(self, snapshot: dict) -> SimpleNamespace:
+        return SimpleNamespace(
+            action="LONG",
+            score=float(snapshot.get("score", 68.0) or 68.0),
+            confidence=str(snapshot.get("confidence", "MEDIUM") or "MEDIUM").upper(),
+            price=float(snapshot.get("live_price") or snapshot.get("price") or 0.0),
+            stop_loss_price=float(snapshot.get("planned_stop_loss") or 0.0),
+            take_profit_price=float(snapshot.get("planned_take_profit") or 0.0),
+            reason=str(snapshot.get("decision_reason") or snapshot.get("reason") or "Bullish trigger hit."),
+            flat_reason="",
+            trade_plan=dict(snapshot.get("trade_plan") or {}),
+            thesis=dict(snapshot.get("thesis") or {}),
+            expectancy=dict(snapshot.get("expectancy") or {}),
+            execution_plan=dict(snapshot.get("execution_plan") or {}),
+            entry_type="trigger_watch_market",
+        )
+
+    def _execute_active_trigger_entries(
+        self,
+        current_prices: dict,
+        portfolio_usd: float,
+        sentiment: dict,
+        *,
+        candidate_coins: Optional[list[str]] = None,
+        signal_context: Optional[dict] = None,
+        source: str = "cycle",
+    ) -> set[str]:
+        if not getattr(self.cfg.trading, "trigger_watch_enabled", True):
+            return set()
+        if self.risk.is_trading_halted():
+            return set()
+
+        signal_context = dict(signal_context or {})
+        allow_map_only = bool(getattr(self.cfg.trading, "trigger_watch_allow_map_only", False))
+        max_entries = max(1, int(getattr(self.cfg.trading, "trigger_watch_max_entries_per_cycle", 2) or 2))
+        max_chase_pct = max(0.0, float(getattr(self.cfg.trading, "trigger_watch_max_chase_pct", 1.50) or 1.50))
+        rearm_seconds = max(0.0, float(getattr(self.cfg.trading, "trigger_watch_rearm_minutes", 30.0) or 30.0) * 60.0)
+        candidates = [
+            str(coin or "").upper().strip()
+            for coin in (candidate_coins or self._tradable_coins)
+            if str(coin or "").strip()
+        ]
+        executed: set[str] = set()
+        now = time.time()
+
+        for coin in candidates:
+            if len(executed) >= max_entries:
+                break
+            if coin not in self._tradable_coin_set:
+                continue
+            if self.risk.has_position(coin) or self.order_mgr.has_pending(coin):
+                continue
+            if (
+                getattr(self.cfg.trading, "enforce_active_venue_markets", True)
+                and is_hyperliquid_supported(coin)
+                and not hyperliquid_market_is_active(coin)
+            ):
+                continue
+
+            previous_snapshot = dict(signal_context.get(coin) or {})
+            if not allow_map_only and not self._snapshot_is_bullish_call(previous_snapshot):
+                continue
+
+            live_price = float((current_prices or {}).get(coin) or 0.0)
+            if live_price <= 0:
+                continue
+
+            try:
+                map_signal = market_map.get_market_map_signal(
+                    coin,
+                    current_price=live_price,
+                    closed_price=live_price,
+                )
+            except Exception as exc:
+                log.debug(f"[{coin}] Trigger-watch map refresh skipped: {exc}")
+                continue
+            if not map_signal or not getattr(map_signal, "valid", False):
+                self._trigger_watch_last_prices[coin] = live_price
+                continue
+            if str(getattr(map_signal, "bias", "NEUTRAL") or "NEUTRAL").upper() != "BULLISH":
+                self._trigger_watch_last_prices[coin] = live_price
+                continue
+            min_conf = str(getattr(self.cfg.trading, "trigger_watch_min_confidence", "MEDIUM") or "MEDIUM").upper()
+            if self._label_rank(str(getattr(map_signal, "confidence", "LOW") or "LOW").upper()) < self._label_rank(min_conf):
+                self._trigger_watch_last_prices[coin] = live_price
+                continue
+
+            crossed_levels = [
+                float(level)
+                for level in (getattr(map_signal, "live_above_reclaim_levels", []) or [])
+                if float(level or 0.0) > 0 and live_price >= float(level or 0.0)
+            ]
+            if not crossed_levels:
+                self._trigger_watch_last_prices[coin] = live_price
+                continue
+            trigger_price = max(crossed_levels)
+            last_price = float(self._trigger_watch_last_prices.get(coin) or 0.0)
+            self._trigger_watch_last_prices[coin] = live_price
+            trigger_key = f"{coin}:LONG:{trigger_price:.6f}"
+            last_attempt = float(self._trigger_watch_attempt_ts.get(trigger_key) or 0.0)
+            if last_attempt and now - last_attempt < rearm_seconds:
+                continue
+            crossed_now = last_price <= 0 or last_price < trigger_price <= live_price
+            if not crossed_now and last_attempt:
+                continue
+
+            trigger_chase_pct = max(0.0, (live_price - trigger_price) / max(trigger_price, 1e-9) * 100.0)
+            if trigger_chase_pct > max_chase_pct:
+                log.info(
+                    f"[{coin}] Trigger-watch saw bullish trigger ${trigger_price:,.2f}, "
+                    f"but live is already {trigger_chase_pct:.2f}% above it; not chasing."
+                )
+                continue
+
+            price_diagnostics = get_price_diagnostics(
+                coin,
+                venue_price=live_price,
+                max_deviation_pct=getattr(self.cfg.trading, "data_reliability_max_reference_deviation_pct", 2.0),
+            )
+            if (
+                getattr(self.cfg.trading, "trigger_watch_block_unverified_price", True)
+                and str(price_diagnostics.get("price_status") or "OK").upper() == "CHECK"
+            ):
+                log.info(f"[{coin}] Trigger-watch blocked by price check: {price_diagnostics.get('price_warning', '')}")
+                continue
+
+            trade_plan = self._trigger_watch_trade_plan(
+                price=live_price,
+                trigger_price=trigger_price,
+                market_map_signal=map_signal,
+                previous_snapshot=previous_snapshot,
+            )
+            score = self._trigger_watch_score(map_signal, previous_snapshot, trigger_chase_pct)
+            rl_stats = self._memory.get_stats().get(coin, {})
+            long_trades = int(rl_stats.get("long_trades", 0) or 0)
+            rl_win_rate = float(rl_stats.get("long_wr", 50.0) if long_trades >= 3 else 50.0)
+            rl_pattern_boost = self._memory.get_pattern_boost(coin, "LONG", score)
+            trigger_stats = dict(rl_stats.get("trigger_entry", {}) or {})
+            trigger_total = int(trigger_stats.get("total", 0) or 0)
+            trigger_wr = float(trigger_stats.get("win_rate", 50.0) or 50.0)
+            sizing_multiplier = float(getattr(self.cfg.trading, "trigger_watch_size_multiplier", 0.45) or 0.45)
+            if trigger_total >= 3 and trigger_wr >= 62.0:
+                score += 3.0
+                rl_pattern_boost += 0.05
+            elif trigger_total >= 3 and trigger_wr <= 42.0:
+                score -= 4.0
+                sizing_multiplier *= 0.75
+
+            snapshot = self._build_trigger_watch_snapshot(
+                coin,
+                price=live_price,
+                trigger_price=trigger_price,
+                trigger_chase_pct=trigger_chase_pct,
+                market_map_signal=map_signal,
+                previous_snapshot=previous_snapshot,
+                price_diagnostics=price_diagnostics,
+                score=score,
+                trade_plan=trade_plan,
+                source=source,
+            )
+            snapshot["trigger_watch"]["learned_total"] = trigger_total
+            snapshot["trigger_watch"]["learned_win_rate"] = trigger_wr
+            snapshot["rl_win_rate"] = rl_stats.get("win_rate")
+            snapshot["rl_long_wr"] = rl_stats.get("long_wr")
+            snapshot["rl_pattern_boost"] = rl_pattern_boost
+            self._last_signals[coin] = snapshot
+            self._refresh_first_principles_view(coin)
+
+            signal = self._signal_from_trigger_snapshot(self._last_signals[coin])
+            order = self.risk.compute_order(
+                coin=coin,
+                direction="LONG",
+                signal_score=signal.score,
+                current_price=live_price,
+                stop_loss_price=signal.stop_loss_price,
+                take_profit_price=signal.take_profit_price,
+                portfolio_usd=portfolio_usd,
+                rl_win_rate=rl_win_rate,
+                rl_pattern_boost=rl_pattern_boost,
+                expectancy_score=float(signal.expectancy.get("score", signal.score) or signal.score),
+                win_probability=float(signal.expectancy.get("probability", 0.56) or 0.56),
+                expected_r=float(signal.expectancy.get("expected_r", 0.22) or 0.22),
+                uncertainty=float(signal.expectancy.get("uncertainty", 0.45) or 0.45),
+                thesis_conviction=float(signal.thesis.get("conviction_score", signal.score) or signal.score),
+                sizing_multiplier=sizing_multiplier,
+                event_starter=False,
+                scalp=False,
+            )
+            if not order.approved:
+                log.info(f"[{coin}] Trigger-watch rejected: {order.rejection_reason}")
+                signal.action = "FLAT"
+                signal.reason = order.rejection_reason
+                signal.flat_reason = order.rejection_reason
+                self._sync_signal_snapshot(coin, signal)
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="trigger_watch_risk_rejected",
+                    signal=signal,
+                    blocked=True,
+                )
+                continue
+
+            self._last_signals[coin]["leverage"] = getattr(order, "leverage", self.cfg.trading.leverage)
+            self._last_signals[coin]["margin_usd"] = getattr(order, "margin_usd", 0.0)
+            self._last_signals[coin]["order_notional_usd"] = getattr(order, "size_usd", 0.0)
+            self._last_signals[coin]["leverage_note"] = getattr(order, "leverage_note", "")
+            if not self._apply_north_star_guard_to_order(
+                coin,
+                signal,
+                order,
+                portfolio_usd=portfolio_usd,
+                current_position=None,
+                event_starter=False,
+                pair_trade=False,
+            ):
+                continue
+
+            portfolio_theme_guard = portfolio_guard.assess_correlation(
+                self.cfg.trading,
+                coin=coin,
+                direction="LONG",
+                instrument_type=str(self._last_signals.get(coin, {}).get("instrument_type") or hyperliquid_instrument_type(coin, "crypto")),
+                portfolio_usd=float(portfolio_usd or 0.0),
+                proposed_size_usd=float(getattr(order, "size_usd", 0.0) or 0.0),
+                open_positions=list(self.risk.positions.values()),
+                pending_orders=list(self.order_mgr.pending_orders.values()),
+                event_starter=False,
+            )
+            self._last_signals[coin]["portfolio_guard"] = portfolio_theme_guard
+            self._last_signals[coin]["portfolio_guard_summary"] = portfolio_theme_guard.get("summary", "")
+            self._last_signals[coin]["portfolio_guard_size_multiplier"] = portfolio_theme_guard.get("size_multiplier", 1.0)
+            if getattr(self.cfg.trading, "portfolio_correlation_guard_enabled", True) and not portfolio_theme_guard.get("permitted", True):
+                reason = str(portfolio_theme_guard.get("summary", "") or "portfolio concentration is already too high")
+                log.info(f"[{coin}] Trigger-watch portfolio guard blocks entry: {reason}")
+                signal.action = "FLAT"
+                signal.reason = reason
+                signal.flat_reason = reason
+                self._sync_signal_snapshot(coin, signal)
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="trigger_watch_portfolio_block",
+                    signal=signal,
+                    blocked=True,
+                )
+                continue
+
+            multiplier = float(portfolio_theme_guard.get("size_multiplier", 1.0) or 1.0)
+            if multiplier < 0.999:
+                order.size_usd *= multiplier
+                order.size_coin = order.size_usd / max(live_price, 1e-9)
+                order.margin_usd = order.size_usd / max(self._order_leverage(order), 1)
+                self._last_signals[coin]["margin_usd"] = getattr(order, "margin_usd", 0.0)
+                self._last_signals[coin]["order_notional_usd"] = getattr(order, "size_usd", 0.0)
+
+            self._trigger_watch_attempt_ts[trigger_key] = now
+            log.info(
+                f"[{coin}] 🚀 Trigger-watch LONG firing now: live ${live_price:,.2f} "
+                f"crossed ${trigger_price:,.2f} ({trigger_chase_pct:.2f}% chase)"
+            )
+            did_execute = self._execute_order(coin, signal, order)
+            self._record_decision_snapshot(
+                coin,
+                portfolio_usd=portfolio_usd,
+                stage="trigger_watch_market_entry" if did_execute else "trigger_watch_market_failed",
+                signal=signal,
+                executed=bool(did_execute),
+                blocked=not bool(did_execute),
+            )
+            if did_execute:
+                self._record_precision_entry(coin, signal, mode="trigger_watch_market")
+                executed.add(coin)
+        return executed
 
     # ── Coin analysis ─────────────────────────────────────────
 
@@ -4753,6 +5323,10 @@ class TradingAgent:
             "leverage_note": getattr(order, "leverage_note", ""),
             "conviction_tier": getattr(order, "conviction_tier", ""),
             "conviction_pct": getattr(order, "conviction_pct", 0.0),
+            "trigger_entry": bool(sig.get("trigger_entry", False)),
+            "trigger_watch": dict(sig.get("trigger_watch", {}) or {}),
+            "entry_trigger_price": sig.get("entry_trigger_price", trade_plan.get("trigger_price", 0.0)),
+            "entry_trigger_chase_pct": sig.get("entry_trigger_chase_pct", 0.0),
         }
 
     @staticmethod
@@ -4989,7 +5563,12 @@ class TradingAgent:
                         self.risk.record_open(
                             order,
                             exchange=ex.name,
-                            metadata={"entry_context": self._build_entry_context(coin, signal, order, entry_type="market_entry")},
+                            metadata={"entry_context": self._build_entry_context(
+                                coin,
+                                signal,
+                                order,
+                                entry_type=str(getattr(signal, "entry_type", "market_entry") or "market_entry"),
+                            )},
                         )
                         trade_logger.log_open(
                             coin         = coin,

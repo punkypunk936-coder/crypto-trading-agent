@@ -474,6 +474,12 @@ class TradeMemory:
                 band_total[b] = band_total.get(b, 0) + 1
                 if t.is_win:
                     band_wins[b] = band_wins.get(b, 0) + 1
+            trigger_trades = [
+                t for t in trades
+                if bool((t.entry_context or {}).get("trigger_entry"))
+                or "trigger" in str((t.entry_context or {}).get("entry_type", "")).lower()
+            ]
+            trigger_wins = sum(1 for t in trigger_trades if t.is_win)
 
             result[coin] = {
                 "total":        total,
@@ -505,6 +511,12 @@ class TradeMemory:
                 "score_band_wr": {
                     b: round(band_wins.get(b, 0) / band_total[b] * 100, 0)
                     for b in band_total
+                },
+                "trigger_entry": {
+                    "total": len(trigger_trades),
+                    "wins": trigger_wins,
+                    "win_rate": round(trigger_wins / max(len(trigger_trades), 1) * 100, 1),
+                    "avg_pnl_pct": round(sum(t.pnl_pct for t in trigger_trades) / max(len(trigger_trades), 1), 2),
                 },
                 "long_trades":  sum(1 for t in trades if t.direction == "LONG"),
                 "short_trades": sum(1 for t in trades if t.direction == "SHORT"),
@@ -561,6 +573,22 @@ class TradeMemory:
         conviction = str(ctx.get("confidence", "")).upper()
         if conviction == "LOW":
             add("LOW_CONFIDENCE_ENTRY", "The trade was opened on a low-confidence signal.")
+
+        entry_type = str(ctx.get("entry_type", "") or "").lower()
+        trigger_context = dict(ctx.get("trigger_watch") or {})
+        trigger_entry = bool(ctx.get("trigger_entry")) or "trigger" in entry_type
+        if trigger_entry:
+            try:
+                trigger_chase_pct = float(
+                    ctx.get("entry_trigger_chase_pct", trigger_context.get("trigger_chase_pct", 0.0)) or 0.0
+                )
+            except Exception:
+                trigger_chase_pct = 0.0
+            add("TRIGGER_ENTRY_FAILED", "The mapped trigger entry did not produce profitable follow-through.")
+            if trigger_chase_pct > 1.25:
+                add("TRIGGER_CHASED_TOO_FAR", "The entry chased too far above the original trigger.")
+            if exit_reason == "stop_loss" and hold_minutes <= 120:
+                add("BAD_TRIGGER_LEVEL", "The trigger level failed quickly and needs stricter calibration.")
 
         try:
             expectancy_score = float(ctx.get("expectancy_score", 50.0))

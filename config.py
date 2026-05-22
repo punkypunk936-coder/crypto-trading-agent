@@ -368,6 +368,22 @@ class TradingConfig:
     execution_pending_market_escalation_max_slippage_bps: float = 16.0
     execution_pending_market_escalation_min_quality_score: float = 72.0
 
+    # ── Active trigger watch ──────────────────────────────────
+    # A bullish call with a mapped trigger should not wait for the next full
+    # analysis pass. This lightweight loop polls the already-formed trigger
+    # book and opens a small market starter as soon as price crosses the level.
+    trigger_watch_enabled: bool = True
+    trigger_watch_poll_seconds: int = 20
+    trigger_watch_max_candidates: int = 25
+    trigger_watch_max_entries_per_cycle: int = 2
+    trigger_watch_min_confidence: str = "MEDIUM"
+    trigger_watch_max_chase_pct: float = 1.50
+    trigger_watch_size_multiplier: float = 0.45
+    trigger_watch_target_r: float = 2.0
+    trigger_watch_rearm_minutes: float = 30.0
+    trigger_watch_block_unverified_price: bool = True
+    trigger_watch_allow_map_only: bool = False
+
     # ── Timing ──────────────────────────────────────────
     check_interval_seconds: int  = 120    # Run cycle every 2 minutes
     candle_interval: str         = "1h"   # Candle size for indicator maths
