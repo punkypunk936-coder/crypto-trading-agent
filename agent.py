@@ -7013,7 +7013,7 @@ class TradingAgent:
                 import ssl
                 import urllib.request
 
-                payload = json.dumps({
+                payload_text = json.dumps({
                     "snapshot": snapshot,
                     "state": state,
                     "trades": trades_data,
@@ -7027,16 +7027,8 @@ class TradingAgent:
                     "llm_referee_report": llm_referee_report_data,
                     "playbook_distiller_report": playbook_distiller_report_data,
                     "policy_health_report": policy_health_report_data,
-                }).encode()
-                req = urllib.request.Request(
-                    remote_url.rstrip("/") + "/api/push",
-                    data=payload,
-                    headers={
-                        "Content-Type": "application/json",
-                        "X-Token": os.environ.get("DASHBOARD_TOKEN", ""),
-                    },
-                    method="POST"
-                )
+                })
+                payload = payload_text.encode()
                 ctx = ssl.create_default_context()
                 try:
                     import certifi
@@ -7044,16 +7036,69 @@ class TradingAgent:
                 except ImportError:
                     ctx.check_hostname = False
                     ctx.verify_mode = ssl.CERT_NONE
-                resp = urllib.request.urlopen(req, timeout=15, context=ctx)
-                body = resp.read().decode() if hasattr(resp, "read") else ""
-                remote_payload = {}
-                if body:
-                    try:
-                        remote_payload = json.loads(body)
-                    except Exception:
-                        remote_payload = {"raw": body}
+
+                def _post_dashboard_json(path: str, body: bytes, timeout: float = 15):
+                    req = urllib.request.Request(
+                        remote_url.rstrip("/") + path,
+                        data=body,
+                        headers={
+                            "Content-Type": "application/json",
+                            "X-Token": os.environ.get("DASHBOARD_TOKEN", ""),
+                        },
+                        method="POST",
+                    )
+                    resp = urllib.request.urlopen(req, timeout=timeout, context=ctx)
+                    text = resp.read().decode() if hasattr(resp, "read") else ""
+                    parsed = {}
+                    if text:
+                        try:
+                            parsed = json.loads(text)
+                        except Exception:
+                            parsed = {"raw": text}
+                    return resp, parsed
+
+                def _push_dashboard_chunks(text: str) -> dict:
+                    chunk_size = max(
+                        100_000,
+                        int(os.environ.get("DASHBOARD_PUSH_CHUNK_CHARS", "750000") or 750_000),
+                    )
+                    session_id = f"{int(time.time())}-{abs(hash(text)) % 1000000000}"
+                    chunks = [text[index:index + chunk_size] for index in range(0, len(text), chunk_size)]
+                    last_payload: dict = {}
+                    final_body: bytes = b""
+                    for index, chunk in enumerate(chunks):
+                        body = json.dumps({
+                            "session_id": session_id,
+                            "chunk_index": index,
+                            "chunk_count": len(chunks),
+                            "chunk": chunk,
+                        }).encode()
+                        if index == len(chunks) - 1:
+                            final_body = body
+                        _, last_payload = _post_dashboard_json("/api/push-chunk", body, timeout=45)
+                    for _ in range(4):
+                        if last_payload.get("assembled"):
+                            break
+                        time.sleep(2.0)
+                        _, last_payload = _post_dashboard_json("/api/push-chunk", final_body, timeout=60)
+                    if not last_payload.get("assembled"):
+                        last_payload = {
+                            **last_payload,
+                            "ok": False,
+                            "error": "chunked dashboard push did not assemble",
+                        }
+                    return last_payload
+
+                max_single_push_bytes = int(os.environ.get("DASHBOARD_PUSH_MAX_BYTES", "3500000") or 3_500_000)
+                if len(payload) > max_single_push_bytes:
+                    remote_payload = _push_dashboard_chunks(payload_text)
+                    resp = SimpleNamespace(status=200 if remote_payload.get("ok") else 500)
+                else:
+                    resp, remote_payload = _post_dashboard_json("/api/push", payload, timeout=15)
                 remote_push_ok = bool(getattr(resp, "status", 200) < 400)
                 if isinstance(remote_payload, dict) and remote_payload.get("ok") is False:
+                    remote_push_ok = False
+                if isinstance(remote_payload, dict) and remote_payload.get("assembled") is False:
                     remote_push_ok = False
                 remote_push_used_fallback = bool(
                     isinstance(remote_payload, dict)
