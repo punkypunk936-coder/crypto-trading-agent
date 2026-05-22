@@ -1223,6 +1223,166 @@ class TradingAgent:
         except ValueError:
             return -1
 
+    def _recent_momentum_context(self, df, live_price: float) -> dict:
+        try:
+            closes = df["close"].astype(float).tolist()
+        except Exception:
+            closes = []
+        if not closes or live_price <= 0:
+            return {
+                "move_pct_24h": 0.0,
+                "move_pct_6h": 0.0,
+                "momentum_expansion_active": False,
+                "momentum_expansion_direction": "FLAT",
+                "momentum_expansion_score": 0.0,
+                "momentum_expansion_summary": "",
+            }
+
+        def pct_from(periods: int) -> float:
+            if len(closes) <= periods:
+                anchor = closes[0]
+            else:
+                anchor = closes[-periods - 1]
+            return (float(live_price) - float(anchor)) / max(float(anchor), 1e-9) * 100.0 if anchor > 0 else 0.0
+
+        move_24h = pct_from(24)
+        move_6h = pct_from(6)
+        abs_move = abs(move_24h)
+        min_move = float(getattr(self.cfg.trading, "momentum_expansion_min_move_pct", 8.0) or 8.0)
+        strong_move = float(getattr(self.cfg.trading, "momentum_expansion_strong_move_pct", 18.0) or 18.0)
+        direction = "LONG" if move_24h >= min_move else "SHORT" if move_24h <= -min_move else "FLAT"
+        active = bool(getattr(self.cfg.trading, "momentum_expansion_enabled", True) and direction != "FLAT")
+        score = min(100.0, max(0.0, 50.0 + abs_move * 1.85))
+        strength = "strong" if abs_move >= strong_move else "active" if active else "quiet"
+        summary = (
+            f"{strength} {direction.lower()} expansion: {move_24h:+.2f}% over ~24h"
+            if active else f"no expansion: {move_24h:+.2f}% over ~24h"
+        )
+        return {
+            "move_pct_24h": round(move_24h, 4),
+            "move_pct_6h": round(move_6h, 4),
+            "recent_move_pct": round(move_24h, 4),
+            "momentum_expansion_active": active,
+            "momentum_expansion_direction": direction,
+            "momentum_expansion_score": round(score, 2),
+            "momentum_expansion_strong": bool(active and abs_move >= strong_move),
+            "momentum_expansion_summary": summary,
+        }
+
+    def _effective_entry_score(self, coin: str, direction: str, signal=None, snapshot: Optional[dict] = None) -> float:
+        snap = dict(snapshot or self._last_signals.get(coin, {}) or {})
+        raw_score = float(getattr(signal, "score", snap.get("score", 50.0)) or 50.0)
+        thesis = dict(getattr(signal, "thesis", {}) or snap.get("thesis", {}) or {})
+        expectancy = dict(getattr(signal, "expectancy", {}) or snap.get("expectancy", {}) or {})
+        candidate = str(thesis.get("candidate_action") or snap.get("thesis_candidate_action") or direction or "").upper()
+        values = [raw_score]
+        if candidate == str(direction or "").upper():
+            values.append(float(thesis.get("conviction_score", snap.get("thesis_conviction_score", raw_score)) or raw_score))
+            values.append(float(expectancy.get("score", snap.get("expectancy_score", raw_score)) or raw_score))
+        if bool(snap.get("momentum_expansion_active")) and str(snap.get("momentum_expansion_direction") or "").upper() == str(direction or "").upper():
+            values.append(float(snap.get("momentum_expansion_score", raw_score) or raw_score))
+        return max(values) if str(direction or "").upper() == "LONG" else min(values)
+
+    @staticmethod
+    def _positive_level(value) -> float:
+        try:
+            level = float(value if value not in (None, "") else 0.0)
+        except Exception:
+            return 0.0
+        return level if math.isfinite(level) and level > 0 else 0.0
+
+    def _parse_trigger_level_text(self, text: str) -> float:
+        text = str(text or "")
+        if not text:
+            return 0.0
+        patterns = (
+            r"(?:trigger|entry|reclaim|long\s+trigger)\s*\$?\s*([0-9]+(?:\.[0-9]+)?)",
+            r"@\s*\$?\s*([0-9]+(?:\.[0-9]+)?)",
+        )
+        for pattern in patterns:
+            match = re.search(pattern, text, flags=re.IGNORECASE)
+            if match:
+                level = self._positive_level(match.group(1))
+                if level > 0:
+                    return level
+        return 0.0
+
+    def _displayed_long_trigger_from_snapshot(self, snapshot: dict, *, live_price: float = 0.0) -> float:
+        snap = dict(snapshot or {})
+        for key in (
+            "displayed_long_trigger",
+            "active_long_trigger",
+            "market_map_next_long_trigger",
+            "entry_trigger_price",
+        ):
+            level = self._positive_level(snap.get(key))
+            if level > 0:
+                return level
+
+        for container_key in ("execution_plan", "trade_plan", "trigger_watch"):
+            container = snap.get(container_key)
+            if isinstance(container, dict):
+                level = self._positive_level(container.get("trigger_price") or container.get("entry_trigger_price"))
+                if level > 0:
+                    return level
+
+        for key in ("trigger", "entry_status", "next_setup", "next_setup_reason", "level"):
+            level = self._parse_trigger_level_text(str(snap.get(key) or ""))
+            if level > 0:
+                return level
+
+        levels = [
+            self._positive_level(level)
+            for level in (snap.get("market_map_long_triggers") or [])
+        ]
+        levels = [level for level in levels if level > 0]
+        if levels:
+            if live_price > 0:
+                triggered = [level for level in levels if level <= live_price]
+                if triggered:
+                    return max(triggered)
+                future = [level for level in levels if level > live_price]
+                if future:
+                    return min(future)
+            return min(levels)
+
+        return 0.0
+
+    def _momentum_context_ok(
+        self,
+        coin: str,
+        direction: str,
+        signal=None,
+        snapshot: Optional[dict] = None,
+    ) -> bool:
+        if not getattr(self.cfg.trading, "momentum_expansion_enabled", True):
+            return False
+        direction = str(direction or "").upper()
+        if direction not in {"LONG", "SHORT"}:
+            return False
+        snap = dict(snapshot or self._last_signals.get(coin, {}) or {})
+        move_pct = float(snap.get("recent_move_pct") or snap.get("move_pct_24h") or 0.0)
+        min_move = float(getattr(self.cfg.trading, "momentum_expansion_min_move_pct", 8.0) or 8.0)
+        aligned = (
+            (direction == "LONG" and move_pct >= min_move)
+            or (direction == "SHORT" and move_pct <= -min_move)
+        )
+        if not aligned:
+            return False
+        map_bias = str(snap.get("market_map_bias") or "").upper()
+        if (direction == "LONG" and map_bias == "BEARISH") or (direction == "SHORT" and map_bias == "BULLISH"):
+            return False
+        view = dict(snap.get("first_principles") or {})
+        expectancy = dict(getattr(signal, "expectancy", {}) or snap.get("expectancy", {}) or {})
+        probability = float(expectancy.get("probability", snap.get("expectancy_probability", 0.50)) or 0.50)
+        flow_score = float(view.get("flow_score") or snap.get("first_principles_flow_score") or 0.0)
+        sequence_score = float(view.get("sequence_score") or snap.get("first_principles_sequence_score") or 0.0)
+        return bool(
+            probability >= float(getattr(self.cfg.trading, "momentum_expansion_min_probability", 0.58) or 0.58)
+            and flow_score >= float(getattr(self.cfg.trading, "momentum_expansion_min_flow_score", 58.0) or 58.0)
+            and sequence_score >= float(getattr(self.cfg.trading, "momentum_expansion_min_sequence_score", 58.0) or 58.0)
+        )
+
     def _snapshot_is_bullish_call(self, snapshot: dict) -> bool:
         snap = dict(snapshot or {})
         if not snap:
@@ -1303,9 +1463,14 @@ class TradingAgent:
             score += 3.0
         if previous_snapshot.get("first_principles_direction") == "LONG":
             score += 2.0
+        if (
+            bool(previous_snapshot.get("momentum_expansion_active"))
+            and str(previous_snapshot.get("momentum_expansion_direction") or "").upper() == "LONG"
+        ):
+            score += float(getattr(self.cfg.trading, "momentum_expansion_trigger_score_bonus", 8.0) or 8.0)
         if trigger_chase_pct <= 0.35:
             score += 2.0
-        return round(max(60.0, min(88.0, score)), 2)
+        return round(max(60.0, min(94.0, score)), 2)
 
     def _build_trigger_watch_snapshot(
         self,
@@ -1320,9 +1485,16 @@ class TradingAgent:
         score: float,
         trade_plan: dict,
         source: str,
+        sizing_multiplier: Optional[float] = None,
     ) -> dict:
         previous = dict(previous_snapshot or {})
         confidence = str(getattr(market_map_signal, "confidence", "") or previous.get("confidence", "MEDIUM")).upper()
+        effective_size_multiplier = float(
+            sizing_multiplier
+            if sizing_multiplier is not None
+            else getattr(self.cfg.trading, "trigger_watch_size_multiplier", 0.45)
+            or 0.45
+        )
         expectancy = dict(previous.get("expectancy") or {})
         expectancy.setdefault("probability", 0.60 if confidence == "HIGH" else 0.56)
         expectancy.setdefault("expected_r", 0.22)
@@ -1346,7 +1518,7 @@ class TradingAgent:
                 "active": True,
                 "style": "trigger_watch",
                 "reason": "mapped bullish trigger crossed",
-                "size_multiplier": float(getattr(self.cfg.trading, "trigger_watch_size_multiplier", 0.45) or 0.45),
+                "size_multiplier": effective_size_multiplier,
             },
         })
 
@@ -1392,6 +1564,10 @@ class TradingAgent:
             "market_map_reclaim_confirmed": bool(getattr(market_map_signal, "above_reclaim_levels", [])),
             "market_map_nearest_support": getattr(market_map_signal, "nearest_support", 0.0),
             "market_map_nearest_resistance": getattr(market_map_signal, "nearest_resistance", 0.0),
+            "market_map_long_triggers": getattr(market_map_signal, "reclaim_levels", []),
+            "market_map_next_long_trigger": trigger_price,
+            "active_long_trigger": trigger_price,
+            "displayed_long_trigger": trigger_price,
             "market_map_notes": getattr(market_map_signal, "notes", ""),
             "daily_breakout_level": trigger_price,
             "planned_stop_loss": trade_plan.get("stop_loss", 0.0),
@@ -1433,7 +1609,7 @@ class TradingAgent:
             "conviction_entry_active": True,
             "conviction_entry_style": "trigger_watch",
             "conviction_entry_reason": "mapped bullish trigger crossed",
-            "conviction_entry_size_multiplier": float(getattr(self.cfg.trading, "trigger_watch_size_multiplier", 0.45) or 0.45),
+            "conviction_entry_size_multiplier": effective_size_multiplier,
         })
         return snap
 
@@ -1524,15 +1700,30 @@ class TradingAgent:
                 self._trigger_watch_last_prices[coin] = live_price
                 continue
 
-            crossed_levels = [
-                float(level)
-                for level in (getattr(map_signal, "live_above_reclaim_levels", []) or [])
-                if float(level or 0.0) > 0 and live_price >= float(level or 0.0)
-            ]
-            if not crossed_levels:
+            displayed_trigger = self._displayed_long_trigger_from_snapshot(
+                previous_snapshot,
+                live_price=live_price,
+            )
+            candidate_levels: list[float] = []
+            if displayed_trigger > 0:
+                candidate_levels.append(displayed_trigger)
+            for level in (
+                list(getattr(map_signal, "live_above_reclaim_levels", []) or [])
+                + list(getattr(map_signal, "reclaim_levels", []) or [])
+            ):
+                parsed = self._positive_level(level)
+                if parsed > 0:
+                    candidate_levels.append(parsed)
+
+            hit_levels = sorted({round(level, 10) for level in candidate_levels if level > 0 and live_price >= level})
+            if not hit_levels:
                 self._trigger_watch_last_prices[coin] = live_price
                 continue
-            trigger_price = max(crossed_levels)
+            trigger_price = (
+                displayed_trigger
+                if displayed_trigger > 0 and live_price >= displayed_trigger
+                else max(hit_levels)
+            )
             last_price = float(self._trigger_watch_last_prices.get(coin) or 0.0)
             self._trigger_watch_last_prices[coin] = live_price
             trigger_key = f"{coin}:LONG:{trigger_price:.6f}"
@@ -1544,7 +1735,18 @@ class TradingAgent:
                 continue
 
             trigger_chase_pct = max(0.0, (live_price - trigger_price) / max(trigger_price, 1e-9) * 100.0)
-            if trigger_chase_pct > max_chase_pct:
+            momentum_aligned = bool(
+                bool(previous_snapshot.get("momentum_expansion_active"))
+                and str(previous_snapshot.get("momentum_expansion_direction") or "").upper() == "LONG"
+            )
+            momentum_strong = bool(momentum_aligned and previous_snapshot.get("momentum_expansion_strong"))
+            effective_max_chase_pct = max_chase_pct
+            if momentum_aligned:
+                effective_max_chase_pct = max(
+                    effective_max_chase_pct,
+                    float(getattr(self.cfg.trading, "momentum_expansion_trigger_max_chase_pct", 3.0) or 3.0),
+                )
+            if trigger_chase_pct > effective_max_chase_pct:
                 log.info(
                     f"[{coin}] Trigger-watch saw bullish trigger ${trigger_price:,.2f}, "
                     f"but live is already {trigger_chase_pct:.2f}% above it; not chasing."
@@ -1578,6 +1780,12 @@ class TradingAgent:
             trigger_total = int(trigger_stats.get("total", 0) or 0)
             trigger_wr = float(trigger_stats.get("win_rate", 50.0) or 50.0)
             sizing_multiplier = float(getattr(self.cfg.trading, "trigger_watch_size_multiplier", 0.45) or 0.45)
+            if momentum_aligned:
+                sizing_multiplier = max(
+                    sizing_multiplier,
+                    float(getattr(self.cfg.trading, "momentum_expansion_trigger_size_multiplier", 1.0) or 1.0)
+                    if momentum_strong else 0.65,
+                )
             if trigger_total >= 3 and trigger_wr >= 62.0:
                 score += 3.0
                 rl_pattern_boost += 0.05
@@ -1596,9 +1804,12 @@ class TradingAgent:
                 score=score,
                 trade_plan=trade_plan,
                 source=source,
+                sizing_multiplier=sizing_multiplier,
             )
             snapshot["trigger_watch"]["learned_total"] = trigger_total
             snapshot["trigger_watch"]["learned_win_rate"] = trigger_wr
+            snapshot["trigger_watch"]["displayed_trigger_source"] = bool(displayed_trigger > 0)
+            snapshot["trigger_watch"]["momentum_expansion_sized"] = bool(momentum_aligned)
             snapshot["rl_win_rate"] = rl_stats.get("win_rate")
             snapshot["rl_long_wr"] = rl_stats.get("long_wr")
             snapshot["rl_pattern_boost"] = rl_pattern_boost
@@ -1751,11 +1962,14 @@ class TradingAgent:
 
         live_price = float(df["close"].iloc[-1]) if len(df) else 0.0
         analysis_price = float(analysis_df["close"].iloc[-1]) if len(analysis_df) else live_price
+        momentum_context = self._recent_momentum_context(df, live_price)
         if getattr(self.cfg.trading, "use_closed_candles_for_conviction", True):
             log.info(
                 f"[{coin}] Conviction on completed {self.cfg.trading.candle_interval} candles "
                 f"@ {analysis_price:.2f} | live price {live_price:.2f}"
             )
+        if momentum_context.get("momentum_expansion_active"):
+            log.info(f"[{coin}] Momentum expansion: {momentum_context.get('momentum_expansion_summary')}")
 
         # Classic indicators
         tech = compute_signals(analysis_df, coin, icfg, self.cfg.trading)
@@ -1916,6 +2130,22 @@ class TradingAgent:
             venue_price=live_price,
             max_deviation_pct=getattr(self.cfg.trading, "data_reliability_max_reference_deviation_pct", 2.0),
         )
+        market_map_long_triggers = [
+            float(level)
+            for level in (getattr(market_map_signal, "reclaim_levels", []) if market_map_signal else [])
+            if float(level or 0.0) > 0
+        ]
+        market_map_short_triggers = [
+            float(level)
+            for level in (getattr(market_map_signal, "breakdown_levels", []) if market_map_signal else [])
+            if float(level or 0.0) > 0
+        ]
+        market_map_next_long_trigger = min(
+            [level for level in market_map_long_triggers if level >= float(live_price or 0.0)] or [0.0]
+        )
+        market_map_next_short_trigger = max(
+            [level for level in market_map_short_triggers if level <= float(live_price or 0.0)] or [0.0]
+        )
         self._last_signals[coin] = {
             "action":          signal.action,
             "decision":        signal.action,
@@ -1934,6 +2164,14 @@ class TradingAgent:
             "price_deviation_pct": price_diagnostics.get("price_deviation_pct"),
             "price_status":    price_diagnostics.get("price_status", "UNKNOWN"),
             "price_warning":   price_diagnostics.get("price_warning", ""),
+            "recent_move_pct": momentum_context.get("recent_move_pct", 0.0),
+            "move_pct_24h": momentum_context.get("move_pct_24h", 0.0),
+            "move_pct_6h": momentum_context.get("move_pct_6h", 0.0),
+            "momentum_expansion_active": momentum_context.get("momentum_expansion_active", False),
+            "momentum_expansion_direction": momentum_context.get("momentum_expansion_direction", "FLAT"),
+            "momentum_expansion_score": momentum_context.get("momentum_expansion_score", 0.0),
+            "momentum_expansion_strong": momentum_context.get("momentum_expansion_strong", False),
+            "momentum_expansion_summary": momentum_context.get("momentum_expansion_summary", ""),
             "using_closed_candles": bool(getattr(self.cfg.trading, "use_closed_candles_for_conviction", True)),
             "reason":          signal.reason,
             "flat_reason":     signal.flat_reason,
@@ -2050,6 +2288,14 @@ class TradingAgent:
             "market_map_breakdown_confirmed": bool(getattr(market_map_signal, "below_breakdown_levels", [])) if market_map_signal else False,
             "market_map_live_breakdown": bool(getattr(market_map_signal, "live_below_breakdown_levels", [])) if market_map_signal else False,
             "market_map_daily_close": getattr(market_map_signal, "daily_close", 0.0) if market_map_signal else 0.0,
+            "market_map_long_triggers": market_map_long_triggers,
+            "market_map_short_triggers": market_map_short_triggers,
+            "market_map_next_long_trigger": market_map_next_long_trigger,
+            "market_map_next_short_trigger": market_map_next_short_trigger,
+            "active_long_trigger": market_map_next_long_trigger,
+            "active_short_trigger": market_map_next_short_trigger,
+            "displayed_long_trigger": market_map_next_long_trigger,
+            "displayed_short_trigger": market_map_next_short_trigger,
             "market_map_nearest_support": getattr(market_map_signal, "nearest_support", 0.0) if market_map_signal else 0.0,
             "market_map_nearest_resistance": getattr(market_map_signal, "nearest_resistance", 0.0) if market_map_signal else 0.0,
             "market_map_notes": getattr(market_map_signal, "notes", "") if market_map_signal else "",
@@ -2130,6 +2376,7 @@ class TradingAgent:
         }
         self._refresh_first_principles_view(coin)
         self._refresh_asset_state(coin, stage="analysis", current_position=current_pos)
+        self._apply_momentum_expansion_conviction(coin, signal)
         self._apply_analog_context(
             coin,
             signal,
@@ -3206,6 +3453,98 @@ class TradingAgent:
         self._refresh_first_principles_view(coin)
         self._refresh_asset_state(coin, stage=str(snap.get("decision_stage") or "analysis"))
 
+    def _apply_momentum_expansion_conviction(self, coin: str, signal) -> None:
+        if not getattr(self.cfg.trading, "momentum_expansion_enabled", True):
+            return
+        if coin not in self._last_signals:
+            return
+        snap = dict(self._last_signals.get(coin) or {})
+        if not bool(snap.get("momentum_expansion_active", False)):
+            return
+        direction = str(getattr(signal, "action", "") or "").upper()
+        thesis = dict(getattr(signal, "thesis", {}) or snap.get("thesis", {}) or {})
+        candidate = str(thesis.get("candidate_action") or snap.get("thesis_candidate_action") or "").upper()
+        momentum_direction = str(snap.get("momentum_expansion_direction") or "").upper()
+        if direction not in {"LONG", "SHORT"}:
+            direction = candidate
+        if direction not in {"LONG", "SHORT"} or direction != momentum_direction:
+            return
+
+        move_pct = abs(float(snap.get("recent_move_pct") or snap.get("move_pct_24h") or 0.0))
+        min_move = float(getattr(self.cfg.trading, "momentum_expansion_min_move_pct", 8.0) or 8.0)
+        if move_pct < min_move:
+            return
+        map_bias = str(snap.get("market_map_bias") or "").upper()
+        if (direction == "LONG" and map_bias == "BEARISH") or (direction == "SHORT" and map_bias == "BULLISH"):
+            return
+
+        expectancy = dict(getattr(signal, "expectancy", {}) or snap.get("expectancy", {}) or {})
+        probability = float(expectancy.get("probability", snap.get("expectancy_probability", 0.50)) or 0.50)
+        min_probability = float(getattr(self.cfg.trading, "momentum_expansion_min_probability", 0.58) or 0.58)
+        if probability < min_probability:
+            return
+
+        strong = bool(snap.get("momentum_expansion_strong", False))
+        bonus = float(getattr(self.cfg.trading, "momentum_expansion_trigger_score_bonus", 8.0) or 8.0)
+        if not strong:
+            bonus *= 0.55
+        effective = self._effective_entry_score(coin, direction, signal, snap)
+        boosted_score = min(100.0, max(float(getattr(signal, "score", 50.0) or 50.0), effective) + bonus)
+        if direction == "SHORT":
+            boosted_score = max(0.0, min(float(getattr(signal, "score", 50.0) or 50.0), effective) - bonus)
+        signal.score = round(boosted_score, 2)
+
+        expectancy["probability"] = max(probability, 0.66 if strong else 0.60)
+        expectancy["expected_r"] = max(float(expectancy.get("expected_r", 0.0) or 0.0), 0.34 if strong else 0.24)
+        expectancy["uncertainty"] = min(float(expectancy.get("uncertainty", 0.45) or 0.45), 0.36 if strong else 0.42)
+        expectancy["score"] = max(float(expectancy.get("score", signal.score) or signal.score), signal.score)
+        expectancy["summary"] = (
+            f"{direction.lower()} momentum expansion improved conviction after a {move_pct:.1f}% recent move"
+        )
+        signal.expectancy = expectancy
+
+        conviction = dict(thesis.get("conviction_entry") or snap.get("conviction_entry") or {})
+        conviction["active"] = True
+        conviction["style"] = "MOMENTUM_EXPANSION"
+        conviction["reason"] = f"mapped {direction.lower()} setup plus {move_pct:.1f}% momentum expansion"
+        conviction["bypass_precision"] = True
+        conviction["size_multiplier"] = max(
+            float(conviction.get("size_multiplier", 0.0) or 0.0),
+            float(getattr(self.cfg.trading, "momentum_expansion_trigger_size_multiplier", 1.0) or 1.0) if strong else 0.65,
+        )
+        thesis["conviction_entry"] = conviction
+        thesis["conviction_score"] = max(float(thesis.get("conviction_score", signal.score) or signal.score), signal.score)
+        reasons = list(thesis.get("reasons") or snap.get("thesis_reasons") or [])
+        expansion_reason = f"{move_pct:.1f}% momentum expansion confirms attention/flow"
+        if expansion_reason not in reasons:
+            reasons.insert(0, expansion_reason)
+        thesis["reasons"] = reasons[:6]
+        thesis["summary"] = (
+            f"Momentum expansion {direction.lower()}: bigger-picture trend is active; do not chase far above trigger."
+        )
+        signal.thesis = thesis
+
+        self._last_signals[coin].update({
+            "score": signal.score,
+            "expectancy": expectancy,
+            "expectancy_probability": expectancy.get("probability", 0.50),
+            "expectancy_expected_r": expectancy.get("expected_r", 0.0),
+            "expectancy_uncertainty": expectancy.get("uncertainty", 0.50),
+            "expectancy_score": expectancy.get("score", signal.score),
+            "conviction_entry": conviction,
+            "conviction_entry_active": True,
+            "conviction_entry_style": conviction.get("style", ""),
+            "conviction_entry_reason": conviction.get("reason", ""),
+            "conviction_entry_size_multiplier": conviction.get("size_multiplier", 1.0),
+            "thesis": thesis,
+            "thesis_conviction_score": thesis.get("conviction_score", signal.score),
+            "thesis_summary": thesis.get("summary", ""),
+            "thesis_reasons": thesis.get("reasons", []),
+            "momentum_expansion_conviction_boost": True,
+            "momentum_expansion_conviction_summary": conviction.get("reason", ""),
+        })
+        self._sync_signal_snapshot(coin, signal)
+
     def _apply_analog_context(
         self,
         coin: str,
@@ -3874,14 +4213,14 @@ class TradingAgent:
             return True
 
         direction = str(getattr(signal, "action", "") or "").upper()
-        score = float(getattr(signal, "score", 50.0) or 50.0)
+        self._refresh_first_principles_view(coin)
+        sig = dict(self._last_signals.get(coin, {}) or {})
+        score = self._effective_entry_score(coin, direction, signal, sig)
         marginal_long = score < float(getattr(self.cfg.trading, "first_principles_guard_marginal_long_score", 70.0) or 70.0)
         marginal_short = score > float(getattr(self.cfg.trading, "first_principles_guard_marginal_short_score", 30.0) or 30.0)
         if not ((direction == "LONG" and marginal_long) or (direction == "SHORT" and marginal_short)):
             return True
 
-        self._refresh_first_principles_view(coin)
-        sig = dict(self._last_signals.get(coin, {}) or {})
         view = dict(sig.get("first_principles") or {})
         expectancy = dict(getattr(signal, "expectancy", {}) or sig.get("expectancy", {}) or {})
         thesis = dict(getattr(signal, "thesis", {}) or sig.get("thesis", {}) or {})
@@ -3911,6 +4250,7 @@ class TradingAgent:
         attention_ok = attention_score >= float(getattr(self.cfg.trading, "first_principles_guard_min_attention_score", 58.0) or 58.0)
         sequence_ok = sequence_score >= float(getattr(self.cfg.trading, "first_principles_guard_min_sequence_score", 60.0) or 60.0)
         probability_ok = probability >= float(getattr(self.cfg.trading, "first_principles_guard_min_probability", 0.54) or 0.54)
+        momentum_context_ok = self._momentum_context_ok(coin, direction, signal, sig)
 
         performance_verdict = {"active": False, "permitted": True, "summary": ""}
         if getattr(self.cfg.trading, "performance_edge_guard_enabled", True):
@@ -3925,9 +4265,15 @@ class TradingAgent:
 
         permitted = bool(
             event_like
+            or momentum_context_ok
             or (fundamentals_ok and attention_ok and sequence_ok and probability_ok)
         )
-        if performance_verdict.get("active") and not event_like and not (fundamentals_ok and attention_ok and sequence_ok):
+        if (
+            performance_verdict.get("active")
+            and not event_like
+            and not momentum_context_ok
+            and not (fundamentals_ok and attention_ok and sequence_ok)
+        ):
             permitted = False
 
         self._last_signals.setdefault(coin, {})
@@ -3939,6 +4285,8 @@ class TradingAgent:
             "sequence_score": round(sequence_score, 2),
             "probability": round(probability, 4),
             "event_like": event_like,
+            "momentum_context": momentum_context_ok,
+            "effective_score": round(score, 2),
             "performance_edge": performance_verdict,
             "summary": view.get("summary", ""),
         }
@@ -3989,7 +4337,7 @@ class TradingAgent:
         thesis = dict(getattr(signal, "thesis", {}) or sig.get("thesis", {}) or {})
         conviction_entry = dict(thesis.get("conviction_entry") or sig.get("conviction_entry") or {})
 
-        score = float(getattr(signal, "score", sig.get("score", 50.0)) or 50.0)
+        score = self._effective_entry_score(coin, direction, signal, sig)
         probability = float(expectancy.get("probability", sig.get("expectancy_probability", 0.50)) or 0.50)
         expected_r = float(expectancy.get("expected_r", sig.get("expectancy_expected_r", 0.0)) or 0.0)
         uncertainty = float(expectancy.get("uncertainty", sig.get("expectancy_uncertainty", 0.50)) or 0.50)
@@ -4090,6 +4438,7 @@ class TradingAgent:
             and uncertainty <= max_uncertainty
             and sequence_score >= min_sequence - 4.0
         )
+        momentum_context_ok = self._momentum_context_ok(coin, direction, signal, sig)
         price_only = bool(price_score >= 70.0 and fundamental_score < min_fundamental and attention_score < min_attention)
 
         performance_verdict = {"active": False, "permitted": True, "summary": ""}
@@ -4109,8 +4458,9 @@ class TradingAgent:
             or event_context_ok
             or attention_context_ok
             or pair_context_ok
+            or momentum_context_ok
         )
-        if toxic_history and not (event_context_ok or attention_context_ok or (context_stack_ok and odds_ok)):
+        if toxic_history and not (event_context_ok or attention_context_ok or momentum_context_ok or (context_stack_ok and odds_ok)):
             permitted = False
 
         blockers: list[str] = []
@@ -4118,6 +4468,8 @@ class TradingAgent:
             blockers.append("needs fundamentals, attention, and flow to line up")
         if not odds_ok and not event_context_ok:
             blockers.append("needs cleaner odds/expected-R before adding risk")
+        if momentum_context_ok and blockers:
+            blockers = [item for item in blockers if item != "needs fundamentals, attention, and flow to line up"]
         if price_only:
             blockers.append("raw chart strength is price-only")
         if toxic_history and performance_verdict.get("summary"):
@@ -4147,6 +4499,8 @@ class TradingAgent:
             "event_like": event_like,
             "attention_like": attention_context_ok,
             "pair_like": pair_like,
+            "momentum_context": momentum_context_ok,
+            "effective_score": round(score, 2),
             "performance_edge": performance_verdict,
         }
         self._last_signals[coin]["win_rate_context_guard_summary"] = summary
@@ -4250,16 +4604,17 @@ class TradingAgent:
             or event_score >= float(getattr(self.cfg.trading, "thesis_runner_min_event_score", 2.75) or 2.75)
             or catalyst_score >= float(getattr(self.cfg.trading, "thesis_runner_min_catalyst_score", 3.0) or 3.0)
         )
+        momentum_context_ok = self._momentum_context_ok(coin, direction, signal, sig)
         min_long = float(getattr(self.cfg.trading, "setup_quality_guard_min_long_score", 70.0) or 70.0)
         max_short = float(getattr(self.cfg.trading, "setup_quality_guard_max_short_score", 30.0) or 30.0)
         min_probability = float(getattr(self.cfg.trading, "setup_quality_guard_min_probability", 0.58) or 0.58)
         event_min_probability = float(getattr(self.cfg.trading, "setup_quality_guard_event_min_probability", 0.54) or 0.54)
         min_expected_r = float(getattr(self.cfg.trading, "setup_quality_guard_min_expected_r", 0.22) or 0.22)
-        score = float(getattr(signal, "score", sig.get("score", 50.0)) or 50.0)
+        score = self._effective_entry_score(coin, direction, signal, sig)
         score_ok = (direction == "LONG" and score >= min_long) or (direction == "SHORT" and score <= max_short)
         probability_ok = probability >= (event_min_probability if event_like else min_probability)
         expected_r_ok = expected_r >= min_expected_r
-        if score_ok and probability_ok and (expected_r_ok or event_like):
+        if momentum_context_ok or (score_ok and probability_ok and (expected_r_ok or event_like)):
             self._last_signals.setdefault(coin, {})
             self._last_signals[coin]["setup_quality_guard"] = {
                 "active": True,
@@ -4267,7 +4622,13 @@ class TradingAgent:
                 "samples": len(rows),
                 "win_rate": round(win_rate, 4),
                 "reversal_losses": len(reversal_losses),
-                "summary": "toxic history noted, but A+ setup clears the stricter gate",
+                "momentum_context": momentum_context_ok,
+                "effective_score": round(score, 2),
+                "summary": (
+                    "toxic history noted, but momentum expansion clears the stricter gate"
+                    if momentum_context_ok
+                    else "toxic history noted, but A+ setup clears the stricter gate"
+                ),
             }
             return True
 
@@ -4289,6 +4650,8 @@ class TradingAgent:
             "reversal_losses": len(reversal_losses),
             "probability": round(probability, 4),
             "expected_r": round(expected_r, 4),
+            "momentum_context": momentum_context_ok,
+            "effective_score": round(score, 2),
             "summary": reason,
         }
         self._sync_signal_snapshot(coin, signal)

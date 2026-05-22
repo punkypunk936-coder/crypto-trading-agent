@@ -306,6 +306,15 @@ class TradingConfig:
     first_principles_guard_min_probability: float = 0.54
     first_principles_guard_event_score: float = 2.5
     first_principles_guard_catalyst_score: float = 2.5
+    momentum_expansion_enabled: bool = True
+    momentum_expansion_min_move_pct: float = 8.0
+    momentum_expansion_strong_move_pct: float = 18.0
+    momentum_expansion_min_probability: float = 0.58
+    momentum_expansion_min_flow_score: float = 58.0
+    momentum_expansion_min_sequence_score: float = 58.0
+    momentum_expansion_trigger_size_multiplier: float = 1.0
+    momentum_expansion_trigger_score_bonus: float = 8.0
+    momentum_expansion_trigger_max_chase_pct: float = 3.0
     win_rate_recovery_context_guard_enabled: bool = True
     win_rate_recovery_min_fundamental_score: float = 62.0
     win_rate_recovery_min_attention_score: float = 62.0

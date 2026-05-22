@@ -1629,12 +1629,22 @@ def action_board(
             prefer="min",
             fallback=sig.get("market_map_nearest_resistance"),
         )
-        long_trigger = _pick_level(
+        signal_long_trigger = _safe_float(
+            sig.get("displayed_long_trigger")
+            or sig.get("active_long_trigger")
+            or sig.get("market_map_next_long_trigger")
+        )
+        signal_short_trigger = _safe_float(
+            sig.get("displayed_short_trigger")
+            or sig.get("active_short_trigger")
+            or sig.get("market_map_next_short_trigger")
+        )
+        long_trigger = signal_long_trigger or _pick_level(
             map_entry.get("daily_close_long_above"),
             prefer="min",
             fallback=resistance,
         )
-        short_trigger = _pick_level(
+        short_trigger = signal_short_trigger or _pick_level(
             map_entry.get("daily_close_short_below"),
             prefer="max",
             fallback=support,

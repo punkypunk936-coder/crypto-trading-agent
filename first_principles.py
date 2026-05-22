@@ -76,6 +76,14 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def _cfg_value(config: Any, key: str, default: Any) -> Any:
+    if isinstance(config, dict):
+        return config.get(key, default)
+    if config is not None:
+        return getattr(config, key, default)
+    return default
+
+
 def _safe_str(value: Any, default: str = "") -> str:
     text = str(value or "").strip()
     return text if text else default
@@ -231,8 +239,33 @@ def build_first_principles_view(coin: str, signal: dict | None, config: Any = No
     score = _safe_float(signal.get("score"), 50.0)
     expectancy_probability = _safe_float(signal.get("expectancy_probability"), 0.50)
     expectancy_r = _safe_float(signal.get("expectancy_expected_r"))
+    recent_move_pct = _safe_float(signal.get("recent_move_pct") or signal.get("move_pct_24h"))
+    min_expansion = _safe_float(_cfg_value(config, "momentum_expansion_min_move_pct", 8.0), 8.0)
+    strong_expansion = _safe_float(_cfg_value(config, "momentum_expansion_strong_move_pct", 18.0), 18.0)
+    expansion_abs = abs(recent_move_pct)
+    momentum_aligned = bool(
+        direction in {"LONG", "SHORT"}
+        and (
+            (direction == "LONG" and recent_move_pct >= min_expansion)
+            or (direction == "SHORT" and recent_move_pct <= -min_expansion)
+        )
+    )
 
     theme_attention = _safe_float(theme.get("base_attention"), 50.0)
+    expansion_has_driver = bool(
+        signal.get("news_headline")
+        or signal.get("news_catalyst_summary")
+        or signal.get("news_event_summary")
+        or signal.get("social_attention_summary")
+        or signal.get("narrative_summary")
+    )
+    expansion_fundamental_bonus = (
+        min(12.0 if expansion_has_driver else 6.0, expansion_abs * 0.35)
+        if momentum_aligned else 0.0
+    )
+    expansion_attention_bonus = min(20.0, expansion_abs * 0.70) if momentum_aligned else 0.0
+    expansion_flow_bonus = min(14.0, expansion_abs * 0.45) if momentum_aligned else 0.0
+    expansion_price_bonus = min(18.0, expansion_abs * 0.70) if momentum_aligned else 0.0
     fundamental_score = _clamp(
         42.0
         + event_score * 8.5
@@ -240,6 +273,7 @@ def build_first_principles_view(coin: str, signal: dict | None, config: Any = No
         + max(0.0, _safe_float(signal.get("analyst_revision_score"))) * 4.0
         + (7.0 if implied_move >= 4.0 else 0.0)
         + max(0.0, theme_attention - 50.0) * 0.32
+        + expansion_fundamental_bonus
     )
     attention_score = _clamp(
         theme_attention * 0.55
@@ -247,6 +281,7 @@ def build_first_principles_view(coin: str, signal: dict | None, config: Any = No
         + min(14.0, social_mentions * 2.0)
         + event_score * 2.0
         + catalyst_score * 2.0
+        + expansion_attention_bonus
     )
     flow_score = _clamp(
         attention_score * 0.45
@@ -254,8 +289,14 @@ def build_first_principles_view(coin: str, signal: dict | None, config: Any = No
         + _safe_float(signal.get("orderbook_score"), 50.0) * 0.20
         + _safe_float(signal.get("market_map_score_adjustment")) * 1.4
         + 25.0
+        + expansion_flow_bonus
     )
-    price_score = _clamp(50.0 + abs(score - 50.0) * 1.6 + _safe_float(signal.get("market_map_score_adjustment")) * 1.2)
+    price_score = _clamp(
+        50.0
+        + abs(score - 50.0) * 1.6
+        + _safe_float(signal.get("market_map_score_adjustment")) * 1.2
+        + expansion_price_bonus
+    )
     sequence_score = _clamp(fundamental_score * 0.44 + attention_score * 0.28 + flow_score * 0.18 + price_score * 0.10)
 
     event_summary = _first_text(
@@ -294,13 +335,25 @@ def build_first_principles_view(coin: str, signal: dict | None, config: Any = No
         "price action is only the timing/confirmation layer",
     )
 
-    primary_driver = event_summary or catalyst_summary or theme.get("what_matters", "")
+    expansion_driver = ""
+    if momentum_aligned:
+        expansion_driver = (
+            f"{coin} is in {'strong' if expansion_abs >= strong_expansion else 'active'} "
+            f"{side} expansion ({recent_move_pct:+.1f}% over ~24h)"
+        )
+    primary_driver = event_summary or catalyst_summary or expansion_driver or theme.get("what_matters", "")
     flow_text = social_summary or f"{theme.get('label', 'Theme')} attention is the main flow read"
     price_text = price_confirmation
 
     if direction == "FLAT":
         likely_path = "No prediction yet; wait for fundamentals/flows to point one way."
         plain_thesis = "No clean thesis yet."
+    elif momentum_aligned and sequence_score >= 66.0 and expectancy_probability >= 0.60:
+        likely_path = f"{coin} can keep trending {side} while expansion, attention, and invalidation stay intact."
+        plain_thesis = f"{side.title()} thesis: {expansion_driver}; size off the trigger, not a late chase."
+    elif momentum_aligned and sequence_score >= 60.0 and expectancy_probability >= 0.56:
+        likely_path = f"{coin} deserves starter-size {side} exposure while the expansion holds."
+        plain_thesis = f"{side.title()} starter: {expansion_driver}; let risk be defined by invalidation."
     elif price_score > 70.0 and fundamental_score < 55.0:
         likely_path = f"{coin} needs a real driver before trusting the chart move."
         plain_thesis = f"{side.title()} wait: chart is moving, but the driver is not strong yet."
@@ -319,7 +372,11 @@ def build_first_principles_view(coin: str, signal: dict | None, config: Any = No
         wrong_if = "Wrong if the setup stays catalyst-light and price stays noisy."
 
     decision = "wait"
-    if direction in {"LONG", "SHORT"} and sequence_score >= 72.0 and expectancy_probability >= 0.56:
+    if momentum_aligned and direction in {"LONG", "SHORT"} and sequence_score >= 66.0 and expectancy_probability >= 0.60:
+        decision = "press"
+    elif momentum_aligned and direction in {"LONG", "SHORT"} and sequence_score >= 60.0 and expectancy_probability >= 0.56:
+        decision = "starter"
+    elif direction in {"LONG", "SHORT"} and sequence_score >= 72.0 and expectancy_probability >= 0.56:
         decision = "press"
     elif direction in {"LONG", "SHORT"} and (fundamental_score >= 62.0 or attention_score >= 66.0):
         decision = "starter"
@@ -343,6 +400,12 @@ def build_first_principles_view(coin: str, signal: dict | None, config: Any = No
         "catalyst_score": round(catalyst_score, 2),
         "social_attention_score": round(social_score, 2),
         "social_attention_mentions": social_mentions,
+        "recent_move_pct": round(recent_move_pct, 4),
+        "momentum_expansion": momentum_aligned,
+        "momentum_expansion_score": round(
+            min(100.0, 50.0 + expansion_abs * 1.85) if momentum_aligned else 0.0,
+            2,
+        ),
         "decision": decision,
         "why_now": _clip(fundamental_driver or plain_thesis, 150),
         "fundamental_driver": _clip(fundamental_driver, 180),

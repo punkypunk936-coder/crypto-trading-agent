@@ -553,6 +553,8 @@ class MarketMapSignal:
     nearest_resistance_distance_pct: float = 0.0
     in_demand_zone: bool = False
     in_supply_zone: bool = False
+    reclaim_levels: List[float] = field(default_factory=list)
+    breakdown_levels: List[float] = field(default_factory=list)
     above_reclaim_levels: List[float] = field(default_factory=list)
     below_breakdown_levels: List[float] = field(default_factory=list)
     live_above_reclaim_levels: List[float] = field(default_factory=list)
@@ -607,6 +609,8 @@ def get_market_map_signal(coin: str, current_price: float, closed_price: float =
     supply_zone = _normalize_zone(entry.get("supply_zone"))
     daily_reclaim = _as_float_list(entry.get("daily_close_long_above"))
     daily_breakdown = _as_float_list(entry.get("daily_close_short_below"))
+    signal.reclaim_levels = daily_reclaim
+    signal.breakdown_levels = daily_breakdown
     signal.daily_close = _get_daily_close(coin.upper())
 
     support, support_dist = _nearest_level(signal.current_price, supports, side="support")
