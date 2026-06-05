@@ -7,7 +7,7 @@ export default async (req: Request, context: Context) => {
   const snapshotBlob = await store.get("dashboard-snapshot", { type: "json" });
   if (snapshotBlob && typeof snapshotBlob === "object" && (snapshotBlob as any).state) {
     return new Response(JSON.stringify(snapshotBlob), {
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-store, max-age=0" },
     });
   }
 
@@ -64,7 +64,7 @@ export default async (req: Request, context: Context) => {
         policyHealthBlob && typeof policyHealthBlob === "object" ? policyHealthBlob : {},
       server_time: new Date().toISOString().slice(0, 19).replace("T", " "),
     }),
-    { headers: { "Content-Type": "application/json" } }
+    { headers: { "Content-Type": "application/json", "Cache-Control": "no-store, max-age=0" } }
   );
 };
 

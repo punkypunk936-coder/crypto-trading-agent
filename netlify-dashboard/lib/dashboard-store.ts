@@ -564,24 +564,113 @@ export async function writeJson(pathname: string, value: unknown) {
 export function githubFallbackUrl(pathname: string) {
   const owner = process.env.DASHBOARD_STATE_GITHUB_OWNER || FALLBACK_REPO_OWNER;
   const repo = process.env.DASHBOARD_STATE_GITHUB_REPO || FALLBACK_REPO_NAME;
-  const tag = process.env.DASHBOARD_STATE_GIT_TAG || FALLBACK_REPO_TAG;
+  const tag = githubFallbackRef();
   return `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(tag)}/${pathname}`;
 }
 
-export async function readGitFallbackJson(pathname: string, fallback: any) {
+function githubFallbackRef() {
+  return process.env.DASHBOARD_STATE_GIT_REF || process.env.DASHBOARD_STATE_GIT_TAG || FALLBACK_REPO_TAG;
+}
+
+function githubJsonHeaders(): Record<string, string> {
+  const token = process.env.DASHBOARD_STATE_GITHUB_TOKEN || process.env.GITHUB_TOKEN || "";
+  const headers: Record<string, string> = { Accept: "application/vnd.github+json" };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return headers;
+}
+
+function githubRawHeaders(): Record<string, string> {
+  const token = process.env.DASHBOARD_STATE_GITHUB_TOKEN || process.env.GITHUB_TOKEN || "";
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return headers;
+}
+
+function encodeGithubPath(pathname: string) {
+  return pathname.split("/").map((part) => encodeURIComponent(part)).join("/");
+}
+
+function withCacheBuster(url: string) {
+  return `${url}${url.includes("?") ? "&" : "?"}ts=${Date.now()}`;
+}
+
+export function githubContentsFallbackUrl(pathname: string) {
+  const owner = process.env.DASHBOARD_STATE_GITHUB_OWNER || FALLBACK_REPO_OWNER;
+  const repo = process.env.DASHBOARD_STATE_GITHUB_REPO || FALLBACK_REPO_NAME;
+  const ref = githubFallbackRef();
+  return `https://api.github.com/repos/${owner}/${repo}/contents/${encodeGithubPath(pathname)}?ref=${encodeURIComponent(ref)}`;
+}
+
+async function parseJsonResponse(response: Response) {
+  const text = await response.text();
+  if (!text.trim()) {
+    return undefined;
+  }
   try {
-    const response = await fetch(githubFallbackUrl(pathname), {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
+async function readGithubContentsJson(pathname: string) {
+  try {
+    const response = await fetch(withCacheBuster(githubContentsFallbackUrl(pathname)), {
       cache: "no-store",
+      headers: githubJsonHeaders(),
+    });
+    if (!response.ok) {
+      return undefined;
+    }
+
+    const meta = await response.json().catch(() => null);
+    const downloadUrl = typeof meta?.download_url === "string" ? meta.download_url : "";
+    if (downloadUrl) {
+      const rawResponse = await fetch(withCacheBuster(downloadUrl), {
+        cache: "no-store",
+        headers: githubRawHeaders(),
+      });
+      if (rawResponse.ok) {
+        return await parseJsonResponse(rawResponse);
+      }
+    }
+
+    const content = typeof meta?.content === "string" ? meta.content.replace(/\s/g, "") : "";
+    const decoder = (globalThis as any).atob;
+    if (content && typeof decoder === "function") {
+      try {
+        return JSON.parse(decoder(content));
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function readGitFallbackJson(pathname: string, fallback: any) {
+  const contentsValue = await readGithubContentsJson(pathname);
+  if (contentsValue !== undefined) {
+    return contentsValue;
+  }
+
+  try {
+    const response = await fetch(withCacheBuster(githubFallbackUrl(pathname)), {
+      cache: "no-store",
+      headers: githubRawHeaders(),
     });
     if (!response.ok) {
       return fallback;
     }
 
-    const text = await response.text();
-    if (!text.trim()) {
-      return fallback;
-    }
-    return JSON.parse(text);
+    const rawValue = await parseJsonResponse(response);
+    return rawValue === undefined ? fallback : rawValue;
   } catch {
     return fallback;
   }

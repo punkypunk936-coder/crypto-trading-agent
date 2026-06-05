@@ -21,6 +21,11 @@ import {
   readJson,
 } from "../lib/dashboard-store";
 
+type DashboardCandidate = {
+  source: string;
+  snapshot: any;
+};
+
 function hasRichSnapshot(snapshot: any) {
   return Boolean(
     snapshot &&
@@ -49,14 +54,41 @@ function snapshotStamp(snapshot: any) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function pickFreshestSnapshot(candidates: any[]) {
-  let winner: any = null;
+function snapshotStampLabel(snapshot: any) {
+  return snapshot?.server_time || snapshot?.state?.last_cycle || null;
+}
+
+function summarizeCandidates(candidates: DashboardCandidate[]) {
+  return candidates.map((candidate) => ({
+    source: candidate.source,
+    available: Boolean(candidate.snapshot && typeof candidate.snapshot === "object"),
+    rich: hasRichSnapshot(candidate.snapshot),
+    cycle_number: snapshotCycle(candidate.snapshot),
+    stamp: snapshotStampLabel(candidate.snapshot),
+  }));
+}
+
+function withStateSource(snapshot: any, source: string, candidates: DashboardCandidate[]) {
+  const runtime = snapshot?.runtime && typeof snapshot.runtime === "object" ? snapshot.runtime : {};
+  return {
+    ...snapshot,
+    runtime: {
+      ...runtime,
+      dashboard_state_source: source,
+      dashboard_state_candidates: summarizeCandidates(candidates),
+    },
+  };
+}
+
+function pickFreshestSnapshot(candidates: DashboardCandidate[]) {
+  let winner: DashboardCandidate | null = null;
   let winnerRank: [number, number] = [-1, -1];
   for (const candidate of candidates) {
-    if (!hasRichSnapshot(candidate)) {
+    const snapshot = candidate.snapshot;
+    if (!hasRichSnapshot(snapshot)) {
       continue;
     }
-    const rank: [number, number] = [snapshotCycle(candidate), snapshotStamp(candidate)];
+    const rank: [number, number] = [snapshotCycle(snapshot), snapshotStamp(snapshot)];
     if (
       rank[0] > winnerRank[0] ||
       (rank[0] === winnerRank[0] && rank[1] > winnerRank[1])
@@ -68,14 +100,15 @@ function pickFreshestSnapshot(candidates: any[]) {
   return winner;
 }
 
-function pickFreshestThinFallback(candidates: any[]) {
-  let winner: any = null;
+function pickFreshestThinFallback(candidates: DashboardCandidate[]) {
+  let winner: DashboardCandidate | null = null;
   let winnerRank: [number, number] = [-1, -1];
   for (const candidate of candidates) {
-    if (!candidate || typeof candidate !== "object" || !candidate.state) {
+    const snapshot = candidate.snapshot;
+    if (!snapshot || typeof snapshot !== "object" || !snapshot.state) {
       continue;
     }
-    const rank: [number, number] = [snapshotCycle(candidate), snapshotStamp(candidate)];
+    const rank: [number, number] = [snapshotCycle(snapshot), snapshotStamp(snapshot)];
     if (
       rank[0] > winnerRank[0] ||
       (rank[0] === winnerRank[0] && rank[1] > winnerRank[1])
@@ -88,7 +121,7 @@ function pickFreshestThinFallback(candidates: any[]) {
 }
 
 export async function GET() {
-  const cacheHeaders = { "Cache-Control": "public, s-maxage=15, stale-while-revalidate=45" };
+  const cacheHeaders = { "Cache-Control": "no-store, max-age=0" };
   try {
     let blobSnapshot = null;
     try {
@@ -100,25 +133,39 @@ export async function GET() {
     const netlifySnapshot = await readNetlifyStateFallback();
     const gitSnapshot = await readGitFallbackJson(SNAPSHOT_PATH, null);
 
-    const freshestRichSnapshot = pickFreshestSnapshot([blobSnapshot, netlifySnapshot, gitSnapshot]);
+    const candidates: DashboardCandidate[] = [
+      { source: "vercel_blob", snapshot: blobSnapshot },
+      { source: "netlify_fallback", snapshot: netlifySnapshot },
+      { source: "github_fallback", snapshot: gitSnapshot },
+    ];
+
+    const freshestRichSnapshot = pickFreshestSnapshot(candidates);
     if (freshestRichSnapshot) {
-      return json(freshestRichSnapshot, { headers: cacheHeaders });
+      return json(
+        withStateSource(freshestRichSnapshot.snapshot, freshestRichSnapshot.source, candidates),
+        { headers: cacheHeaders },
+      );
     }
 
-    const thinFallbackSnapshot = pickFreshestThinFallback([blobSnapshot, netlifySnapshot, gitSnapshot]);
-    if (thinFallbackSnapshot && typeof thinFallbackSnapshot === "object" && thinFallbackSnapshot.state) {
+    const thinFallbackSnapshot = pickFreshestThinFallback(candidates);
+    if (thinFallbackSnapshot?.snapshot && typeof thinFallbackSnapshot.snapshot === "object" && thinFallbackSnapshot.snapshot.state) {
+      const snapshot = thinFallbackSnapshot.snapshot;
       return json(
-        buildSnapshot(
-          thinFallbackSnapshot.state,
-          thinFallbackSnapshot.trades || [],
-          thinFallbackSnapshot.control || defaultControl(),
-          marketMapFromState(thinFallbackSnapshot.state),
-          thinFallbackSnapshot.trade_reviews || defaultTradeReviews(),
-          thinFallbackSnapshot.server_time,
-          thinFallbackSnapshot.decision_review_report || {},
-          thinFallbackSnapshot.challenger_report || {},
-          thinFallbackSnapshot.playbook_distiller_report || {},
-          thinFallbackSnapshot.policy_health_report || {},
+        withStateSource(
+          buildSnapshot(
+            snapshot.state,
+            snapshot.trades || [],
+            snapshot.control || defaultControl(),
+            marketMapFromState(snapshot.state),
+            snapshot.trade_reviews || defaultTradeReviews(),
+            snapshot.server_time,
+            snapshot.decision_review_report || {},
+            snapshot.challenger_report || {},
+            snapshot.playbook_distiller_report || {},
+            snapshot.policy_health_report || {},
+          ),
+          thinFallbackSnapshot.source,
+          candidates,
         ),
         { headers: cacheHeaders },
       );
@@ -145,7 +192,11 @@ export async function GET() {
       }),
     );
     return json(
-      buildSnapshot(state, trades, control, marketMap, tradeReviews, undefined, decisionReviewReport, challengerReport, playbookDistillerReport, policyHealthReport),
+      withStateSource(
+        buildSnapshot(state, trades, control, marketMap, tradeReviews, undefined, decisionReviewReport, challengerReport, playbookDistillerReport, policyHealthReport),
+        "component_store",
+        candidates,
+      ),
       { headers: cacheHeaders },
     );
   } catch (error) {

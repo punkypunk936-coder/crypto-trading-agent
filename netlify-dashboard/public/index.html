@@ -4964,6 +4964,9 @@ async function refresh() {
     if (runtime.hosted_static_fallback) {
       updateText += ' • HOSTED MIRROR';
     }
+    if (runtime.dashboard_state_source) {
+      updateText += ' • source ' + String(runtime.dashboard_state_source).replaceAll('_', ' ');
+    }
     const power = (s && s.power) || {};
     if (power.available) {
       const source = power.source || (power.on_ac_power ? 'AC' : 'Battery');

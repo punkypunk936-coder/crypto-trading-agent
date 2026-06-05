@@ -7979,9 +7979,10 @@ class TradingAgent:
                     ctx.check_hostname = False
                     ctx.verify_mode = ssl.CERT_NONE
 
-                def _post_dashboard_json(path: str, body: bytes, timeout: float = 15):
+                def _post_dashboard_json(path: str, body: bytes, timeout: float = 15, base_url: str = ""):
+                    target_base = (base_url or remote_url).rstrip("/")
                     req = urllib.request.Request(
-                        remote_url.rstrip("/") + path,
+                        target_base + path,
                         data=body,
                         headers={
                             "Content-Type": "application/json",
@@ -8031,10 +8032,62 @@ class TradingAgent:
                         }
                     return last_payload
 
+                def _compact_dashboard_payload_text() -> str:
+                    recent_trades = trades_data[-500:] if isinstance(trades_data, list) else trades_data
+                    return json.dumps({
+                        "state": state,
+                        "trades": recent_trades,
+                        "control": control_data,
+                        "market_map": market_map_data,
+                        "trade_reviews": review_data,
+                        "decision_review_report": decision_review_data,
+                        "challenger_report": challenger_report_data,
+                        "playbook_distiller_report": playbook_distiller_report_data,
+                        "policy_health_report": policy_health_report_data,
+                    })
+
                 max_single_push_bytes = int(os.environ.get("DASHBOARD_PUSH_MAX_BYTES", "3500000") or 3_500_000)
                 if len(payload) > max_single_push_bytes:
                     remote_payload = _push_dashboard_chunks(payload_text)
                     resp = SimpleNamespace(status=200 if remote_payload.get("ok") else 500)
+                    if not remote_payload.get("ok"):
+                        compact_payload = {}
+                        compact_resp = SimpleNamespace(status=500)
+                        compact_error = ""
+                        compact_body = _compact_dashboard_payload_text().encode()
+                        for compact_base in [
+                            "",
+                            os.environ.get("DASHBOARD_NETLIFY_FALLBACK_URL", "https://punky-crypto-agent-dash.netlify.app"),
+                        ]:
+                            if compact_base and compact_base.rstrip("/") == remote_url.rstrip("/"):
+                                continue
+                            try:
+                                compact_resp, compact_payload = _post_dashboard_json(
+                                    "/api/push",
+                                    compact_body,
+                                    timeout=30,
+                                    base_url=compact_base,
+                                )
+                            except Exception as compact_exc:
+                                compact_error = str(compact_exc)
+                                continue
+                            compact_ok = bool(getattr(compact_resp, "status", 200) < 400)
+                            if isinstance(compact_payload, dict) and compact_payload.get("ok") is False:
+                                compact_ok = False
+                            if compact_ok:
+                                resp = compact_resp
+                                remote_payload = {
+                                    **(compact_payload if isinstance(compact_payload, dict) else {"ok": True}),
+                                    "fallback": ((compact_payload or {}).get("fallback") or "compact") if isinstance(compact_payload, dict) else "compact",
+                                    "storage": ((compact_payload or {}).get("storage") or "compact") if isinstance(compact_payload, dict) else "compact",
+                                    "compact_after_chunk_failure": True,
+                                }
+                                break
+                        else:
+                            remote_payload = {
+                                **(remote_payload if isinstance(remote_payload, dict) else {}),
+                                "compact_fallback_error": compact_error[:180] if compact_error else "compact fallback push failed",
+                            }
                 else:
                     resp, remote_payload = _post_dashboard_json("/api/push", payload, timeout=15)
                 remote_push_ok = bool(getattr(resp, "status", 200) < 400)

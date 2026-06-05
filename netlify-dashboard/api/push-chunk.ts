@@ -10,6 +10,7 @@ import {
   TRADE_REVIEWS_PATH,
   TRADES_PATH,
   buildSnapshot,
+  forwardNetlifyPush,
   json,
   readJson,
   unauthorized,
@@ -105,7 +106,27 @@ export async function POST(request: Request) {
 
     const payloadText = pieces.join("");
     const payload = JSON.parse(payloadText);
-    const snapshot = await persistPayload(payload);
+    let snapshot;
+    try {
+      snapshot = await persistPayload(payload);
+    } catch (persistError) {
+      const forwarded = await forwardNetlifyPush(payload, request.headers.get("X-Token") || "");
+      if (forwarded.ok) {
+        return json(
+          typeof forwarded.data === "object" && forwarded.data !== null
+            ? { ...forwarded.data, fallback: "netlify", storage: "fallback", assembled: true, session_id: sessionId, chunks: chunkCount, bytes: payloadText.length }
+            : { ok: true, fallback: "netlify", storage: "fallback", assembled: true, session_id: sessionId, chunks: chunkCount, bytes: payloadText.length },
+        );
+      }
+      return json(
+        {
+          ok: false,
+          error: persistError instanceof Error ? persistError.message : "Chunk persistence failed",
+          fallback_error: forwarded.data,
+        },
+        { status: 500 },
+      );
+    }
 
     return json({
       ok: true,
