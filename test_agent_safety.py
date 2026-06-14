@@ -8493,10 +8493,22 @@ def test_performance_edges_summarize_what_pays_and_hurts() -> None:
     ]
     report = performance_intelligence_module.build_performance_edges(rows, min_samples=3)
     assert report["summary"]["total_closed"] == 6
+    assert report["summary"]["best_trade"]["coin"] == "GOOGL"
+    assert report["summary"]["worst_trade"]["coin"] == "ETH"
     assert report["working_edges"]
     assert report["failing_edges"]
     assert "Lean into" in " ".join(report["lessons"])
     assert "Avoid" in " ".join(report["lessons"])
+    memory = performance_intelligence_module.similar_trade_memory(
+        rows,
+        coin="BTC",
+        direction="LONG",
+        score=66.0,
+        signal_snapshot={"instrument_type": "crypto", "market_regime": "RANGING"},
+        min_similarity=0.50,
+    )
+    assert memory["active"] is True
+    assert memory["worst_match"]["coin"] in {"BTC", "ETH", "SOL"}
 
 
 def test_dashboard_snapshot_includes_performance_edges() -> None:
@@ -8784,6 +8796,148 @@ def test_win_rate_recovery_context_guard_allows_fundamental_attention_stack() ->
     assert guard["active"] is True
     assert guard["permitted"] is True
     assert guard["fundamental_score"] >= cfg.trading.win_rate_recovery_min_fundamental_score
+
+
+def test_equity_news_recognizes_sndk_memory_price_discovery() -> None:
+    headline = "SanDisk SNDK hits all-time high as NAND pricing and enterprise SSD demand accelerate"
+    catalyst = news_module._equity_catalyst_checklist(headline, "SNDK")
+    score = news_module._score_macro_headline(headline, coin="SNDK")
+
+    assert "price_discovery_breakout" in catalyst.tags
+    assert "memory_cycle" in catalyst.tags
+    assert catalyst.score >= 3.0
+    assert score >= 40.0
+
+
+def test_equity_news_recognizes_ai_policy_readthrough() -> None:
+    headline = "AWS and Anthropic gain sovereign AI attention as US government cloud demand rises"
+    catalyst = news_module._equity_catalyst_checklist(headline, "AMZN")
+    score = news_module._score_macro_headline(headline, coin="AMZN")
+
+    assert "ai_policy_readthrough" in catalyst.tags
+    assert catalyst.score >= 2.0
+    assert score > 0.0
+
+
+def test_win_rate_recovery_blocks_price_only_momentum_without_driver() -> None:
+    cfg = build_config()
+    cfg.trading.win_rate_recovery_context_guard_enabled = True
+    cfg.trading.performance_edge_guard_enabled = False
+    cfg.trading.decision_dataset_enabled = False
+    agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=1000.0)])
+    agent._north_star_scorecard = lambda force=False: {
+        "enabled": True,
+        "active": True,
+        "critical": False,
+        "quality_win_rate": 0.48,
+        "summary": "quality WR below target",
+    }
+    signal = SimpleNamespace(
+        action="LONG",
+        score=82.0,
+        confidence="HIGH",
+        reason="chart breakout only",
+        flat_reason="",
+        stop_loss_price=90.0,
+        take_profit_price=120.0,
+        trade_plan={},
+        thesis={"state": "ACTIVE", "permitted": True, "conviction_score": 82.0},
+        expectancy={"probability": 0.63, "expected_r": 0.28, "uncertainty": 0.32, "score": 74.0},
+        execution_plan={},
+    )
+    agent._last_signals["SNDK"] = {
+        "action": "LONG",
+        "score": 82.0,
+        "instrument_type": "equity",
+        "asset_categories": ["semis_memory"],
+        "planned_stop_loss": 90.0,
+        "expectancy_probability": 0.63,
+        "expectancy_expected_r": 0.28,
+        "expectancy_uncertainty": 0.32,
+        "first_principles": {
+            "fundamental_score": 48.0,
+            "attention_score": 50.0,
+            "flow_score": 62.0,
+            "price_score": 86.0,
+            "sequence_score": 66.0,
+        },
+        "momentum_expansion_active": True,
+        "momentum_expansion_direction": "LONG",
+        "momentum_expansion_score": 76.0,
+        "recent_move_pct": 12.0,
+        "news_event_score": 0.0,
+        "news_catalyst_score": 0.0,
+        "social_attention_score": 50.0,
+        "social_attention_mentions": 0,
+    }
+    allowed = agent._win_rate_recovery_context_guard("SNDK", signal, portfolio_usd=1000.0, current_position=None)
+
+    assert allowed is False
+    guard = agent._last_signals["SNDK"]["win_rate_context_guard"]
+    assert guard["driverless_momentum"] is True
+    assert guard["real_world_driver"] is False
+    assert "real-world driver" in signal.reason
+
+
+def test_win_rate_recovery_blocks_crypto_risk_off_long_without_reclaim() -> None:
+    cfg = build_config()
+    cfg.trading.win_rate_recovery_context_guard_enabled = True
+    cfg.trading.performance_edge_guard_enabled = False
+    cfg.trading.decision_dataset_enabled = False
+    agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=1000.0)])
+    agent._north_star_scorecard = lambda force=False: {
+        "enabled": True,
+        "active": True,
+        "critical": False,
+        "quality_win_rate": 0.52,
+        "summary": "quality WR below target",
+    }
+    signal = SimpleNamespace(
+        action="LONG",
+        score=74.0,
+        confidence="HIGH",
+        reason="dip buy during drawdown",
+        flat_reason="",
+        stop_loss_price=90.0,
+        take_profit_price=122.0,
+        trade_plan={},
+        thesis={"state": "ACTIVE", "permitted": True, "conviction_score": 74.0},
+        expectancy={"probability": 0.65, "expected_r": 0.34, "uncertainty": 0.30, "score": 76.0},
+        execution_plan={},
+    )
+    agent._last_signals["BTC"] = {
+        "action": "LONG",
+        "score": 74.0,
+        "instrument_type": "crypto",
+        "planned_stop_loss": 90.0,
+        "expectancy_probability": 0.65,
+        "expectancy_expected_r": 0.34,
+        "expectancy_uncertainty": 0.30,
+        "first_principles": {
+            "fundamental_score": 68.0,
+            "attention_score": 66.0,
+            "flow_score": 64.0,
+            "price_score": 74.0,
+            "sequence_score": 70.0,
+        },
+        "crypto_market_mode": "DRAWDOWN",
+        "crypto_directional_bias": "BEARISH",
+        "market_map_bias": "BEARISH",
+        "orderbook_breakout_state": "NONE",
+        "structure_trend": "DOWNTREND",
+        "news_catalyst_score": 0.0,
+        "news_event_score": 0.0,
+        "social_attention_score": 64.0,
+        "social_attention_mentions": 3,
+        "social_attention_sentiment": "BULLISH",
+    }
+    allowed = agent._win_rate_recovery_context_guard("BTC", signal, portfolio_usd=1000.0, current_position=None)
+
+    assert allowed is False
+    guard = agent._last_signals["BTC"]["win_rate_context_guard"]
+    assert guard["crypto_risk_off_long"] is True
+    assert guard["crypto_reclaim"] is False
+    assert "risk-off" in signal.reason
 
 
 def run_all() -> None:
@@ -9123,6 +9277,14 @@ def run_all() -> None:
     print("PASS win-rate recovery price-only block")
     test_win_rate_recovery_context_guard_allows_fundamental_attention_stack()
     print("PASS win-rate recovery context stack")
+    test_equity_news_recognizes_sndk_memory_price_discovery()
+    print("PASS SNDK memory price-discovery news")
+    test_equity_news_recognizes_ai_policy_readthrough()
+    print("PASS AI policy read-through news")
+    test_win_rate_recovery_blocks_price_only_momentum_without_driver()
+    print("PASS win-rate recovery blocks price-only momentum")
+    test_win_rate_recovery_blocks_crypto_risk_off_long_without_reclaim()
+    print("PASS crypto risk-off long reclaim guard")
     test_llm_referee_returns_disabled_without_api_key()
     print("PASS LLM referee disabled fallback")
     test_llm_referee_parses_structured_openai_verdict()

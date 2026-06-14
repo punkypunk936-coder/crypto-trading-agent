@@ -2353,6 +2353,39 @@ class AggressiveStrategy:
                     f"mentions={mentions} attention={attention} adj={social_adjustment:+.1f}"
                 )
 
+        if instrument_type == "crypto" and getattr(self.tcfg, "crypto_structure_sentiment_enabled", True):
+            market_mode = str(sentiment.get("market_mode", "UNKNOWN") or "UNKNOWN").upper()
+            directional_bias = str(sentiment.get("directional_bias", "NEUTRAL") or "NEUTRAL").upper()
+            if market_mode in {"DRAWDOWN", "RISK_OFF"} and directional_bias == "BEARISH":
+                before = raw_score
+                long_dampener = float(getattr(self.tcfg, "crypto_drawdown_long_dampener", 0.35) or 0.35)
+                short_boost = float(getattr(self.tcfg, "crypto_drawdown_short_bias_boost", 5.0) or 5.0)
+                cap = float(
+                    getattr(
+                        self.tcfg,
+                        "crypto_drawdown_long_score_cap" if market_mode == "DRAWDOWN" else "crypto_risk_off_long_score_cap",
+                        52.0 if market_mode == "DRAWDOWN" else 58.0,
+                    ) or (52.0 if market_mode == "DRAWDOWN" else 58.0)
+                )
+                if raw_score > 50.0:
+                    raw_score = 50.0 + (raw_score - 50.0) * max(0.0, min(1.0, long_dampener))
+                    raw_score = min(raw_score, cap)
+                elif raw_score < 50.0:
+                    raw_score = max(0.0, raw_score - short_boost)
+                if abs(raw_score - before) >= 0.5:
+                    log.info(
+                        f"[{tech.coin}] Crypto market mode {market_mode}: "
+                        f"risk-off structure shifts score {before:.1f} → {raw_score:.1f}"
+                    )
+            elif market_mode == "RISK_ON" and directional_bias == "BULLISH" and raw_score < 50.0:
+                before = raw_score
+                raw_score = 50.0 + (raw_score - 50.0) * 0.65
+                if abs(raw_score - before) >= 0.5:
+                    log.info(
+                        f"[{tech.coin}] Crypto market mode RISK_ON: dampening countertrend short "
+                        f"{before:.1f} → {raw_score:.1f}"
+                    )
+
         raw_score = max(0.0, min(100.0, raw_score))
 
         # ── 14. Memory-based score adjustment ────────────────────────────────
@@ -2871,6 +2904,12 @@ class AggressiveStrategy:
 
         parts.append(f"MACD {'bullish' if tech.macd_hist > 0 else 'bearish'}")
         parts.append(f"F&G: {sentiment['label']} ({sentiment['raw_score']})")
+        market_mode = str(sentiment.get("market_mode", "") or "")
+        if market_mode:
+            parts.append(
+                f"Crypto mode: {market_mode}"
+                f" / {str(sentiment.get('directional_bias', 'NEUTRAL') or 'NEUTRAL')}"
+            )
 
         if vol_ratio >= 1.5:
             parts.append(f"High vol (x{vol_ratio:.1f})")

@@ -253,6 +253,58 @@ EQUITY_AI_DEMAND_RISK_KEYWORDS: Dict[str, float] = {
     "manufacturing issue": 16,
 }
 
+EQUITY_PRICE_DISCOVERY_KEYWORDS = (
+    "all-time high",
+    "all time high",
+    "record high",
+    "new high",
+    "new highs",
+    "52-week high",
+    "52 week high",
+    "price discovery",
+    "breakout",
+)
+
+EQUITY_MEMORY_CYCLE_KEYWORDS = (
+    "nand pricing",
+    "nand prices",
+    "flash pricing",
+    "flash prices",
+    "ssd demand",
+    "enterprise ssd",
+    "storage demand",
+    "memory pricing",
+    "dram pricing",
+    "hbm demand",
+    "supply shortage",
+)
+
+EQUITY_AI_POLICY_TAILWIND_KEYWORDS = (
+    "sovereign ai",
+    "federal ai",
+    "government ai",
+    "u.s. government",
+    "us government",
+    "national security ai",
+    "defense ai",
+    "government cloud",
+    "secure cloud",
+    "ai export controls",
+    "domestic ai",
+    "american ai",
+)
+
+EQUITY_POLICY_RISK_KEYWORDS = (
+    "ban",
+    "bans",
+    "blocked",
+    "restrict",
+    "restriction",
+    "probe",
+    "investigation",
+    "antitrust",
+)
+
 EQUITY_EARNINGS_EVENT_KEYWORDS = (
     "earnings",
     "earnings call",
@@ -338,6 +390,9 @@ CATALYST_TAG_LABELS: Dict[str, str] = {
     "sec_filing": "SEC filing flow",
     "options_implied_move": "options implied move",
     "analyst_revision": "analyst revision",
+    "price_discovery_breakout": "price discovery breakout",
+    "memory_cycle": "memory cycle",
+    "ai_policy_readthrough": "AI policy read-through",
 }
 
 # Bullish/bearish keyword weights
@@ -433,16 +488,16 @@ MACRO_NEWS_QUERIES: Dict[str, str] = {
     "SP500": "S&P 500 OR SPX OR US stocks OR Wall Street",
     "XAU": "gold OR XAU OR bullion OR treasury yields",
     "AAPL": "Apple stock OR AAPL earnings OR iPhone demand",
-    "AMZN": "Amazon OR AMZN OR AWS OR Anthropic OR Trainium OR Bedrock OR earnings",
-    "GOOGL": "Alphabet OR GOOGL OR Google Cloud OR Gemini OR Waymo OR Vertex AI OR earnings",
+    "AMZN": "Amazon OR AMZN OR AWS OR Anthropic OR Claude OR Trainium OR Bedrock OR sovereign AI OR government AI OR earnings",
+    "GOOGL": "Alphabet OR GOOGL OR Google Cloud OR Gemini OR Waymo OR Vertex AI OR sovereign AI OR AI policy OR earnings",
     "META": "Meta stock OR META earnings OR ad revenue OR AI spend OR Llama OR Meta AI",
-    "MSFT": "Microsoft OR MSFT OR Azure OR OpenAI OR Copilot OR Foundry",
+    "MSFT": "Microsoft OR MSFT OR Azure OR OpenAI OR Copilot OR Foundry OR sovereign AI OR government cloud",
     "TSLA": "Tesla stock OR TSLA deliveries OR EV demand",
-    "NVDA": "NVIDIA OR NVDA OR Blackwell OR GPU demand OR data center spend",
+    "NVDA": "NVIDIA OR NVDA OR Blackwell OR GPU demand OR data center spend OR AI export controls OR sovereign AI",
     "INTC": "Intel OR INTC OR foundry OR 18A OR Xeon OR Gaudi OR AI PC OR server CPU demand OR data center CPU",
     "CBRS": "Cerebras OR CBRS OR Cerebras Systems OR wafer scale engine OR AI chip OR pre-IPO OR IPO OR S-1",
     "MU": "Micron OR MU OR memory pricing OR HBM demand OR HBM3E OR DRAM OR data center memory",
-    "SNDK": "SanDisk OR SNDK OR NAND pricing OR flash memory OR SSD demand OR enterprise storage",
+    "SNDK": "SanDisk OR SNDK OR NAND pricing OR flash memory OR SSD demand OR enterprise storage OR all-time high OR record high",
     "SKHX": "SK Hynix OR SKHX OR HBM memory OR HBM3E OR DRAM OR South Korea semiconductors",
     "CRWV": "CoreWeave OR CRWV OR neocloud OR GPU cloud OR AI infrastructure OR capacity expansion",
     "EWY": "EWY OR South Korea ETF OR Samsung OR SK Hynix OR Korea equities OR semiconductor exports",
@@ -472,14 +527,14 @@ ASSET_NEWS_PROFILES: Dict[str, Dict[str, List[str]]] = {
     "AAPL": {"primary": ["apple", "aapl"], "context": ["iphone", "ios", "mac", "tim cook", "services"]},
     "AMZN": {
         "primary": ["amazon", "amzn"],
-        "context": ["aws", "prime", "kindle", "e-commerce", "anthropic", "claude", "bedrock", "trainium", "graviton"],
-        "strong_context": ["aws", "amazon web services", "bedrock", "trainium", "graviton"],
+        "context": ["aws", "prime", "kindle", "e-commerce", "anthropic", "claude", "bedrock", "trainium", "graviton", "sovereign ai", "government cloud"],
+        "strong_context": ["aws", "amazon web services", "bedrock", "trainium", "graviton", "sovereign ai", "government cloud"],
         "partner_context": ["anthropic", "claude"],
     },
     "GOOGL": {
         "primary": ["alphabet", "google", "googl"],
-        "context": ["youtube", "android", "gemini", "cloud", "google cloud", "vertex ai", "waymo"],
-        "strong_context": ["google cloud", "gcp", "vertex ai", "gemini", "waymo", "tpu"],
+        "context": ["youtube", "android", "gemini", "cloud", "google cloud", "vertex ai", "waymo", "sovereign ai"],
+        "strong_context": ["google cloud", "gcp", "vertex ai", "gemini", "waymo", "tpu", "sovereign ai"],
         "partner_context": ["anthropic"],
     },
     "META": {
@@ -493,8 +548,8 @@ ASSET_NEWS_PROFILES: Dict[str, Dict[str, List[str]]] = {
     },
     "MSFT": {
         "primary": ["microsoft", "msft"],
-        "context": ["azure", "copilot", "windows", "office", "satya nadella", "openai", "chatgpt", "foundry"],
-        "strong_context": ["azure", "azure ai", "azure openai", "foundry"],
+        "context": ["azure", "copilot", "windows", "office", "satya nadella", "openai", "chatgpt", "foundry", "sovereign ai", "government cloud"],
+        "strong_context": ["azure", "azure ai", "azure openai", "foundry", "sovereign ai", "government cloud"],
         "partner_context": ["openai", "chatgpt"],
     },
     "TSLA": {
@@ -504,8 +559,8 @@ ASSET_NEWS_PROFILES: Dict[str, Dict[str, List[str]]] = {
     },
     "NVDA": {
         "primary": ["nvidia", "nvda"],
-        "context": ["blackwell", "gpu", "data center", "ai chip", "cuda", "h200", "gb200"],
-        "strong_context": ["blackwell", "data center", "gpu demand", "ai infrastructure", "cuda", "gb200"],
+        "context": ["blackwell", "gpu", "data center", "ai chip", "cuda", "h200", "gb200", "ai export controls", "sovereign ai"],
+        "strong_context": ["blackwell", "data center", "gpu demand", "ai infrastructure", "cuda", "gb200", "ai export controls", "sovereign ai"],
         "partner_context": ["coreweave", "openai", "microsoft", "aws", "amazon", "meta"],
     },
     "INTC": {
@@ -528,7 +583,7 @@ ASSET_NEWS_PROFILES: Dict[str, Dict[str, List[str]]] = {
     "SNDK": {
         "primary": ["sandisk", "sndk"],
         "context": ["nand", "flash memory", "storage", "ssd", "enterprise flash"],
-        "strong_context": ["nand pricing", "flash pricing", "enterprise ssd", "storage demand"],
+        "strong_context": ["nand pricing", "flash pricing", "enterprise ssd", "storage demand", "price discovery", "record high", "all-time high"],
     },
     "SKHX": {
         "primary": ["sk hynix", "skhx"],
@@ -850,6 +905,23 @@ def _equity_catalyst_checklist(title: str, coin: str) -> CatalystChecklist:
     if "analyst revision feed" in lower or "eps revisions" in lower or "revenue revisions" in lower:
         tags.append("analyst_revision")
         score += 0.90
+    if any(keyword in lower for keyword in EQUITY_PRICE_DISCOVERY_KEYWORDS):
+        tags.append("price_discovery_breakout")
+        score += 1.15 if primary_hits > 0 or strong_context_hits > 0 else 0.55
+    if any(keyword in lower for keyword in EQUITY_MEMORY_CYCLE_KEYWORDS):
+        tags.append("memory_cycle")
+        score += 1.15
+    ai_policy_hit = any(keyword in lower for keyword in EQUITY_AI_POLICY_TAILWIND_KEYWORDS)
+    if ai_policy_hit and (
+        primary_hits > 0
+        or strong_context_hits > 0
+        or partner_hits > 0
+        or coin in {"AMZN", "GOOGL", "MSFT", "NVDA", "ORCL", "PLTR", "INTC", "AMD"}
+    ):
+        tags.append("ai_policy_readthrough")
+        score += 1.0
+        if not any(keyword in lower for keyword in EQUITY_POLICY_RISK_KEYWORDS):
+            score += 0.35
 
     summary = ""
     if tags:
@@ -1168,6 +1240,24 @@ def _score_macro_headline(title: str, coin: str = "") -> float:
             score += 14
         if "earnings calendar" in lower or "set to report" in lower:
             score += 6
+        profile = ASSET_NEWS_PROFILES.get(coin.upper(), {})
+        profile_terms = (
+            list(profile.get("primary") or [])
+            + list(profile.get("context") or [])
+            + list(profile.get("strong_context") or [])
+            + list(profile.get("partner_context") or [])
+        )
+        asset_tied = any(_token_present(lower, term) for term in profile_terms)
+        if asset_tied and any(kw in lower for kw in EQUITY_PRICE_DISCOVERY_KEYWORDS):
+            score += 10
+        if asset_tied and any(kw in lower for kw in EQUITY_MEMORY_CYCLE_KEYWORDS):
+            score += 14
+        ai_policy_hit = any(kw in lower for kw in EQUITY_AI_POLICY_TAILWIND_KEYWORDS)
+        policy_risk_hit = any(kw in lower for kw in EQUITY_POLICY_RISK_KEYWORDS)
+        if ai_policy_hit and (asset_tied or coin.upper() in {"AMZN", "GOOGL", "MSFT", "NVDA", "ORCL", "PLTR", "INTC", "AMD"}):
+            score += 10
+        elif policy_risk_hit and asset_tied:
+            score -= 8
     # S&P specific boost
     if coin.upper() == "SP500" and any(t in lower for t in ["s&p", "s&p 500", "spx", "sp500", "dow", "nasdaq"]):
         score *= 1.2

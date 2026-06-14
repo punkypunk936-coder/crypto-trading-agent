@@ -77,6 +77,7 @@ import proactive_intelligence
 import trade_dataset
 import trade_logger
 import trade_review
+import win_rate_guard
 from asset_context import DEFAULT_ASSET_CATEGORY_DESCRIPTIONS, normalize_asset_category_values, theme_from_categories
 from asset_state_machine import build_asset_state
 from indicators.technical import compute_signals
@@ -2177,6 +2178,15 @@ class TradingAgent:
             "flat_reason":     signal.flat_reason,
             "decision_reason": signal.reason or signal.flat_reason or "",
             "instrument_type": instrument_type,
+            "sentiment_signal_score": sentiment.get("signal_score", 50.0),
+            "sentiment_label": sentiment.get("label", "Neutral"),
+            "sentiment_raw_score": sentiment.get("raw_score", 50),
+            "crypto_market_mode": sentiment.get("market_mode", "UNKNOWN"),
+            "crypto_directional_bias": sentiment.get("directional_bias", "NEUTRAL"),
+            "crypto_risk_off": bool(sentiment.get("risk_off", False)),
+            "crypto_major_breakdown_count": sentiment.get("major_breakdown_count", 0),
+            "crypto_major_reclaim_count": sentiment.get("major_reclaim_count", 0),
+            "crypto_structure_summary": sentiment.get("structure_summary", ""),
             "mtf_bias":        "FLAT",   # updated below if MTF runs
             # Candlestick patterns
             "candle_score":    candle_patterns.score    if candle_patterns and candle_patterns.valid else 50.0,
@@ -4188,6 +4198,70 @@ class TradingAgent:
                 f"[{coin}] 🧭 North-star recovery trims size ${original_size:.2f} → "
                 f"${trimmed:.2f}: {guard.get('summary', '')}"
             )
+
+        hit_guard = win_rate_guard.assess_entry(
+            self.cfg.trading,
+            coin=coin,
+            direction=str(getattr(signal, "action", "") or "").upper(),
+            signal_snapshot=dict(self._last_signals.get(coin, {}) or {}),
+            signal=signal,
+            event_starter=event_starter,
+            pair_trade=pair_trade,
+            history_rows=self._performance_edge_rows(),
+            source="live_order_path",
+        )
+        self._last_signals.setdefault(coin, {})
+        self._last_signals[coin]["win_rate_guard"] = hit_guard
+        self._last_signals[coin]["win_rate_guard_summary"] = hit_guard.get("summary", "")
+        self._last_signals[coin]["similar_trade_memory"] = hit_guard.get("similar_trade_memory", {})
+        if not hit_guard.get("permitted", True):
+            reason = str(hit_guard.get("summary") or "win-rate guard blocks entry")
+            log.info(f"[{coin}] 🧠 Win-rate guard blocks entry: {reason}")
+            signal.action = "FLAT"
+            signal.flat_reason = reason
+            signal.reason = reason
+            self._sync_signal_snapshot(coin, signal)
+            self._record_decision_snapshot(
+                coin,
+                portfolio_usd=portfolio_usd,
+                stage="win_rate_guard_block",
+                signal=signal,
+                current_position=current_position,
+                blocked=True,
+            )
+            return False
+
+        hit_multiplier = float(hit_guard.get("size_multiplier", 1.0) or 1.0)
+        if hit_multiplier < 0.999 and order is not None:
+            original_size = float(getattr(order, "size_usd", 0.0) or 0.0)
+            trimmed = original_size * hit_multiplier
+            min_trade = float(getattr(self.cfg.trading, "min_trade_usd", 0.0) or 0.0)
+            if trimmed < min_trade and not (event_starter or pair_trade):
+                reason = f"win-rate guard trim would fall below ${min_trade:.0f} minimum"
+                log.info(f"[{coin}] 🧠 {reason}")
+                signal.action = "FLAT"
+                signal.flat_reason = reason
+                signal.reason = reason
+                self._sync_signal_snapshot(coin, signal)
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="win_rate_guard_block",
+                    signal=signal,
+                    current_position=current_position,
+                    blocked=True,
+                )
+                return False
+            trimmed = max(min_trade if event_starter or pair_trade else 0.0, trimmed)
+            order.size_usd = trimmed
+            order.size_coin = trimmed / max(float(getattr(order, "price", getattr(signal, "price", 0.0)) or 0.0), 1e-9)
+            order.margin_usd = trimmed / max(self._order_leverage(order), 1)
+            self._last_signals[coin]["margin_usd"] = getattr(order, "margin_usd", 0.0)
+            self._last_signals[coin]["order_notional_usd"] = getattr(order, "size_usd", 0.0)
+            log.info(
+                f"[{coin}] 🧠 Win-rate guard trims size ${original_size:.2f} → "
+                f"${trimmed:.2f}: {hit_guard.get('summary', '')}"
+            )
         return True
 
     def _performance_edge_rows(self) -> list[dict]:
@@ -4259,6 +4333,7 @@ class TradingAgent:
                 coin=coin,
                 direction=direction,
                 score=score,
+                signal_snapshot=sig,
                 min_samples=int(getattr(self.cfg.trading, "performance_edge_guard_min_samples", 4) or 4),
                 min_win_rate=float(getattr(self.cfg.trading, "performance_edge_guard_min_win_rate", 0.52) or 0.52),
             )
@@ -4440,6 +4515,48 @@ class TradingAgent:
         )
         momentum_context_ok = self._momentum_context_ok(coin, direction, signal, sig)
         price_only = bool(price_score >= 70.0 and fundamental_score < min_fundamental and attention_score < min_attention)
+        instrument_type = str(sig.get("instrument_type") or "crypto").lower()
+        real_world_driver_ok = bool(
+            event_like
+            or catalyst_score >= 1.75
+            or float(sig.get("official_event_score") or 0.0) >= 1.5
+            or float(sig.get("sec_event_score") or 0.0) >= 1.5
+            or float(sig.get("analyst_revision_score") or 0.0) >= 1.0
+            or (
+                side_aligned_attention
+                and social_score >= max(58.0, min_social_score - 4.0)
+                and social_mentions >= max(1, min_social_mentions)
+            )
+            or narrative_bias in {"BULLISH", "BEARISH"}
+        )
+        crypto_market_mode = str(sig.get("crypto_market_mode") or "UNKNOWN").upper()
+        crypto_directional_bias = str(sig.get("crypto_directional_bias") or "NEUTRAL").upper()
+        market_map_bias = str(sig.get("market_map_bias") or "").upper()
+        breakout_state = str(sig.get("orderbook_breakout_state") or "").upper()
+        structure_trend = str(sig.get("structure_trend") or "").upper()
+        crypto_reclaim_ok = bool(
+            market_map_bias in {"BULLISH", "UPTREND", "RECLAIM"}
+            or breakout_state in {
+                "PROBING_BULLISH_BREAKOUT",
+                "CONFIRMED_BULLISH_BREAKOUT",
+                "PERSISTENT_BULLISH_BREAKOUT",
+            }
+            or structure_trend in {"BULLISH", "UPTREND"}
+        )
+        crypto_risk_off_long = bool(
+            instrument_type == "crypto"
+            and direction == "LONG"
+            and crypto_market_mode in {"DRAWDOWN", "RISK_OFF"}
+            and crypto_directional_bias == "BEARISH"
+            and not crypto_reclaim_ok
+        )
+        driverless_momentum = bool(
+            momentum_context_ok
+            and not real_world_driver_ok
+            and not context_stack_ok
+            and not event_context_ok
+            and not attention_context_ok
+        )
 
         performance_verdict = {"active": False, "permitted": True, "summary": ""}
         if getattr(self.cfg.trading, "performance_edge_guard_enabled", True):
@@ -4448,6 +4565,7 @@ class TradingAgent:
                 coin=coin,
                 direction=direction,
                 score=score,
+                signal_snapshot=sig,
                 min_samples=int(getattr(self.cfg.trading, "performance_edge_guard_min_samples", 4) or 4),
                 min_win_rate=float(getattr(self.cfg.trading, "performance_edge_guard_min_win_rate", 0.52) or 0.52),
             )
@@ -4462,6 +4580,12 @@ class TradingAgent:
         )
         if toxic_history and not (event_context_ok or attention_context_ok or momentum_context_ok or (context_stack_ok and odds_ok)):
             permitted = False
+        if price_only and not real_world_driver_ok:
+            permitted = False
+        if driverless_momentum:
+            permitted = False
+        if crypto_risk_off_long:
+            permitted = False
 
         blockers: list[str] = []
         if not context_stack_ok:
@@ -4471,7 +4595,14 @@ class TradingAgent:
         if momentum_context_ok and blockers:
             blockers = [item for item in blockers if item != "needs fundamentals, attention, and flow to line up"]
         if price_only:
-            blockers.append("raw chart strength is price-only")
+            if real_world_driver_ok:
+                blockers.append("raw chart strength has a driver, but size must stay disciplined")
+            else:
+                blockers.append("raw chart strength is price-only")
+        if crypto_risk_off_long:
+            blockers.insert(0, "crypto majors are risk-off; long waits for a reclaim instead of buying fear")
+        if driverless_momentum:
+            blockers.insert(0, "momentum expansion needs a real-world driver before adding risk")
         if toxic_history and performance_verdict.get("summary"):
             blockers.append(str(performance_verdict["summary"]))
 
@@ -4500,6 +4631,11 @@ class TradingAgent:
             "attention_like": attention_context_ok,
             "pair_like": pair_like,
             "momentum_context": momentum_context_ok,
+            "real_world_driver": real_world_driver_ok,
+            "price_only": price_only,
+            "driverless_momentum": driverless_momentum,
+            "crypto_risk_off_long": crypto_risk_off_long,
+            "crypto_reclaim": crypto_reclaim_ok,
             "effective_score": round(score, 2),
             "performance_edge": performance_verdict,
         }
@@ -5551,6 +5687,15 @@ class TradingAgent:
             "price_deviation_pct": sig.get("price_deviation_pct"),
             "price_status": sig.get("price_status", "UNKNOWN"),
             "price_warning": sig.get("price_warning", ""),
+            "sentiment_signal_score": sig.get("sentiment_signal_score", 50.0),
+            "sentiment_label": sig.get("sentiment_label", "Neutral"),
+            "sentiment_raw_score": sig.get("sentiment_raw_score", 50),
+            "crypto_market_mode": sig.get("crypto_market_mode", "UNKNOWN"),
+            "crypto_directional_bias": sig.get("crypto_directional_bias", "NEUTRAL"),
+            "crypto_risk_off": bool(sig.get("crypto_risk_off", False)),
+            "crypto_major_breakdown_count": sig.get("crypto_major_breakdown_count", 0),
+            "crypto_major_reclaim_count": sig.get("crypto_major_reclaim_count", 0),
+            "crypto_structure_summary": sig.get("crypto_structure_summary", ""),
             "news_score": sig.get("news_score", 50.0),
             "news_velocity": sig.get("news_velocity", "LOW"),
             "news_catalyst_score": sig.get("news_catalyst_score", 0.0),

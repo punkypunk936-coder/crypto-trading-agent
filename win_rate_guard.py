@@ -12,6 +12,7 @@ from __future__ import annotations
 import time
 from typing import Any, Iterable, Mapping
 
+import performance_intelligence
 import trade_dataset
 
 
@@ -164,7 +165,10 @@ def _snapshot_context(
     expectancy = dict(getattr(signal, "expectancy", {}) or signal_snapshot.get("expectancy", {}) or {})
     trade_plan = dict(getattr(signal, "trade_plan", {}) or signal_snapshot.get("trade_plan", {}) or {})
     score = _safe_float(getattr(signal, "score", signal_snapshot.get("score", 50.0)), 50.0)
-    quality = _safe_str(thesis.get("quality") or signal_snapshot.get("thesis_quality") or signal_snapshot.get("confidence"), "LOW")
+    raw_quality = _safe_str(thesis.get("quality") or signal_snapshot.get("thesis_quality") or signal_snapshot.get("confidence"), "")
+    conviction_entry = thesis.get("conviction_entry") if isinstance(thesis.get("conviction_entry"), Mapping) else {}
+    eventish = bool(_event_like(signal_snapshot) or (isinstance(conviction_entry, Mapping) and conviction_entry.get("event_conviction")))
+    quality = raw_quality or ("MEDIUM" if eventish and score >= 60.0 else "LOW")
     return {
         "coin": _safe_str(coin).upper(),
         "direction": _safe_str(direction).upper(),
@@ -185,6 +189,9 @@ def _snapshot_context(
         "breakout_state": _norm_token(signal_snapshot.get("orderbook_breakout_state"), "NONE"),
         "level_interaction": _norm_token(signal_snapshot.get("orderbook_interaction"), "BETWEEN_LEVELS"),
         "market_map_bias": _norm_token(signal_snapshot.get("market_map_bias"), "NEUTRAL"),
+        "crypto_market_mode": _norm_token(signal_snapshot.get("crypto_market_mode") or signal_snapshot.get("market_mode"), "UNKNOWN"),
+        "crypto_directional_bias": _norm_token(signal_snapshot.get("crypto_directional_bias") or signal_snapshot.get("directional_bias"), "NEUTRAL"),
+        "crypto_risk_off": bool(signal_snapshot.get("crypto_risk_off") or signal_snapshot.get("risk_off")),
         "event_like": _event_like(signal_snapshot),
         "execution_quality_score": _safe_float(signal_snapshot.get("execution_quality_score"), 0.0),
         "data_reliability_score": _safe_float(signal_snapshot.get("data_reliability_score"), 0.0),
@@ -221,6 +228,9 @@ def _row_context(row: Mapping[str, Any]) -> dict:
         "breakout_state": _norm_token(context.get("orderbook_breakout_state"), "NONE"),
         "level_interaction": _norm_token(context.get("orderbook_interaction"), "BETWEEN_LEVELS"),
         "market_map_bias": _norm_token(context.get("market_map_bias"), "NEUTRAL"),
+        "crypto_market_mode": _norm_token(context.get("crypto_market_mode") or context.get("market_mode"), "UNKNOWN"),
+        "crypto_directional_bias": _norm_token(context.get("crypto_directional_bias") or context.get("directional_bias"), "NEUTRAL"),
+        "crypto_risk_off": bool(context.get("crypto_risk_off") or context.get("risk_off")),
         "event_like": _event_like(context),
     }
 
@@ -380,6 +390,7 @@ def assess_entry(
     max_uncertainty = _safe_float(getattr(trading_cfg, "win_rate_guard_max_uncertainty", 0.44), 0.44)
     min_exec_quality = _safe_float(getattr(trading_cfg, "win_rate_guard_min_execution_quality", 68.0), 68.0)
     min_quality_name = _safe_str(getattr(trading_cfg, "win_rate_guard_min_thesis_quality", "MEDIUM"), "MEDIUM")
+    event_size_multiplier: float | None = None
 
     if strict_mode and not pair_trade:
         min_prob = max(min_prob, _safe_float(getattr(trading_cfg, "win_rate_guard_strict_min_probability", 0.62), 0.62))
@@ -391,12 +402,61 @@ def assess_entry(
 
     if event_like:
         min_prob = min(min_prob, _safe_float(getattr(trading_cfg, "win_rate_guard_event_min_probability", 0.54), 0.54))
-        size_multiplier = min(
-            size_multiplier,
-            _safe_float(getattr(trading_cfg, "win_rate_guard_event_size_multiplier", 0.60), 0.60),
+        min_expected_r = min(
+            min_expected_r,
+            _safe_float(getattr(trading_cfg, "win_rate_guard_event_min_expected_r", 0.12), 0.12),
         )
+        max_uncertainty = max(
+            max_uncertainty,
+            _safe_float(getattr(trading_cfg, "win_rate_guard_event_max_uncertainty", 0.58), 0.58),
+        )
+        min_quality_name = _safe_str(
+            getattr(trading_cfg, "win_rate_guard_event_min_thesis_quality", "MEDIUM"),
+            "MEDIUM",
+        )
+        event_size_multiplier = _safe_float(getattr(trading_cfg, "win_rate_guard_event_size_multiplier", 0.60), 0.60)
     elif pair_trade:
         size_multiplier = min(size_multiplier, 0.65)
+
+    if (
+        bool(getattr(trading_cfg, "crypto_drawdown_entry_guard_enabled", True))
+        and ctx["instrument_type"] == "crypto"
+        and ctx["crypto_market_mode"] in {"DRAWDOWN", "RISK_OFF"}
+        and ctx["crypto_directional_bias"] == "BEARISH"
+    ):
+        bullish_reclaim = bool(
+            ctx["market_map_bias"] in {"BULLISH", "UPTREND", "RECLAIM"}
+            or ctx["breakout_state"] in {
+                "PROBING_BULLISH_BREAKOUT",
+                "CONFIRMED_BULLISH_BREAKOUT",
+                "PERSISTENT_BULLISH_BREAKOUT",
+            }
+            or ctx["structure_trend"] in {"BULLISH", "UPTREND"}
+        )
+        if ctx["direction"] == "LONG":
+            min_prob = max(
+                min_prob,
+                _safe_float(getattr(trading_cfg, "crypto_drawdown_long_min_probability", 0.64), 0.64),
+            )
+            min_expected_r = max(
+                min_expected_r,
+                _safe_float(getattr(trading_cfg, "crypto_drawdown_long_min_expected_r", 0.30), 0.30),
+            )
+            size_multiplier = min(
+                size_multiplier,
+                _safe_float(getattr(trading_cfg, "crypto_risk_off_long_size_multiplier", 0.55), 0.55),
+            )
+            if (
+                ctx["crypto_market_mode"] == "DRAWDOWN"
+                and bool(getattr(trading_cfg, "crypto_drawdown_block_longs_without_reclaim", True))
+                and not bullish_reclaim
+                and not event_like
+            ):
+                blockers.append("crypto drawdown mode blocks fresh LONG until majors reclaim structure")
+            else:
+                warnings.append("crypto risk-off mode requires a confirmed reclaim for LONG exposure")
+        elif ctx["direction"] == "SHORT":
+            warnings.append("crypto majors are risk-off; SHORT thesis has structural tailwind, but odds still must clear")
 
     if ctx["probability"] < min_prob:
         blockers.append(f"hit-rate governor needs p>={min_prob * 100:.0f}% (has {ctx['probability'] * 100:.0f}%)")
@@ -415,7 +475,46 @@ def assess_entry(
         if ctx["analog_win_rate"] > 0 and ctx["analog_win_rate"] < min_analog_wr:
             blockers.append(f"analog win rate {ctx['analog_win_rate'] * 100:.0f}% < {min_analog_wr * 100:.0f}%")
 
+    similar_memory: dict[str, Any] = {
+        "enabled": False,
+        "active": False,
+        "summary": "similar trade memory disabled",
+    }
+    if bool(getattr(trading_cfg, "similar_trade_memory_enabled", True)):
+        min_similarity = _safe_float(getattr(trading_cfg, "similar_trade_min_similarity", 0.62), 0.62)
+        similar_memory = performance_intelligence.similar_trade_memory(
+            rows,
+            coin=ctx["coin"],
+            direction=ctx["direction"],
+            score=ctx["score"],
+            signal_snapshot=snapshot,
+            min_similarity=min_similarity,
+        )
+        worst_match = dict(similar_memory.get("worst_match") or {})
+        best_match = dict(similar_memory.get("best_match") or {})
+        worst_loss_pct = abs(min(0.0, _safe_float(worst_match.get("pnl_pct"), 0.0)))
+        worst_similarity = _safe_float(worst_match.get("similarity"), 0.0)
+        hard_loss_pct = _safe_float(getattr(trading_cfg, "similar_trade_hard_block_loss_pct", 0.75), 0.75)
+        haircut_loss_pct = _safe_float(getattr(trading_cfg, "similar_trade_haircut_loss_pct", 0.25), 0.25)
+        if worst_match and worst_similarity >= min_similarity and worst_loss_pct >= hard_loss_pct and not event_like:
+            blockers.append(
+                f"closest prior similar trade was a major loser: {worst_match.get('summary', 'worst comparable lost')}"
+            )
+        elif worst_match and worst_similarity >= min_similarity and worst_loss_pct >= haircut_loss_pct:
+            warnings.append(
+                f"similar prior loser found: {worst_match.get('summary', 'worst comparable lost')}; trimming"
+            )
+            size_multiplier = min(
+                size_multiplier,
+                _safe_float(getattr(trading_cfg, "similar_trade_size_multiplier", 0.50), 0.50),
+            )
+        best_gain_pct = max(0.0, _safe_float(best_match.get("pnl_pct"), 0.0))
+        if best_match and _safe_float(best_match.get("similarity"), 0.0) >= min_similarity and best_gain_pct > 0:
+            warnings.append(f"best comparable supports thesis: {best_match.get('summary', 'similar winner')}")
+
     active = bool(strict_mode or blockers or warnings or active_families)
+    if event_like and event_size_multiplier is not None and active:
+        size_multiplier = min(size_multiplier, event_size_multiplier)
     permitted = not blockers
     if not permitted:
         size_multiplier = 0.0
@@ -433,6 +532,7 @@ def assess_entry(
         "size_multiplier": round(max(0.0, min(1.0, size_multiplier)), 4),
         "overall": overall,
         "families": active_families[:6],
+        "similar_trade_memory": similar_memory,
         "event_like": bool(event_like),
         "pair_trade": bool(pair_trade),
         "source": source,
