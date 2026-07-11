@@ -1,38 +1,66 @@
 {
   "classifications": {
-    "BAD_TRADE": 80,
-    "CORRECT_PASS": 4164,
+    "BAD_TRADE": 81,
+    "CORRECT_PASS": 4167,
     "GOOD_TRADE": 201,
-    "MISSED_WIN": 11173
+    "MISSED_WIN": 11200
   },
   "daily_top_mover_replay": {
     "lessons": [
-      "CBRS moved +7.99% after a blocked LONG candidate; consider whether an event starter should have been opened before confirmation."
+      "CBRS moved +7.90% after a blocked LONG candidate; event starter was active, so replay should inspect sizing/execution."
     ],
     "lookback_hours": 24,
     "missed_top_movers": [
       {
-        "blocked_at": "2026-07-11 07:21:30",
-        "blocked_stage": "portfolio_correlation_block",
+        "blocked_at": "2026-07-11 11:00:14",
+        "blocked_stage": "loss_circuit_breaker",
         "coin": "CBRS",
-        "conviction_entry_event": false,
+        "conviction_entry_event": true,
         "direction": "LONG",
-        "event_budget_summary": "event risk single-name budget has only $99 left, below the $100 starter minimum",
-        "move_pct": 7.988,
+        "event_budget_summary": "",
+        "move_pct": 7.898,
         "news_catalyst_score": 8.84,
         "news_event_score": 8.84,
-        "probability": 1.0,
-        "score": 100.0,
-        "summary": "event risk single-name budget has only $99 left, below the $100 starter minimum"
+        "probability": 0.8799,
+        "score": 96.0,
+        "summary": "Thesis medium: Pre-event starter long allowed: catalyst 8.84, news 61, p 94%, score 55.2 vs 65 trigger. Begin 44% size before full confirmation. Thesis: platform anchor + capital commitment + capacity lock-in + pre-IPO listing + IPO event + SEC filing flow."
       },
       {
-        "blocked_at": "2026-07-11 07:27:07",
+        "blocked_at": "2026-07-11 14:48:16",
+        "blocked_stage": "major_catalyst_watch",
+        "coin": "SNDK",
+        "conviction_entry_event": false,
+        "direction": "LONG",
+        "event_budget_summary": "",
+        "move_pct": 6.398,
+        "news_catalyst_score": 3.82,
+        "news_event_score": 3.82,
+        "probability": 0.7939,
+        "score": 88.05,
+        "summary": "RL tightened LONG threshold to \u226575 (ranging trap, candle conflict, marginal edge)"
+      },
+      {
+        "blocked_at": "2026-07-11 14:45:13",
+        "blocked_stage": "portfolio_correlation_block",
+        "coin": "META",
+        "conviction_entry_event": true,
+        "direction": "LONG",
+        "event_budget_summary": "event risk budget is full at the portfolio level",
+        "move_pct": 4.241,
+        "news_catalyst_score": 4.91,
+        "news_event_score": 4.91,
+        "probability": 1.0,
+        "score": 100.0,
+        "summary": "event risk budget is full at the portfolio level"
+      },
+      {
+        "blocked_at": "2026-07-11 14:47:00",
         "blocked_stage": "major_catalyst_watch",
         "coin": "NVDA",
         "conviction_entry_event": true,
         "direction": "LONG",
         "event_budget_summary": "",
-        "move_pct": 3.908,
+        "move_pct": 4.116,
         "news_catalyst_score": 8.11,
         "news_event_score": 8.11,
         "probability": 0.89,
@@ -40,147 +68,231 @@
         "summary": "embargoed after 10 LONG trades with 10% win rate"
       },
       {
-        "blocked_at": "2026-07-11 07:25:48",
-        "blocked_stage": "portfolio_correlation_block",
-        "coin": "META",
-        "conviction_entry_event": true,
-        "direction": "LONG",
-        "event_budget_summary": "event risk budget is full at the portfolio level",
-        "move_pct": 3.896,
-        "news_catalyst_score": 4.91,
-        "news_event_score": 4.91,
-        "probability": 0.95,
-        "score": 100.0,
-        "summary": "event risk budget is full at the portfolio level"
-      },
-      {
-        "blocked_at": "2026-07-11 07:25:21",
+        "blocked_at": "2026-07-11 08:06:35",
         "blocked_stage": "guardrails_flat",
         "coin": "LITE",
         "conviction_entry_event": false,
         "direction": "LONG",
         "event_budget_summary": "",
-        "move_pct": 3.727,
+        "move_pct": 4.104,
         "news_catalyst_score": 2.34,
         "news_event_score": 2.34,
-        "probability": 0.8621,
-        "score": 98.36,
+        "probability": 0.8559,
+        "score": 96.0,
         "summary": "embargoed after 4 LONG trades with 0% win rate"
       },
       {
-        "blocked_at": "2026-07-11 07:28:51",
-        "blocked_stage": "major_catalyst_watch",
-        "coin": "SNDK",
-        "conviction_entry_event": false,
+        "blocked_at": "2026-07-11 10:47:58",
+        "blocked_stage": "data_reliability_block",
+        "coin": "AMD",
+        "conviction_entry_event": true,
         "direction": "LONG",
         "event_budget_summary": "",
-        "move_pct": 3.566,
-        "news_catalyst_score": 3.82,
-        "news_event_score": 3.82,
-        "probability": 0.8345,
+        "move_pct": 3.628,
+        "news_catalyst_score": 5.26,
+        "news_event_score": 5.26,
+        "probability": 0.9831,
         "score": 100.0,
-        "summary": "RL tightened LONG threshold to \u226575 (ranging trap, candle conflict, marginal edge)"
+        "summary": "no valid orderbook snapshot is available"
       }
     ],
     "top_movers": [
       {
-        "coin": "CBRS",
-        "direction": "LONG",
-        "end_at": "2026-07-11 07:21:30",
-        "end_price": 213.99,
-        "end_ts": 1783734690.1698198,
-        "move_pct": 7.988,
-        "start_at": "2026-07-10 15:30:41",
-        "start_price": 198.16,
-        "start_ts": 1783677641.947364
-      },
-      {
-        "coin": "HOOD",
-        "direction": "SHORT",
-        "end_at": "2026-07-11 07:24:25",
-        "end_price": 111.23,
-        "end_ts": 1783734865.9519649,
-        "move_pct": -6.467,
-        "start_at": "2026-07-10 17:44:03",
-        "start_price": 118.92,
-        "start_ts": 1783685643.837378
-      },
-      {
         "coin": "MORPHO",
         "direction": "SHORT",
-        "end_at": "2026-07-11 07:33:59",
-        "end_price": 2.1228,
-        "end_ts": 1783735439.685622,
-        "move_pct": -6.033,
+        "end_at": "2026-07-11 14:53:28",
+        "end_price": 2.0538,
+        "end_ts": 1783761808.415932,
+        "move_pct": -9.088,
         "start_at": "2026-07-10 18:19:14",
         "start_price": 2.2591,
         "start_ts": 1783687754.151562
       },
       {
-        "coin": "DOT",
+        "coin": "CBRS",
         "direction": "LONG",
-        "end_at": "2026-07-11 07:32:47",
-        "end_price": 0.87956,
-        "end_ts": 1783735367.741554,
-        "move_pct": 4.31,
-        "start_at": "2026-07-10 12:12:56",
-        "start_price": 0.84322,
-        "start_ts": 1783665776.0882509
+        "end_at": "2026-07-11 11:00:14",
+        "end_price": 213.81,
+        "end_ts": 1783747814.644352,
+        "move_pct": 7.898,
+        "start_at": "2026-07-10 15:30:41",
+        "start_price": 198.16,
+        "start_ts": 1783677641.947364
       },
       {
-        "coin": "NVDA",
+        "coin": "SNDK",
         "direction": "LONG",
-        "end_at": "2026-07-11 07:27:07",
-        "end_price": 210.03,
-        "end_ts": 1783735027.464044,
-        "move_pct": 3.908,
-        "start_at": "2026-07-10 16:24:27",
-        "start_price": 202.13,
-        "start_ts": 1783680867.162109
+        "end_at": "2026-07-11 14:48:16",
+        "end_price": 1927.5,
+        "end_ts": 1783761496.7318668,
+        "move_pct": 6.398,
+        "start_at": "2026-07-10 17:32:53",
+        "start_price": 1811.6,
+        "start_ts": 1783684973.073348
+      },
+      {
+        "coin": "HOOD",
+        "direction": "SHORT",
+        "end_at": "2026-07-11 12:48:47",
+        "end_price": 111.33,
+        "end_ts": 1783754327.8091168,
+        "move_pct": -6.382,
+        "start_at": "2026-07-10 17:44:03",
+        "start_price": 118.92,
+        "start_ts": 1783685643.837378
       },
       {
         "coin": "META",
         "direction": "LONG",
-        "end_at": "2026-07-11 07:25:48",
-        "end_price": 668.01,
-        "end_ts": 1783734948.408727,
-        "move_pct": 3.896,
+        "end_at": "2026-07-11 14:45:13",
+        "end_price": 670.23,
+        "end_ts": 1783761313.613743,
+        "move_pct": 4.241,
         "start_at": "2026-07-10 15:25:44",
         "start_price": 642.96,
         "start_ts": 1783677344.654148
       },
       {
+        "coin": "NVDA",
+        "direction": "LONG",
+        "end_at": "2026-07-11 14:47:00",
+        "end_price": 210.45,
+        "end_ts": 1783761420.518304,
+        "move_pct": 4.116,
+        "start_at": "2026-07-10 16:24:27",
+        "start_price": 202.13,
+        "start_ts": 1783680867.162109
+      },
+      {
         "coin": "LITE",
         "direction": "LONG",
-        "end_at": "2026-07-11 07:25:21",
-        "end_price": 800.43,
-        "end_ts": 1783734921.128114,
-        "move_pct": 3.727,
+        "end_at": "2026-07-11 08:06:35",
+        "end_price": 803.34,
+        "end_ts": 1783737395.5166569,
+        "move_pct": 4.104,
         "start_at": "2026-07-10 15:34:11",
         "start_price": 771.67,
         "start_ts": 1783677851.9168892
       },
       {
-        "coin": "SNDK",
+        "coin": "AMD",
         "direction": "LONG",
-        "end_at": "2026-07-11 07:28:51",
-        "end_price": 1919.5,
-        "end_ts": 1783735131.489933,
-        "move_pct": 3.566,
-        "start_at": "2026-07-10 11:01:55",
-        "start_price": 1853.4,
-        "start_ts": 1783661515.475296
+        "end_at": "2026-07-11 10:47:58",
+        "end_price": 564.08,
+        "end_ts": 1783747078.1557891,
+        "move_pct": 3.628,
+        "start_at": "2026-07-10 15:29:40",
+        "start_price": 544.33,
+        "start_ts": 1783677580.356401
       }
     ]
   },
   "data_dir": "/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime",
-  "decision_rows": 84628,
-  "episodes": 84187,
-  "generated_at": 1783736636,
+  "decision_rows": 85029,
+  "episodes": 84588,
+  "generated_at": 1783762939,
   "horizon_minutes": 720,
   "interval": "5m",
-  "labeled_episodes": 15618,
+  "labeled_episodes": 15649,
   "recent_missed_moves": [
+    {
+      "action": "LONG",
+      "breakout": "confirmed_bullish_breakout",
+      "coin": "SNDK",
+      "interaction": "at_support",
+      "probability": 0.853,
+      "recorded_at": "2026-07-11 10:03:33",
+      "regime": "absorption",
+      "risk_reward_ratio": 2.77,
+      "score": 98.33,
+      "stage": "major_catalyst_watch",
+      "summary": "RL tightened LONG threshold to \u226575 (ranging trap, candle conflict, marginal edge)",
+      "ts": 1783744413.5644412
+    },
+    {
+      "action": "LONG",
+      "breakout": "confirmed_bullish_breakout",
+      "coin": "SNDK",
+      "interaction": "at_resistance",
+      "probability": 0.6662,
+      "recorded_at": "2026-07-11 09:44:28",
+      "regime": "absorption",
+      "risk_reward_ratio": 3.04,
+      "score": 85.77,
+      "stage": "major_catalyst_watch",
+      "summary": "RL tightened LONG threshold to \u226575 (ranging trap, candle conflict, marginal edge)",
+      "ts": 1783743268.692044
+    },
+    {
+      "action": "LONG",
+      "breakout": "confirmed_bullish_breakout",
+      "coin": "MRVL",
+      "interaction": "at_support",
+      "probability": 0.89,
+      "recorded_at": "2026-07-11 09:42:20",
+      "regime": "absorption",
+      "risk_reward_ratio": 3.8,
+      "score": 96.0,
+      "stage": "mtf_block",
+      "summary": "Thesis medium: pre-event catalyst flow supports taking starter risk before full price confirmation; daily breakout is already confirmed; newsflow is aligned with the direction",
+      "ts": 1783743140.270388
+    },
+    {
+      "action": "LONG",
+      "breakout": "confirmed_bullish_breakout",
+      "coin": "SNDK",
+      "interaction": "at_support",
+      "probability": 0.8149,
+      "recorded_at": "2026-07-11 08:09:45",
+      "regime": "trend",
+      "risk_reward_ratio": 3.04,
+      "score": 98.32,
+      "stage": "major_catalyst_watch",
+      "summary": "RL tightened LONG threshold to \u226575 (ranging trap, candle conflict, marginal edge)",
+      "ts": 1783737585.494553
+    },
+    {
+      "action": "LONG",
+      "breakout": "confirmed_bullish_breakout",
+      "coin": "MRVL",
+      "interaction": "at_support",
+      "probability": 0.9187,
+      "recorded_at": "2026-07-11 08:07:15",
+      "regime": "absorption",
+      "risk_reward_ratio": 3.42,
+      "score": 97.91,
+      "stage": "mtf_block",
+      "summary": "Thesis medium: Pre-event starter long allowed: catalyst 4.31, news 61, p 95%, score 63.2 vs 65 trigger. Begin 44% size before full confirmation. Thesis: pre-IPO listing + IPO event + SEC filing flow + options implied move + analyst revision + analyst conviction.",
+      "ts": 1783737435.496232
+    },
+    {
+      "action": "LONG",
+      "breakout": "confirmed_bullish_breakout",
+      "coin": "SNDK",
+      "interaction": "at_resistance",
+      "probability": 0.8345,
+      "recorded_at": "2026-07-11 07:28:51",
+      "regime": "breakout",
+      "risk_reward_ratio": 4.39,
+      "score": 100.0,
+      "stage": "major_catalyst_watch",
+      "summary": "RL tightened LONG threshold to \u226575 (ranging trap, candle conflict, marginal edge)",
+      "ts": 1783735131.489933
+    },
+    {
+      "action": "LONG",
+      "breakout": "confirmed_bullish_breakout",
+      "coin": "LLY",
+      "interaction": "at_support",
+      "probability": 0.7196,
+      "recorded_at": "2026-07-11 07:25:32",
+      "regime": "absorption",
+      "risk_reward_ratio": 2.64,
+      "score": 88.07,
+      "stage": "guardrails_flat",
+      "summary": "RL tightened LONG threshold to \u226573 (ranging trap, absorption trap)",
+      "ts": 1783734932.168542
+    },
     {
       "action": "LONG",
       "breakout": "persistent_bullish_breakout",
@@ -222,117 +334,19 @@
       "stage": "mtf_block",
       "summary": "Thesis medium: Scalp long: breakdown/breakout is confirmed, recent candles confirm, book pressure is long.",
       "ts": 1783709844.654033
-    },
-    {
-      "action": "LONG",
-      "breakout": "confirmed_bullish_breakout",
-      "coin": "MRVL",
-      "interaction": "at_support",
-      "probability": 0.89,
-      "recorded_at": "2026-07-11 00:24:55",
-      "regime": "absorption",
-      "risk_reward_ratio": 2.2,
-      "score": 96.0,
-      "stage": "mtf_block",
-      "summary": "Thesis medium: Pre-event starter long allowed: catalyst 4.86, news 61, p 95%, score 61.3 vs 65 trigger. Begin 44% size before full confirmation. Thesis: demand commitment + capacity lock-in + SEC filing flow + options implied move + analyst revision + analyst conviction.",
-      "ts": 1783709695.537771
-    },
-    {
-      "action": "LONG",
-      "breakout": "persistent_bullish_breakout",
-      "coin": "SOFTBANK",
-      "interaction": "at_support",
-      "probability": 0.8115,
-      "recorded_at": "2026-07-10 22:32:37",
-      "regime": "mixed",
-      "risk_reward_ratio": 1.88,
-      "score": 94.59,
-      "stage": "loss_circuit_breaker",
-      "summary": "Thesis medium: Scalp long: breakdown/breakout is confirmed, recent candles confirm, book pressure is long.",
-      "ts": 1783702957.46777
-    },
-    {
-      "action": "LONG",
-      "breakout": "confirmed_bullish_breakout",
-      "coin": "SNDK",
-      "interaction": "at_resistance",
-      "probability": 0.8568,
-      "recorded_at": "2026-07-10 22:32:27",
-      "regime": "breakout",
-      "risk_reward_ratio": 2.58,
-      "score": 98.07,
-      "stage": "mtf_block",
-      "summary": "Thesis medium: Scalp long: breakdown/breakout is confirmed, recent candles confirm, book pressure is long.",
-      "ts": 1783702947.028329
-    },
-    {
-      "action": "LONG",
-      "breakout": "confirmed_bullish_breakout",
-      "coin": "MRVL",
-      "interaction": "at_support",
-      "probability": 0.9788,
-      "recorded_at": "2026-07-10 22:11:24",
-      "regime": "breakout",
-      "risk_reward_ratio": 4.8,
-      "score": 100.0,
-      "stage": "mtf_block",
-      "summary": "Thesis medium: Pre-event starter long allowed: catalyst 4.86, news 61, p 95%, score 57.5 vs 65 trigger. Begin 44% size before full confirmation. Thesis: demand commitment + capacity lock-in + SEC filing flow + options implied move + analyst revision + analyst conviction.",
-      "ts": 1783701684.280488
-    },
-    {
-      "action": "LONG",
-      "breakout": "confirmed_bullish_breakout",
-      "coin": "SNDK",
-      "interaction": "at_support",
-      "probability": 0.847,
-      "recorded_at": "2026-07-10 21:53:59",
-      "regime": "absorption",
-      "risk_reward_ratio": 2.1,
-      "score": 98.03,
-      "stage": "data_reliability_block",
-      "summary": "price moved too far since the conviction snapshot",
-      "ts": 1783700639.167506
-    },
-    {
-      "action": "LONG",
-      "breakout": "persistent_bullish_breakout",
-      "coin": "SOFTBANK",
-      "interaction": "at_support",
-      "probability": 0.5894,
-      "recorded_at": "2026-07-10 21:30:17",
-      "regime": "absorption",
-      "risk_reward_ratio": 1.83,
-      "score": 81.02,
-      "stage": "loss_circuit_breaker",
-      "summary": "Thesis medium: Scalp long: breakdown/breakout is confirmed, recent candles confirm, book pressure is long.",
-      "ts": 1783699217.7251358
-    },
-    {
-      "action": "LONG",
-      "breakout": "confirmed_bullish_breakout",
-      "coin": "SNDK",
-      "interaction": "at_support",
-      "probability": 0.7381,
-      "recorded_at": "2026-07-10 21:30:06",
-      "regime": "absorption",
-      "risk_reward_ratio": 2.03,
-      "score": 85.45,
-      "stage": "data_reliability_block",
-      "summary": "price moved too far since the conviction snapshot",
-      "ts": 1783699206.323082
     }
   ],
   "summary": {
-    "bad_trade_count": 80,
-    "correct_pass_count": 4164,
+    "bad_trade_count": 81,
+    "correct_pass_count": 4167,
     "good_trade_count": 201,
-    "missed_win_count": 11173
+    "missed_win_count": 11200
   },
   "target_r": 0.25,
   "top_blockers": [
     {
       "blocker": "price moved too far since the conviction snapshot",
-      "misses": 1048
+      "misses": 1051
     },
     {
       "blocker": "win-rate recovery blocks LONG: needs fundamentals, attention, and flow to line up",
@@ -340,7 +354,7 @@
     },
     {
       "blocker": "Thesis medium: Scalp long: breakdown/breakout is confirmed, book pressure is long, daily map permits the long.",
-      "misses": 298
+      "misses": 299
     },
     {
       "blocker": "embargoed after 15 LONG trades with 20% win rate",
@@ -356,11 +370,11 @@
     },
     {
       "blocker": "Thesis medium: Scalp long: breakdown/breakout is confirmed, recent candles confirm, book pressure is long.",
-      "misses": 210
+      "misses": 211
     },
     {
       "blocker": "Thesis medium: strong support defense is holding beneath price; pre-event catalyst flow supports taking starter risk before full price confirmation; demand/supply catalyst is directly tied to the equity theme",
-      "misses": 171
+      "misses": 172
     }
   ],
   "top_missed_assets": [
@@ -433,7 +447,7 @@
   ],
   "top_missed_stages": [
     {
-      "misses": 2397,
+      "misses": 2400,
       "stage": "mtf_block"
     },
     {
@@ -445,7 +459,7 @@
       "stage": "setup_quality_guard_block"
     },
     {
-      "misses": 1109,
+      "misses": 1113,
       "stage": "data_reliability_block"
     },
     {
@@ -457,7 +471,7 @@
       "stage": "first_principles_guard_block"
     },
     {
-      "misses": 826,
+      "misses": 833,
       "stage": "major_catalyst_watch"
     },
     {
