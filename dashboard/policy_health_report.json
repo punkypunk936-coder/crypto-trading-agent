@@ -3,7 +3,7 @@
   "findings": [
     {
       "area": "Measurement",
-      "evidence": "1335 closed trades show 43.9% win rate vs 70% target.",
+      "evidence": "1341 closed trades show 44.0% win rate vs 70% target.",
       "fix": "Require every new entry/exit policy to show replay or live cohort improvement before increasing size.",
       "priority": "P0",
       "title": "Win-rate target is not being controlled by a promotion gate"
@@ -17,14 +17,14 @@
     },
     {
       "area": "Trade Management",
-      "evidence": "Invalidation-style exits are 78% of closes; take-profit exits are 4%.",
+      "evidence": "Invalidation-style exits are 77% of closes; take-profit exits are 4%.",
       "fix": "Separate scalp exits from high-timeframe exits and learn per-family stop width, time stop, and runner rules.",
       "priority": "P1",
       "title": "Most exits are invalidation exits, not planned winners"
     },
     {
       "area": "Guard Stack",
-      "evidence": "Recent sample has 3685 directional ideas; 96% blocked and 0.5% executed.",
+      "evidence": "Recent sample has 3742 directional ideas; 97% blocked and 0.6% executed.",
       "fix": "Add per-guard counterfactual attribution: which blocks saved losses, which blocks missed winners, and which should be relaxed.",
       "priority": "P1",
       "title": "The guard stack blocks most directional ideas without ranking missed winners"
@@ -52,7 +52,7 @@
     },
     {
       "area": "Data Ops",
-      "evidence": "Decision log is 5821MB; full reads can stall the agent/dashboard.",
+      "evidence": "Decision log is 5847MB; full reads can stall the agent/dashboard.",
       "fix": "Add daily rollups and archive old JSONL shards; dashboards should read compact reports, not the raw firehose.",
       "priority": "P2",
       "title": "Decision history is too large for fast analysis"
@@ -65,171 +65,171 @@
       "title": "Capital is not yet aggressively avoiding the worst families"
     }
   ],
-  "generated_at": 1784019255,
+  "generated_at": 1784054969,
   "recent_decisions": {
-    "blocked_directional": 3545,
-    "blocked_directional_rate": 0.962,
+    "blocked_directional": 3617,
+    "blocked_directional_rate": 0.9666,
     "candidate_actions": {
-      "FLAT": 1315,
-      "LONG": 1976,
-      "SHORT": 1709
+      "FLAT": 1258,
+      "LONG": 1918,
+      "SHORT": 1824
     },
-    "decision_file_size_mb": 5821.44,
-    "directional_decisions": 3685,
+    "decision_file_size_mb": 5846.59,
+    "directional_decisions": 3742,
     "directional_stage_counts": [
       {
-        "count": 1205,
-        "rate": 0.327,
+        "count": 1266,
+        "rate": 0.3383,
         "stage": "loss_circuit_breaker"
       },
       {
-        "count": 728,
-        "rate": 0.1976,
+        "count": 714,
+        "rate": 0.1908,
         "stage": "mtf_block"
       },
       {
-        "count": 578,
-        "rate": 0.1569,
+        "count": 537,
+        "rate": 0.1435,
         "stage": "flat_no_trade"
       },
       {
-        "count": 443,
-        "rate": 0.1202,
+        "count": 453,
+        "rate": 0.1211,
         "stage": "major_catalyst_watch"
       },
       {
-        "count": 182,
-        "rate": 0.0494,
-        "stage": "guardrails_flat"
-      },
-      {
-        "count": 161,
-        "rate": 0.0437,
-        "stage": "first_principles_guard_block"
-      },
-      {
-        "count": 102,
-        "rate": 0.0277,
+        "count": 193,
+        "rate": 0.0516,
         "stage": "data_reliability_block"
       },
       {
-        "count": 87,
-        "rate": 0.0236,
+        "count": 183,
+        "rate": 0.0489,
+        "stage": "first_principles_guard_block"
+      },
+      {
+        "count": 136,
+        "rate": 0.0363,
+        "stage": "guardrails_flat"
+      },
+      {
+        "count": 77,
+        "rate": 0.0206,
         "stage": "pending_limit_north_star_resized"
       },
       {
-        "count": 79,
-        "rate": 0.0214,
+        "count": 74,
+        "rate": 0.0198,
         "stage": "win_rate_context_guard_block"
       },
       {
-        "count": 25,
-        "rate": 0.0068,
+        "count": 23,
+        "rate": 0.0061,
         "stage": "position_invalidation_close"
       },
       {
-        "count": 17,
-        "rate": 0.0046,
+        "count": 16,
+        "rate": 0.0043,
+        "stage": "north_star_guard_block"
+      },
+      {
+        "count": 15,
+        "rate": 0.004,
         "stage": "hold_existing_position"
       },
       {
-        "count": 17,
-        "rate": 0.0046,
+        "count": 10,
+        "rate": 0.0027,
         "stage": "limit_entry_placed"
       },
       {
-        "count": 9,
-        "rate": 0.0024,
-        "stage": "portfolio_correlation_block"
-      },
-      {
-        "count": 8,
-        "rate": 0.0022,
-        "stage": "risk_rejected"
+        "count": 10,
+        "rate": 0.0027,
+        "stage": "trigger_watch_market_entry"
       }
     ],
-    "executed_directional": 19,
-    "executed_directional_rate": 0.0052,
+    "executed_directional": 23,
+    "executed_directional_rate": 0.0061,
     "final_actions": {
-      "FLAT": 2902,
-      "LONG": 1107,
-      "SHORT": 991
+      "FLAT": 2876,
+      "LONG": 1109,
+      "SHORT": 1015
     },
-    "low_context_directional_rate": 0.5585,
-    "missing_news_context_rate": 0.5585,
+    "low_context_directional_rate": 0.5591,
+    "missing_news_context_rate": 0.5591,
     "missing_social_coverage_rate": 1.0,
-    "price_only_directional_rate": 0.2136,
+    "price_only_directional_rate": 0.2119,
     "sampled_decisions": 5000,
     "stage_counts": [
       {
-        "count": 1817,
-        "rate": 0.3634,
+        "count": 1742,
+        "rate": 0.3484,
         "stage": "flat_no_trade"
       },
       {
-        "count": 1205,
-        "rate": 0.241,
+        "count": 1266,
+        "rate": 0.2532,
         "stage": "loss_circuit_breaker"
       },
       {
-        "count": 728,
-        "rate": 0.1456,
+        "count": 714,
+        "rate": 0.1428,
         "stage": "mtf_block"
       },
       {
-        "count": 506,
-        "rate": 0.1012,
+        "count": 492,
+        "rate": 0.0984,
         "stage": "major_catalyst_watch"
       },
       {
-        "count": 182,
-        "rate": 0.0364,
-        "stage": "guardrails_flat"
-      },
-      {
-        "count": 161,
-        "rate": 0.0322,
-        "stage": "first_principles_guard_block"
-      },
-      {
-        "count": 102,
-        "rate": 0.0204,
+        "count": 193,
+        "rate": 0.0386,
         "stage": "data_reliability_block"
       },
       {
-        "count": 87,
-        "rate": 0.0174,
+        "count": 183,
+        "rate": 0.0366,
+        "stage": "first_principles_guard_block"
+      },
+      {
+        "count": 136,
+        "rate": 0.0272,
+        "stage": "guardrails_flat"
+      },
+      {
+        "count": 77,
+        "rate": 0.0154,
         "stage": "pending_limit_north_star_resized"
       },
       {
-        "count": 79,
-        "rate": 0.0158,
+        "count": 74,
+        "rate": 0.0148,
         "stage": "win_rate_context_guard_block"
-      },
-      {
-        "count": 28,
-        "rate": 0.0056,
-        "stage": "position_invalidation_close"
       },
       {
         "count": 27,
         "rate": 0.0054,
+        "stage": "position_invalidation_close"
+      },
+      {
+        "count": 25,
+        "rate": 0.005,
         "stage": "hold_existing_position"
       },
       {
-        "count": 17,
-        "rate": 0.0034,
+        "count": 16,
+        "rate": 0.0032,
+        "stage": "north_star_guard_block"
+      },
+      {
+        "count": 10,
+        "rate": 0.002,
         "stage": "limit_entry_placed"
       },
       {
-        "count": 9,
-        "rate": 0.0018,
-        "stage": "portfolio_correlation_block"
-      },
-      {
-        "count": 8,
-        "rate": 0.0016,
-        "stage": "risk_rejected"
+        "count": 10,
+        "rate": 0.002,
+        "stage": "trigger_watch_market_entry"
       }
     ]
   },
@@ -262,22 +262,31 @@
   ],
   "status": "ATTENTION_REQUIRED",
   "summary": {
-    "blocked_directional_rate": 0.962,
-    "closed_trades": 1335,
-    "directional_sample": 3685,
+    "blocked_directional_rate": 0.9666,
+    "closed_trades": 1341,
+    "directional_sample": 3742,
     "finding_count": 9,
     "headline": "Win-rate target is not being controlled by a promotion gate",
-    "low_context_directional_rate": 0.5585,
+    "low_context_directional_rate": 0.5591,
     "median_hold_minutes": 94.0,
-    "pnl_usd": -90.24,
-    "win_rate": 0.439
+    "pnl_usd": -93.85,
+    "win_rate": 0.44
   },
   "trades": {
-    "avg_hold_minutes": 261.99,
-    "avg_loss_usd": -1.78,
+    "avg_hold_minutes": 261.3,
+    "avg_loss_usd": -1.79,
     "avg_pnl_usd": -0.07,
     "avg_win_usd": 2.0,
     "best_families": [
+      {
+        "avg_pnl_usd": 1.3,
+        "coin": "HOOD",
+        "direction": "LONG",
+        "family": "HOOD:LONG",
+        "pnl_usd": 48.16,
+        "samples": 37,
+        "win_rate": 0.4865
+      },
       {
         "avg_pnl_usd": 15.78,
         "coin": "MORPHO",
@@ -286,15 +295,6 @@
         "pnl_usd": 47.34,
         "samples": 3,
         "win_rate": 0.6667
-      },
-      {
-        "avg_pnl_usd": 1.28,
-        "coin": "HOOD",
-        "direction": "LONG",
-        "family": "HOOD:LONG",
-        "pnl_usd": 44.78,
-        "samples": 35,
-        "win_rate": 0.4571
       },
       {
         "avg_pnl_usd": 5.37,
@@ -342,60 +342,60 @@
         "win_rate": 0.4444
       },
       {
-        "avg_pnl_usd": 0.5,
-        "coin": "TSLA",
+        "avg_pnl_usd": 0.41,
+        "coin": "AMD",
         "direction": "LONG",
-        "family": "TSLA:LONG",
-        "pnl_usd": 12.08,
-        "samples": 24,
-        "win_rate": 0.375
+        "family": "AMD:LONG",
+        "pnl_usd": 12.21,
+        "samples": 30,
+        "win_rate": 0.4
       }
     ],
-    "closed_trades": 1335,
+    "closed_trades": 1341,
     "exit_reasons": [
       {
-        "count": 492,
-        "rate": 0.3685,
+        "count": 495,
+        "rate": 0.3691,
         "reason": "structure_invalidation"
       },
       {
-        "count": 259,
-        "rate": 0.194,
+        "count": 260,
+        "rate": 0.1939,
         "reason": "stop_loss"
       },
       {
-        "count": 237,
-        "rate": 0.1775,
+        "count": 239,
+        "rate": 0.1782,
         "reason": "scalp_time_stop"
       },
       {
         "count": 113,
-        "rate": 0.0846,
+        "rate": 0.0843,
         "reason": "htf_invalidation"
       },
       {
         "count": 108,
-        "rate": 0.0809,
+        "rate": 0.0805,
         "reason": "conviction_lost"
       },
       {
         "count": 51,
-        "rate": 0.0382,
+        "rate": 0.038,
         "reason": "take_profit"
       },
       {
         "count": 31,
-        "rate": 0.0232,
+        "rate": 0.0231,
         "reason": "time_stop"
       },
       {
         "count": 27,
-        "rate": 0.0202,
+        "rate": 0.0201,
         "reason": "micro_invalidation"
       },
       {
         "count": 12,
-        "rate": 0.009,
+        "rate": 0.0089,
         "reason": "scalp_failed_followthrough"
       },
       {
@@ -404,16 +404,16 @@
         "reason": "stale_adverse"
       }
     ],
-    "invalidation_exit_rate": 0.7753,
-    "losses": 708,
+    "invalidation_exit_rate": 0.7748,
+    "losses": 710,
     "median_hold_minutes": 94.0,
-    "pnl_usd": -90.24,
-    "profit_factor": 0.9286,
-    "short_hold_rate": 0.4007,
-    "take_profit_rate": 0.0382,
-    "very_short_hold_rate": 0.2547,
-    "win_rate": 0.439,
-    "wins": 586,
+    "pnl_usd": -93.85,
+    "profit_factor": 0.9263,
+    "short_hold_rate": 0.4012,
+    "take_profit_rate": 0.038,
+    "very_short_hold_rate": 0.2543,
+    "win_rate": 0.44,
+    "wins": 590,
     "worst_families": [
       {
         "avg_pnl_usd": -3.07,
