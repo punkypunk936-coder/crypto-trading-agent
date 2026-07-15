@@ -887,6 +887,17 @@ class TradingAgent:
         self.risk.last_trade_date = checkpoint.get("last_trade_date", "")
         active_universe = {coin.upper() for coin in self.cfg.trading.coins}
 
+        exchange_states = dict(checkpoint.get("exchange_states") or {})
+        for ex in self.exchanges:
+            restore_state = getattr(ex, "restore_checkpoint_state", None)
+            runtime_state = dict(exchange_states.get(ex.name, {}) or {}).get("runtime_state")
+            if not callable(restore_state) or not isinstance(runtime_state, dict):
+                continue
+            try:
+                restore_state(runtime_state)
+            except Exception as exc:
+                log.warning(f"Could not restore runtime state for {ex.name}: {exc}")
+
         for coin, pos in checkpoint.get("positions", {}).items():
             if coin.upper() not in active_universe:
                 log.warning(f"[{coin}] Skipping restored position outside active trade universe")
@@ -7953,9 +7964,16 @@ class TradingAgent:
     def _save_checkpoint(self):
         exchange_states = {}
         for ex in self.exchanges:
-            exchange_states[ex.name] = {
+            exchange_state = {
                 "circuit_state": self._exchange_circuits[ex.name].state.value,
             }
+            export_state = getattr(ex, "export_checkpoint_state", None)
+            if callable(export_state):
+                try:
+                    exchange_state["runtime_state"] = export_state()
+                except Exception as exc:
+                    log.warning(f"Could not checkpoint runtime state for {ex.name}: {exc}")
+            exchange_states[ex.name] = exchange_state
         checkpoint_manager.save(
             cycle_number=self._cycle,
             portfolio_usd=self._last_portfolio_usd,

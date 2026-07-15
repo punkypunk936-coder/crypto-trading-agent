@@ -10,6 +10,7 @@ Now supports simulated limit orders:
 """
 
 import time
+from copy import deepcopy
 from typing import Optional, Dict, List
 from logger import get_logger
 from exchanges.base import BaseExchange, AccountState, OrderResult, LimitOrderStatus
@@ -75,6 +76,64 @@ class DryRunExchange(BaseExchange):
             available_usd    = self.balance,
             positions        = positions,
         )
+
+    def export_checkpoint_state(self) -> dict:
+        """Return the complete paper ledger needed for restart continuity."""
+        return {
+            "version": 1,
+            "balance": float(self.balance),
+            "positions": deepcopy(self.positions),
+            "order_count": int(self.order_count),
+            "pending_limits": deepcopy(self._pending_limits),
+            "leverage_by_coin": dict(self._leverage_by_coin),
+        }
+
+    def restore_checkpoint_state(self, state: dict) -> bool:
+        """Restore paper cash, positions, and pending limits from a checkpoint."""
+        if not isinstance(state, dict):
+            return False
+
+        restored_positions: Dict[str, dict] = {}
+        for raw_coin, raw_position in dict(state.get("positions") or {}).items():
+            coin = str(raw_coin or "").upper()
+            position = dict(raw_position or {})
+            direction = str(position.get("direction") or "").upper()
+            if coin not in self._supported_symbols or direction not in {"LONG", "SHORT"}:
+                continue
+            restored_positions[coin] = position
+
+        restored_limits: Dict[str, dict] = {}
+        for raw_order_id, raw_order in dict(state.get("pending_limits") or {}).items():
+            order_id = str(raw_order_id or "")
+            order = dict(raw_order or {})
+            coin = str(order.get("coin") or "").upper()
+            direction = str(order.get("direction") or "").upper()
+            if not order_id or coin not in self._supported_symbols or direction not in {"LONG", "SHORT"}:
+                continue
+            order["coin"] = coin
+            order["direction"] = direction
+            restored_limits[order_id] = order
+
+        self.balance = float(state.get("balance", self.balance) or 0.0)
+        self.positions = restored_positions
+        self._pending_limits = restored_limits
+        self._leverage_by_coin = {
+            str(coin or "").upper(): max(1, int(leverage or 1))
+            for coin, leverage in dict(state.get("leverage_by_coin") or {}).items()
+            if str(coin or "").upper() in self._supported_symbols
+        }
+        self.order_count = max(0, int(state.get("order_count", 0) or 0))
+        for order_id in self._pending_limits:
+            try:
+                self.order_count = max(self.order_count, int(order_id.rsplit("-", 1)[-1]))
+            except (TypeError, ValueError):
+                continue
+
+        log.info(
+            f"[DRY RUN] Paper ledger restored: balance=${self.balance:,.2f}, "
+            f"positions={len(self.positions)}, pending={len(self._pending_limits)}"
+        )
+        return True
 
     def set_leverage(self, coin: str, leverage: int) -> bool:
         self._leverage_by_coin[str(coin or "").upper()] = max(1, int(leverage or 1))

@@ -236,6 +236,65 @@ def test_checkpoint_recovery_rehydrates_dry_run_pending_limits() -> None:
             agent_module.checkpoint_manager = original_manager
 
 
+def test_checkpoint_recovery_rehydrates_dry_run_account_state() -> None:
+    cfg = build_config()
+    original_manager = checkpoint_module.checkpoint_manager
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / "checkpoints.db"
+        temp_manager = checkpoint_module.CheckpointManager(db_path=str(db_path))
+        checkpoint_module.checkpoint_manager = temp_manager
+        agent_module.checkpoint_manager = temp_manager
+        try:
+            ex = DryRunExchange(starting_balance_usd=1000.0)
+            ex.connect()
+            ex.balance = 742.5
+            ex.order_count = 17
+            ex._leverage_by_coin["BTC"] = 2
+            ex.positions["BTC"] = {
+                "direction": "LONG",
+                "entry_price": 70000.0,
+                "size_coin": 0.001,
+                "size_usd": 70.0,
+                "leverage": 2,
+                "margin_usd": 35.0,
+                "opened_at": time.time() - 600,
+            }
+
+            live = TradingAgent(cfg, [ex])
+            live.risk.restore_position(
+                OpenPosition(
+                    coin="BTC",
+                    direction="LONG",
+                    entry_price=70000.0,
+                    size_usd=70.0,
+                    size_coin=0.001,
+                    stop_loss=63000.0,
+                    take_profit=84000.0,
+                    trailing_stop_price=65000.0,
+                    opened_at=time.time() - 600,
+                    exchange=ex.name,
+                    leverage=2,
+                    margin_usd=35.0,
+                )
+            )
+            live._last_portfolio_usd = 777.5
+            live._last_available_usd = 742.5
+            live._save_checkpoint()
+
+            ex_restarted = DryRunExchange(starting_balance_usd=1000.0)
+            ex_restarted.connect()
+            restarted = TradingAgent(cfg, [ex_restarted])
+
+            assert "BTC" in restarted.risk.positions
+            assert "BTC" in ex_restarted.positions, "paper exchange position ledger should survive restart"
+            assert ex_restarted.balance == 742.5, "paper cash balance should survive restart"
+            assert ex_restarted.order_count == 17
+            assert ex_restarted._leverage_by_coin["BTC"] == 2
+        finally:
+            checkpoint_module.checkpoint_manager = original_manager
+            agent_module.checkpoint_manager = original_manager
+
+
 def test_execute_order_stops_after_first_success() -> None:
     cfg = build_config()
     original_manager = checkpoint_module.checkpoint_manager
@@ -9116,6 +9175,8 @@ def run_all() -> None:
     print("PASS checkpoint recovery")
     test_checkpoint_recovery_rehydrates_dry_run_pending_limits()
     print("PASS dry-run pending limit recovery")
+    test_checkpoint_recovery_rehydrates_dry_run_account_state()
+    print("PASS dry-run account-state recovery")
     test_execute_order_stops_after_first_success()
     print("PASS single-exchange execution")
     test_checkpoint_recovery_skips_unsupported_state()
