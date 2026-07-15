@@ -316,14 +316,18 @@ class Backtester:
             "direction": signal.action,
             "entry_price": limit_price,
             "sl": sl,
+            "original_sl": sl,
             "tp": tp,
             "size_usd": size_usd,
             "opened_at": str(opened_at),
             "opened_index": opened_index,
             "score": signal.score,
             "expectancy": dict(getattr(signal, "expectancy", {}) or {}),
+            "thesis": dict(getattr(signal, "thesis", {}) or {}),
             "trade_plan": trade_plan,
             "execution_plan": dict(getattr(signal, "execution_plan", {}) or {}),
+            "leverage": self.leverage,
+            "loss_realization_guard_active": False,
             "wait_cycles": 0,
         }
 
@@ -368,6 +372,72 @@ class Backtester:
         if "break" in breakout_state.lower() and signal.action == "FLAT":
             score += 6.0
         return max(0.0, min(100.0, score))
+
+    def _loss_realization_hold_profile(self, position: dict, signal, price: float) -> dict:
+        """Backtest mirror of the live thesis-aware loss hold policy."""
+        profile = {"defer": False, "hard_stop": float(position.get("sl") or 0.0)}
+        if not bool(getattr(config.trading, "loss_realization_guard_enabled", True)):
+            return profile
+
+        leverage = max(1.0, float(position.get("leverage") or self.leverage or 1.0))
+        max_leverage = float(
+            getattr(config.trading, "loss_realization_guard_max_leverage", 3.0) or 3.0
+        )
+        thesis = dict(getattr(signal, "thesis", {}) or position.get("thesis") or {})
+        state = str(thesis.get("state", "") or "").upper()
+        conflicts = float(thesis.get("conflict_points", 0.0) or 0.0)
+        action = str(getattr(signal, "action", "") or "").upper()
+        direction = str(position.get("direction") or "").upper()
+        permitted = bool(thesis.get("permitted", action in {"", "FLAT", direction}))
+        invalid = state in {"NO_TRADE", "INVALID", "INVALIDATED", "BROKEN"}
+        direction_aligned = action in {"", "FLAT", direction}
+        scalp_trade = bool(
+            position.get("scalp_trade")
+            or str((position.get("trade_plan") or {}).get("trade_style", "")).lower() == "scalp"
+        )
+        thesis_intact = bool(thesis and permitted and direction_aligned and not invalid and conflicts < 2.0)
+        if scalp_trade or leverage > max_leverage or not thesis_intact:
+            return profile
+
+        entry = float(position.get("entry_price") or 0.0)
+        review_stop = float(position.get("original_sl") or position.get("sl") or 0.0)
+        risk_distance = abs(entry - review_stop) if entry > 0 and review_stop > 0 else entry * self.sl_pct
+        if entry <= 0 or risk_distance <= 0:
+            return profile
+        favorable_move = price - entry if direction == "LONG" else entry - price
+        adverse_r = max(0.0, -favorable_move) / max(risk_distance, 1e-9)
+        hard_r = float(
+            getattr(config.trading, "loss_realization_guard_hard_adverse_r", 1.75) or 1.75
+        )
+        hard_stop = entry - risk_distance * hard_r if direction == "LONG" else entry + risk_distance * hard_r
+        min_buffer = float(
+            getattr(config.trading, "loss_realization_guard_min_liquidation_buffer_pct", 0.12) or 0.12
+        )
+        if leverage > 1.0:
+            if direction == "LONG":
+                approximate_liquidation = max(0.0, entry * (1.0 - 1.0 / leverage))
+                hard_stop = max(hard_stop, approximate_liquidation + entry * min_buffer)
+            else:
+                approximate_liquidation = entry * (1.0 + 1.0 / leverage)
+                hard_stop = min(hard_stop, approximate_liquidation - entry * min_buffer)
+
+        hard_boundary_hit = bool(
+            position.get("loss_realization_guard_active")
+            and (
+                (direction == "LONG" and price <= float(position.get("sl") or hard_stop))
+                or (direction == "SHORT" and price >= float(position.get("sl") or hard_stop))
+            )
+        )
+        risk_room = (direction == "LONG" and price > hard_stop) or (direction == "SHORT" and price < hard_stop)
+        if hard_boundary_hit or adverse_r >= hard_r or not risk_room or favorable_move >= 0:
+            return profile
+
+        return {
+            "defer": True,
+            "hard_stop": hard_stop,
+            "adverse_r": adverse_r,
+            "unrealized_pnl_pct": favorable_move / max(entry, 1e-9) * self.leverage * 100.0,
+        }
 
     def _run_baselines(self) -> dict:
         if self.df.empty:
@@ -500,15 +570,31 @@ class Backtester:
                 exit_price = mark_price
                 if position["direction"] == "LONG":
                     if lo <= position["sl"]:
-                        exit_reason = "stop_loss"
-                        exit_price = self._fill_price("SHORT", position["sl"], for_exit=True)
+                        loss_hold = self._loss_realization_hold_profile(position, signal, float(position["sl"]))
+                        if loss_hold.get("defer", False):
+                            position["loss_realization_guard_active"] = True
+                            position["sl"] = float(loss_hold["hard_stop"])
+                            if lo <= position["sl"]:
+                                exit_reason = "stop_loss"
+                                exit_price = self._fill_price("SHORT", position["sl"], for_exit=True)
+                        else:
+                            exit_reason = "stop_loss"
+                            exit_price = self._fill_price("SHORT", position["sl"], for_exit=True)
                     elif hi >= position["tp"]:
                         exit_reason = "take_profit"
                         exit_price = self._fill_price("SHORT", position["tp"], for_exit=True)
                 else:
                     if hi >= position["sl"]:
-                        exit_reason = "stop_loss"
-                        exit_price = self._fill_price("LONG", position["sl"], for_exit=True)
+                        loss_hold = self._loss_realization_hold_profile(position, signal, float(position["sl"]))
+                        if loss_hold.get("defer", False):
+                            position["loss_realization_guard_active"] = True
+                            position["sl"] = float(loss_hold["hard_stop"])
+                            if hi >= position["sl"]:
+                                exit_reason = "stop_loss"
+                                exit_price = self._fill_price("LONG", position["sl"], for_exit=True)
+                        else:
+                            exit_reason = "stop_loss"
+                            exit_price = self._fill_price("LONG", position["sl"], for_exit=True)
                     elif lo <= position["tp"]:
                         exit_reason = "take_profit"
                         exit_price = self._fill_price("LONG", position["tp"], for_exit=True)
@@ -535,7 +621,11 @@ class Backtester:
                     self.flat_streak = 0
 
                 decay_score = self._conviction_decay_score(position, signal)
-                if decay_score >= float(getattr(config.trading, "conviction_decay_exit_threshold", 58.0) or 58.0):
+                loss_hold = self._loss_realization_hold_profile(position, signal, mark_price)
+                if (
+                    decay_score >= float(getattr(config.trading, "conviction_decay_exit_threshold", 58.0) or 58.0)
+                    and not loss_hold.get("defer", False)
+                ):
                     exit_price = self._fill_price(
                         "SHORT" if position["direction"] == "LONG" else "LONG",
                         entry_reference_price,
@@ -550,6 +640,7 @@ class Backtester:
                     hold_minutes >= config.trading.time_stop_minutes
                     and tp_progress < config.trading.time_stop_min_tp_progress
                     and signal.action == "FLAT"
+                    and not loss_hold.get("defer", False)
                 ):
                     exit_price = self._fill_price(
                         "SHORT" if position["direction"] == "LONG" else "LONG",
@@ -612,6 +703,7 @@ class Backtester:
                 "direction": signal.action,
                 "entry_price": fill_price,
                 "sl": sl,
+                "original_sl": sl,
                 "tp": tp,
                 "size_usd": size_usd,
                 "opened_at": str(ts),
@@ -620,6 +712,8 @@ class Backtester:
                 "expectancy": dict(getattr(signal, "expectancy", {}) or {}),
                 "thesis": dict(getattr(signal, "thesis", {}) or {}),
                 "trade_plan": dict(getattr(signal, "trade_plan", {}) or {}),
+                "leverage": self.leverage,
+                "loss_realization_guard_active": False,
             }
 
         if position:

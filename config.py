@@ -278,6 +278,13 @@ class TradingConfig:
     thesis_runner_adverse_r_limit: float = 0.80
     thesis_runner_time_stop_bypass: bool = True
     thesis_runner_defer_soft_reversal: bool = True
+    # A planned stop is a thesis-review trigger for low-leverage, non-scalp
+    # positions. If the thesis is still intact, keep the loss unrealized and
+    # hold to a separate hard-risk boundary instead of realizing volatility.
+    loss_realization_guard_enabled: bool = True
+    loss_realization_guard_max_leverage: float = 3.0
+    loss_realization_guard_hard_adverse_r: float = 1.75
+    loss_realization_guard_min_liquidation_buffer_pct: float = 0.12
     ath_runner_enabled: bool = True
     winner_stickiness_enabled: bool = True
     winner_stickiness_min_profit_pct: float = 0.20

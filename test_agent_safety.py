@@ -2869,6 +2869,47 @@ def test_backtest_summary_includes_baselines() -> None:
         backtest_module.config = original_config
 
 
+def test_backtest_mirrors_thesis_aware_loss_hold() -> None:
+    cfg = build_config()
+    original_config = backtest_module.config
+    backtest_module.config = cfg
+    try:
+        bt = backtest_module.Backtester(
+            "BTC",
+            pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"]),
+            leverage=2,
+        )
+        position = {
+            "direction": "LONG",
+            "entry_price": 100.0,
+            "sl": 95.0,
+            "original_sl": 95.0,
+            "tp": 115.0,
+            "size_usd": 200.0,
+            "leverage": 2.0,
+            "thesis": {"state": "ACTIVE", "permitted": True, "conflict_points": 0},
+            "trade_plan": {"trade_style": "swing"},
+            "loss_realization_guard_active": False,
+        }
+        intact = SimpleNamespace(
+            action="FLAT",
+            thesis={"state": "ACTIVE", "permitted": True, "conflict_points": 0},
+        )
+        broken = SimpleNamespace(
+            action="SHORT",
+            thesis={"state": "NO_TRADE", "permitted": False, "conflict_points": 2},
+        )
+
+        hold = bt._loss_realization_hold_profile(position, intact, 94.0)
+        release = bt._loss_realization_hold_profile(position, broken, 94.0)
+
+        assert hold["defer"] is True
+        assert hold["hard_stop"] < 94.0
+        assert release["defer"] is False
+    finally:
+        backtest_module.config = original_config
+
+
 def test_failed_close_keeps_position_open() -> None:
     cfg = build_config()
     ex = FailingCloseExchange("failing", should_fill=True)
@@ -4055,7 +4096,7 @@ def test_thesis_runner_defers_take_profit_and_extends_target() -> None:
     assert agent.risk.positions["GOOGL"].metadata["runner"]["deferred_exit_count"] == 1
 
 
-def test_thesis_runner_still_honors_stop_loss() -> None:
+def test_low_leverage_runner_defers_provisional_stop_while_thesis_intact() -> None:
     cfg = build_config()
     cfg.trading.coins = ["GOOGL"]
     cfg.trading.instrument_types.update({"GOOGL": "equity"})
@@ -4068,16 +4109,86 @@ def test_thesis_runner_still_honors_stop_loss() -> None:
 
     closed = []
 
+    agent._close_position = lambda coin, reason, price: closed.append((coin, reason, price))
+
+    agent._check_and_execute_exits({"GOOGL": 94.0}, 10000.0)
+
+    assert closed == []
+    assert "GOOGL" in agent.risk.positions
+    position = agent.risk.positions["GOOGL"]
+    guard = position.metadata["loss_realization_guard"]
+    assert guard["active"] is True
+    assert guard["review_stop_price"] == 95.0
+    assert position.stop_loss < 94.0
+    assert position.stop_loss == guard["hard_stop_price"]
+    assert agent._last_signals["GOOGL"]["loss_realization_guard"]["thesis_intact"] is True
+
+
+def test_loss_realization_guard_hard_boundary_still_closes() -> None:
+    cfg = build_config()
+    cfg.trading.coins = ["GOOGL"]
+    cfg.trading.instrument_types.update({"GOOGL": "equity"})
+    cfg.trading.decision_dataset_enabled = False
+    cfg.trading.feature_store_enabled = False
+    agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=10000.0, supported_symbols=["GOOGL"])])
+    _install_runner_position(agent, "GOOGL")
+
+    closed = []
+
     def fake_close(coin, reason, price):
         closed.append((coin, reason, price))
         agent.risk.positions.pop(coin, None)
 
     agent._close_position = fake_close
+    agent._check_and_execute_exits({"GOOGL": 94.0}, 10000.0)
+    hard_stop = agent.risk.positions["GOOGL"].stop_loss
+    agent._check_and_execute_exits({"GOOGL": hard_stop - 0.25}, 10000.0)
 
+    assert closed == [("GOOGL", "stop_loss", hard_stop - 0.25)]
+    assert "GOOGL" not in agent.risk.positions
+
+
+def test_loss_realization_guard_does_not_override_broken_thesis() -> None:
+    cfg = build_config()
+    cfg.trading.coins = ["GOOGL"]
+    cfg.trading.instrument_types.update({"GOOGL": "equity"})
+    cfg.trading.decision_dataset_enabled = False
+    cfg.trading.feature_store_enabled = False
+    agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=10000.0, supported_symbols=["GOOGL"])])
+    _install_runner_position(agent, "GOOGL")
+    agent._last_signals["GOOGL"].update({
+        "action": "SHORT",
+        "live_price": 94.0,
+        "structure_trend": "DOWNTREND",
+        "mtf_bias": "BEARISH",
+        "orderbook_breakout_state": "CONFIRMED_BEARISH_BREAKDOWN",
+        "thesis": {"state": "NO_TRADE", "permitted": False, "conflict_points": 2},
+    })
+
+    closed = []
+    agent._close_position = lambda coin, reason, price: closed.append((coin, reason, price))
     agent._check_and_execute_exits({"GOOGL": 94.0}, 10000.0)
 
     assert closed == [("GOOGL", "stop_loss", 94.0)]
-    assert "GOOGL" not in agent.risk.positions
+    assert agent._last_signals["GOOGL"]["loss_realization_guard"]["hard_conflict"] is True
+
+
+def test_loss_realization_guard_is_low_leverage_only() -> None:
+    cfg = build_config()
+    cfg.trading.coins = ["GOOGL"]
+    cfg.trading.instrument_types.update({"GOOGL": "equity"})
+    cfg.trading.decision_dataset_enabled = False
+    cfg.trading.feature_store_enabled = False
+    agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=10000.0, supported_symbols=["GOOGL"])])
+    _install_runner_position(agent, "GOOGL")
+    agent.risk.positions["GOOGL"].leverage = cfg.trading.loss_realization_guard_max_leverage + 1
+
+    closed = []
+    agent._close_position = lambda coin, reason, price: closed.append((coin, reason, price))
+    agent._check_and_execute_exits({"GOOGL": 94.0}, 10000.0)
+
+    assert closed == [("GOOGL", "stop_loss", 94.0)]
+    assert agent._last_signals["GOOGL"]["loss_realization_guard"]["reason"] == "leverage_too_high"
 
 
 def test_thesis_runner_blocks_time_stop_for_multi_day_event_hold() -> None:
@@ -4345,6 +4456,66 @@ def test_soft_exit_discipline_allows_exit_when_invalidation_near() -> None:
     assert profile["defer"] is False
     assert profile["reason"] == "adverse_r_allows_exit"
     assert profile["adverse_r"] >= cfg.trading.soft_exit_max_adverse_r
+
+
+def test_loss_realization_guard_defers_soft_exit_after_minimum_hold() -> None:
+    cfg = build_config()
+    cfg.trading.coins = ["BTC"]
+    cfg.trading.decision_dataset_enabled = False
+    cfg.trading.feature_store_enabled = False
+    cfg.trading.soft_exit_min_hold_minutes = 240.0
+    agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=10000.0, supported_symbols=["BTC"])])
+    agent.risk.positions = {
+        "BTC": OpenPosition(
+            coin="BTC",
+            direction="LONG",
+            entry_price=100.0,
+            size_usd=200.0,
+            size_coin=2.0,
+            stop_loss=90.0,
+            take_profit=130.0,
+            trailing_stop_price=88.0,
+            opened_at=time.time() - 48 * 3600,
+            exchange="UnitTest",
+            leverage=2.0,
+            metadata={
+                "entry_context": {
+                    "score": 68.0,
+                    "planned_stop_loss": 90.0,
+                    "planned_take_profit": 130.0,
+                    "thesis": {"state": "ACTIVE", "permitted": True, "conflict_points": 0},
+                }
+            },
+        )
+    }
+    agent._last_signals = {
+        "BTC": {
+            "action": "FLAT",
+            "score": 50.0,
+            "live_price": 98.0,
+            "thesis": {"state": "ACTIVE", "permitted": True, "conflict_points": 0},
+            "expectancy": {"score": 42.0, "uncertainty": 0.55},
+        }
+    }
+    signal = SimpleNamespace(
+        action="FLAT",
+        score=50.0,
+        price=98.0,
+        expectancy={"score": 42.0, "uncertainty": 0.55},
+        thesis={"state": "ACTIVE", "permitted": True, "conflict_points": 0},
+    )
+
+    profile = agent._soft_exit_discipline_profile(
+        "BTC",
+        "LONG",
+        signal,
+        {"should_exit": True, "score": 72.0, "summary": "flat conviction faded"},
+    )
+
+    assert profile["hold_minutes"] > profile["min_hold_minutes"]
+    assert profile["defer"] is True
+    assert profile["reason"] == "intact_thesis_keeps_loss_unrealized"
+    assert profile["loss_realization_guard"]["unrealized_pnl_usd"] < 0
 
 
 def test_pair_trade_book_builds_equity_long_crypto_short_overlay() -> None:
@@ -9047,6 +9218,8 @@ def run_all() -> None:
     print("PASS narrative event gate")
     test_backtest_summary_includes_baselines()
     print("PASS backtest baselines")
+    test_backtest_mirrors_thesis_aware_loss_hold()
+    print("PASS backtest thesis-aware loss hold")
     test_failed_close_keeps_position_open()
     print("PASS close failure safety")
     test_preflight_reports_missing_live_bootstrap()
@@ -9105,8 +9278,14 @@ def run_all() -> None:
     print("PASS proactive starter execution caps")
     test_thesis_runner_defers_take_profit_and_extends_target()
     print("PASS thesis runner TP deferral")
-    test_thesis_runner_still_honors_stop_loss()
-    print("PASS thesis runner stop-loss integrity")
+    test_low_leverage_runner_defers_provisional_stop_while_thesis_intact()
+    print("PASS low-leverage provisional stop deferral")
+    test_loss_realization_guard_hard_boundary_still_closes()
+    print("PASS loss-realization hard boundary")
+    test_loss_realization_guard_does_not_override_broken_thesis()
+    print("PASS loss-realization thesis invalidation")
+    test_loss_realization_guard_is_low_leverage_only()
+    print("PASS loss-realization leverage ceiling")
     test_thesis_runner_blocks_time_stop_for_multi_day_event_hold()
     print("PASS thesis runner multi-day time-stop bypass")
     test_thesis_runner_still_honors_hard_structure_invalidation()
@@ -9119,6 +9298,8 @@ def run_all() -> None:
     print("PASS soft-exit fresh-thesis deferral")
     test_soft_exit_discipline_allows_exit_when_invalidation_near()
     print("PASS soft-exit adverse-risk release")
+    test_loss_realization_guard_defers_soft_exit_after_minimum_hold()
+    print("PASS loss-realization long-hold soft exit deferral")
     test_pair_trade_book_builds_equity_long_crypto_short_overlay()
     print("PASS pair trade overlay book")
     test_setup_quality_guard_blocks_toxic_reversal_family()

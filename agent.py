@@ -4954,7 +4954,8 @@ class TradingAgent:
         entry_score = float(entry_ctx.get("score") or 0.0)
         still_same_or_flat = signal_action in {"", "FLAT", direction}
         favorable_move = self._signed_move(direction, pos.entry_price, live_price)
-        risk_distance = abs(pos.entry_price - pos.stop_loss) if pos.stop_loss > 0 else 0.0
+        planned_stop = float(entry_ctx.get("planned_stop_loss") or pos.stop_loss or 0.0)
+        risk_distance = abs(pos.entry_price - planned_stop) if planned_stop > 0 else 0.0
         adverse_move = max(0.0, -favorable_move)
         adverse_r = adverse_move / max(risk_distance, 1e-9) if risk_distance > 0 else 0.0
 
@@ -5062,7 +5063,9 @@ class TradingAgent:
         direction = str(pos.direction or "").upper()
         favorable_move = self._signed_move(direction, pos.entry_price, live_price)
         favorable_pct = favorable_move / max(pos.entry_price, 1e-9) * 100.0
-        risk_distance = abs(pos.entry_price - pos.stop_loss) if pos.stop_loss > 0 else 0.0
+        entry_ctx = dict((pos.metadata or {}).get("entry_context", {}) or {})
+        planned_stop = float(entry_ctx.get("planned_stop_loss") or pos.stop_loss or 0.0)
+        risk_distance = abs(pos.entry_price - planned_stop) if planned_stop > 0 else 0.0
         favorable_r = favorable_move / max(risk_distance, 1e-9) if risk_distance > 0 else 0.0
         min_pct = float(getattr(self.cfg.trading, "winner_stickiness_min_profit_pct", 0.20) or 0.20)
         min_r = float(getattr(self.cfg.trading, "winner_stickiness_min_profit_r", 0.15) or 0.15)
@@ -5171,7 +5174,282 @@ class TradingAgent:
             pos.trailing_stop_price = price * (1.0 + pct)
         return pos.trailing_stop_price
 
-    def _defer_runner_exit(self, coin: str, reason: str, price: float, portfolio_usd: float) -> bool:
+    def _loss_realization_guard_profile(self, coin: str, price: float, signal=None) -> dict:
+        """Decide whether adverse volatility should stay unrealized.
+
+        The planned stop is treated as a thesis-review trigger for low-leverage,
+        non-scalp positions. A separate hard-risk boundary remains mandatory.
+        """
+        enabled = bool(getattr(self.cfg.trading, "loss_realization_guard_enabled", True))
+        profile = {
+            "active": False,
+            "defer": False,
+            "enabled": enabled,
+            "reason": "",
+            "summary": "",
+            "thesis_intact": False,
+            "hard_conflict": False,
+            "guard_armed": False,
+            "leverage": 0.0,
+            "max_leverage": float(
+                getattr(self.cfg.trading, "loss_realization_guard_max_leverage", 3.0) or 3.0
+            ),
+            "unrealized_pnl_usd": 0.0,
+            "unrealized_pnl_pct": 0.0,
+            "adverse_r": 0.0,
+            "hard_adverse_r": float(
+                getattr(self.cfg.trading, "loss_realization_guard_hard_adverse_r", 1.75) or 1.75
+            ),
+            "review_stop_price": 0.0,
+            "hard_stop_price": 0.0,
+            "liquidation_buffer_pct": 100.0,
+        }
+        if not enabled:
+            profile["reason"] = "disabled"
+            return profile
+
+        pos = self.risk.positions.get(coin)
+        if not pos or price <= 0 or pos.entry_price <= 0:
+            profile["reason"] = "no_open_position"
+            return profile
+
+        metadata = dict(pos.metadata or {})
+        entry_ctx = dict(metadata.get("entry_context", {}) or {})
+        guard_meta = dict(metadata.get("loss_realization_guard", {}) or {})
+        sig = dict(self._last_signals.get(coin, {}) or {})
+        live_thesis = dict(sig.get("thesis") or getattr(signal, "thesis", {}) or {})
+        entry_thesis = dict(entry_ctx.get("thesis") or {})
+        thesis = live_thesis or entry_thesis
+        conviction_entry = dict(sig.get("conviction_entry") or entry_ctx.get("conviction_entry") or {})
+
+        direction = str(pos.direction or "").upper()
+        signal_action = str(
+            getattr(signal, "action", None) or sig.get("action") or sig.get("decision") or ""
+        ).upper()
+        leverage = max(1.0, float(getattr(pos, "leverage", 1.0) or 1.0))
+        max_leverage = float(profile["max_leverage"])
+        profile["leverage"] = round(leverage, 2)
+        profile["guard_armed"] = bool(guard_meta.get("active"))
+
+        scalp_trade = bool(
+            entry_ctx.get("scalp_trade")
+            or sig.get("scalp_trade")
+            or conviction_entry.get("scalp")
+            or dict(thesis.get("scalp") or {}).get("selected", False)
+            or str((entry_ctx.get("trade_plan") or {}).get("trade_style", "")).lower() == "scalp"
+        )
+
+        thesis_state = str(thesis.get("state", sig.get("thesis_state", "")) or "").upper()
+        thesis_conflicts = float(
+            thesis.get("conflict_points", sig.get("thesis_conflict_points", 0.0)) or 0.0
+        )
+        permitted_raw = thesis.get("permitted")
+        thesis_permitted = (
+            bool(permitted_raw)
+            if permitted_raw is not None
+            else signal_action in {"", "FLAT", direction}
+        )
+        structure_trend = str(sig.get("structure_trend", entry_ctx.get("structure_trend", "")) or "").upper()
+        mtf_bias = str(sig.get("mtf_bias", entry_ctx.get("mtf_bias", "FLAT")) or "FLAT").upper()
+        breakout_state = str(
+            sig.get("orderbook_breakout_state", entry_ctx.get("orderbook_breakout_state", "NONE")) or "NONE"
+        ).upper()
+        structure_against = (
+            (direction == "LONG" and structure_trend == "DOWNTREND")
+            or (direction == "SHORT" and structure_trend == "UPTREND")
+        )
+        mtf_against = (
+            (direction == "LONG" and mtf_bias == "BEARISH")
+            or (direction == "SHORT" and mtf_bias == "BULLISH")
+        )
+        breakout_against = (
+            (direction == "LONG" and breakout_state in {"CONFIRMED_BEARISH_BREAKDOWN", "PERSISTENT_BEARISH_BREAKDOWN"})
+            or (direction == "SHORT" and breakout_state in {"CONFIRMED_BULLISH_BREAKOUT", "PERSISTENT_BULLISH_BREAKOUT"})
+        )
+        opposite_signal = signal_action in {"LONG", "SHORT"} and signal_action != direction
+        invalid_state = thesis_state in {"NO_TRADE", "INVALID", "INVALIDATED", "BROKEN"}
+        hard_market_conflict = (
+            (structure_against or breakout_against or mtf_against)
+            and (invalid_state or thesis_conflicts >= 1.0 or opposite_signal)
+        )
+        hard_conflict = bool(opposite_signal or thesis_conflicts >= 2.0 or hard_market_conflict)
+
+        runner_profile = self._position_runner_profile(coin, signal, price)
+        direction_aligned = signal_action in {"", "FLAT", direction}
+        thesis_evidence = bool(
+            thesis
+            or entry_ctx.get("thesis_summary")
+            or runner_profile.get("active")
+        )
+        qualification_intact = bool(
+            thesis_permitted
+            or runner_profile.get("active")
+            or (direction_aligned and not invalid_state and thesis_conflicts < 1.0)
+        )
+        thesis_intact = bool(
+            direction_aligned
+            and thesis_evidence
+            and qualification_intact
+            and not hard_conflict
+        )
+
+        review_stop = float(
+            guard_meta.get("review_stop_price")
+            or entry_ctx.get("planned_stop_loss")
+            or pos.stop_loss
+            or 0.0
+        )
+        risk_distance = abs(pos.entry_price - review_stop) if review_stop > 0 else 0.0
+        if risk_distance <= 0:
+            risk_distance = pos.entry_price * float(
+                getattr(self.cfg.trading, "stop_loss_pct", 0.10) or 0.10
+            )
+        favorable_move = self._signed_move(direction, pos.entry_price, price)
+        adverse_move = max(0.0, -favorable_move)
+        adverse_r = adverse_move / max(risk_distance, 1e-9)
+        pnl_pct = favorable_move / max(pos.entry_price, 1e-9) * 100.0
+        pnl_usd = favorable_move / max(pos.entry_price, 1e-9) * float(pos.size_usd or 0.0)
+        hard_adverse_r = float(profile["hard_adverse_r"])
+
+        if direction == "LONG":
+            hard_stop = max(0.0, pos.entry_price - risk_distance * hard_adverse_r)
+        else:
+            hard_stop = pos.entry_price + risk_distance * hard_adverse_r
+
+        min_liq_buffer = float(
+            getattr(self.cfg.trading, "loss_realization_guard_min_liquidation_buffer_pct", 0.12) or 0.12
+        )
+        liquidation_buffer_pct = 100.0
+        if leverage > 1.0:
+            if direction == "LONG":
+                approximate_liquidation = max(0.0, pos.entry_price * (1.0 - 1.0 / leverage))
+                safe_floor = approximate_liquidation + pos.entry_price * min_liq_buffer
+                hard_stop = max(hard_stop, safe_floor)
+                liquidation_buffer_pct = max(0.0, (price - approximate_liquidation) / max(price, 1e-9) * 100.0)
+            else:
+                approximate_liquidation = pos.entry_price * (1.0 + 1.0 / leverage)
+                safe_ceiling = approximate_liquidation - pos.entry_price * min_liq_buffer
+                hard_stop = min(hard_stop, safe_ceiling)
+                liquidation_buffer_pct = max(0.0, (approximate_liquidation - price) / max(price, 1e-9) * 100.0)
+
+        armed_hard_stop = float(guard_meta.get("hard_stop_price") or hard_stop or 0.0)
+        hard_stop_hit = bool(
+            guard_meta.get("active")
+            and armed_hard_stop > 0
+            and (
+                (direction == "LONG" and price <= armed_hard_stop)
+                or (direction == "SHORT" and price >= armed_hard_stop)
+            )
+        )
+        risk_room = bool(
+            (direction == "LONG" and hard_stop > 0 and price > hard_stop)
+            or (direction == "SHORT" and hard_stop > price)
+        )
+
+        profile.update({
+            "direction": direction,
+            "thesis_intact": thesis_intact,
+            "hard_conflict": hard_conflict,
+            "thesis_state": thesis_state or "UNKNOWN",
+            "thesis_conflicts": round(thesis_conflicts, 2),
+            "signal_action": signal_action or "UNKNOWN",
+            "scalp_trade": scalp_trade,
+            "runner_active": bool(runner_profile.get("active")),
+            "unrealized_pnl_usd": round(pnl_usd, 2),
+            "unrealized_pnl_pct": round(pnl_pct, 4),
+            "adverse_r": round(adverse_r, 4),
+            "review_stop_price": round(review_stop, 6),
+            "hard_stop_price": round(hard_stop, 6),
+            "liquidation_buffer_pct": round(liquidation_buffer_pct, 2),
+        })
+
+        if scalp_trade:
+            profile["reason"] = "scalp_trade"
+            profile["summary"] = "scalp trades keep their faster stop discipline"
+            return profile
+        if leverage > max_leverage:
+            profile["reason"] = "leverage_too_high"
+            profile["summary"] = f"{leverage:.1f}x exceeds the {max_leverage:.1f}x thesis-hold ceiling"
+            return profile
+        if hard_conflict or not thesis_intact:
+            profile["reason"] = "thesis_not_intact"
+            profile["summary"] = "the latest thesis/structure no longer supports holding the loss"
+            return profile
+        if hard_stop_hit or adverse_r >= hard_adverse_r or not risk_room:
+            profile["reason"] = "hard_risk_boundary"
+            profile["summary"] = f"hard risk boundary reached at {adverse_r:.2f}R"
+            return profile
+        if liquidation_buffer_pct < min_liq_buffer * 100.0:
+            profile["reason"] = "liquidation_buffer_too_small"
+            profile["summary"] = f"only {liquidation_buffer_pct:.1f}% estimated liquidation buffer remains"
+            return profile
+
+        profile["active"] = True
+        profile["defer"] = pnl_usd < 0.0
+        profile["reason"] = "intact_low_leverage_thesis"
+        profile["summary"] = (
+            f"thesis intact at {leverage:.1f}x; keep ${pnl_usd:+.2f} as uPnL, "
+            f"hold through volatility, hard risk at {hard_adverse_r:.2f}R"
+        )
+        return profile
+
+    def _activate_loss_realization_guard(self, coin: str, price: float, profile: dict) -> float:
+        pos = self.risk.positions.get(coin)
+        hard_stop = float(profile.get("hard_stop_price") or 0.0)
+        if not pos or hard_stop <= 0:
+            return 0.0
+
+        metadata = dict(pos.metadata or {})
+        guard_meta = dict(metadata.get("loss_realization_guard", {}) or {})
+        guard_meta.update({
+            "active": True,
+            "review_stop_price": float(profile.get("review_stop_price") or pos.stop_loss or 0.0),
+            "hard_stop_price": hard_stop,
+            "trigger_price": round(price, 6),
+            "triggered_at": datetime.now().isoformat(timespec="seconds"),
+            "deferral_count": int(guard_meta.get("deferral_count", 0) or 0) + 1,
+            "unrealized_pnl_usd_at_trigger": profile.get("unrealized_pnl_usd", 0.0),
+            "unrealized_pnl_pct_at_trigger": profile.get("unrealized_pnl_pct", 0.0),
+            "thesis_state_at_trigger": profile.get("thesis_state", "UNKNOWN"),
+            "reason": profile.get("summary", ""),
+        })
+        metadata["loss_realization_guard"] = guard_meta
+        pos.metadata = metadata
+        pos.stop_loss = hard_stop
+
+        guard_view = dict(profile)
+        guard_view["guard_armed"] = True
+        guard_view["deferred_at"] = guard_meta["triggered_at"]
+        self._last_signals.setdefault(coin, {})
+        self._last_signals[coin]["loss_realization_guard"] = guard_view
+        try:
+            trade_logger.update_open(coin, pos.entry_price, pos.size_usd, pos.stop_loss, pos.take_profit)
+        except Exception as exc:
+            log.debug("[%s] loss-realization trade-log update skipped: %s", coin, exc)
+        return hard_stop
+
+    def _defer_managed_exit(self, coin: str, reason: str, price: float, portfolio_usd: float) -> bool:
+        if reason == "stop_loss":
+            loss_guard = self._loss_realization_guard_profile(coin, price)
+            self._last_signals.setdefault(coin, {})
+            self._last_signals[coin]["loss_realization_guard"] = loss_guard
+            if loss_guard.get("defer", False):
+                hard_stop = self._activate_loss_realization_guard(coin, price, loss_guard)
+                if hard_stop > 0:
+                    log.info(
+                        f"[{coin}] Loss-realization guard defers provisional stop: "
+                        f"uPnL ${loss_guard.get('unrealized_pnl_usd', 0.0):+.2f}, "
+                        f"thesis intact at {loss_guard.get('leverage', 0.0):.1f}x; "
+                        f"hard stop ${hard_stop:.2f}"
+                    )
+                    self._record_decision_snapshot(
+                        coin,
+                        portfolio_usd=portfolio_usd,
+                        stage="loss_realization_guard_hold",
+                        current_position=str(loss_guard.get("direction") or ""),
+                    )
+                    return True
+            return False
         if reason not in {"take_profit", "trailing_stop"}:
             return False
         profile = self._position_runner_profile(coin, price=price)
@@ -5453,6 +5731,14 @@ class TradingAgent:
             "decay_score": round(_as_float((decay or {}).get("score")), 2),
         })
 
+        loss_guard = self._loss_realization_guard_profile(coin, live_price, signal)
+        profile["loss_realization_guard"] = loss_guard
+        if loss_guard.get("defer", False):
+            profile["defer"] = True
+            profile["reason"] = "intact_thesis_keeps_loss_unrealized"
+            profile["summary"] = str(loss_guard.get("summary") or "intact thesis holds through volatility")
+            return profile
+
         if hold_minutes >= min_hold:
             profile["reason"] = "minimum_hold_satisfied"
             profile["summary"] = "minimum thesis hold is satisfied; soft exit may proceed"
@@ -5556,6 +5842,11 @@ class TradingAgent:
                 or getattr(self.cfg.trading, "thesis_runner_adverse_r_limit", 0.80)
                 or 0.80
             )
+            loss_guard = self._loss_realization_guard_profile(coin, live_price, signal)
+            if loss_guard.get("active"):
+                self._last_signals.setdefault(coin, {})
+                self._last_signals[coin]["loss_realization_guard"] = loss_guard
+                return ""
             if not (runner_profile.get("active") and thesis_supports_position and adverse_r < runner_adverse_limit):
                 return "stale_adverse"
         if hold_minutes >= time_stop_minutes and tp_progress < time_stop_min_progress and (not thesis_supports_position or thesis_state == "NO_TRADE"):
@@ -7346,7 +7637,7 @@ class TradingAgent:
             coin   = info["coin"]
             reason = info["reason"]
             price  = info["price"]
-            if self._defer_runner_exit(coin, reason, price, portfolio_usd):
+            if self._defer_managed_exit(coin, reason, price, portfolio_usd):
                 continue
             log.info(f"[{coin}] Exit triggered: {reason} @ ${price:.2f}")
             self._close_position(coin, reason, price)
@@ -7833,17 +8124,31 @@ class TradingAgent:
                     coin,
                     price=float(p_out.get("current_price") or 0.0),
                 )
+                loss_guard = self._loss_realization_guard_profile(
+                    coin,
+                    float(p_out.get("current_price") or pos.entry_price or 0.0),
+                )
                 runner_reason = str(runner_profile.get("reason") or "").strip()
                 p_out["runner_active"] = bool(runner_profile.get("active"))
                 p_out["runner_reason"] = runner_reason
                 p_out["runner_hold_remaining_minutes"] = runner_profile.get("hold_remaining_minutes", 0.0)
                 p_out["runner_target_hold_minutes"] = runner_profile.get("target_hold_minutes", 0.0)
+                p_out["loss_realization_guard_active"] = bool(loss_guard.get("active"))
+                p_out["loss_realization_guard_armed"] = bool(loss_guard.get("guard_armed"))
+                p_out["loss_realization_guard_reason"] = loss_guard.get("summary", "")
+                p_out["loss_realization_hard_stop"] = loss_guard.get("hard_stop_price", 0.0)
+                p_out["unrealized_pnl_usd"] = loss_guard.get("unrealized_pnl_usd", 0.0)
                 p_out["entry_logic"] = (
                     entry_ctx.get("reason")
                     or entry_thesis.get("summary")
                     or sig.get("thesis_summary", "")
                 )
-                if runner_profile.get("active"):
+                if loss_guard.get("active") and loss_guard.get("unrealized_pnl_usd", 0.0) < 0:
+                    p_out["current_logic"] = (
+                        f"Thesis hold: keep {loss_guard.get('unrealized_pnl_usd', 0.0):+.2f} as uPnL; "
+                        f"realize only on invalidation or hard stop ${loss_guard.get('hard_stop_price', 0.0):,.2f}."
+                    )
+                elif runner_profile.get("active"):
                     p_out["current_logic"] = (
                         f"Runner hold: {runner_reason or 'strong thesis'}; "
                         f"{p_out.get('invalidation_short') or p_out.get('invalidation') or 'pre-planned invalidation'} still controls."
