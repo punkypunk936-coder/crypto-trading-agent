@@ -24,13 +24,7 @@ if [[ ! -x "$PYTHON_BIN" ]]; then
   exit 1
 fi
 
-if "$PYTHON_BIN" -c "import gunicorn" >/dev/null 2>&1; then
-  exec "$PYTHON_BIN" -m gunicorn \
-    --workers 1 \
-    --threads 4 \
-    --bind "0.0.0.0:$PORT" \
-    --chdir "$SCRIPT_DIR" \
-    dashboard.app:app
-fi
-
+# The local macOS service must stay single-process. A long-lived Gunicorn
+# master can crash replacement workers when Objective-C-backed dependencies
+# have initialized threads, leaving the dashboard master alive but unusable.
 exec "$PYTHON_BIN" "$SCRIPT_DIR/dashboard/app.py"
