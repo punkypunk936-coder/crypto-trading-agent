@@ -27,4 +27,4 @@ fi
 # The local macOS service must stay single-process. A long-lived Gunicorn
 # master can crash replacement workers when Objective-C-backed dependencies
 # have initialized threads, leaving the dashboard master alive but unusable.
-exec "$PYTHON_BIN" "$SCRIPT_DIR/dashboard/app.py"
+exec "$PYTHON_BIN" -m dashboard.app
