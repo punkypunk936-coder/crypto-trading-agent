@@ -10,6 +10,11 @@ from datetime import datetime
 from typing import Any, Iterable
 
 import daily_radar
+from pnl_explanation import (
+    build_pnl_attribution_summary,
+    explain_closed_trade,
+    explain_open_position,
+)
 from asset_context import (
     asset_category_descriptions as _shared_asset_category_descriptions,
     asset_category_label as _shared_asset_category_label,
@@ -2192,6 +2197,7 @@ def merge_dataset_into_trades(trades: Iterable[dict] | None, dataset_records: It
         item["open_logic"] = _entry_logic_from_record(record, item)
         item["close_logic"] = _close_logic_from_record(record, item)
         item["agent_lesson"] = _agent_lesson_from_record(record, item)
+        item["pnl_explanation"] = explain_closed_trade(item, record)
         out.append(item)
     return out
 
@@ -2209,6 +2215,7 @@ def learning_summary(trades: Iterable[dict] | None) -> dict:
             "open_logic": trade.get("open_logic", ""),
             "close_logic": trade.get("close_logic", ""),
             "lesson": trade.get("agent_lesson", ""),
+            "pnl_explanation": dict(trade.get("pnl_explanation") or {}),
         }
         for trade in recent
     ]
@@ -2301,6 +2308,7 @@ def calc_stats(trades: Iterable[dict] | None) -> dict:
             "total": 0,
             "wins": 0,
             "losses": 0,
+            "flats": 0,
             "win_rate": 0,
             "total_pnl": 0,
             "avg_win": 0,
@@ -2322,6 +2330,7 @@ def calc_stats(trades: Iterable[dict] | None) -> dict:
             "total": 0,
             "wins": 0,
             "losses": 0,
+            "flats": 0,
             "win_rate": 0,
             "total_pnl": 0,
             "avg_win": 0,
@@ -2337,11 +2346,13 @@ def calc_stats(trades: Iterable[dict] | None) -> dict:
         except Exception:
             pnls.append(0.0)
     wins = [p for p in pnls if p > 0]
-    losses = [p for p in pnls if p <= 0]
+    losses = [p for p in pnls if p < 0]
+    flats = [p for p in pnls if p == 0]
     return {
         "total": len(closed),
         "wins": len(wins),
         "losses": len(losses),
+        "flats": len(flats),
         "win_rate": round(len(wins) / len(closed) * 100, 1),
         "total_pnl": round(sum(pnls), 2),
         "avg_win": round(sum(wins) / len(wins) if wins else 0, 2),
@@ -2422,7 +2433,15 @@ def augment_state(state: Any) -> dict:
     merged = default_state()
     merged.update(safe_state)
     merged["config"] = _merge_dashboard_config(merged.get("config"))
-    merged["positions_count"] = len(merged.get("positions") or [])
+    signals = dict(merged.get("signals") or {})
+    positions = []
+    for raw_position in list(merged.get("positions") or []):
+        position = dict(raw_position or {})
+        coin = str(position.get("coin") or "").upper()
+        position["pnl_explanation"] = explain_open_position(position, signals.get(coin) or {})
+        positions.append(position)
+    merged["positions"] = positions
+    merged["positions_count"] = len(positions)
     merged["decision_summary"] = decision_summary(merged)
     return merged
 
@@ -2455,6 +2474,7 @@ def build_dashboard_snapshot(
     enriched_trades = merge_dataset_into_trades(trades or [], trade_dataset_records)
     safe_trades = merge_reviews_into_trades(enriched_trades, normalized_trade_reviews)
     shaped_state = augment_state(state)
+    pnl_attribution = build_pnl_attribution_summary(safe_trades, shaped_state.get("positions") or [])
     board = action_board(shaped_state, normalized_market_map, decision_dataset_records)
     radar = daily_radar.build_daily_radar(
         shaped_state,
@@ -2476,6 +2496,7 @@ def build_dashboard_snapshot(
         "trade_reviews": normalized_trade_reviews,
         "review_summary": review_summary(safe_trades, normalized_trade_reviews),
         "learning_summary": learning_summary(safe_trades),
+        "pnl_attribution": pnl_attribution,
         "performance_edges": dict(shaped_state.get("performance_edges") or {}),
         "decision_review_report": dict(decision_review_report or {}),
         "challenger_report": dict(challenger_report or {}),

@@ -1840,6 +1840,158 @@
     margin-top: 4px;
     font-family: var(--mono);
   }
+  .pnl-value-row,
+  .pnl-cell {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .pnl-explain-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 26px;
+    border: 1px solid rgba(91,140,255,0.24);
+    border-radius: 6px;
+    background: rgba(91,140,255,0.08);
+    color: var(--blue);
+    padding: 0 8px;
+    font: 700 10px/1 var(--mono);
+    cursor: pointer;
+  }
+  .pnl-explain-button:hover,
+  .pnl-explain-button:focus-visible {
+    border-color: rgba(91,140,255,0.48);
+    background: rgba(91,140,255,0.16);
+    outline: none;
+  }
+  .pnl-dialog {
+    width: min(760px, calc(100vw - 28px));
+    max-height: min(780px, calc(100vh - 36px));
+    overflow: auto;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px;
+    background: #10131a;
+    color: var(--text);
+    padding: 0;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.58);
+  }
+  .pnl-dialog::backdrop {
+    background: rgba(3,5,9,0.76);
+    backdrop-filter: blur(3px);
+  }
+  .pnl-dialog-header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    background: rgba(16,19,26,0.96);
+    padding: 18px 20px 15px;
+  }
+  .pnl-dialog-kicker {
+    color: var(--blue);
+    font: 700 10px/1.2 var(--mono);
+    letter-spacing: 0.9px;
+    text-transform: uppercase;
+  }
+  .pnl-dialog-title {
+    margin: 6px 0 0;
+    font-size: 20px;
+    line-height: 1.25;
+    letter-spacing: 0;
+  }
+  .pnl-dialog-close {
+    width: 34px;
+    min-height: 34px;
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 6px;
+    background: rgba(255,255,255,0.03);
+    color: var(--text-secondary);
+    font-size: 15px;
+    cursor: pointer;
+  }
+  .pnl-dialog-body {
+    padding: 20px;
+  }
+  .pnl-dialog-headline {
+    margin: 0;
+    color: var(--text);
+    font-size: 16px;
+    font-weight: 680;
+    line-height: 1.55;
+  }
+  .pnl-dialog-math {
+    margin: 14px 0 0;
+    border-left: 3px solid var(--blue);
+    background: rgba(91,140,255,0.07);
+    padding: 10px 12px;
+    color: var(--text-secondary);
+    font: 500 12px/1.55 var(--mono);
+  }
+  .pnl-dialog-section {
+    margin-top: 22px;
+    border-top: 1px solid rgba(255,255,255,0.07);
+    padding-top: 16px;
+  }
+  .pnl-dialog-section-title {
+    margin-bottom: 10px;
+    color: var(--muted);
+    font: 700 10px/1.2 var(--mono);
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+  }
+  .pnl-driver-list,
+  .pnl-cause-list {
+    display: grid;
+    gap: 9px;
+  }
+  .pnl-driver,
+  .pnl-cause-row {
+    display: grid;
+    grid-template-columns: minmax(115px, 0.32fr) minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+  }
+  .pnl-driver-label,
+  .pnl-cause-label {
+    font-size: 12px;
+    font-weight: 720;
+  }
+  .pnl-driver-detail,
+  .pnl-cause-detail,
+  .pnl-dialog-note {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .pnl-driver[data-impact="positive"] .pnl-driver-label { color: var(--green); }
+  .pnl-driver[data-impact="negative"] .pnl-driver-label { color: var(--red); }
+  .pnl-driver[data-impact="neutral"] .pnl-driver-label { color: var(--yellow); }
+  .pnl-learning-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .pnl-learning-item {
+    border-left: 2px solid rgba(255,255,255,0.12);
+    padding-left: 9px;
+  }
+  .pnl-learning-label {
+    color: var(--muted);
+    font: 700 9px/1.2 var(--mono);
+    letter-spacing: 0.7px;
+    text-transform: uppercase;
+  }
+  .pnl-learning-value {
+    margin-top: 5px;
+    color: var(--text);
+    font: 650 12px/1.4 var(--mono);
+    overflow-wrap: anywhere;
+  }
   .price-source-line {
     display: flex;
     flex-wrap: wrap;
@@ -2352,6 +2504,19 @@
       grid-template-columns: 1fr;
       gap: 6px;
     }
+    .pnl-dialog-header,
+    .pnl-dialog-body {
+      padding-right: 15px;
+      padding-left: 15px;
+    }
+    .pnl-driver,
+    .pnl-cause-row {
+      grid-template-columns: 1fr;
+      gap: 3px;
+    }
+    .pnl-learning-grid {
+      grid-template-columns: 1fr 1fr;
+    }
   }
   @media (max-width: 380px) {
     .grid-4 { grid-template-columns: 1fr; }
@@ -2406,7 +2571,10 @@
   </div>
   <div class="card">
     <div class="kpi-icon blue-bg">P/L</div>
-    <div class="card-label">Total P&amp;L</div>
+    <div class="card-label-row">
+      <div class="card-label">Total P&amp;L</div>
+      <button type="button" class="pnl-explain-button" data-pnl-explain="summary" title="Explain total realized PnL">Why?</button>
+    </div>
     <div class="card-value" id="total-pnl">$--</div>
     <div class="card-sub" id="win-rate">Win rate: --</div>
   </div>
@@ -2577,6 +2745,19 @@
 </div>
 
 </div> <!-- /container -->
+
+<dialog id="pnl-explanation-dialog" class="pnl-dialog" aria-labelledby="pnl-dialog-title">
+  <div class="pnl-dialog-header">
+    <div>
+      <div class="pnl-dialog-kicker">PnL attribution</div>
+      <h2 id="pnl-dialog-title" class="pnl-dialog-title">Why this PnL?</h2>
+    </div>
+    <form method="dialog">
+      <button type="submit" class="pnl-dialog-close" aria-label="Close" title="Close">X</button>
+    </form>
+  </div>
+  <div id="pnl-dialog-body" class="pnl-dialog-body"></div>
+</dialog>
 
 <script>
 const fmt  = (n, dec=2) => n == null ? '--' : Number(n).toLocaleString('en-US', {minimumFractionDigits:dec, maximumFractionDigits:dec});
@@ -3332,6 +3513,7 @@ let latestPolicyHealthReport = { summary: {}, findings: [], roadmap: [] };
 let latestProactiveTraderReport = { summary: {} };
 let latestDailyRadar = { summary: {}, top_assets: [] };
 let latestXyz = { summary: {}, items: [], segments: [] };
+let latestPnlAttribution = {};
 let commandSearchOpen = false;
 let commandSearchIndex = 0;
 let commandSearchQuery = '';
@@ -3348,6 +3530,104 @@ let xyzSegment = 'all';
 let xyzExpanded = false;
 const REFRESH_BASE_MS = 15000;
 const REFRESH_STALE_MS = 25000;
+
+function humanizePnlCode(value) {
+  return String(value || 'unknown').replaceAll('_', ' ').toLowerCase();
+}
+
+function pnlLearningItem(label, value) {
+  return '<div class="pnl-learning-item"><div class="pnl-learning-label">' + esc(label)
+    + '</div><div class="pnl-learning-value">' + esc(String(value == null || value === '' ? '--' : value)) + '</div></div>';
+}
+
+function pnlExplanationHtml(payload) {
+  const explanation = payload || {};
+  const isSummary = Array.isArray(explanation.top_loss_causes);
+  let html = '<p class="pnl-dialog-headline">' + esc(explanation.headline || explanation.summary || 'No PnL explanation is available yet.') + '</p>';
+
+  if (isSummary) {
+    html += '<div class="pnl-dialog-math">Gross wins ' + esc(fmtD(Number(explanation.gross_profit_usd || 0)))
+      + ' • gross losses ' + esc(fmtD(-Math.abs(Number(explanation.gross_loss_usd || 0))))
+      + ' • realized ' + esc(fmtD(Number(explanation.realized_pnl_usd || 0)))
+      + ' • open uPnL ' + esc(fmtD(Number(explanation.open_unrealized_pnl_usd || 0))) + '</div>';
+    html += '<div class="pnl-dialog-section"><div class="pnl-dialog-section-title">Outcome math</div><div class="pnl-learning-grid">'
+      + pnlLearningItem('Wins', explanation.wins || 0)
+      + pnlLearningItem('Losses', explanation.losses || 0)
+      + pnlLearningItem('Flat', explanation.flats || 0)
+      + pnlLearningItem('Profit factor', explanation.profit_factor == null ? '--' : Number(explanation.profit_factor).toFixed(2))
+      + pnlLearningItem('Closed trades', explanation.closed_trades || 0)
+      + pnlLearningItem('Open positions', explanation.open_positions || 0)
+      + pnlLearningItem('Tracked PnL', fmtD(Number(explanation.tracked_pnl_usd || 0)))
+      + '</div></div>';
+    const causes = (explanation.top_loss_causes || []).slice(0, 8);
+    html += '<div class="pnl-dialog-section"><div class="pnl-dialog-section-title">Largest recurring loss causes</div>';
+    html += causes.length
+      ? '<div class="pnl-cause-list">' + causes.map((cause) => '<div class="pnl-cause-row"><div class="pnl-cause-label red">'
+          + esc(humanizePnlCode(cause.code)) + '</div><div class="pnl-cause-detail">'
+          + esc(String(cause.count || 0) + ' trades • -$' + fmt(Number(cause.loss_usd || 0)) + (cause.coins && cause.coins.length ? ' • ' + cause.coins.join(', ') : ''))
+          + '</div></div>').join('') + '</div>'
+      : '<div class="pnl-dialog-note">No losing trades are available for cause attribution.</div>';
+    html += '</div><div class="pnl-dialog-section"><div class="pnl-dialog-section-title">Scope</div><div class="pnl-dialog-note">'
+      + esc(explanation.data_scope || '') + '</div></div>';
+    return html;
+  }
+
+  if (explanation.calculation) {
+    html += '<div class="pnl-dialog-math">' + esc(explanation.calculation) + '</div>';
+  }
+  const drivers = Array.isArray(explanation.drivers) ? explanation.drivers : [];
+  html += '<div class="pnl-dialog-section"><div class="pnl-dialog-section-title">What drove the result</div>';
+  html += drivers.length
+    ? '<div class="pnl-driver-list">' + drivers.map((driver) => '<div class="pnl-driver" data-impact="'
+        + esc(driver.impact || 'neutral') + '"><div class="pnl-driver-label">' + esc(driver.label || humanizePnlCode(driver.code))
+        + '</div><div class="pnl-driver-detail">' + esc(driver.detail || '') + '</div></div>').join('') + '</div>'
+    : '<div class="pnl-dialog-note">Only the price and PnL records are available for this trade.</div>';
+  html += '</div>';
+
+  if (explanation.decision || explanation.decision_detail) {
+    html += '<div class="pnl-dialog-section"><div class="pnl-dialog-section-title">Agent decision</div><div class="pnl-dialog-note"><strong>'
+      + esc(humanizePnlCode(explanation.decision || 'monitor')) + ':</strong> ' + esc(explanation.decision_detail || '') + '</div></div>';
+  }
+  const reinforcement = explanation.reinforcement || {};
+  html += '<div class="pnl-dialog-section"><div class="pnl-dialog-section-title">Learning signal</div><div class="pnl-learning-grid">'
+    + pnlLearningItem('Primary cause', humanizePnlCode(explanation.primary_cause_code))
+    + pnlLearningItem('Reward R', Number(reinforcement.reward_r || 0).toFixed(3))
+    + pnlLearningItem('Normalized reward', Number(reinforcement.reward_normalized || 0).toFixed(3))
+    + pnlLearningItem('Thesis', reinforcement.thesis_outcome || ((explanation.thesis || {}).intact ? 'intact' : 'unresolved'))
+    + pnlLearningItem('Entry credit', reinforcement.entry_credit == null ? 'provisional' : Number(reinforcement.entry_credit).toFixed(2))
+    + pnlLearningItem('Exit credit', reinforcement.exit_credit == null ? 'provisional' : Number(reinforcement.exit_credit).toFixed(2))
+    + '</div></div>';
+
+  const warnings = (((explanation || {}).data_quality || {}).warnings || []).filter(Boolean);
+  if (warnings.length) {
+    html += '<div class="pnl-dialog-section"><div class="pnl-dialog-section-title">Data limits</div><div class="pnl-dialog-note">'
+      + warnings.map((warning) => esc(warning)).join('<br>') + '</div></div>';
+  }
+  return html;
+}
+
+function openPnlExplanation(kind, index) {
+  let payload = null;
+  let title = 'Why this PnL?';
+  if (kind === 'summary') {
+    payload = latestPnlAttribution;
+    title = 'Why is total PnL here?';
+  } else if (kind === 'open') {
+    const position = ((latestState || {}).positions || [])[Number(index)];
+    payload = (position || {}).pnl_explanation;
+    title = String((position || {}).coin || '') + ' unrealized PnL';
+  } else if (kind === 'closed') {
+    const trade = (latestTrades || [])[Number(index)];
+    payload = (trade || {}).pnl_explanation;
+    title = String((trade || {}).coin || '') + ' realized PnL';
+  }
+  if (!payload) return;
+  const dialog = document.getElementById('pnl-explanation-dialog');
+  document.getElementById('pnl-dialog-title').textContent = title;
+  document.getElementById('pnl-dialog-body').innerHTML = pnlExplanationHtml(payload);
+  if (typeof dialog.showModal === 'function') dialog.showModal();
+  else dialog.setAttribute('open', '');
+}
 const REFRESH_MAX_MS = 60000;
 const REFRESH_TIMEOUT_MS = 8000;
 const XYZ_COLLAPSED_LIMIT = 8;
@@ -3695,6 +3975,13 @@ document.addEventListener('click', (event) => {
   }
   setActionBoardBucket('equity');
   setActionBoardCategory(category);
+});
+
+document.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-pnl-explain]');
+  if (!button) return;
+  event.preventDefault();
+  openPnlExplanation(button.dataset.pnlExplain, button.dataset.pnlIndex || 0);
 });
 
 document.addEventListener('click', (event) => {
@@ -4950,6 +5237,7 @@ async function refresh() {
     latestProactiveTraderReport = data.proactive_trader_report || { summary: {} };
     latestDailyRadar = data.daily_radar || ((s || {}).daily_radar) || { summary: {}, top_assets: [] };
     latestXyz = data.xyz || ((s || {}).xyz) || { summary: {}, items: [], segments: [] };
+    latestPnlAttribution = data.pnl_attribution || {};
     const actionBoard = data.action_board || { items: [], lead: null };
     latestActionBoard = actionBoard;
 
@@ -5001,12 +5289,14 @@ async function refresh() {
     const pnlEl = document.getElementById('total-pnl');
     pnlEl.textContent = fmtD(st.total_pnl);
     pnlEl.className = 'card-value ' + cls(st.total_pnl);
+    const totalPnlButton = document.querySelector('[data-pnl-explain="summary"]');
+    if (totalPnlButton) totalPnlButton.title = shortText(latestPnlAttribution.headline || 'Explain total realized PnL', 240);
 
     const openN = (s.positions || []).length;
     const closedN = st.total || 0;
     document.getElementById('win-rate').textContent = 'Across all closed trades';
     document.getElementById('trade-count').textContent = (st.win_rate || 0) + '%';
-    document.getElementById('wins-losses').textContent = 'Closed: ' + closedN + ' • Wins: ' + (st.wins||0) + ' • Losses: ' + (st.losses||0);
+    document.getElementById('wins-losses').textContent = 'Closed: ' + closedN + ' • Wins: ' + (st.wins||0) + ' • Losses: ' + (st.losses||0) + ' • Flat: ' + (st.flats||0);
     if (actionBoard.lead) {
       document.getElementById('cycle').textContent = actionBoard.lead.coin + ' • ' + setupStanceText(actionBoard.lead, 'title');
       document.getElementById('sentiment').textContent = leadSummaryText(actionBoard.lead, 210);
@@ -5024,9 +5314,13 @@ async function refresh() {
       countBadge.textContent = s.positions.length;
       countBadge.className = 'open-count';
       openCard.className = 'card card-highlight';
-      openBody.innerHTML = s.positions.map(p => {
+      openBody.innerHTML = s.positions.map((p, positionIndex) => {
         const pnlCls = cls(p.unrealised_pnl);
         const dirCls = p.direction === 'LONG' ? 'pos-long' : 'pos-short';
+        const leverage = Number(p.leverage || s.leverage || 1);
+        const notional = Number(p.size_usd || 0);
+        const margin = Number(p.margin_usd || (leverage > 0 ? notional / leverage : notional));
+        const pnlExplanation = p.pnl_explanation || {};
         const pnlPct = p.entry_price > 0
           ? ((p.current_price - p.entry_price) / p.entry_price * 100 * (p.direction === 'LONG' ? 1 : -1))
           : 0;
@@ -5038,9 +5332,9 @@ async function refresh() {
           '<div><div class="pos-meta">Current</div><div class="pos-val ' + pnlCls + '">$' + fmt(p.current_price) + '</div></div>' +
           '<div><div class="pos-meta">Invalid If</div><div class="pos-val red">$' + fmt(p.stop_loss) + '</div></div>' +
           '<div><div class="pos-meta">Take Profit</div><div class="pos-val green">$' + fmt(p.take_profit) + '</div></div>' +
-          '<div><div class="pos-meta">Margin</div><div class="pos-val">$' + fmt(p.size_usd, 0) + '</div></div>' +
-          '<div><div class="pos-meta">Notional</div><div class="pos-val blue">$' + fmt(p.size_usd * (s.leverage || 2), 0) + '</div></div>' +
-          '<div><div class="pos-meta">Unrealised P&L</div><div class="pos-val ' + pnlCls + '" style="font-size:16px;">' + fmtD(p.unrealised_pnl) + '<span style="font-size:12px;opacity:0.7;margin-left:4px;">(' + (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%)</span></div></div>' +
+          '<div><div class="pos-meta">Margin (' + leverage.toFixed(1) + 'x)</div><div class="pos-val">$' + fmt(margin, 0) + '</div></div>' +
+          '<div><div class="pos-meta">Notional</div><div class="pos-val blue">$' + fmt(notional, 0) + '</div></div>' +
+          '<div><div class="pos-meta">Unrealised P&L</div><div class="pnl-value-row"><div class="pos-val ' + pnlCls + '" style="font-size:16px;">' + fmtD(p.unrealised_pnl) + '<span style="font-size:12px;opacity:0.7;margin-left:4px;">(' + (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%)</span></div><button type="button" class="pnl-explain-button" data-pnl-explain="open" data-pnl-index="' + positionIndex + '" title="' + esc(shortText(pnlExplanation.headline || 'Explain unrealized PnL', 240)) + '">Why?</button></div></div>' +
         '</div>' +
         priceSourceHtml(p) +
         '<div class="signal-reason"><strong>Invalid if:</strong> ' + esc(simpleInvalidationText(p, 92)) + '</div>' +
@@ -5084,7 +5378,7 @@ async function refresh() {
     const closedLabel = document.getElementById('closed-count-label');
     if (tr && tr.length) {
       closedLabel.textContent = '(' + tr.length + ' trades)';
-      tradBody.innerHTML = tr.map(t => {
+      tradBody.innerHTML = tr.map((t, tradeIndex) => {
         const pnl    = parseFloat(t.pnl_usd || 0);
         const pnlPct = parseFloat(t.pnl_pct || 0);
         const pnlCls = cls(pnl);
@@ -5095,7 +5389,7 @@ async function refresh() {
           '<td><span class="pos-direction pos-' + dir.toLowerCase() + '">' + (dir === 'LONG' ? '↑' : '↓') + ' ' + dir + '</span></td>' +
           '<td class="muted" style="font-size:11px;">' + (t.opened_at||'').slice(0,16) + '</td>' +
           '<td class="muted" style="font-size:11px;">' + ((t.closed_at||'').slice(0,16)||'open') + '</td>' +
-          '<td class="' + pnlCls + '">' + fmtD(pnl) + '</td>' +
+          '<td class="' + pnlCls + '"><div class="pnl-cell"><span>' + fmtD(pnl) + '</span><button type="button" class="pnl-explain-button" data-pnl-explain="closed" data-pnl-index="' + tradeIndex + '" title="' + esc(shortText(((t.pnl_explanation || {}).headline) || 'Explain realized PnL', 240)) + '">Why?</button></div></td>' +
           '<td class="' + pnlCls + '">' + fmtP(pnlPct) + '</td>' +
           '<td class="muted" style="font-size:11px;max-width:220px;">' + esc(plainTradeReason(t.open_logic || 'No opening logic recorded.', 'open', 86)) + '</td>' +
           '<td class="muted" style="font-size:11px;max-width:220px;">' + esc(shortText(t.close_logic || (t.exit_reason || '--'), 100)) + '</td>' +

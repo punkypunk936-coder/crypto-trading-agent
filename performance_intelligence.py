@@ -213,6 +213,8 @@ def _trade_card(row: Mapping[str, Any] | None, *, similarity: float | None = Non
         return {}
     context = _entry_context(row)
     thesis = context.get("thesis", {}) if isinstance(context.get("thesis", {}), Mapping) else {}
+    pnl_explanation = row.get("pnl_explanation", {}) if isinstance(row.get("pnl_explanation", {}), Mapping) else {}
+    reinforcement = pnl_explanation.get("reinforcement", {}) if isinstance(pnl_explanation.get("reinforcement", {}), Mapping) else {}
     card = {
         "trade_id": row.get("trade_id", ""),
         "coin": _safe_str(row.get("coin"), "UNKNOWN").upper(),
@@ -233,6 +235,8 @@ def _trade_card(row: Mapping[str, Any] | None, *, similarity: float | None = Non
         "structure_trend": _structure_trend(row),
         "market_map_bias": _market_map_bias(row),
         "thesis_quality": _safe_str(thesis.get("quality") or context.get("thesis_quality"), "UNKNOWN"),
+        "primary_pnl_cause": _safe_str(pnl_explanation.get("primary_cause_code"), "unknown"),
+        "thesis_outcome": _safe_str(reinforcement.get("thesis_outcome"), "unknown"),
         "summary": _trade_title(row),
     }
     closed_at = row.get("closed_at") or row.get("exit_time") or row.get("closed_at_ts") or row.get("recorded_at_ts")
@@ -395,10 +399,18 @@ def build_performance_edges(trades: Iterable[dict] | None, *, min_samples: int =
         structure = _structure_trend(row)
         crypto_mode = _crypto_market_mode(row)
         crypto_bias = _crypto_directional_bias(row)
+        raw_pnl_explanation = row.get("pnl_explanation") or {}
+        pnl_explanation = dict(raw_pnl_explanation) if isinstance(raw_pnl_explanation, Mapping) else {}
+        raw_reinforcement = pnl_explanation.get("reinforcement") or {}
+        reinforcement = dict(raw_reinforcement) if isinstance(raw_reinforcement, Mapping) else {}
+        primary_cause = _safe_str(pnl_explanation.get("primary_cause_code"), "unknown").lower()
+        thesis_outcome = _safe_str(reinforcement.get("thesis_outcome"), "unknown").lower()
         buckets[f"direction:{direction}"].append(row)
         buckets[f"score:{score_key}"].append(row)
         buckets[f"duration:{dur_key}"].append(row)
         buckets[f"exit:{exit_reason}"].append(row)
+        buckets[f"pnl_cause:{primary_cause}"].append(row)
+        buckets[f"thesis_outcome:{thesis_outcome}"].append(row)
         buckets[f"asset_class_direction:{asset_class}:{direction}"].append(row)
         buckets[f"instrument_direction:{instrument}:{direction}"].append(row)
         buckets[f"regime_direction:{instrument}:{direction}:{regime}:{dominant}"].append(row)
@@ -423,6 +435,10 @@ def build_performance_edges(trades: Iterable[dict] | None, *, min_samples: int =
             label = raw.replace(":", " ")
         elif kind == "exit":
             label = "exit " + raw.replace("_", " ")
+        elif kind == "pnl_cause":
+            label = "PnL cause " + raw.replace("_", " ")
+        elif kind == "thesis_outcome":
+            label = "thesis " + raw.replace("_", " ")
         else:
             label = raw.replace("_", " ")
         metric = _metric(label, grouped)

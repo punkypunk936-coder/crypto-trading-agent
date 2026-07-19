@@ -70,6 +70,7 @@ import hosted_state_sync
 import market_map
 import missed_move_lab
 import performance_intelligence
+from pnl_explanation import explain_closed_trade, explain_open_position
 import policy_health
 import playbook_distiller
 import portfolio_guard
@@ -5900,7 +5901,7 @@ class TradingAgent:
             pnl_pct = (entry_price - exit_price) / entry_price * 100.0
         pnl_usd = pnl_pct / 100.0 * float(pos.size_usd or 0.0)
 
-        return {
+        record = {
             "trade_id": (csv_trade or {}).get("trade_id"),
             "coin": coin,
             "direction": pos.direction,
@@ -5944,6 +5945,9 @@ class TradingAgent:
                 "stop_pressure_ratio": entry_ctx.get("stop_pressure_ratio"),
             },
         }
+        record["pnl_explanation"] = explain_closed_trade(record)
+        record["reinforcement"] = dict(record["pnl_explanation"].get("reinforcement") or {})
+        return record
 
     def _build_entry_context(self, coin: str, signal, order=None, entry_type: str = "signal_entry") -> dict:
         sig = dict(getattr(self, "_last_signals", {}).get(coin, {}) or {})
@@ -7761,6 +7765,15 @@ class TradingAgent:
                         feature_store.append_closed_trade_feature_row(dataset_record)
                     except Exception as exc:
                         log.debug(f"[{coin}] Closed-trade feature row skipped: {exc}")
+            learning_entry_ctx = dict(entry_ctx)
+            if dataset_record:
+                explanation = dict(dataset_record.get("pnl_explanation") or {})
+                learning_entry_ctx["outcome_attribution"] = {
+                    "headline": explanation.get("headline", ""),
+                    "primary_cause_code": explanation.get("primary_cause_code", ""),
+                    "cause_codes": list(explanation.get("cause_codes") or []),
+                    **dict(explanation.get("reinforcement") or {}),
+                }
             trend_ctx    = entry_ctx.get("mtf_bias") or last_sig.get("mtf_bias", "FLAT")
             # Pull regime context so RL can learn which regimes are profitable
             market_regime   = entry_ctx.get("market_regime") or last_sig.get("market_regime",   "RANGING")
@@ -7777,7 +7790,7 @@ class TradingAgent:
                 market_regime    = market_regime,
                 dominant_regime  = dominant_regime,
                 volatility_label = entry_ctx.get("volatility_label", "NORMAL"),
-                entry_context    = entry_ctx,
+                entry_context    = learning_entry_ctx,
             )
 
     def emergency_close_all(self, reason: str):
@@ -8182,6 +8195,8 @@ class TradingAgent:
                     p_out.get("current_logic", ""),
                     holding=True,
                 )
+                p_out["entry_context"] = entry_ctx
+                p_out["pnl_explanation"] = explain_open_position(p_out, sig)
 
         state = {
             "status":        "running",

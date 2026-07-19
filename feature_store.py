@@ -332,6 +332,8 @@ def build_closed_trade_feature_row(record: Mapping[str, Any]) -> dict:
     trade_plan = dict(payload.get("trade_plan") or entry_context.get("trade_plan") or {})
     execution_quality = dict(payload.get("execution_quality") or entry_context.get("execution_quality") or {})
     exit_context = dict(payload.get("exit_context") or {})
+    pnl_explanation = dict(payload.get("pnl_explanation") or {})
+    reinforcement = dict(payload.get("reinforcement") or pnl_explanation.get("reinforcement") or {})
 
     signal_snapshot = {
         "action": payload.get("direction", "FLAT"),
@@ -390,6 +392,11 @@ def build_closed_trade_feature_row(record: Mapping[str, Any]) -> dict:
         extra={
             "trade_outcome": payload.get("outcome", "UNKNOWN"),
             "exit_reason": payload.get("exit_reason", ""),
+            "pnl_primary_cause": pnl_explanation.get("primary_cause_code", "unknown"),
+            "pnl_thesis_outcome": reinforcement.get("thesis_outcome", "unknown"),
+            "pnl_entry_credit": reinforcement.get("entry_credit", 0.0),
+            "pnl_exit_credit": reinforcement.get("exit_credit", 0.0),
+            "pnl_execution_credit": reinforcement.get("execution_credit", 0.0),
         },
     )
     plan_outcome = dict(payload.get("plan_outcome") or {})
@@ -410,6 +417,14 @@ def build_closed_trade_feature_row(record: Mapping[str, Any]) -> dict:
             "tp_progress_ratio": round(_safe_float(plan_outcome.get("tp_progress_ratio")), 6),
             "stop_pressure_ratio": round(_safe_float(plan_outcome.get("stop_pressure_ratio")), 6),
             "exit_reason": payload.get("exit_reason", ""),
+            "reward_r": round(_safe_float(reinforcement.get("reward_r")), 6),
+            "reward_normalized": round(_safe_float(reinforcement.get("reward_normalized")), 6),
+            "primary_cause_code": pnl_explanation.get("primary_cause_code", ""),
+            "cause_codes": list(pnl_explanation.get("cause_codes") or []),
+            "thesis_outcome": reinforcement.get("thesis_outcome", ""),
+            "entry_credit": round(_safe_float(reinforcement.get("entry_credit")), 6),
+            "exit_credit": round(_safe_float(reinforcement.get("exit_credit")), 6),
+            "execution_credit": round(_safe_float(reinforcement.get("execution_credit")), 6),
         },
     }
 
