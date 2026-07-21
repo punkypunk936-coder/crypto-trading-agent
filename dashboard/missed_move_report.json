@@ -1,27 +1,27 @@
 {
   "classifications": {
-    "CORRECT_PASS": 82,
-    "MISSED_WIN": 89
+    "CORRECT_PASS": 540,
+    "MISSED_WIN": 919
   },
   "daily_top_mover_replay": {
     "lessons": [
-      "CBRS moved +7.00% after a blocked LONG candidate; event starter was active, so replay should inspect sizing/execution."
+      "CBRS moved +8.12% after a blocked LONG candidate; event starter was active, so replay should inspect sizing/execution."
     ],
     "lookback_hours": 24,
     "missed_top_movers": [
       {
-        "blocked_at": "2026-07-21 19:44:54",
-        "blocked_stage": "mtf_block",
+        "blocked_at": "2026-07-21 20:13:13",
+        "blocked_stage": "data_reliability_block",
         "coin": "CBRS",
         "conviction_entry_event": true,
         "direction": "LONG",
         "event_budget_summary": "",
-        "move_pct": 7.003,
+        "move_pct": 8.122,
         "news_catalyst_score": 5.69,
         "news_event_score": 5.69,
-        "probability": 0.9129,
-        "score": 100.0,
-        "summary": "Thesis medium: Pre-event starter long allowed: catalyst 5.69, news 61, p 91%, score 72.9 vs 65 trigger. Begin 44% size before full confirmation. Thesis: platform anchor + strategic deal + capacity lock-in + options implied move + analyst revision + analyst conviction."
+        "probability": 0.8143,
+        "score": 98.19,
+        "summary": "price moved too far since the conviction snapshot"
       },
       {
         "blocked_at": "2026-07-21 14:24:17",
@@ -52,18 +52,18 @@
         "summary": "Thesis medium: Scalp long: breakdown/breakout is confirmed, recent candles confirm, book pressure is long."
       },
       {
-        "blocked_at": "2026-07-21 20:02:16",
-        "blocked_stage": "win_rate_guard_block",
-        "coin": "AMD",
+        "blocked_at": "2026-07-21 20:01:43",
+        "blocked_stage": "data_reliability_block",
+        "coin": "MSTR",
         "conviction_entry_event": true,
         "direction": "LONG",
-        "event_budget_summary": "event budget has room for a starter",
-        "move_pct": 4.27,
-        "news_catalyst_score": 4.95,
-        "news_event_score": 4.95,
-        "probability": 0.9822,
-        "score": 100.0,
-        "summary": "AMD LONG has 3/6 recent non-quality outcomes"
+        "event_budget_summary": "",
+        "move_pct": 3.817,
+        "news_catalyst_score": 4.39,
+        "news_event_score": 4.39,
+        "probability": 0.8828,
+        "score": 98.32,
+        "summary": "no valid orderbook snapshot is available"
       },
       {
         "blocked_at": "2026-07-21 10:33:39",
@@ -72,7 +72,7 @@
         "conviction_entry_event": false,
         "direction": "LONG",
         "event_budget_summary": "",
-        "move_pct": 4.01,
+        "move_pct": 3.721,
         "news_catalyst_score": 0.0,
         "news_event_score": 0.0,
         "probability": 0.8255,
@@ -106,10 +106,10 @@
       {
         "coin": "CBRS",
         "direction": "LONG",
-        "end_at": "2026-07-21 19:44:54",
-        "end_price": 193.14,
-        "end_ts": 1784643294.803896,
-        "move_pct": 7.003,
+        "end_at": "2026-07-21 20:13:13",
+        "end_price": 195.16,
+        "end_ts": 1784644993.260224,
+        "move_pct": 8.122,
         "start_at": "2026-07-21 09:43:52",
         "start_price": 180.5,
         "start_ts": 1784607232.03825
@@ -148,23 +148,23 @@
         "start_ts": 1784610560.049593
       },
       {
-        "coin": "AMD",
+        "coin": "MSTR",
         "direction": "LONG",
-        "end_at": "2026-07-21 20:02:16",
-        "end_price": 532.04,
-        "end_ts": 1784644336.2383978,
-        "move_pct": 4.27,
-        "start_at": "2026-07-21 08:17:15",
-        "start_price": 510.25,
-        "start_ts": 1784602035.124795
+        "end_at": "2026-07-21 20:01:43",
+        "end_price": 103.0,
+        "end_ts": 1784644303.484751,
+        "move_pct": 3.817,
+        "start_at": "2026-07-21 09:59:46",
+        "start_price": 99.213,
+        "start_ts": 1784608186.0563788
       },
       {
         "coin": "TAO",
         "direction": "LONG",
-        "end_at": "2026-07-21 20:03:50",
-        "end_price": 201.52,
-        "end_ts": 1784644430.363658,
-        "move_pct": 4.01,
+        "end_at": "2026-07-21 20:12:30",
+        "end_price": 200.96,
+        "end_ts": 1784644950.789953,
+        "move_pct": 3.721,
         "start_at": "2026-07-21 08:16:50",
         "start_price": 193.75,
         "start_ts": 1784602010.141384
@@ -172,231 +172,295 @@
     ]
   },
   "data_dir": "/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime",
-  "decision_rows": 1512,
-  "episodes": 1443,
-  "generated_at": 1784644439,
+  "decision_rows": 1543,
+  "episodes": 1474,
+  "generated_at": 1784645023,
   "horizon_minutes": 720,
   "interval": "5m",
-  "labeled_episodes": 171,
+  "labeled_episodes": 1459,
   "recent_missed_moves": [
     {
       "action": "SHORT",
       "breakout": "confirmed_bearish_breakdown",
-      "coin": "TAO",
+      "coin": "ETH",
       "interaction": "at_support",
-      "probability": 0.8725,
-      "recorded_at": "2026-07-21 19:48:21",
-      "regime": "breakout",
-      "risk_reward_ratio": 3.49,
-      "score": 100.0,
-      "stage": "first_principles_guard_block",
-      "summary": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 42% WR, $-90.45.",
-      "ts": 1784643501.1273332
-    },
-    {
-      "action": "SHORT",
-      "breakout": "confirmed_bearish_breakdown",
-      "coin": "TAO",
-      "interaction": "at_support",
-      "probability": 0.8733,
-      "recorded_at": "2026-07-21 19:44:11",
-      "regime": "breakout",
-      "risk_reward_ratio": 4.15,
-      "score": 100.0,
-      "stage": "first_principles_guard_block",
-      "summary": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 42% WR, $-90.45.",
-      "ts": 1784643251.2531478
-    },
-    {
-      "action": "SHORT",
-      "breakout": "confirmed_bearish_breakdown",
-      "coin": "TAO",
-      "interaction": "at_support",
-      "probability": 0.91,
-      "recorded_at": "2026-07-21 19:41:20",
-      "regime": "breakout",
-      "risk_reward_ratio": 3.34,
-      "score": 100.0,
-      "stage": "first_principles_guard_block",
-      "summary": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 42% WR, $-90.45.",
-      "ts": 1784643080.2341151
-    },
-    {
-      "action": "SHORT",
-      "breakout": "confirmed_bearish_breakdown",
-      "coin": "TAO",
-      "interaction": "at_support",
-      "probability": 0.7789,
-      "recorded_at": "2026-07-21 19:38:51",
-      "regime": "breakout",
-      "risk_reward_ratio": 2.83,
-      "score": 98.22,
-      "stage": "first_principles_guard_block",
-      "summary": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 42% WR, $-90.45.",
-      "ts": 1784642931.664245
-    },
-    {
-      "action": "SHORT",
-      "breakout": "confirmed_bearish_breakdown",
-      "coin": "TAO",
-      "interaction": "at_support",
-      "probability": 0.7777,
-      "recorded_at": "2026-07-21 19:27:40",
-      "regime": "breakout",
-      "risk_reward_ratio": 2.83,
-      "score": 98.12,
-      "stage": "first_principles_guard_block",
-      "summary": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 42% WR, $-90.45.",
-      "ts": 1784642260.007915
-    },
-    {
-      "action": "SHORT",
-      "breakout": "confirmed_bearish_breakdown",
-      "coin": "TAO",
-      "interaction": "at_support",
-      "probability": 0.7007,
-      "recorded_at": "2026-07-21 18:45:56",
-      "regime": "breakout",
-      "risk_reward_ratio": 1.86,
-      "score": 83.28,
-      "stage": "first_principles_guard_block",
-      "summary": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 42% WR, $-90.45.",
-      "ts": 1784639756.677258
-    },
-    {
-      "action": "SHORT",
-      "breakout": "confirmed_bearish_breakdown",
-      "coin": "HYPE",
-      "interaction": "at_support",
-      "probability": 0.5107,
-      "recorded_at": "2026-07-21 18:45:50",
+      "probability": 0.7717,
+      "recorded_at": "2026-07-21 20:09:44",
       "regime": "absorption",
-      "risk_reward_ratio": 2.2,
-      "score": 53.24,
-      "stage": "first_principles_guard_block",
-      "summary": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 42% WR, $-90.45.",
-      "ts": 1784639750.279425
+      "risk_reward_ratio": 2.67,
+      "score": 100.0,
+      "stage": "patient_execution_block",
+      "summary": "Short idea is not proven yet: Ethereum price nears $2,000 as whale buying fuels breakout hopes",
+      "ts": 1784644784.802668
     },
     {
       "action": "SHORT",
       "breakout": "confirmed_bearish_breakdown",
-      "coin": "TAO",
-      "interaction": "at_resistance",
-      "probability": 0.8861,
-      "recorded_at": "2026-07-21 17:34:31",
-      "regime": "breakout",
-      "risk_reward_ratio": 3.34,
+      "coin": "BTC",
+      "interaction": "at_support",
+      "probability": 0.7326,
+      "recorded_at": "2026-07-21 20:09:44",
+      "regime": "trend",
+      "risk_reward_ratio": 1.52,
       "score": 100.0,
-      "stage": "first_principles_guard_block",
-      "summary": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 42% WR, $-90.45.",
-      "ts": 1784635471.434007
+      "stage": "patient_execution_block",
+      "summary": "Short wait: chart is moving, but the driver is not strong yet.",
+      "ts": 1784644784.800363
     },
     {
       "action": "SHORT",
       "breakout": "confirmed_bearish_breakdown",
       "coin": "TAO",
       "interaction": "at_support",
-      "probability": 0.779,
-      "recorded_at": "2026-07-21 14:58:43",
+      "probability": 0.9185,
+      "recorded_at": "2026-07-21 20:09:18",
       "regime": "breakout",
-      "risk_reward_ratio": 3.05,
-      "score": 98.1,
+      "risk_reward_ratio": 3.27,
+      "score": 100.0,
       "stage": "first_principles_guard_block",
       "summary": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 42% WR, $-90.45.",
-      "ts": 1784626123.2424881
+      "ts": 1784644758.032723
     },
     {
-      "action": "LONG",
+      "action": "SHORT",
       "breakout": "confirmed_bearish_breakdown",
-      "coin": "HYPE",
-      "interaction": "at_resistance",
-      "probability": 0.7924,
-      "recorded_at": "2026-07-21 14:52:26",
+      "coin": "ETH",
+      "interaction": "at_support",
+      "probability": 0.7717,
+      "recorded_at": "2026-07-21 20:09:14",
       "regime": "absorption",
-      "risk_reward_ratio": 2.36,
-      "score": 97.99,
+      "risk_reward_ratio": 2.67,
+      "score": 91.82,
       "stage": "mtf_block",
-      "summary": "Thesis medium: Scalp long: structure flipped up, recent candles confirm, newsflow backs the scalp.",
-      "ts": 1784625746.948599
+      "summary": "Thesis medium: Scalp short: breakdown/breakout is confirmed, countertrend scalp only, book pressure is short.",
+      "ts": 1784644754.329325
+    },
+    {
+      "action": "SHORT",
+      "breakout": "confirmed_bearish_breakdown",
+      "coin": "BTC",
+      "interaction": "at_support",
+      "probability": 0.7326,
+      "recorded_at": "2026-07-21 20:09:12",
+      "regime": "trend",
+      "risk_reward_ratio": 1.52,
+      "score": 77.68,
+      "stage": "mtf_block",
+      "summary": "Thesis medium: Scalp short: breakdown/breakout is confirmed, countertrend scalp only, book pressure is short.",
+      "ts": 1784644752.417995
+    },
+    {
+      "action": "SHORT",
+      "breakout": "confirmed_bearish_breakdown",
+      "coin": "ETH",
+      "interaction": "at_resistance",
+      "probability": 0.817,
+      "recorded_at": "2026-07-21 20:06:53",
+      "regime": "absorption",
+      "risk_reward_ratio": 2.46,
+      "score": 100.0,
+      "stage": "patient_execution_block",
+      "summary": "Short idea is not proven yet: Ethereum price nears $2,000 as whale buying fuels breakout hopes",
+      "ts": 1784644613.563356
+    },
+    {
+      "action": "SHORT",
+      "breakout": "confirmed_bearish_breakdown",
+      "coin": "BTC",
+      "interaction": "at_support",
+      "probability": 0.7364,
+      "recorded_at": "2026-07-21 20:06:53",
+      "regime": "trend",
+      "risk_reward_ratio": 1.48,
+      "score": 100.0,
+      "stage": "patient_execution_block",
+      "summary": "Short wait: chart is moving, but the driver is not strong yet.",
+      "ts": 1784644613.562634
+    },
+    {
+      "action": "SHORT",
+      "breakout": "confirmed_bearish_breakdown",
+      "coin": "TAO",
+      "interaction": "at_support",
+      "probability": 0.8712,
+      "recorded_at": "2026-07-21 20:06:53",
+      "regime": "breakout",
+      "risk_reward_ratio": 3.52,
+      "score": 100.0,
+      "stage": "first_principles_guard_block",
+      "summary": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 42% WR, $-90.45.",
+      "ts": 1784644613.158422
+    },
+    {
+      "action": "SHORT",
+      "breakout": "confirmed_bearish_breakdown",
+      "coin": "ETH",
+      "interaction": "at_resistance",
+      "probability": 0.817,
+      "recorded_at": "2026-07-21 20:06:51",
+      "regime": "absorption",
+      "risk_reward_ratio": 2.46,
+      "score": 95.75,
+      "stage": "mtf_block",
+      "summary": "Thesis medium: Scalp short: breakdown/breakout is confirmed, countertrend scalp only, book pressure is short.",
+      "ts": 1784644611.529602
+    },
+    {
+      "action": "SHORT",
+      "breakout": "confirmed_bearish_breakdown",
+      "coin": "BTC",
+      "interaction": "at_support",
+      "probability": 0.7364,
+      "recorded_at": "2026-07-21 20:06:51",
+      "regime": "trend",
+      "risk_reward_ratio": 1.48,
+      "score": 77.54,
+      "stage": "mtf_block",
+      "summary": "Thesis medium: Scalp short: breakdown/breakout is confirmed, countertrend scalp only, book pressure is short.",
+      "ts": 1784644611.1777139
     }
   ],
   "summary": {
     "bad_trade_count": 0,
-    "correct_pass_count": 82,
+    "correct_pass_count": 540,
     "good_trade_count": 0,
-    "missed_win_count": 89
+    "missed_win_count": 919
   },
   "target_r": 0.25,
   "top_blockers": [
     {
+      "blocker": "Thesis medium: Scalp short: breakdown/breakout is confirmed, countertrend scalp only, book pressure is short.",
+      "misses": 143
+    },
+    {
+      "blocker": "AMD LONG has 3/6 recent non-quality outcomes",
+      "misses": 131
+    },
+    {
+      "blocker": "Long thesis: SEC filing flow + options implied move + analyst revision + analyst conviction",
+      "misses": 131
+    },
+    {
+      "blocker": "win-rate recovery blocks LONG: needs fundamentals, attention, and flow to line up",
+      "misses": 103
+    },
+    {
       "blocker": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 42% WR, $-90.45.",
-      "misses": 65
+      "misses": 92
+    },
+    {
+      "blocker": "Long thesis: earnings event + pre-event setup + options implied move + analyst revision",
+      "misses": 35
+    },
+    {
+      "blocker": "Short wait: chart is moving, but the driver is not strong yet.",
+      "misses": 33
     },
     {
       "blocker": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 42% WR, $-90.94.",
-      "misses": 7
-    },
-    {
-      "blocker": "Thesis medium: Scalp long: breakdown/breakout is confirmed, newsflow backs the scalp, book pressure is long.",
-      "misses": 5
-    },
-    {
-      "blocker": "Thesis medium: Scalp long: recent candles confirm, book pressure is long, score is close enough for a tactical long.",
-      "misses": 5
-    },
-    {
-      "blocker": "Thesis medium: Scalp long: breakdown/breakout is confirmed, recent candles confirm, newsflow backs the scalp.",
-      "misses": 3
-    },
-    {
-      "blocker": "Thesis medium: Scalp long: structure flipped up, recent candles confirm, newsflow backs the scalp.",
-      "misses": 2
-    },
-    {
-      "blocker": "Thesis medium: Scalp long: recent candles confirm, book pressure is long.",
-      "misses": 1
-    },
-    {
-      "blocker": "Thesis medium: Scalp long: breakdown/breakout is confirmed, structure flipped up, newsflow backs the scalp.",
-      "misses": 1
+      "misses": 21
     }
   ],
   "top_missed_assets": [
     {
-      "coin": "TAO",
-      "misses": 51
+      "coin": "AMD",
+      "misses": 138
     },
     {
-      "coin": "HYPE",
-      "misses": 38
+      "coin": "AMZN",
+      "misses": 89
+    },
+    {
+      "coin": "SOL",
+      "misses": 75
+    },
+    {
+      "coin": "BTC",
+      "misses": 67
+    },
+    {
+      "coin": "ETH",
+      "misses": 58
+    },
+    {
+      "coin": "MON",
+      "misses": 53
+    },
+    {
+      "coin": "TAO",
+      "misses": 53
+    },
+    {
+      "coin": "BABA",
+      "misses": 51
     }
   ],
   "top_missed_families": [
     {
+      "family": "AMD:LONG",
+      "misses": 138
+    },
+    {
+      "family": "AMZN:LONG",
+      "misses": 89
+    },
+    {
+      "family": "SOL:SHORT",
+      "misses": 64
+    },
+    {
+      "family": "ETH:SHORT",
+      "misses": 56
+    },
+    {
+      "family": "MON:LONG",
+      "misses": 53
+    },
+    {
+      "family": "BABA:LONG",
+      "misses": 51
+    },
+    {
       "family": "TAO:SHORT",
-      "misses": 45
+      "misses": 47
     },
     {
-      "family": "HYPE:SHORT",
-      "misses": 27
-    },
-    {
-      "family": "HYPE:LONG",
-      "misses": 11
-    },
-    {
-      "family": "TAO:LONG",
-      "misses": 6
+      "family": "ADA:SHORT",
+      "misses": 43
     }
   ],
   "top_missed_stages": [
     {
-      "misses": 72,
+      "misses": 250,
+      "stage": "patient_execution_block"
+    },
+    {
+      "misses": 245,
+      "stage": "mtf_block"
+    },
+    {
+      "misses": 151,
+      "stage": "win_rate_guard_block"
+    },
+    {
+      "misses": 118,
       "stage": "first_principles_guard_block"
     },
     {
-      "misses": 17,
-      "stage": "mtf_block"
+      "misses": 107,
+      "stage": "win_rate_context_guard_block"
+    },
+    {
+      "misses": 23,
+      "stage": "major_catalyst_watch"
+    },
+    {
+      "misses": 13,
+      "stage": "data_reliability_block"
+    },
+    {
+      "misses": 10,
+      "stage": "guardrails_flat"
     }
   ]
 }
