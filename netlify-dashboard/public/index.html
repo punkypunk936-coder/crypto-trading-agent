@@ -1806,6 +1806,16 @@
   }
 
   /* ── Position Cards ─────────────────────── */
+  .position-shell {
+    padding: 0 0 14px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.055);
+  }
+  .position-shell:last-child {
+    padding-bottom: 0;
+    margin-bottom: 0;
+    border-bottom: 0;
+  }
   .pos-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -1839,6 +1849,125 @@
     font-weight: 700;
     margin-top: 4px;
     font-family: var(--mono);
+  }
+  .position-chart-details {
+    margin-top: 10px;
+    border: 1px solid rgba(255,255,255,0.065);
+    border-radius: 8px;
+    background: rgba(0,0,0,0.18);
+    overflow: hidden;
+  }
+  .position-chart-details summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 42px;
+    padding: 9px 12px;
+    list-style: none;
+    cursor: pointer;
+    color: var(--text);
+    font: 700 11px/1.35 var(--mono);
+    text-transform: uppercase;
+  }
+  .position-chart-details summary::-webkit-details-marker { display: none; }
+  .position-chart-details summary::after {
+    content: '+';
+    color: var(--muted);
+    font-size: 15px;
+  }
+  .position-chart-details[open] summary::after { content: '-'; }
+  .position-chart-summary-main {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+  .position-chart-status {
+    display: inline-flex;
+    align-items: center;
+    min-height: 22px;
+    padding: 2px 7px;
+    border: 1px solid rgba(91,140,255,0.22);
+    border-radius: 999px;
+    background: rgba(91,140,255,0.08);
+    color: var(--blue);
+    font-size: 9px;
+    white-space: nowrap;
+  }
+  .position-chart-status.absorbed {
+    color: var(--green);
+    border-color: rgba(0,230,138,0.22);
+    background: rgba(0,230,138,0.07);
+  }
+  .position-chart-status.damage {
+    color: var(--red);
+    border-color: rgba(255,77,106,0.24);
+    background: rgba(255,77,106,0.07);
+  }
+  .position-chart-shell {
+    padding: 4px 10px 12px;
+    border-top: 1px solid rgba(255,255,255,0.045);
+  }
+  .position-chart-svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 760 / 280;
+    min-height: 220px;
+  }
+  .position-chart-empty {
+    padding: 24px 8px 16px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .position-chart-metrics {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    margin: 2px 2px 10px;
+  }
+  .position-chart-metric {
+    min-width: 0;
+    padding: 7px 8px;
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 6px;
+    background: rgba(255,255,255,0.022);
+  }
+  .position-chart-metric span {
+    display: block;
+    color: var(--muted);
+    font: 700 9px/1.2 var(--mono);
+    text-transform: uppercase;
+  }
+  .position-chart-metric strong {
+    display: block;
+    margin-top: 4px;
+    color: var(--text);
+    font: 700 11px/1.25 var(--mono);
+  }
+  .position-thesis-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin: 0 2px;
+  }
+  .position-thesis-block {
+    min-width: 0;
+    padding: 9px 10px;
+    border-left: 2px solid rgba(91,140,255,0.38);
+    background: rgba(255,255,255,0.022);
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .position-thesis-block strong {
+    display: block;
+    margin-bottom: 4px;
+    color: var(--text);
+    font: 700 9px/1.2 var(--mono);
+    text-transform: uppercase;
   }
   .pnl-value-row,
   .pnl-cell {
@@ -2517,6 +2646,11 @@
     .pnl-learning-grid {
       grid-template-columns: 1fr 1fr;
     }
+    .position-chart-metrics,
+    .position-thesis-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .position-chart-svg { min-height: 180px; }
   }
   @media (max-width: 380px) {
     .grid-4 { grid-template-columns: 1fr; }
@@ -2804,6 +2938,117 @@ const priceSourceHtml = (item) => {
   return '<div class="' + clsName + '"><strong>Price source:</strong> ' + esc(text)
     + (warning ? ' • ' + esc(shortText(warning, 120)) : '')
     + '</div>';
+};
+const positionChartHtml = (position, expanded=false) => {
+  const safe = position || {};
+  const chart = safe.price_action_chart || {};
+  const thesis = chart.thesis || {};
+  const levels = chart.levels || {};
+  const bars = (Array.isArray(chart.bars) ? chart.bars : []).filter((bar) => {
+    return ['open', 'high', 'low', 'close'].every((key) => Number.isFinite(Number((bar || {})[key])));
+  });
+  const status = String(chart.status || safe.core_thesis_label || safe.tactical_state || 'THESIS ACTIVE')
+    .replaceAll('_', ' ');
+  const statusUpper = status.toUpperCase();
+  const statusClass = chart.structural_damage
+    ? 'position-chart-status damage'
+    : (chart.dip_absorption_active || chart.v_reversal_active || statusUpper.includes('ABSORB') || statusUpper.includes('VOLATILITY'))
+      ? 'position-chart-status absorbed'
+      : 'position-chart-status';
+  const summary = shortText(chart.summary || safe.current_logic || 'Price-action context will populate on the next position refresh.', 180);
+  const detailsAttrs = ' class="position-chart-details" data-position-chart="' + esc(String(safe.coin || '')) + '"'
+    + (expanded ? ' open' : '');
+  const summaryHtml = '<summary><span class="position-chart-summary-main"><span>Price action &amp; thesis</span>'
+    + '<span class="' + statusClass + '">' + esc(status) + '</span></span></summary>';
+  const metricsHtml = '<div class="position-chart-metrics">'
+    + '<div class="position-chart-metric"><span>Pullback</span><strong>' + esc(Number(chart.pullback_atr || 0).toFixed(1) + ' ATR') + '</strong></div>'
+    + '<div class="position-chart-metric"><span>Reclaimed</span><strong>' + esc((Number(chart.recovery_fraction || 0) * 100).toFixed(0) + '%') + '</strong></div>'
+    + '<div class="position-chart-metric"><span>Resilience</span><strong>' + esc(Number(chart.resilience_score || 0).toFixed(0) + ' / 100') + '</strong></div>'
+    + '<div class="position-chart-metric"><span>Window</span><strong>' + esc(String(bars.length || chart.bar_count || 0) + ' x ' + String(chart.interval || '1h')) + '</strong></div>'
+    + '</div>';
+  const thesisHtml = '<div class="position-thesis-grid">'
+    + '<div class="position-thesis-block"><strong>Entry thesis</strong>' + esc(shortText(thesis.entry || safe.entry_logic || 'No entry thesis recorded.', 220)) + '</div>'
+    + '<div class="position-thesis-block"><strong>Live read</strong>' + esc(summary + ' ' + shortText(thesis.current || safe.current_logic || '', 180)) + '</div>'
+    + '</div>';
+
+  if (bars.length < 2) {
+    return '<details' + detailsAttrs + '>' + summaryHtml
+      + '<div class="position-chart-shell">' + metricsHtml
+      + '<div class="position-chart-empty">The candle path will appear after the next live analysis cycle.</div>'
+      + thesisHtml + '</div></details>';
+  }
+
+  const width = 760;
+  const height = 280;
+  const left = 48;
+  const right = 620;
+  const top = 18;
+  const bottom = 238;
+  const candleValues = bars.flatMap((bar) => [Number(bar.low), Number(bar.high)]);
+  const levelSpecs = [
+    { key: 'current', label: 'Live', color: '#ebede5', dash: '' },
+    { key: 'entry', label: 'Entry', color: '#5b8cff', dash: '5 4' },
+    { key: 'thesis_review', label: 'Thesis review', color: '#ffb84d', dash: '4 4' },
+    { key: 'hard_risk', label: 'Hard risk', color: '#ff4d6a', dash: '3 4' },
+    { key: 'target', label: 'Target', color: '#00e68a', dash: '6 4' },
+  ].map((spec) => ({ ...spec, value: Number(levels[spec.key] || 0) }))
+    .filter((spec) => Number.isFinite(spec.value) && spec.value > 0);
+  const prices = candleValues.concat(levelSpecs.map((spec) => spec.value));
+  let minPrice = Math.min(...prices);
+  let maxPrice = Math.max(...prices);
+  const rawSpan = Math.max(maxPrice - minPrice, Math.abs(maxPrice || 1) * 0.002);
+  minPrice -= rawSpan * 0.08;
+  maxPrice += rawSpan * 0.08;
+  const span = Math.max(maxPrice - minPrice, 1e-9);
+  const y = (value) => top + ((maxPrice - Number(value)) / span) * (bottom - top);
+  const step = (right - left) / bars.length;
+  const bodyWidth = Math.max(2, Math.min(9, step * 0.58));
+
+  const grid = Array.from({ length: 5 }, (_, index) => {
+    const ratio = index / 4;
+    const gridY = top + ratio * (bottom - top);
+    const price = maxPrice - ratio * span;
+    return '<line x1="' + left + '" y1="' + gridY.toFixed(2) + '" x2="' + right + '" y2="' + gridY.toFixed(2) + '" stroke="rgba(235,237,229,0.08)" stroke-width="1" />'
+      + '<text x="2" y="' + (gridY + 4).toFixed(2) + '" fill="#777e78" font-size="10" font-family="monospace">' + esc(fmt(price)) + '</text>';
+  }).join('');
+  const candles = bars.map((bar, index) => {
+    const x = left + step * index + step / 2;
+    const openY = y(bar.open);
+    const closeY = y(bar.close);
+    const highY = y(bar.high);
+    const lowY = y(bar.low);
+    const bullish = Number(bar.close) >= Number(bar.open);
+    const color = bullish ? '#00e68a' : '#ff4d6a';
+    const bodyY = Math.min(openY, closeY);
+    const bodyHeight = Math.max(1.5, Math.abs(closeY - openY));
+    return '<line x1="' + x.toFixed(2) + '" y1="' + highY.toFixed(2) + '" x2="' + x.toFixed(2) + '" y2="' + lowY.toFixed(2) + '" stroke="' + color + '" stroke-width="1" opacity="0.8" />'
+      + '<rect x="' + (x - bodyWidth / 2).toFixed(2) + '" y="' + bodyY.toFixed(2) + '" width="' + bodyWidth.toFixed(2) + '" height="' + bodyHeight.toFixed(2) + '" rx="1" fill="' + color + '" opacity="0.88" />';
+  }).join('');
+  const placedLabels = levelSpecs
+    .map((spec) => ({ ...spec, actualY: y(spec.value), labelY: y(spec.value) }))
+    .sort((a, b) => a.actualY - b.actualY);
+  placedLabels.forEach((spec, index) => {
+    if (index > 0 && spec.labelY < placedLabels[index - 1].labelY + 16) {
+      spec.labelY = placedLabels[index - 1].labelY + 16;
+    }
+  });
+  const overflow = placedLabels.length ? placedLabels[placedLabels.length - 1].labelY - (bottom - 5) : 0;
+  if (overflow > 0) placedLabels.forEach((spec) => { spec.labelY -= overflow; });
+  const levelLines = placedLabels.map((spec) => {
+    return '<line x1="' + left + '" y1="' + spec.actualY.toFixed(2) + '" x2="' + right + '" y2="' + spec.actualY.toFixed(2) + '" stroke="' + spec.color + '" stroke-width="1.2" opacity="0.8"' + (spec.dash ? ' stroke-dasharray="' + spec.dash + '"' : '') + ' />'
+      + '<path d="M ' + right + ' ' + spec.actualY.toFixed(2) + ' L 630 ' + spec.labelY.toFixed(2) + '" fill="none" stroke="' + spec.color + '" stroke-width="1" opacity="0.55" />'
+      + '<text x="636" y="' + (spec.labelY + 4).toFixed(2) + '" fill="' + spec.color + '" font-size="10" font-family="monospace">' + esc(spec.label + ' ' + fmt(spec.value)) + '</text>';
+  }).join('');
+  const svgLabel = safe.coin + ' ' + String(chart.interval || '1h') + ' price action with entry, live price, thesis review, hard risk, and target levels';
+  const svg = '<svg class="position-chart-svg" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="' + esc(svgLabel) + '">'
+    + '<rect x="0" y="0" width="' + width + '" height="' + height + '" fill="transparent" />'
+    + grid + candles + levelLines
+    + '<line x1="' + left + '" y1="' + bottom + '" x2="' + right + '" y2="' + bottom + '" stroke="rgba(235,237,229,0.12)" stroke-width="1" />'
+    + '<text x="' + left + '" y="262" fill="#777e78" font-size="10" font-family="monospace">' + esc(String(chart.interval || '1h') + ' candles') + '</text>'
+    + '<text x="' + right + '" y="262" fill="#777e78" text-anchor="end" font-size="10" font-family="monospace">' + esc(status) + '</text>'
+    + '</svg>';
+  return '<details' + detailsAttrs + '>' + summaryHtml
+    + '<div class="position-chart-shell">' + svg + metricsHtml + thesisHtml + '</div></details>';
 };
 const levelMove = (current, level) => {
   const cur = Number(current || 0);
@@ -5309,6 +5554,11 @@ async function refresh() {
     const openBody = document.getElementById('open-trades-body');
     const countBadge = document.getElementById('open-count');
     const openCard = document.getElementById('open-trades-card');
+    const expandedPositionCharts = new Set(
+      Array.from(openBody.querySelectorAll('details.position-chart-details[open]'))
+        .map((details) => String(details.dataset.positionChart || ''))
+        .filter(Boolean)
+    );
     countBadge.style.display = 'inline-flex';
     if (s.positions && s.positions.length) {
       countBadge.textContent = s.positions.length;
@@ -5325,7 +5575,7 @@ async function refresh() {
           ? ((p.current_price - p.entry_price) / p.entry_price * 100 * (p.direction === 'LONG' ? 1 : -1))
           : 0;
         const arrow = p.direction === 'LONG' ? '↑' : '↓';
-        return '<div class="pos-grid">' +
+        return '<section class="position-shell"><div class="pos-grid">' +
           '<div><div class="pos-meta">Coin</div><div class="pos-val" style="font-size:18px;">' + p.coin + '</div></div>' +
           '<div><div class="pos-meta">Direction</div><div class="pos-val"><span class="pos-direction ' + dirCls + '">' + arrow + ' ' + p.direction + '</span></div></div>' +
           '<div><div class="pos-meta">Entry</div><div class="pos-val">$' + fmt(p.entry_price) + '</div></div>' +
@@ -5339,7 +5589,8 @@ async function refresh() {
         priceSourceHtml(p) +
         '<div class="signal-reason"><strong>Invalid if:</strong> ' + esc(simpleInvalidationText(p, 92)) + '</div>' +
         '<div class="signal-reason"><strong>Opened because:</strong> ' + esc(p.entry_logic_short || plainTradeReason(p.entry_logic || 'No opening logic recorded.', 'open', 86)) + '</div>' +
-        '<div class="signal-reason"><strong>Holding because:</strong> ' + esc(p.current_logic_short || plainTradeReason(p.current_logic || 'Holding while the thesis stays valid.', 'hold', 86)) + '</div>';
+        '<div class="signal-reason"><strong>Holding because:</strong> ' + esc(p.current_logic_short || plainTradeReason(p.current_logic || 'Holding while the thesis stays valid.', 'hold', 86)) + '</div>' +
+        positionChartHtml(p, expandedPositionCharts.has(String(p.coin || ''))) + '</section>';
       }).join('');
     } else {
       countBadge.textContent = '0';

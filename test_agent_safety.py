@@ -48,6 +48,7 @@ import portfolio_guard as portfolio_guard_module
 import performance_intelligence as performance_intelligence_module
 import policy_health as policy_health_module
 import playbook_distiller as playbook_distiller_module
+import position_price_action as position_price_action_module
 import precision_lab as precision_lab_module
 import proactive_intelligence as proactive_intelligence_module
 import promotion_gate as promotion_gate_module
@@ -3520,9 +3521,6 @@ def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> N
     assert "BEARISH CALL" in template
     assert "Only the next level is shown" in template
     assert "simpleNextText" in template
-    assert "simpleThesisText" in template
-    assert "simpleInvalidationText" in template
-    assert "Invalid if" in template
     assert "Opened because:" in template
     assert "Holding because:" in template
     assert "Proactive Desk" in template
@@ -3558,6 +3556,41 @@ def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> N
     assert "Watching only" not in template
     assert "🧾 Latest Lesson" not in template
     assert '<div class="asset-section-title">Support Pending</div>' not in template
+
+
+def test_dashboard_open_position_chart_shows_thesis_and_risk_levels() -> None:
+    template = Path("dashboard/templates/dashboard.html").read_text()
+    assert "positionChartHtml" in template
+    assert "Price action &amp; thesis" in template
+    assert "Thesis review" in template
+    assert "Hard risk" in template
+    assert "Entry thesis" in template
+    assert "Live read" in template
+    assert "data-position-chart" in template
+    assert "expandedPositionCharts" in template
+    assert "positionChartHtml(p, expandedPositionCharts.has" in template
+    assert "simpleThesisText" in template
+    assert "simpleInvalidationText" in template
+    assert "Invalid if" in template
+
+
+def test_dashboard_snapshot_writes_are_concurrency_safe() -> None:
+    from concurrent.futures import ThreadPoolExecutor
+    import dashboard.app as dashboard_app
+
+    original_snapshot = dashboard_app.SNAPSHOT
+    try:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            dashboard_app.SNAPSHOT = Path(tmp_dir) / "dashboard_snapshot.json"
+            payloads = [{"state": {"cycle_number": index}} for index in range(12)]
+            with ThreadPoolExecutor(max_workers=12) as executor:
+                list(executor.map(dashboard_app._save_snapshot_local, payloads))
+
+            saved = json.loads(dashboard_app.SNAPSHOT.read_text())
+            assert saved in payloads
+            assert not list(Path(tmp_dir).glob("*.tmp"))
+    finally:
+        dashboard_app.SNAPSHOT = original_snapshot
 
 
 def test_asset_context_helpers_are_single_source_for_product_surfaces() -> None:
@@ -4297,6 +4330,107 @@ def test_core_long_break_needs_three_fresh_fundamental_and_price_confirmations()
     assert profiles[2]["break_confirmed"] is True
     assert profiles[2]["label"] == "THESIS BROKEN"
     assert agent._detect_position_invalidation("GOOGL", "LONG", signal) == "core_thesis_break"
+
+
+def test_position_price_action_detects_absorbed_v_reversal() -> None:
+    closes = [100.0] * 12 + [103.0, 107.0, 110.0, 104.0, 98.0, 94.0, 97.0, 101.0, 106.0]
+    frame = pd.DataFrame({
+        "timestamp": pd.date_range("2026-07-20", periods=len(closes), freq="h", tz="UTC"),
+        "open": [closes[0], *closes[:-1]],
+        "high": [value + 1.2 for value in closes],
+        "low": [value - 1.4 for value in closes],
+        "close": closes,
+        "volume": [1000.0] * len(closes),
+    })
+
+    profile = position_price_action_module.build_position_price_action(frame, interval="1h")
+
+    assert profile["valid"] is True
+    assert profile["bar_count"] == len(closes)
+    assert profile["v_reversal_active"] is True
+    assert profile["dip_absorption_active"] is True
+    assert profile["recovery_fraction"] >= 0.65
+    assert profile["status"] == "V_REVERSAL"
+
+
+def test_semiconductor_hold_absorbs_normal_dip_and_needs_four_cycles_to_break() -> None:
+    cfg = build_config()
+    cfg.trading.coins = ["MU"]
+    cfg.trading.analysis_coins = ["MU"]
+    cfg.trading.instrument_types.update({"MU": "equity"})
+    cfg.trading.asset_category_map.update({"MU": ["semis_memory"]})
+    cfg.trading.core_long_thesis_coins = []
+    cfg.trading.semiconductor_break_confirmation_cycles = 4
+    agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=10000.0, supported_symbols=["MU"])])
+    _install_runner_position(agent, "MU")
+    agent._last_signals["MU"].update({
+        "action": "SHORT",
+        "score": 20.0,
+        "live_price": 94.0,
+        "asset_categories": ["semis_memory"],
+        "structure_trend": "DOWNTREND",
+        "mtf_bias": "BEARISH",
+        "orderbook_breakout_state": "PERSISTENT_BEARISH_BREAKDOWN",
+        "first_principles_fundamental_score": 76.0,
+        "analyst_revision_score": 1.0,
+        "analyst_revision_summary": "Memory revisions remain positive.",
+        "data_reliability_score": 96.0,
+        "price_action": {
+            "valid": True,
+            "pullback_atr": 2.2,
+            "recovery_fraction": 0.62,
+            "resilience_score": 78.0,
+            "dip_absorption_active": True,
+            "v_reversal_active": True,
+            "volatility_normal": True,
+            "structural_damage": False,
+        },
+        "thesis": {"state": "NO_TRADE", "permitted": False, "conflict_points": 2},
+    })
+    signal = SimpleNamespace(
+        action="SHORT",
+        score=20.0,
+        price=94.0,
+        thesis={"state": "NO_TRADE", "permitted": False, "conflict_points": 2},
+    )
+
+    absorbed = agent._core_long_thesis_profile("MU", signal, advance_break_streak=True)
+    assert absorbed["eligible"] is True
+    assert absorbed["semiconductor_hold"] is True
+    assert absorbed["raw_price_break"] is True
+    assert absorbed["price_break"] is False
+    assert absorbed["label"] == "SEMI DIP ABSORBED"
+    assert absorbed["break_confirmation_required"] == 4
+    assert agent._detect_position_invalidation("MU", "LONG", signal) == ""
+
+    agent._last_signals["MU"].update({
+        "first_principles_fundamental_score": 24.0,
+        "analyst_revision_score": -2.0,
+        "analyst_revision_summary": "Memory revisions turned materially negative.",
+        "price_action": {
+            "valid": True,
+            "pullback_atr": 3.8,
+            "recovery_fraction": 0.12,
+            "resilience_score": 18.0,
+            "dip_absorption_active": False,
+            "v_reversal_active": False,
+            "volatility_normal": False,
+            "structural_damage": True,
+        },
+        "thesis": {"state": "BROKEN", "permitted": False, "conflict_points": 3},
+    })
+    signal.thesis = {"state": "BROKEN", "permitted": False, "conflict_points": 3}
+    profiles = []
+    for cycle in (201, 202, 203, 204):
+        agent._cycle = cycle
+        profile = agent._core_long_thesis_profile("MU", signal, advance_break_streak=True)
+        agent._last_signals["MU"]["core_thesis"] = profile
+        profiles.append(profile)
+
+    assert [profile["break_confirmation_count"] for profile in profiles] == [1, 2, 3, 4]
+    assert all(not profile["break_confirmed"] for profile in profiles[:3])
+    assert profiles[-1]["break_confirmed"] is True
+    assert profiles[-1]["label"] == "SEMI THESIS BROKEN"
 
 
 def test_thesis_runner_defers_take_profit_and_extends_target() -> None:
@@ -9683,6 +9817,10 @@ def run_all() -> None:
     print("PASS hosted dashboard bundle sync")
     test_dashboard_template_compacts_daily_view_and_hides_support_pending()
     print("PASS dashboard compact daily view")
+    test_dashboard_open_position_chart_shows_thesis_and_risk_levels()
+    print("PASS dashboard open-position chart")
+    test_dashboard_snapshot_writes_are_concurrency_safe()
+    print("PASS dashboard concurrent snapshot writes")
     test_asset_context_helpers_are_single_source_for_product_surfaces()
     print("PASS shared asset context helpers")
     test_local_dashboard_serves_hosted_bundle()
@@ -9719,6 +9857,10 @@ def run_all() -> None:
     print("PASS core-long temporary pullback policy")
     test_core_long_break_needs_three_fresh_fundamental_and_price_confirmations()
     print("PASS core-long confirmed break policy")
+    test_position_price_action_detects_absorbed_v_reversal()
+    print("PASS position price-action V reversal")
+    test_semiconductor_hold_absorbs_normal_dip_and_needs_four_cycles_to_break()
+    print("PASS semiconductor structural hold")
     test_thesis_runner_defers_take_profit_and_extends_target()
     print("PASS thesis runner TP deferral")
     test_low_leverage_runner_defers_provisional_stop_while_thesis_intact()

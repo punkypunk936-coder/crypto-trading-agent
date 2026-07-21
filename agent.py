@@ -86,6 +86,7 @@ from indicators.advanced  import compute_advanced_signals
 from indicators.sentiment import get_fear_greed_score, sentiment_summary
 from indicators.regimes   import compute_regimes
 from indicators.chart_analyst import read_chart, ChartVerdict
+from position_price_action import build_position_price_action
 from indicators.mtf  import compute_mtf, MTFAnalysis
 from indicators.news import get_news_signal
 from indicators.candlestick_patterns import compute_candlestick_patterns
@@ -2172,6 +2173,37 @@ class TradingAgent:
             log.warning(f"[{coin}] Regime compute failed: {e}")
             regimes = None
 
+        price_action = build_position_price_action(
+            df,
+            interval=self.cfg.trading.candle_interval,
+            max_bars=48,
+        )
+        if price_action.get("valid") and regimes:
+            absorption_score = float(getattr(regimes, "absorption_score", 50.0) or 50.0)
+            catalyst_absorption_score = float(getattr(regimes, "catalyst_score", 50.0) or 50.0)
+            absorption_min = float(
+                getattr(self.cfg.trading, "semiconductor_absorption_min_score", 64.0) or 64.0
+            )
+            regime_absorption = max(absorption_score, catalyst_absorption_score)
+            if regime_absorption >= absorption_min:
+                price_action["dip_absorption_active"] = True
+                price_action["resilience_score"] = round(
+                    max(float(price_action.get("resilience_score") or 0.0), regime_absorption),
+                    1,
+                )
+                if not price_action.get("v_reversal_active"):
+                    price_action["status"] = "DIP_ABSORPTION"
+                price_action["summary"] = (
+                    f"{price_action.get('summary', '')} Buyer absorption is also confirmed "
+                    f"by the regime model at {regime_absorption:.0f}/100."
+                ).strip()
+            price_action.update({
+                "regime_absorption_score": round(absorption_score, 1),
+                "catalyst_absorption_score": round(catalyst_absorption_score, 1),
+                "absorption_description": str(getattr(regimes, "absorption_desc", "") or ""),
+                "catalyst_absorption_description": str(getattr(regimes, "catalyst_desc", "") or ""),
+            })
+
         # Candlestick pattern analysis (pure OHLCV, no API)
         try:
             candle_patterns = compute_candlestick_patterns(analysis_df, coin)
@@ -2357,10 +2389,16 @@ class TradingAgent:
             "momentum_expansion_strong": momentum_context.get("momentum_expansion_strong", False),
             "momentum_expansion_summary": momentum_context.get("momentum_expansion_summary", ""),
             "using_closed_candles": bool(getattr(self.cfg.trading, "use_closed_candles_for_conviction", True)),
+            "price_action": price_action,
+            "regime_absorption_score": float(getattr(regimes, "absorption_score", 50.0) or 50.0) if regimes else 50.0,
+            "regime_absorption_summary": str(getattr(regimes, "absorption_desc", "") or "") if regimes else "",
             "reason":          signal.reason,
             "flat_reason":     signal.flat_reason,
             "decision_reason": signal.reason or signal.flat_reason or "",
             "instrument_type": instrument_type,
+            "asset_categories": list(
+                (getattr(self.cfg.trading, "asset_category_map", {}) or {}).get(coin, []) or []
+            ),
             "sentiment_signal_score": sentiment.get("signal_score", 50.0),
             "sentiment_label": sentiment.get("label", "Neutral"),
             "sentiment_raw_score": sentiment.get("raw_score", 50),
@@ -5556,6 +5594,11 @@ class TradingAgent:
             "label": "NO CORE THESIS",
             "countertrend": False,
             "fundamentals_supportive": False,
+            "semiconductor": False,
+            "semiconductor_hold": False,
+            "dip_absorption_active": False,
+            "volatility_normal": False,
+            "price_action": {},
             "price_break": False,
             "fundamental_break": False,
             "break_candidate": False,
@@ -5568,7 +5611,7 @@ class TradingAgent:
             "summary": "No curated strategic long thesis for this instrument.",
             "break_evidence": [],
         }
-        if not enabled or coin not in core_coins:
+        if not enabled:
             return profile
 
         sig = dict(self._last_signals.get(coin, {}) or {})
@@ -5585,7 +5628,44 @@ class TradingAgent:
             profile["summary"] = "Core-thesis policy is limited to curated equities."
             return profile
 
+        raw_categories = (
+            (getattr(self.cfg.trading, "asset_category_map", {}) or {}).get(coin)
+            or sig.get("asset_categories")
+            or []
+        )
+        if isinstance(raw_categories, str):
+            raw_categories = [raw_categories]
+        categories = {
+            str(value or "").strip().lower()
+            for value in raw_categories
+            if str(value or "").strip()
+        }
+        semiconductor_category = str(
+            getattr(self.cfg.trading, "semiconductor_hold_category", "semis_memory")
+            or "semis_memory"
+        ).strip().lower()
+        semiconductor = semiconductor_category in categories
+        configured_core = coin in core_coins
+        persisted_semiconductor_hold = bool(
+            dict(metadata.get("semiconductor_structural_hold", {}) or {}).get("active")
+        )
+        semiconductor_hold_candidate = bool(
+            getattr(self.cfg.trading, "semiconductor_structural_hold_enabled", True)
+            and semiconductor
+            and pos
+            and str(pos.direction or "").upper() == "LONG"
+        )
+        if not configured_core and not semiconductor_hold_candidate:
+            return profile
+
         profile["eligible"] = True
+        profile["semiconductor"] = semiconductor
+        profile["semiconductor_hold"] = semiconductor_hold_candidate
+        if semiconductor_hold_candidate:
+            profile["break_confirmation_required"] = max(
+                int(profile["break_confirmation_required"]),
+                int(getattr(self.cfg.trading, "semiconductor_break_confirmation_cycles", 4) or 4),
+            )
         action = str(
             getattr(signal, "action", None)
             or sig.get("action")
@@ -5656,6 +5736,63 @@ class TradingAgent:
                 and bool(entry_thesis.get("permitted", entry_thesis.get("state") == "ACTIVE"))
             )
         )
+        semiconductor_min_fundamental = float(
+            getattr(self.cfg.trading, "semiconductor_hold_min_fundamental_score", 58.0) or 58.0
+        )
+        semiconductor_fundamentals_supportive = bool(
+            fundamental_score >= semiconductor_min_fundamental
+            or (analyst_revision_known and analyst_revision > 0)
+            or fundamentals_supportive
+        )
+        if (
+            semiconductor_hold_candidate
+            and not configured_core
+            and not semiconductor_fundamentals_supportive
+            and not persisted_semiconductor_hold
+        ):
+            profile.update({
+                "eligible": False,
+                "semiconductor": True,
+                "semiconductor_hold": False,
+                "fundamental_score": round(fundamental_score, 1),
+                "summary": "Semiconductor volatility hold was not activated because the fundamental thesis is too weak.",
+            })
+            return profile
+        if semiconductor_hold_candidate and semiconductor_fundamentals_supportive and pos:
+            metadata["semiconductor_structural_hold"] = {
+                "active": True,
+                "activated_cycle": int(
+                    dict(metadata.get("semiconductor_structural_hold", {}) or {}).get("activated_cycle")
+                    or self._cycle
+                ),
+                "updated_at": datetime.now().isoformat(timespec="seconds"),
+            }
+            pos.metadata = metadata
+
+        price_action = dict(sig.get("price_action") or entry_ctx.get("price_action") or {})
+        absorption_min = float(
+            getattr(self.cfg.trading, "semiconductor_absorption_min_score", 64.0) or 64.0
+        )
+        absorption_score = max(
+            float(price_action.get("resilience_score") or 0.0),
+            float(price_action.get("regime_absorption_score") or 0.0),
+            float(sig.get("regime_absorption_score") or 0.0),
+        )
+        dip_absorption_active = bool(
+            price_action.get("dip_absorption_active")
+            or price_action.get("v_reversal_active")
+            or absorption_score >= absorption_min
+        )
+        pullback_atr = float(price_action.get("pullback_atr") or 0.0)
+        normal_pullback_max_atr = float(
+            getattr(self.cfg.trading, "semiconductor_normal_pullback_max_atr", 3.0) or 3.0
+        )
+        volatility_normal = bool(
+            semiconductor
+            and price_action.get("valid")
+            and not bool(price_action.get("structural_damage"))
+            and (pullback_atr <= normal_pullback_max_atr or dip_absorption_active)
+        )
 
         structure_break = structure == "DOWNTREND"
         mtf_break = mtf_bias == "BEARISH"
@@ -5665,7 +5802,14 @@ class TradingAgent:
         }
         bearish_score = action == "SHORT" and score <= float(self.cfg.trading.signal_short_threshold)
         price_votes = sum((structure_break, mtf_break, breakout_break))
-        price_break = bool(bearish_score and price_votes >= 2)
+        raw_price_break = bool(bearish_score and price_votes >= 2)
+        price_break = bool(
+            raw_price_break
+            and not (
+                semiconductor_hold_candidate
+                and (dip_absorption_active or volatility_normal)
+            )
+        )
 
         max_revision = float(
             getattr(self.cfg.trading, "core_long_break_max_analyst_revision_score", -1.0) or -1.0
@@ -5714,6 +5858,13 @@ class TradingAgent:
         )
 
         evidence = []
+        if semiconductor_hold_candidate and dip_absorption_active:
+            evidence.append(
+                f"semiconductor dip absorption {absorption_score:.0f}/100; "
+                f"{float(price_action.get('recovery_fraction') or 0.0) * 100:.0f}% reclaimed"
+            )
+        elif semiconductor_hold_candidate and volatility_normal:
+            evidence.append(f"semiconductor pullback remains volatility-normal at {pullback_atr:.1f} ATR")
         if price_break:
             evidence.append(f"price damage confirmed by {price_votes}/3 structural checks")
         if revision_break:
@@ -5727,33 +5878,58 @@ class TradingAgent:
 
         if break_confirmed:
             tactical_state = "THESIS_BROKEN"
-            label = "THESIS BROKEN"
+            label = "SEMI THESIS BROKEN" if semiconductor_hold_candidate else "THESIS BROKEN"
             strategic_bias = "NEUTRAL"
             summary = (
                 f"Core long thesis break confirmed {count}/{required}: price and fundamentals agree."
             )
         elif break_candidate:
             tactical_state = "THESIS_REVIEW"
-            label = "THESIS REVIEW"
+            label = "SEMI THESIS REVIEW" if semiconductor_hold_candidate else "THESIS REVIEW"
             strategic_bias = "LONG"
             summary = (
                 f"Core long remains active while break evidence confirms {count}/{required}; no flip yet."
             )
         elif countertrend:
             tactical_state = "PULLBACK"
-            label = "CORE PULLBACK"
             strategic_bias = "LONG"
-            summary = "Temporary bearish tape inside the core long thesis; hold or wait, do not flip short."
+            if semiconductor_hold_candidate and dip_absorption_active:
+                label = "SEMI DIP ABSORBED"
+                summary = (
+                    f"Semiconductor pullback is {pullback_atr:.1f} ATR and "
+                    f"{float(price_action.get('recovery_fraction') or 0.0) * 100:.0f}% reclaimed; "
+                    "buyer absorption and the fundamental thesis say hold, not flip short."
+                )
+            elif semiconductor_hold_candidate and volatility_normal:
+                label = "SEMI VOLATILITY HOLD"
+                summary = (
+                    f"Semiconductor pullback is {pullback_atr:.1f} ATR, inside its normal volatility envelope; "
+                    "the fundamental thesis is intact, so realizing the dip is not justified."
+                )
+            elif semiconductor_hold_candidate:
+                label = "SEMI PULLBACK"
+                summary = "Semiconductor tape is weak, but no combined price-and-fundamental break is confirmed yet."
+            else:
+                label = "CORE PULLBACK"
+                summary = "Temporary bearish tape inside the core long thesis; hold or wait, do not flip short."
         elif action == "LONG":
             tactical_state = "TREND_ALIGNED"
-            label = "CORE LONG"
+            label = "SEMI CORE LONG" if semiconductor_hold_candidate else "CORE LONG"
             strategic_bias = "LONG"
-            summary = "Live tape and the curated long-term thesis are aligned."
+            summary = (
+                "Live semiconductor tape and the structural long thesis are aligned."
+                if semiconductor_hold_candidate
+                else "Live tape and the curated long-term thesis are aligned."
+            )
         else:
             tactical_state = "CORE_WATCH"
-            label = "CORE LONG"
+            label = "SEMI CORE LONG" if semiconductor_hold_candidate else "CORE LONG"
             strategic_bias = "LONG"
-            summary = "Curated long-term thesis is active; wait for a clean long entry or keep holding."
+            summary = (
+                "Semiconductor structural thesis is active; keep holding through ordinary sector volatility."
+                if semiconductor_hold_candidate
+                else "Curated long-term thesis is active; wait for a clean long entry or keep holding."
+            )
 
         profile.update({
             "active": not break_confirmed,
@@ -5762,6 +5938,14 @@ class TradingAgent:
             "label": label,
             "countertrend": countertrend,
             "fundamentals_supportive": fundamentals_supportive,
+            "semiconductor": semiconductor,
+            "semiconductor_hold": semiconductor_hold_candidate,
+            "dip_absorption_active": dip_absorption_active,
+            "volatility_normal": volatility_normal,
+            "absorption_score": round(absorption_score, 1),
+            "pullback_atr": round(pullback_atr, 2),
+            "recovery_fraction": round(float(price_action.get("recovery_fraction") or 0.0), 4),
+            "price_action": price_action,
             "fundamental_score": round(fundamental_score, 1),
             "current_fundamental_score": round(current_fundamental_score, 1),
             "entry_fundamental_score": round(entry_fundamental_score, 1),
@@ -5770,6 +5954,7 @@ class TradingAgent:
             "event_score": round(event_score, 2),
             "data_reliability_score": round(reliability_score, 1),
             "price_break": price_break,
+            "raw_price_break": raw_price_break,
             "fundamental_break": fundamental_break,
             "break_candidate": break_candidate,
             "break_confirmed": break_confirmed,
@@ -6766,6 +6951,7 @@ class TradingAgent:
             "market_regime": sig.get("market_regime", "RANGING"),
             "dominant_regime": sig.get("dominant_regime", "MIXED"),
             "instrument_type": sig.get("instrument_type", "crypto"),
+            "asset_categories": list(sig.get("asset_categories") or []),
             "price_diagnostics": sig.get("price_diagnostics", {}),
             "price_source": sig.get("price_source", ""),
             "price_source_label": sig.get("price_source_label", ""),
@@ -6844,6 +7030,7 @@ class TradingAgent:
             "stop_basis": sig.get("stop_basis", trade_plan.get("stop_basis", "")),
             "target_basis": sig.get("target_basis", trade_plan.get("target_basis", "")),
             "price_action_summary": sig.get("price_action_summary", trade_plan.get("price_action_summary", "")),
+            "price_action": dict(sig.get("price_action") or {}),
             "orderbook_score": sig.get("orderbook_score", 50.0),
             "orderbook_imbalance": sig.get("orderbook_imbalance", 0.0),
             "orderbook_imbalance_mean": sig.get("orderbook_imbalance_mean", 0.0),
@@ -7256,6 +7443,8 @@ class TradingAgent:
                 "portfolio_theme_map": getattr(self.cfg.trading, "portfolio_theme_map", {}),
                 "core_long_thesis_enabled": getattr(self.cfg.trading, "core_long_thesis_enabled", True),
                 "core_long_thesis_coins": list(getattr(self.cfg.trading, "core_long_thesis_coins", []) or []),
+                "semiconductor_structural_hold_enabled": getattr(self.cfg.trading, "semiconductor_structural_hold_enabled", True),
+                "semiconductor_break_confirmation_cycles": getattr(self.cfg.trading, "semiconductor_break_confirmation_cycles", 4),
             },
         }
 
@@ -9068,6 +9257,31 @@ class TradingAgent:
                     p_out.get("current_logic", ""),
                     holding=True,
                 )
+                price_action_chart = dict(
+                    sig.get("price_action")
+                    or entry_ctx.get("price_action")
+                    or {}
+                )
+                price_action_chart["levels"] = {
+                    "entry": round(float(pos.entry_price or 0.0), 6),
+                    "current": round(float(p_out.get("current_price") or 0.0), 6),
+                    "thesis_review": round(float(loss_guard.get("review_stop_price") or 0.0), 6),
+                    "hard_risk": round(float(loss_guard.get("hard_stop_price") or pos.stop_loss or 0.0), 6),
+                    "target": round(float(pos.take_profit or 0.0), 6),
+                }
+                price_action_chart["thesis"] = {
+                    "entry": p_out.get("entry_logic", ""),
+                    "current": p_out.get("current_logic", ""),
+                    "state": core_thesis.get("label") or core_thesis.get("tactical_state") or "ACTIVE",
+                    "invalidation": p_out.get("invalidation_short") or p_out.get("invalidation") or "",
+                }
+                p_out["price_action_chart"] = price_action_chart
+                p_out["asset_categories"] = list(
+                    sig.get("asset_categories")
+                    or entry_ctx.get("asset_categories")
+                    or (getattr(self.cfg.trading, "asset_category_map", {}) or {}).get(coin, [])
+                    or []
+                )
                 p_out["entry_context"] = entry_ctx
                 p_out["pnl_explanation"] = explain_open_position(p_out, sig)
 
@@ -9113,6 +9327,8 @@ class TradingAgent:
                 "core_long_thesis_enabled": getattr(self.cfg.trading, "core_long_thesis_enabled", True),
                 "core_long_thesis_coins": list(getattr(self.cfg.trading, "core_long_thesis_coins", []) or []),
                 "core_long_break_confirmation_cycles": getattr(self.cfg.trading, "core_long_break_confirmation_cycles", 3),
+                "semiconductor_structural_hold_enabled": getattr(self.cfg.trading, "semiconductor_structural_hold_enabled", True),
+                "semiconductor_break_confirmation_cycles": getattr(self.cfg.trading, "semiconductor_break_confirmation_cycles", 4),
                 "check_interval_seconds": self.cfg.trading.check_interval_seconds,
                 "adaptive_leverage_enabled": getattr(self.cfg.trading, "adaptive_leverage_enabled", False),
                 "min_leverage":           getattr(self.cfg.trading, "min_leverage", 1),

@@ -12,9 +12,11 @@ Deploy (Railway): set PORT env var, agent pushes to your Railway URL
 import json
 import hmac
 import os
+import tempfile
 import threading
 import time
 from datetime import datetime
+from pathlib import Path
 
 import decision_dataset
 from flask import Flask, render_template, jsonify, request, abort, send_file, Response
@@ -285,9 +287,24 @@ def _load_snapshot_local() -> dict | None:
 
 def _save_snapshot_local(snapshot: dict) -> None:
     SNAPSHOT.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = SNAPSHOT.with_name(SNAPSHOT.name + ".tmp")
-    tmp_path.write_text(json.dumps(snapshot, separators=(",", ":")))
-    tmp_path.replace(SNAPSHOT)
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=SNAPSHOT.parent,
+            prefix=f".{SNAPSHOT.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            json.dump(snapshot, handle, separators=(",", ":"))
+            handle.flush()
+            os.fsync(handle.fileno())
+            tmp_path = Path(handle.name)
+        tmp_path.replace(SNAPSHOT)
+    finally:
+        if tmp_path is not None:
+            tmp_path.unlink(missing_ok=True)
     try:
         mtime_ns = SNAPSHOT.stat().st_mtime_ns
     except Exception:

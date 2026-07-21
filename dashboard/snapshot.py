@@ -136,6 +136,8 @@ def _runtime_dashboard_config_defaults() -> dict:
         "dynamic_analysis_coins": _normalize_coin_list(getattr(trading, "dynamic_analysis_coins", []) or []),
         "core_long_thesis_enabled": bool(getattr(trading, "core_long_thesis_enabled", True)),
         "core_long_thesis_coins": _normalize_coin_list(getattr(trading, "core_long_thesis_coins", []) or []),
+        "semiconductor_structural_hold_enabled": bool(getattr(trading, "semiconductor_structural_hold_enabled", True)),
+        "semiconductor_break_confirmation_cycles": int(getattr(trading, "semiconductor_break_confirmation_cycles", 4) or 4),
         "instrument_types": {
             str(key or "").upper(): str(value or "")
             for key, value in dict(getattr(trading, "instrument_types", {}) or {}).items()
@@ -167,6 +169,7 @@ def _merge_dashboard_config(config: Any) -> dict:
             "analysis_coins",
             "dynamic_analysis_coins",
             "core_long_thesis_coins",
+            "semiconductor_break_confirmation_cycles",
             "instrument_types",
             "asset_categories",
             "asset_category_labels",
@@ -183,6 +186,14 @@ def _merge_dashboard_config(config: Any) -> dict:
     )
     merged["core_long_thesis_coins"] = _normalize_coin_list(
         current.get("core_long_thesis_coins") or defaults.get("core_long_thesis_coins") or []
+    )
+    merged["semiconductor_structural_hold_enabled"] = bool(
+        current.get("semiconductor_structural_hold_enabled", defaults.get("semiconductor_structural_hold_enabled", True))
+    )
+    merged["semiconductor_break_confirmation_cycles"] = int(
+        current.get("semiconductor_break_confirmation_cycles")
+        or defaults.get("semiconductor_break_confirmation_cycles")
+        or 4
     )
     merged["instrument_types"] = dict(defaults.get("instrument_types") or {})
     merged["instrument_types"].update({

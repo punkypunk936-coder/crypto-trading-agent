@@ -204,6 +204,12 @@ class TradingConfig:
     core_long_break_max_news_score: float = 35.0
     core_long_break_min_event_score: float = 2.5
     core_long_suppress_countertrend_shorts: bool = True
+    semiconductor_structural_hold_enabled: bool = True
+    semiconductor_hold_category: str = "semis_memory"
+    semiconductor_hold_min_fundamental_score: float = 58.0
+    semiconductor_break_confirmation_cycles: int = 4
+    semiconductor_normal_pullback_max_atr: float = 3.0
+    semiconductor_absorption_min_score: float = 64.0
 
     # Minimum signal strength delta for re-entry (avoids flip-flopping)
     min_signal_delta: float       = 5.0
