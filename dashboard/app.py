@@ -295,7 +295,16 @@ def _save_snapshot_local(snapshot: dict) -> None:
     _cache_local_snapshot(snapshot, mtime_ns=mtime_ns)
 
 
-def _snapshot_needs_refresh() -> bool:
+def _state_revision(state: dict | None) -> tuple[int, str]:
+    safe_state = dict(state or {})
+    try:
+        cycle = int(safe_state.get("cycle_number") or 0)
+    except (TypeError, ValueError):
+        cycle = 0
+    return cycle, str(safe_state.get("last_cycle") or "")
+
+
+def _snapshot_needs_refresh(snapshot: dict | None = None) -> bool:
     if not SNAPSHOT.exists():
         return True
     try:
@@ -308,6 +317,12 @@ def _snapshot_needs_refresh() -> bool:
                 return True
         except Exception:
             continue
+    # A refresh worker and the agent can finish in the opposite order. File
+    # mtimes alone cannot detect an older snapshot written after newer state.
+    if isinstance(snapshot, dict) and STATE.exists():
+        current_state = _load_state_local()
+        if _state_revision(current_state) > _state_revision(snapshot.get("state")):
+            return True
     return False
 
 
@@ -445,7 +460,7 @@ def api_state():
             return jsonify(_remote_state["snapshot"])
 
     snapshot = _load_snapshot_local()
-    needs_refresh = snapshot is None or _snapshot_needs_refresh()
+    needs_refresh = snapshot is None or _snapshot_needs_refresh(snapshot)
     if snapshot is not None:
         if needs_refresh:
             _queue_local_snapshot_refresh()

@@ -134,6 +134,8 @@ def _runtime_dashboard_config_defaults() -> dict:
         "coins": _normalize_coin_list(getattr(trading, "coins", []) or []),
         "analysis_coins": _normalize_coin_list(getattr(trading, "analysis_coins", []) or []),
         "dynamic_analysis_coins": _normalize_coin_list(getattr(trading, "dynamic_analysis_coins", []) or []),
+        "core_long_thesis_enabled": bool(getattr(trading, "core_long_thesis_enabled", True)),
+        "core_long_thesis_coins": _normalize_coin_list(getattr(trading, "core_long_thesis_coins", []) or []),
         "instrument_types": {
             str(key or "").upper(): str(value or "")
             for key, value in dict(getattr(trading, "instrument_types", {}) or {}).items()
@@ -164,6 +166,7 @@ def _merge_dashboard_config(config: Any) -> dict:
             "coins",
             "analysis_coins",
             "dynamic_analysis_coins",
+            "core_long_thesis_coins",
             "instrument_types",
             "asset_categories",
             "asset_category_labels",
@@ -177,6 +180,9 @@ def _merge_dashboard_config(config: Any) -> dict:
     )
     merged["dynamic_analysis_coins"] = _normalize_coin_list(
         current.get("dynamic_analysis_coins") or defaults.get("dynamic_analysis_coins") or []
+    )
+    merged["core_long_thesis_coins"] = _normalize_coin_list(
+        current.get("core_long_thesis_coins") or defaults.get("core_long_thesis_coins") or []
     )
     merged["instrument_types"] = dict(defaults.get("instrument_types") or {})
     merged["instrument_types"].update({

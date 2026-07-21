@@ -154,6 +154,7 @@ class TradingConfig:
     analysis_max_symbols_per_cycle: int = 16
     analysis_priority_coins: List[str] = field(default_factory=lambda: list(_BASE_EXECUTION_COINS))
     analysis_signal_max_age_minutes: float = 20.0
+    cycle_price_poll_max_trigger_symbols: int = 24
     checkpoint_recovery_max_age_seconds: float = 86400.0
 
     # ── Instrument type classification ───────────────────────────────────────
@@ -184,6 +185,25 @@ class TradingConfig:
     # A signal_reversal requires a STRONGER signal than a fresh entry.
     # e.g. if signal_long_threshold=65, reversal from SHORT→LONG needs ≥73
     reversal_threshold_boost: float = 8.0  # extra points required to reverse
+
+    # ── Strategic core-long thesis ──────────────────────────────────────────
+    # These are deliberately curated names, not an automatic sector rule. A
+    # short-term bearish read is treated as a pullback inside the strategic
+    # long thesis until reliable price damage and fundamental deterioration
+    # persist together. Catastrophic risk boundaries remain independent.
+    core_long_thesis_enabled: bool = True
+    core_long_thesis_coins: List[str] = field(default_factory=lambda: [
+        "AAPL", "AMD", "AMZN", "ASML", "AVGO", "COST",
+        "GOOGL", "META", "MSFT", "NVDA", "ORCL", "TSM",
+    ])
+    core_long_min_fundamental_score: float = 60.0
+    core_long_break_confirmation_cycles: int = 3
+    core_long_break_min_reliability_score: float = 70.0
+    core_long_break_max_fundamental_score: float = 35.0
+    core_long_break_max_analyst_revision_score: float = -1.0
+    core_long_break_max_news_score: float = 35.0
+    core_long_break_min_event_score: float = 2.5
+    core_long_suppress_countertrend_shorts: bool = True
 
     # Minimum signal strength delta for re-entry (avoids flip-flopping)
     min_signal_delta: float       = 5.0

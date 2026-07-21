@@ -206,6 +206,9 @@ class TradingAgent:
         # If conviction disappears for N cycles, position is stale → close it.
         # coin → consecutive flat cycle count
         self._flat_streak: Dict[str, int] = {}
+        # coin -> consecutive fresh cycles where both the strategic thesis and
+        # price structure are breaking. One bearish score cannot flip a core name.
+        self._core_thesis_break_streak: Dict[str, dict] = {}
         self._precision_entry_history: List[dict] = []
 
         self._bootstrap_precision_entry_history()
@@ -2609,6 +2612,61 @@ class TradingAgent:
             )
             return
 
+        core_thesis = self._core_long_thesis_profile(
+            coin,
+            signal,
+            advance_break_streak=True,
+        )
+        setattr(signal, "core_thesis", core_thesis)
+        self._last_signals[coin]["core_thesis"] = core_thesis
+        self._last_signals[coin]["strategic_bias"] = core_thesis.get("strategic_bias", "NEUTRAL")
+        self._last_signals[coin]["tactical_state"] = core_thesis.get("tactical_state", "UNCLASSIFIED")
+
+        # A tactical bearish or neutral cycle is not a strategic reversal for a
+        # curated core long. The standalone exit monitor still enforces the hard
+        # risk boundary; this blocks thesis churn, soft invalidations, and scalps.
+        if (
+            current_pos == "LONG"
+            and core_thesis.get("active")
+            and not core_thesis.get("break_confirmed")
+            and signal.action in {"SHORT", "FLAT"}
+        ):
+            log.info(f"[{coin}] Core-long hold: {core_thesis.get('summary', '')}")
+            self._flat_streak.pop(coin, None)
+            self._signal_streak.pop(coin, None)
+            self._record_decision_snapshot(
+                coin,
+                portfolio_usd=portfolio_usd,
+                stage="core_long_countertrend_hold",
+                signal=signal,
+                current_position=current_pos,
+                blocked=True,
+            )
+            return
+
+        if (
+            not current_pos
+            and signal.action == "SHORT"
+            and core_thesis.get("active")
+            and getattr(self.cfg.trading, "core_long_suppress_countertrend_shorts", True)
+        ):
+            reason = core_thesis.get("summary") or "Core long thesis is intact; countertrend short suppressed."
+            log.info(f"[{coin}] Core-long policy suppresses SHORT: {reason}")
+            signal.action = "FLAT"
+            signal.flat_reason = reason
+            signal.reason = reason
+            self._sync_signal_snapshot(coin, signal)
+            self._signal_streak.pop(coin, None)
+            self._record_decision_snapshot(
+                coin,
+                portfolio_usd=portfolio_usd,
+                stage="core_long_short_suppressed",
+                signal=signal,
+                current_position=current_pos,
+                blocked=True,
+            )
+            return
+
         if current_pos:
             invalidation_reason = self._detect_position_invalidation(coin, current_pos, signal)
             if invalidation_reason:
@@ -3609,6 +3667,11 @@ class TradingAgent:
         thesis = dict(getattr(signal, "thesis", {}) or {})
         expectancy = dict(getattr(signal, "expectancy", {}) or {})
         execution_plan = dict(getattr(signal, "execution_plan", {}) or {})
+        core_thesis = dict(
+            getattr(signal, "core_thesis", {})
+            or self._last_signals.get(coin, {}).get("core_thesis", {})
+            or {}
+        )
         conviction_entry = dict(thesis.get("conviction_entry") or {})
         snap = self._last_signals[coin]
         snap.update({
@@ -3650,6 +3713,9 @@ class TradingAgent:
             "conviction_entry_size_multiplier": conviction_entry.get("size_multiplier", snap.get("conviction_entry_size_multiplier", 1.0)),
             "conviction_entry_event": bool(conviction_entry.get("event_conviction", snap.get("conviction_entry_event", False))),
             "thesis": thesis,
+            "core_thesis": core_thesis,
+            "strategic_bias": core_thesis.get("strategic_bias", snap.get("strategic_bias", "NEUTRAL")),
+            "tactical_state": core_thesis.get("tactical_state", snap.get("tactical_state", "UNCLASSIFIED")),
             "expectancy_probability": expectancy.get("probability", snap.get("expectancy_probability", 0.50)),
             "expectancy_expected_r": expectancy.get("expected_r", snap.get("expectancy_expected_r", 0.0)),
             "expectancy_uncertainty": expectancy.get("uncertainty", snap.get("expectancy_uncertainty", 0.50)),
@@ -5461,6 +5527,258 @@ class TradingAgent:
             pos.trailing_stop_price = price * (1.0 + pct)
         return pos.trailing_stop_price
 
+    def _core_long_thesis_profile(
+        self,
+        coin: str,
+        signal=None,
+        *,
+        advance_break_streak: bool = False,
+    ) -> dict:
+        """Separate a strategic long thesis from short-term trading noise.
+
+        A core name can be tactically bearish without becoming a valid short.
+        The strategic thesis only breaks when reliable price damage and fresh
+        fundamental deterioration persist together for multiple agent cycles.
+        """
+        coin = str(coin or "").upper()
+        enabled = bool(getattr(self.cfg.trading, "core_long_thesis_enabled", True))
+        core_coins = {
+            str(value or "").upper()
+            for value in (getattr(self.cfg.trading, "core_long_thesis_coins", []) or [])
+            if str(value or "").strip()
+        }
+        profile = {
+            "enabled": enabled,
+            "eligible": False,
+            "active": False,
+            "strategic_bias": "NEUTRAL",
+            "tactical_state": "UNCLASSIFIED",
+            "label": "NO CORE THESIS",
+            "countertrend": False,
+            "fundamentals_supportive": False,
+            "price_break": False,
+            "fundamental_break": False,
+            "break_candidate": False,
+            "break_confirmed": False,
+            "break_confirmation_count": 0,
+            "break_confirmation_required": max(
+                2,
+                int(getattr(self.cfg.trading, "core_long_break_confirmation_cycles", 3) or 3),
+            ),
+            "summary": "No curated strategic long thesis for this instrument.",
+            "break_evidence": [],
+        }
+        if not enabled or coin not in core_coins:
+            return profile
+
+        sig = dict(self._last_signals.get(coin, {}) or {})
+        pos = self.risk.positions.get(coin)
+        metadata = dict((pos.metadata if pos else {}) or {})
+        entry_ctx = dict(metadata.get("entry_context", {}) or {})
+        instrument_type = str(
+            sig.get("instrument_type")
+            or entry_ctx.get("instrument_type")
+            or (getattr(self.cfg.trading, "instrument_types", {}) or {}).get(coin)
+            or "equity"
+        ).lower()
+        if instrument_type != "equity":
+            profile["summary"] = "Core-thesis policy is limited to curated equities."
+            return profile
+
+        profile["eligible"] = True
+        action = str(
+            getattr(signal, "action", None)
+            or sig.get("action")
+            or sig.get("decision")
+            or "FLAT"
+        ).upper()
+        score = float(getattr(signal, "score", None) or sig.get("score") or 50.0)
+        structure = str(sig.get("structure_trend") or entry_ctx.get("structure_trend") or "RANGING").upper()
+        mtf_bias = str(sig.get("mtf_bias") or entry_ctx.get("mtf_bias") or "FLAT").upper()
+        breakout = str(
+            sig.get("orderbook_breakout_state")
+            or entry_ctx.get("orderbook_breakout_state")
+            or "NONE"
+        ).upper()
+        thesis = dict(sig.get("thesis") or getattr(signal, "thesis", {}) or {})
+        thesis_state = str(thesis.get("state") or sig.get("thesis_state") or "").upper()
+        thesis_conflicts = float(
+            thesis.get("conflict_points", sig.get("thesis_conflict_points", 0.0)) or 0.0
+        )
+
+        first_principles = dict(sig.get("first_principles") or {})
+        entry_first_principles = dict(entry_ctx.get("first_principles") or {})
+        current_fundamental_score = max(
+            float(sig.get("first_principles_fundamental_score") or 0.0),
+            float(first_principles.get("fundamental_score") or 0.0),
+        )
+        entry_fundamental_score = max(
+            float(entry_ctx.get("first_principles_fundamental_score") or 0.0),
+            float(entry_first_principles.get("fundamental_score") or 0.0),
+        )
+        fundamental_score = current_fundamental_score or entry_fundamental_score
+        analyst_revision = float(
+            sig.get("analyst_revision_score")
+            if sig.get("analyst_revision_score") is not None
+            else entry_ctx.get("analyst_revision_score", 0.0)
+        )
+        analyst_revision_known = bool(
+            sig.get("analyst_revision_summary")
+            or entry_ctx.get("analyst_revision_summary")
+            or analyst_revision != 0.0
+        )
+        raw_news_score = sig.get("news_score")
+        if raw_news_score is None:
+            raw_news_score = entry_ctx.get("news_score", 50.0)
+        news_score = float(50.0 if raw_news_score is None else raw_news_score)
+        event_score = max(
+            float(sig.get("news_event_score") or entry_ctx.get("news_event_score") or 0.0),
+            float(sig.get("official_event_score") or entry_ctx.get("official_event_score") or 0.0),
+            float(sig.get("sec_event_score") or entry_ctx.get("sec_event_score") or 0.0),
+        )
+        news_known = bool(
+            sig.get("news_articles")
+            or sig.get("news_headline")
+            or sig.get("news_event_summary")
+            or entry_ctx.get("news_event_summary")
+            or event_score > 0
+        )
+        min_fundamental = float(
+            getattr(self.cfg.trading, "core_long_min_fundamental_score", 60.0) or 60.0
+        )
+        entry_thesis = dict(entry_ctx.get("thesis") or {})
+        fundamentals_supportive = bool(
+            fundamental_score >= min_fundamental
+            or (analyst_revision_known and analyst_revision > 0)
+            or (
+                pos
+                and pos.direction == "LONG"
+                and bool(entry_thesis.get("permitted", entry_thesis.get("state") == "ACTIVE"))
+            )
+        )
+
+        structure_break = structure == "DOWNTREND"
+        mtf_break = mtf_bias == "BEARISH"
+        breakout_break = breakout in {
+            "CONFIRMED_BEARISH_BREAKDOWN",
+            "PERSISTENT_BEARISH_BREAKDOWN",
+        }
+        bearish_score = action == "SHORT" and score <= float(self.cfg.trading.signal_short_threshold)
+        price_votes = sum((structure_break, mtf_break, breakout_break))
+        price_break = bool(bearish_score and price_votes >= 2)
+
+        max_revision = float(
+            getattr(self.cfg.trading, "core_long_break_max_analyst_revision_score", -1.0) or -1.0
+        )
+        max_news = float(getattr(self.cfg.trading, "core_long_break_max_news_score", 35.0) or 35.0)
+        min_event = float(getattr(self.cfg.trading, "core_long_break_min_event_score", 2.5) or 2.5)
+        max_fundamental = float(
+            getattr(self.cfg.trading, "core_long_break_max_fundamental_score", 35.0) or 35.0
+        )
+        revision_break = bool(analyst_revision_known and analyst_revision <= max_revision)
+        event_break = bool(news_known and news_score <= max_news and event_score >= min_event)
+        model_break = bool(
+            0 < current_fundamental_score <= max_fundamental
+            and thesis_state in {"NO_TRADE", "INVALID", "INVALIDATED", "BROKEN"}
+            and thesis_conflicts >= 2.0
+        )
+        fundamental_break = bool(revision_break or event_break or model_break)
+        reliability_score = float(sig.get("data_reliability_score") or 0.0)
+        reliability_required = float(
+            getattr(self.cfg.trading, "core_long_break_min_reliability_score", 70.0) or 70.0
+        )
+        reliable = reliability_score >= reliability_required
+        break_candidate = bool(price_break and fundamental_break and reliable)
+
+        tracker = dict(self._core_thesis_break_streak.get(coin, {}) or {})
+        persisted_tracker = dict(metadata.get("core_thesis_break", {}) or {})
+        if int(persisted_tracker.get("count", 0) or 0) > int(tracker.get("count", 0) or 0):
+            tracker = persisted_tracker
+        if advance_break_streak and tracker.get("last_cycle") != self._cycle:
+            tracker["count"] = int(tracker.get("count", 0) or 0) + 1 if break_candidate else 0
+            tracker["last_cycle"] = self._cycle
+            tracker["candidate"] = break_candidate
+            tracker["updated_at"] = datetime.now().isoformat(timespec="seconds")
+            self._core_thesis_break_streak[coin] = dict(tracker)
+            if pos:
+                metadata["core_thesis_break"] = dict(tracker)
+                pos.metadata = metadata
+        count = int(tracker.get("count", 0) or 0)
+        required = int(profile["break_confirmation_required"])
+        break_confirmed = bool(break_candidate and count >= required)
+        countertrend = bool(
+            action == "SHORT"
+            or structure_break
+            or mtf_break
+            or breakout_break
+        )
+
+        evidence = []
+        if price_break:
+            evidence.append(f"price damage confirmed by {price_votes}/3 structural checks")
+        if revision_break:
+            evidence.append(f"analyst revisions {analyst_revision:+.1f}")
+        if event_break:
+            evidence.append(f"bearish event/news score {news_score:.0f}")
+        if model_break:
+            evidence.append(f"fundamental score {current_fundamental_score:.0f}")
+        if not reliable and (price_break or fundamental_break):
+            evidence.append(f"data reliability only {reliability_score:.0f}/{reliability_required:.0f}")
+
+        if break_confirmed:
+            tactical_state = "THESIS_BROKEN"
+            label = "THESIS BROKEN"
+            strategic_bias = "NEUTRAL"
+            summary = (
+                f"Core long thesis break confirmed {count}/{required}: price and fundamentals agree."
+            )
+        elif break_candidate:
+            tactical_state = "THESIS_REVIEW"
+            label = "THESIS REVIEW"
+            strategic_bias = "LONG"
+            summary = (
+                f"Core long remains active while break evidence confirms {count}/{required}; no flip yet."
+            )
+        elif countertrend:
+            tactical_state = "PULLBACK"
+            label = "CORE PULLBACK"
+            strategic_bias = "LONG"
+            summary = "Temporary bearish tape inside the core long thesis; hold or wait, do not flip short."
+        elif action == "LONG":
+            tactical_state = "TREND_ALIGNED"
+            label = "CORE LONG"
+            strategic_bias = "LONG"
+            summary = "Live tape and the curated long-term thesis are aligned."
+        else:
+            tactical_state = "CORE_WATCH"
+            label = "CORE LONG"
+            strategic_bias = "LONG"
+            summary = "Curated long-term thesis is active; wait for a clean long entry or keep holding."
+
+        profile.update({
+            "active": not break_confirmed,
+            "strategic_bias": strategic_bias,
+            "tactical_state": tactical_state,
+            "label": label,
+            "countertrend": countertrend,
+            "fundamentals_supportive": fundamentals_supportive,
+            "fundamental_score": round(fundamental_score, 1),
+            "current_fundamental_score": round(current_fundamental_score, 1),
+            "entry_fundamental_score": round(entry_fundamental_score, 1),
+            "analyst_revision_score": round(analyst_revision, 2),
+            "news_score": round(news_score, 1),
+            "event_score": round(event_score, 2),
+            "data_reliability_score": round(reliability_score, 1),
+            "price_break": price_break,
+            "fundamental_break": fundamental_break,
+            "break_candidate": break_candidate,
+            "break_confirmed": break_confirmed,
+            "break_confirmation_count": count,
+            "summary": summary,
+            "break_evidence": evidence,
+        })
+        return profile
+
     def _loss_realization_guard_profile(self, coin: str, price: float, signal=None) -> dict:
         """Decide whether adverse volatility should stay unrealized.
 
@@ -5513,6 +5831,15 @@ class TradingAgent:
         signal_action = str(
             getattr(signal, "action", None) or sig.get("action") or sig.get("decision") or ""
         ).upper()
+        core_thesis = dict(sig.get("core_thesis") or entry_ctx.get("core_thesis") or {})
+        if direction == "LONG" and not core_thesis:
+            core_thesis = self._core_long_thesis_profile(coin, signal)
+        core_countertrend_hold = bool(
+            direction == "LONG"
+            and core_thesis.get("eligible")
+            and core_thesis.get("active")
+            and not core_thesis.get("break_confirmed")
+        )
         leverage = max(1.0, float(getattr(pos, "leverage", 1.0) or 1.0))
         max_leverage = float(profile["max_leverage"])
         profile["leverage"] = round(leverage, 2)
@@ -5555,24 +5882,33 @@ class TradingAgent:
             (direction == "LONG" and breakout_state in {"CONFIRMED_BEARISH_BREAKDOWN", "PERSISTENT_BEARISH_BREAKDOWN"})
             or (direction == "SHORT" and breakout_state in {"CONFIRMED_BULLISH_BREAKOUT", "PERSISTENT_BULLISH_BREAKOUT"})
         )
-        opposite_signal = signal_action in {"LONG", "SHORT"} and signal_action != direction
+        opposite_signal = (
+            signal_action in {"LONG", "SHORT"}
+            and signal_action != direction
+            and not core_countertrend_hold
+        )
         invalid_state = thesis_state in {"NO_TRADE", "INVALID", "INVALIDATED", "BROKEN"}
         hard_market_conflict = (
             (structure_against or breakout_against or mtf_against)
             and (invalid_state or thesis_conflicts >= 1.0 or opposite_signal)
+            and not core_countertrend_hold
         )
         hard_conflict = bool(opposite_signal or thesis_conflicts >= 2.0 or hard_market_conflict)
+        if core_countertrend_hold:
+            hard_conflict = False
 
         runner_profile = self._position_runner_profile(coin, signal, price)
-        direction_aligned = signal_action in {"", "FLAT", direction}
+        direction_aligned = signal_action in {"", "FLAT", direction} or core_countertrend_hold
         thesis_evidence = bool(
             thesis
             or entry_ctx.get("thesis_summary")
             or runner_profile.get("active")
+            or core_countertrend_hold
         )
         qualification_intact = bool(
             thesis_permitted
             or runner_profile.get("active")
+            or core_countertrend_hold
             or (direction_aligned and not invalid_state and thesis_conflicts < 1.0)
         )
         thesis_intact = bool(
@@ -5642,6 +5978,8 @@ class TradingAgent:
             "thesis_state": thesis_state or "UNKNOWN",
             "thesis_conflicts": round(thesis_conflicts, 2),
             "signal_action": signal_action or "UNKNOWN",
+            "core_thesis": core_thesis,
+            "core_countertrend_hold": core_countertrend_hold,
             "scalp_trade": scalp_trade,
             "runner_active": bool(runner_profile.get("active")),
             "unrealized_pnl_usd": round(pnl_usd, 2),
@@ -6175,6 +6513,24 @@ class TradingAgent:
         thesis = dict(sig.get("thesis", {}) or {})
         hold_minutes = (time.time() - pos.opened_at) / 60.0 if pos.opened_at else 0.0
         entry_ctx = dict((pos.metadata or {}).get("entry_context", {}) or {})
+        core_thesis = dict(sig.get("core_thesis") or entry_ctx.get("core_thesis") or {})
+        if str(current_pos or "").upper() == "LONG" and not core_thesis:
+            core_thesis = self._core_long_thesis_profile(coin, signal)
+        if (
+            str(current_pos or "").upper() == "LONG"
+            and core_thesis.get("eligible")
+            and core_thesis.get("active")
+            and not core_thesis.get("break_confirmed")
+        ):
+            self._last_signals.setdefault(coin, {})
+            self._last_signals[coin]["core_thesis"] = core_thesis
+            return ""
+        if (
+            str(current_pos or "").upper() == "LONG"
+            and core_thesis.get("eligible")
+            and core_thesis.get("break_confirmed")
+        ):
+            return "core_thesis_break"
         planned_stop = float(entry_ctx.get("planned_stop_loss") or pos.stop_loss or 0.0)
         planned_tp = float(entry_ctx.get("planned_take_profit") or pos.take_profit or 0.0)
         risk_per_unit = abs(pos.entry_price - planned_stop) if planned_stop > 0 else 0.0
@@ -6445,6 +6801,9 @@ class TradingAgent:
             "options_summary": sig.get("options_summary", ""),
             "analyst_revision_score": sig.get("analyst_revision_score", 0.0),
             "analyst_revision_summary": sig.get("analyst_revision_summary", ""),
+            "core_thesis": dict(sig.get("core_thesis") or getattr(signal, "core_thesis", {}) or {}),
+            "strategic_bias": sig.get("strategic_bias", "NEUTRAL"),
+            "tactical_state": sig.get("tactical_state", "UNCLASSIFIED"),
             "social_attention_score": sig.get("social_attention_score", 50.0),
             "social_attention_sentiment": sig.get("social_attention_sentiment", "NEUTRAL"),
             "social_attention_level": sig.get("social_attention_level", "LOW"),
@@ -6895,6 +7254,8 @@ class TradingAgent:
                 "instrument_types": self.cfg.trading.instrument_types,
                 "asset_categories": getattr(self.cfg.trading, "asset_category_map", {}),
                 "portfolio_theme_map": getattr(self.cfg.trading, "portfolio_theme_map", {}),
+                "core_long_thesis_enabled": getattr(self.cfg.trading, "core_long_thesis_enabled", True),
+                "core_long_thesis_coins": list(getattr(self.cfg.trading, "core_long_thesis_coins", []) or []),
             },
         }
 
@@ -8343,10 +8704,36 @@ class TradingAgent:
         return total_equity if any_state else None
 
     def _fetch_all_prices(self) -> dict:
+        # This pass exists for exits, pending orders, and mapped trigger hits.
+        # Fetching every auto-promoted market serially can stall a cycle for
+        # minutes before the bounded analysis batch even starts.
+        urgent = [
+            *self.risk.positions,
+            *self.order_mgr.pending_orders,
+            *self.order_mgr.reentry_watches,
+        ]
+        urgent = list(dict.fromkeys(str(coin or "").upper() for coin in urgent if coin))
+        trigger_candidates = [
+            str(coin or "").upper()
+            for coin in self._trigger_watch_candidates_from_signals(self._last_signals)
+            if coin
+        ]
+        trigger_limit = max(
+            0,
+            int(getattr(self.cfg.trading, "cycle_price_poll_max_trigger_symbols", 24) or 24),
+        )
+        candidates = list(urgent)
+        for coin in trigger_candidates:
+            if coin not in candidates:
+                candidates.append(coin)
+            if len(candidates) >= len(urgent) + trigger_limit:
+                break
+
         prices = {}
-        for coin in self._tradable_coins:
+        for coin in candidates:
             try:
-                p = self._price_circuits[coin].call(get_current_price, coin)
+                circuit = self._price_circuits.get(coin)
+                p = circuit.call(get_current_price, coin) if circuit else get_current_price(coin)
                 if p:
                     prices[coin] = p
             except CircuitBreakerError:
@@ -8609,6 +8996,8 @@ class TradingAgent:
                 itype     = self.cfg.trading.instrument_types.get(coin, "crypto")
                 min_hold  = (self.cfg.trading.index_min_hold_minutes
                              if itype == "index"
+                             else getattr(self.cfg.trading, "equity_min_hold_minutes", self.cfg.trading.min_hold_minutes)
+                             if itype == "equity"
                              else self.cfg.trading.min_hold_minutes)
                 p_out["hold_minutes"]       = round(hold_mins, 0)
                 p_out["min_hold_minutes"]   = min_hold
@@ -8622,6 +9011,9 @@ class TradingAgent:
                 p_out["memory_cooldown"]    = sig.get("memory_cooldown", 0)
                 entry_ctx = dict((pos.metadata or {}).get("entry_context", {}) or {})
                 entry_thesis = dict(entry_ctx.get("thesis", {}) or {})
+                core_thesis = dict(sig.get("core_thesis") or entry_ctx.get("core_thesis") or {})
+                if pos.direction == "LONG" and not core_thesis:
+                    core_thesis = self._core_long_thesis_profile(coin)
                 runner_profile = self._position_runner_profile(
                     coin,
                     price=float(p_out.get("current_price") or 0.0),
@@ -8640,6 +9032,10 @@ class TradingAgent:
                 p_out["loss_realization_guard_reason"] = loss_guard.get("summary", "")
                 p_out["loss_realization_hard_stop"] = loss_guard.get("hard_stop_price", 0.0)
                 p_out["unrealized_pnl_usd"] = loss_guard.get("unrealized_pnl_usd", 0.0)
+                p_out["core_thesis"] = core_thesis
+                p_out["strategic_bias"] = core_thesis.get("strategic_bias", "NEUTRAL")
+                p_out["tactical_state"] = core_thesis.get("tactical_state", "UNCLASSIFIED")
+                p_out["core_thesis_label"] = core_thesis.get("label", "")
                 p_out["scalp_graduation"] = dict((pos.metadata or {}).get("scalp_graduation") or {})
                 p_out["invalidation_confirmation"] = dict(
                     (pos.metadata or {}).get("invalidation_confirmation") or {}
@@ -8649,7 +9045,9 @@ class TradingAgent:
                     or entry_thesis.get("summary")
                     or sig.get("thesis_summary", "")
                 )
-                if loss_guard.get("active") and loss_guard.get("unrealized_pnl_usd", 0.0) < 0:
+                if core_thesis.get("active") and pos.direction == "LONG":
+                    p_out["current_logic"] = core_thesis.get("summary", "Core long thesis remains active.")
+                elif loss_guard.get("active") and loss_guard.get("unrealized_pnl_usd", 0.0) < 0:
                     p_out["current_logic"] = (
                         f"Thesis hold: keep {loss_guard.get('unrealized_pnl_usd', 0.0):+.2f} as uPnL; "
                         f"realize only on invalidation or hard stop ${loss_guard.get('hard_stop_price', 0.0):,.2f}."
@@ -8712,6 +9110,9 @@ class TradingAgent:
                 "min_hold_minutes":      self.cfg.trading.min_hold_minutes,
                 "index_min_hold_minutes": self.cfg.trading.index_min_hold_minutes,
                 "reversal_boost":        self.cfg.trading.reversal_threshold_boost,
+                "core_long_thesis_enabled": getattr(self.cfg.trading, "core_long_thesis_enabled", True),
+                "core_long_thesis_coins": list(getattr(self.cfg.trading, "core_long_thesis_coins", []) or []),
+                "core_long_break_confirmation_cycles": getattr(self.cfg.trading, "core_long_break_confirmation_cycles", 3),
                 "check_interval_seconds": self.cfg.trading.check_interval_seconds,
                 "adaptive_leverage_enabled": getattr(self.cfg.trading, "adaptive_leverage_enabled", False),
                 "min_leverage":           getattr(self.cfg.trading, "min_leverage", 1),

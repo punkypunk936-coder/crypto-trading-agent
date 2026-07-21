@@ -279,10 +279,18 @@ def _name_thesis(coin: str, display_name: str, segment: str, item: dict | None, 
     )
 
 
-def _htf_view(coin: str, segment: str, item: dict | None, sig: dict | None, pos: dict | None) -> tuple[str, str, bool, float]:
+def _htf_view(
+    coin: str,
+    segment: str,
+    item: dict | None,
+    sig: dict | None,
+    pos: dict | None,
+    config: dict | None = None,
+) -> tuple[str, str, bool, float]:
     item = dict(item or {})
     sig = dict(sig or {})
     pos = dict(pos or {})
+    config = dict(config or {})
     status = str(item.get("status") or "").upper()
     action = str(sig.get("action") or item.get("action") or item.get("candidate_action") or "").upper()
     bias = str(item.get("bias") or sig.get("market_map_bias") or "NEUTRAL").upper()
@@ -316,9 +324,38 @@ def _htf_view(coin: str, segment: str, item: dict | None, sig: dict | None, pos:
         or action == "LONG"
         or bias == "BULLISH"
     )
+    core_thesis = dict(sig.get("core_thesis") or pos.get("core_thesis") or {})
+    core_names = {
+        normalize_symbol(value)
+        for value in (config.get("core_long_thesis_coins") or [])
+        if normalize_symbol(value)
+    }
+    core_eligible = bool(core_thesis.get("eligible") or normalize_symbol(coin) in core_names)
+    core_broken = bool(core_thesis.get("break_confirmed"))
+    core_countertrend = bool(core_thesis.get("countertrend") or bearish)
 
     if direction == "LONG" or status == "OPEN_LONG":
+        if core_eligible and not core_broken:
+            label = "Core pullback" if core_countertrend else "Core long"
+            reason = str(core_thesis.get("summary") or "Core long thesis remains active through short-term volatility.")
+            return label, reason, True, max(conviction, sequence, fundamental)
         return "HTF hold", "Already long; hold while thesis and invalidation stay intact.", True, max(conviction, sequence)
+    if core_eligible:
+        if core_broken:
+            return "Thesis broken", "Price damage and fundamental deterioration confirmed the strategic break.", False, max(conviction, sequence, fundamental)
+        if core_countertrend:
+            return (
+                "Core pullback",
+                str(core_thesis.get("summary") or "Tactical weakness only; keep the strategic long bias and do not flip short."),
+                True,
+                max(conviction, sequence, fundamental),
+            )
+        return (
+            "Core long",
+            str(core_thesis.get("summary") or "Curated long-term thesis; wait for a clean entry and stay with it through noise."),
+            True,
+            max(conviction, sequence, fundamental),
+        )
     if bearish:
         return "No", "No long hold while the live read is bearish.", False, max(conviction, sequence)
     if bullish and (conviction >= 64.0 or sequence >= 65.0 or fundamental >= 70.0 or strong_confidence):
@@ -378,6 +415,11 @@ def build_xyz_section(state: dict, board: dict | None = None) -> dict:
     assets = _assets_from_state(safe_state)
     items: list[dict[str, Any]] = []
     segment_counts: dict[str, dict[str, Any]] = {}
+    configured_core_names = {
+        normalize_symbol(value)
+        for value in (config.get("core_long_thesis_coins") or [])
+        if normalize_symbol(value)
+    }
 
     for coin in sorted(
         assets.keys(),
@@ -390,6 +432,7 @@ def build_xyz_section(state: dict, board: dict | None = None) -> dict:
         sig = dict(signals.get(coin) or {})
         item = dict(board_items.get(coin) or {})
         pos = dict(positions.get(coin) or {})
+        core_thesis = dict(sig.get("core_thesis") or pos.get("core_thesis") or {})
         instrument_type = str(meta.get("instrument_type") or instrument_type_for_coin(coin, signal=sig, config=config) or "equity").strip().lower()
         categories = normalize_asset_category_values(meta.get("categories") or item.get("asset_categories") or [])
         if not categories:
@@ -398,8 +441,9 @@ def build_xyz_section(state: dict, board: dict | None = None) -> dict:
         segment = segment_for_coin(coin, categories, instrument_type)
         key = segment_key(segment)
         display_name = str(meta.get("display_name") or coin)
-        htf_label, htf_reason, htf_hold, htf_score = _htf_view(coin, segment, item, sig, pos)
+        htf_label, htf_reason, htf_hold, htf_score = _htf_view(coin, segment, item, sig, pos, config)
         name_thesis = _name_thesis(coin, display_name, segment, item, sig)
+        configured_core = coin in configured_core_names
         row = {
             "coin": coin,
             "name": display_name,
@@ -415,6 +459,16 @@ def build_xyz_section(state: dict, board: dict | None = None) -> dict:
             "htf_reason": htf_reason,
             "htf_long_hold": htf_hold,
             "htf_score": round(htf_score, 1),
+            "strategic_bias": str(
+                core_thesis.get("strategic_bias")
+                or sig.get("strategic_bias")
+                or ("LONG" if configured_core else "NEUTRAL")
+            ).upper(),
+            "tactical_state": str(
+                core_thesis.get("tactical_state")
+                or sig.get("tactical_state")
+                or ("CORE_WATCH" if configured_core else "UNCLASSIFIED")
+            ).upper(),
             "current_action": str(item.get("label") or item.get("status") or sig.get("action") or "Watch").strip(),
             "status": str(item.get("status") or "WATCH").upper(),
             "bias": str(item.get("bias") or sig.get("market_map_bias") or "NEUTRAL").upper(),

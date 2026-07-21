@@ -3340,6 +3340,68 @@ def test_dashboard_refreshes_snapshot_when_state_changes() -> None:
             dashboard_module._local_snapshot_cache = original_local_cache
 
 
+def test_dashboard_refreshes_semantically_stale_snapshot_even_when_its_mtime_is_newer() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        temp = Path(tmpdir)
+        original_state = dashboard_module.STATE
+        original_snapshot = dashboard_module.SNAPSHOT
+        original_remote = dict(dashboard_module._remote_state)
+        original_queue_refresh = dashboard_module._queue_local_snapshot_refresh
+        original_local_cache = dict(dashboard_module._local_snapshot_cache)
+        try:
+            dashboard_module.STATE = temp / "state.json"
+            dashboard_module.SNAPSHOT = temp / "dashboard_snapshot.json"
+            dashboard_module._remote_state = {"snapshot": None}
+            dashboard_module._local_snapshot_cache = {
+                "snapshot": None,
+                "mtime_ns": None,
+                "refreshing": False,
+                "last_refresh_started": 0.0,
+                "last_refresh_finished": 0.0,
+                "last_refresh_error": "",
+            }
+
+            dashboard_module.STATE.write_text(json.dumps({
+                "status": "running",
+                "cycle_number": 12,
+                "last_cycle": "2026-07-21 19:45:25",
+                "positions": [],
+                "signals": {},
+            }))
+            snapshot = {
+                "state": {
+                    "status": "running",
+                    "cycle_number": 11,
+                    "last_cycle": "2026-07-21 19:41:48",
+                    "positions": [],
+                    "signals": {},
+                },
+                "trades": [],
+                "stats": {"total": 0},
+                "control": {"kill": {"active": False}},
+                "daily_radar": {"summary": {}, "top_assets": []},
+                "runtime": {"stale": False, "state_age_seconds": 217},
+                "server_time": "2026-07-21 19:45:30",
+            }
+            dashboard_module.SNAPSHOT.write_text(json.dumps(snapshot))
+            now = time.time()
+            os.utime(dashboard_module.STATE, (now - 5, now - 5))
+            os.utime(dashboard_module.SNAPSHOT, (now, now))
+            refresh_calls = {"count": 0}
+            dashboard_module._queue_local_snapshot_refresh = lambda server_timestamp=None, force=False: refresh_calls.__setitem__("count", refresh_calls["count"] + 1) or True
+
+            client = dashboard_module.app.test_client()
+            payload = client.get("/api/state").get_json()
+            assert payload["state"]["cycle_number"] == 11
+            assert refresh_calls["count"] == 1
+        finally:
+            dashboard_module.STATE = original_state
+            dashboard_module.SNAPSHOT = original_snapshot
+            dashboard_module._remote_state = original_remote
+            dashboard_module._queue_local_snapshot_refresh = original_queue_refresh
+            dashboard_module._local_snapshot_cache = original_local_cache
+
+
 def test_dashboard_loads_prebuilt_snapshot_without_rehydrating() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         temp = Path(tmpdir)
@@ -3809,11 +3871,29 @@ def test_dashboard_snapshot_includes_xyz_tradexyz_segment_book() -> None:
                     "instrument_type": "equity",
                     "venue_symbol": "xyz:MU",
                 },
+                "NVDA": {
+                    "action": "SHORT",
+                    "score": 24.0,
+                    "confidence": "HIGH",
+                    "execution_mode": "tradable",
+                    "instrument_type": "equity",
+                    "venue_symbol": "xyz:NVDA",
+                    "core_thesis": {
+                        "eligible": True,
+                        "active": True,
+                        "countertrend": True,
+                        "break_confirmed": False,
+                        "strategic_bias": "LONG",
+                        "tactical_state": "PULLBACK",
+                        "summary": "Temporary bearish tape inside the core long thesis.",
+                    },
+                },
             },
             "mode": "dry_run",
             "config": {
                 "coins": ["LITE", "MU"],
                 "analysis_coins": ["LITE", "MU", "CBRS"],
+                "core_long_thesis_coins": ["GOOGL", "NVDA"],
                 "asset_categories": {"LITE": ["growth"], "MU": ["semis_memory"], "CBRS": ["pre_ipo", "semis_memory", "ai_infra"]},
                 "instrument_types": {"LITE": "equity", "MU": "equity", "CBRS": "equity"},
             },
@@ -3833,6 +3913,11 @@ def test_dashboard_snapshot_includes_xyz_tradexyz_segment_book() -> None:
     assert "datacenter optics" in by_coin["LITE"]["name_thesis"].lower()
     assert by_coin["MU"]["segment"] == "Memory"
     assert "hbm" in by_coin["MU"]["segment_thesis"].lower()
+    assert by_coin["NVDA"]["htf_label"] == "Core pullback"
+    assert by_coin["NVDA"]["htf_long_hold"] is True
+    assert by_coin["NVDA"]["strategic_bias"] == "LONG"
+    assert by_coin["GOOGL"]["strategic_bias"] == "LONG"
+    assert by_coin["GOOGL"]["tactical_state"] == "CORE_WATCH"
     assert by_coin["CBRS"]["venue_symbol"] == "xyz:CBRS"
 
 
@@ -4133,6 +4218,87 @@ def _install_runner_position(agent: TradingAgent, coin: str = "GOOGL") -> None:
     }
 
 
+def test_core_long_treats_bearish_tape_as_temporary_without_fundamental_break() -> None:
+    cfg = build_config()
+    cfg.trading.coins = ["GOOGL"]
+    cfg.trading.instrument_types.update({"GOOGL": "equity"})
+    agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=10000.0, supported_symbols=["GOOGL"])])
+    _install_runner_position(agent, "GOOGL")
+    agent._last_signals["GOOGL"].update({
+        "action": "SHORT",
+        "score": 22.0,
+        "live_price": 94.0,
+        "structure_trend": "DOWNTREND",
+        "mtf_bias": "BEARISH",
+        "orderbook_breakout_state": "CONFIRMED_BEARISH_BREAKDOWN",
+        "first_principles_fundamental_score": 78.0,
+        "analyst_revision_score": 1.5,
+        "analyst_revision_summary": "Revisions remain positive.",
+        "data_reliability_score": 94.0,
+        "thesis": {"state": "NO_TRADE", "permitted": False, "conflict_points": 2},
+    })
+    signal = SimpleNamespace(
+        action="SHORT",
+        score=22.0,
+        price=94.0,
+        thesis={"state": "NO_TRADE", "permitted": False, "conflict_points": 2},
+    )
+
+    profile = agent._core_long_thesis_profile("GOOGL", signal, advance_break_streak=True)
+    agent._last_signals["GOOGL"]["core_thesis"] = profile
+
+    assert profile["label"] == "CORE PULLBACK"
+    assert profile["price_break"] is True
+    assert profile["fundamental_break"] is False
+    assert profile["break_confirmed"] is False
+    assert agent._detect_position_invalidation("GOOGL", "LONG", signal) == ""
+    guard = agent._loss_realization_guard_profile("GOOGL", 94.0, signal)
+    assert guard["thesis_intact"] is True
+    assert guard["hard_conflict"] is False
+
+
+def test_core_long_break_needs_three_fresh_fundamental_and_price_confirmations() -> None:
+    cfg = build_config()
+    cfg.trading.coins = ["GOOGL"]
+    cfg.trading.instrument_types.update({"GOOGL": "equity"})
+    cfg.trading.core_long_break_confirmation_cycles = 3
+    agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=10000.0, supported_symbols=["GOOGL"])])
+    _install_runner_position(agent, "GOOGL")
+    agent._last_signals["GOOGL"].update({
+        "action": "SHORT",
+        "score": 20.0,
+        "live_price": 91.0,
+        "structure_trend": "DOWNTREND",
+        "mtf_bias": "BEARISH",
+        "orderbook_breakout_state": "PERSISTENT_BEARISH_BREAKDOWN",
+        "first_principles_fundamental_score": 25.0,
+        "analyst_revision_score": -2.0,
+        "analyst_revision_summary": "Revisions turned materially negative.",
+        "data_reliability_score": 96.0,
+        "thesis": {"state": "BROKEN", "permitted": False, "conflict_points": 3},
+    })
+    signal = SimpleNamespace(
+        action="SHORT",
+        score=20.0,
+        price=91.0,
+        thesis={"state": "BROKEN", "permitted": False, "conflict_points": 3},
+    )
+
+    profiles = []
+    for cycle in (101, 102, 103):
+        agent._cycle = cycle
+        profile = agent._core_long_thesis_profile("GOOGL", signal, advance_break_streak=True)
+        agent._last_signals["GOOGL"]["core_thesis"] = profile
+        profiles.append(profile)
+
+    assert [profile["break_confirmation_count"] for profile in profiles] == [1, 2, 3]
+    assert profiles[0]["break_confirmed"] is False
+    assert profiles[1]["break_confirmed"] is False
+    assert profiles[2]["break_confirmed"] is True
+    assert profiles[2]["label"] == "THESIS BROKEN"
+    assert agent._detect_position_invalidation("GOOGL", "LONG", signal) == "core_thesis_break"
+
+
 def test_thesis_runner_defers_take_profit_and_extends_target() -> None:
     cfg = build_config()
     cfg.trading.coins = ["GOOGL"]
@@ -4222,6 +4388,12 @@ def test_loss_realization_guard_does_not_override_broken_thesis() -> None:
         "structure_trend": "DOWNTREND",
         "mtf_bias": "BEARISH",
         "orderbook_breakout_state": "CONFIRMED_BEARISH_BREAKDOWN",
+        "core_thesis": {
+            "eligible": True,
+            "active": False,
+            "break_confirmed": True,
+            "strategic_bias": "NEUTRAL",
+        },
         "thesis": {"state": "NO_TRADE", "permitted": False, "conflict_points": 2},
     })
 
@@ -4306,6 +4478,12 @@ def test_thesis_runner_still_honors_hard_structure_invalidation() -> None:
         "live_price": 101.0,
         "structure_trend": "DOWNTREND",
         "orderbook_breakout_state": "CONFIRMED_BEARISH_BREAKDOWN",
+        "core_thesis": {
+            "eligible": True,
+            "active": False,
+            "break_confirmed": True,
+            "strategic_bias": "NEUTRAL",
+        },
         "thesis": {
             "state": "NO_TRADE",
             "permitted": False,
@@ -4321,7 +4499,7 @@ def test_thesis_runner_still_honors_hard_structure_invalidation() -> None:
         thesis={"state": "NO_TRADE", "permitted": False, "conflict_points": 2},
     )
 
-    assert agent._detect_position_invalidation("GOOGL", "LONG", signal) == "structure_invalidation"
+    assert agent._detect_position_invalidation("GOOGL", "LONG", signal) == "core_thesis_break"
 
 
 def test_stale_adverse_exit_cuts_multi_day_loser_without_killing_runners() -> None:
@@ -9222,6 +9400,26 @@ def test_analysis_budget_prioritizes_core_and_rotates_the_rest() -> None:
     assert set(first[2:]) != set(second[2:]), "non-priority symbols should rotate between cycles"
 
 
+def test_cycle_price_poll_is_bounded_to_live_risk_and_trigger_candidates() -> None:
+    cfg = build_config()
+    cfg.trading.cycle_price_poll_max_trigger_symbols = 3
+    agent = TradingAgent(cfg, [])
+    agent._price_circuits = {}
+    agent._trigger_watch_candidates_from_signals = lambda _signals: [
+        "BTC", "ETH", "SOL", "HYPE", "MON", "TAO"
+    ]
+    original_get_current_price = agent_module.get_current_price
+    calls = []
+    agent_module.get_current_price = lambda coin: calls.append(coin) or 100.0
+    try:
+        prices = agent._fetch_all_prices()
+    finally:
+        agent_module.get_current_price = original_get_current_price
+
+    assert calls == ["BTC", "ETH", "SOL"]
+    assert prices == {"BTC": 100.0, "ETH": 100.0, "SOL": 100.0}
+
+
 def test_patient_execution_keeps_scalp_call_visible_but_unfunded() -> None:
     cfg = build_config()
     cfg.trading.patient_execution_enabled = True
@@ -9339,6 +9537,8 @@ def run_all() -> None:
     print("PASS shared Hyperliquid allMids cache")
     test_analysis_budget_prioritizes_core_and_rotates_the_rest()
     print("PASS bounded rotating analysis budget")
+    test_cycle_price_poll_is_bounded_to_live_risk_and_trigger_candidates()
+    print("PASS bounded cycle price poll")
     test_patient_execution_keeps_scalp_call_visible_but_unfunded()
     print("PASS patient execution scalp selection")
     test_profitable_scalp_can_graduate_into_patient_thesis()
@@ -9473,6 +9673,8 @@ def run_all() -> None:
     print("PASS dashboard canonical snapshot")
     test_dashboard_refreshes_snapshot_when_state_changes()
     print("PASS dashboard snapshot refresh")
+    test_dashboard_refreshes_semantically_stale_snapshot_even_when_its_mtime_is_newer()
+    print("PASS dashboard semantic snapshot refresh")
     test_dashboard_loads_prebuilt_snapshot_without_rehydrating()
     print("PASS dashboard prebuilt snapshot fast path")
     test_dashboard_upgrades_legacy_prebuilt_snapshot_with_daily_radar()
@@ -9513,6 +9715,10 @@ def run_all() -> None:
     print("PASS proactive intelligence research stack")
     test_proactive_starter_execution_opens_capped_event_orders()
     print("PASS proactive starter execution caps")
+    test_core_long_treats_bearish_tape_as_temporary_without_fundamental_break()
+    print("PASS core-long temporary pullback policy")
+    test_core_long_break_needs_three_fresh_fundamental_and_price_confirmations()
+    print("PASS core-long confirmed break policy")
     test_thesis_runner_defers_take_profit_and_extends_target()
     print("PASS thesis runner TP deferral")
     test_low_leverage_runner_defers_provisional_stop_while_thesis_intact()
