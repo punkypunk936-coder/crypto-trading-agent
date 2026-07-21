@@ -145,6 +145,8 @@ class TradingAgent:
         self._last_power_status: Dict[str, object] = {}
         self._orderbook_history: Dict[str, List[dict]] = {}
         self._last_proactive_execution: Dict[str, object] = {}
+        self._last_proactive_report: Dict[str, object] = {}
+        self._last_proactive_report_refresh_ts = 0.0
         self._proactive_starter_attempt_ts: Dict[str, float] = {}
         self._trigger_watch_last_prices: Dict[str, float] = {}
         self._trigger_watch_attempt_ts: Dict[str, float] = {}
@@ -153,6 +155,8 @@ class TradingAgent:
         self._performance_edge_cache: Dict[str, object] = {}
         self._last_tradexyz_listing_sync_cycle = -1_000_000
         self._last_listing_sync_report: Dict[str, object] = {}
+        self._analysis_cursor = 0
+        self._last_analysis_batch: List[str] = []
         self._tradable_coins = [coin.upper() for coin in cfg.trading.coins]
         self._tradable_coin_set = set(self._tradable_coins)
         self._dynamic_analysis_coins = [
@@ -545,12 +549,21 @@ class TradingAgent:
         ]
         scout_limit = int(getattr(self.cfg.trading, "dynamic_market_cap_feed_limit", 16) or 16)
         scout_feed = [coin for coin in dynamic_analysis_coins if coin not in tradable_coin_set][:scout_limit]
-        feed_coins = list(getattr(self, "_tradable_coins", []))
-        if not feed_coins:
-            feed_coins = list(getattr(self, "_analysis_coins", []))
-        for coin in scout_feed:
-            if coin not in feed_coins:
-                feed_coins.append(coin)
+        candidates = [
+            *getattr(getattr(self, "risk", None), "positions", {}),
+            *getattr(getattr(self, "order_mgr", None), "pending_orders", {}),
+            *(getattr(self.cfg.trading, "analysis_priority_coins", []) or []),
+            *(getattr(self, "_tradable_coins", []) or getattr(self, "_analysis_coins", [])),
+            *scout_feed,
+        ]
+        analysis_universe = {
+            str(coin or "").upper() for coin in getattr(self, "_analysis_coins", []) if coin
+        }
+        feed_coins = list(dict.fromkeys(
+            str(coin or "").upper()
+            for coin in candidates
+            if coin and (not analysis_universe or str(coin or "").upper() in analysis_universe)
+        ))
         if getattr(self.cfg.trading, "enforce_active_venue_markets", True):
             filtered = []
             for coin in feed_coins:
@@ -558,6 +571,8 @@ class TradingAgent:
                     continue
                 filtered.append(coin)
             feed_coins = filtered
+        feed_limit = max(1, int(getattr(self.cfg.trading, "orderbook_feed_max_symbols", 16) or 16))
+        feed_coins = feed_coins[:feed_limit]
         if not feed_coins:
             log.info("No active venue-backed symbols available for the background orderbook feed")
             return
@@ -871,7 +886,12 @@ class TradingAgent:
     # ── Recovery and reconciliation ──────────────────────────
 
     def _attempt_recovery(self):
-        checkpoint = load_checkpoint(max_age_seconds=3600)
+        checkpoint = load_checkpoint(
+            max_age_seconds=float(
+                getattr(self.cfg.trading, "checkpoint_recovery_max_age_seconds", 86400.0)
+                or 86400.0
+            )
+        )
         if not checkpoint:
             log.info("No recent checkpoint found - starting fresh")
             return
@@ -1169,7 +1189,7 @@ class TradingAgent:
 
         # 7. Execute mapped trigger hits before the slower full analysis pass.
         prior_signals = dict(self._last_signals or {})
-        self._last_signals = {}
+        self._last_signals = prior_signals
         trigger_executed = self._execute_active_trigger_entries(
             current_prices,
             portfolio_usd,
@@ -1178,8 +1198,21 @@ class TradingAgent:
             source="cycle_pre_analysis",
         )
 
-        # 8. Analyse each coin for new positions
-        for coin in self._analysis_coins:
+        # 8. Analyse a bounded, rotating batch. Open positions and core markets
+        # remain first-class, while the full universe is covered over time.
+        analysis_batch = self._analysis_batch_for_cycle()
+        self._last_analysis_batch = list(analysis_batch)
+        batch_set = set(analysis_batch)
+        for coin, snapshot in self._last_signals.items():
+            if isinstance(snapshot, dict):
+                snapshot["analysis_deferred"] = coin not in batch_set
+        log.info(
+            "Analysis budget: %s/%s symbols this cycle (%s)",
+            len(analysis_batch),
+            len(self._analysis_coins),
+            ", ".join(analysis_batch),
+        )
+        for coin in analysis_batch:
             if coin in trigger_executed:
                 log.info(f"[{coin}] Trigger-watch entry fired — skipping slower re-analysis until next cycle")
                 continue
@@ -1235,6 +1268,124 @@ class TradingAgent:
             return labels.index(str(value or "").upper())
         except ValueError:
             return -1
+
+    def _analysis_batch_for_cycle(self) -> List[str]:
+        coins = list(dict.fromkeys(str(coin or "").upper() for coin in self._analysis_coins if coin))
+        if not getattr(self.cfg.trading, "analysis_cycle_budget_enabled", True):
+            return coins
+
+        budget = max(1, int(getattr(self.cfg.trading, "analysis_max_symbols_per_cycle", 16) or 16))
+        if len(coins) <= budget:
+            return coins
+
+        urgent = list(self.risk.positions)
+        urgent.extend(list(self.order_mgr.pending_orders))
+        urgent.extend(list(self.order_mgr.reentry_watches))
+        urgent.extend(list(getattr(self.cfg.trading, "analysis_priority_coins", []) or []))
+
+        selected: List[str] = []
+        for coin in urgent:
+            coin_upper = str(coin or "").upper()
+            if coin_upper in coins and coin_upper not in selected:
+                selected.append(coin_upper)
+            if len(selected) >= budget:
+                return selected
+
+        rotating = [coin for coin in coins if coin not in selected]
+        slots = min(len(rotating), budget - len(selected))
+        if slots <= 0:
+            return selected
+        start = self._analysis_cursor % len(rotating)
+        selected.extend(rotating[(start + offset) % len(rotating)] for offset in range(slots))
+        self._analysis_cursor = (start + slots) % len(rotating)
+        return selected
+
+    def _signal_snapshot_is_fresh(self, snapshot: dict) -> bool:
+        if not snapshot:
+            return False
+        max_age = max(
+            1.0,
+            float(getattr(self.cfg.trading, "analysis_signal_max_age_minutes", 20.0) or 20.0),
+        ) * 60.0
+        try:
+            updated_at = float(snapshot.get("analysis_updated_ts") or 0.0)
+        except Exception:
+            updated_at = 0.0
+        return updated_at > 0 and (time.time() - updated_at) <= max_age
+
+    def _patient_execution_profile(self, coin: str, signal) -> dict:
+        enabled = bool(getattr(self.cfg.trading, "patient_execution_enabled", True))
+        profile = {
+            "enabled": enabled,
+            "permitted": True,
+            "reason": "",
+            "summary": "patient execution is satisfied",
+        }
+        if not enabled:
+            profile["reason"] = "disabled"
+            return profile
+
+        snapshot = dict(self._last_signals.get(coin, {}) or {})
+        thesis = dict(getattr(signal, "thesis", {}) or snapshot.get("thesis") or {})
+        expectancy = dict(getattr(signal, "expectancy", {}) or snapshot.get("expectancy") or {})
+        conviction_entry = dict(thesis.get("conviction_entry") or snapshot.get("conviction_entry") or {})
+        scalp = bool(
+            conviction_entry.get("scalp")
+            or dict(thesis.get("scalp") or {}).get("selected", False)
+            or snapshot.get("scalp_trade")
+        )
+        quality = str(thesis.get("quality") or snapshot.get("thesis_quality") or "LOW").upper()
+        min_quality = str(
+            getattr(self.cfg.trading, "patient_execution_min_thesis_quality", "MEDIUM") or "MEDIUM"
+        ).upper()
+        conflicts = float(thesis.get("conflict_points", snapshot.get("thesis_conflict_points", 0.0)) or 0.0)
+        probability = float(expectancy.get("probability", snapshot.get("expectancy_probability", 0.50)) or 0.50)
+        expected_r = float(expectancy.get("expected_r", snapshot.get("expectancy_expected_r", 0.0)) or 0.0)
+        uncertainty = float(expectancy.get("uncertainty", snapshot.get("expectancy_uncertainty", 0.50)) or 0.50)
+
+        blockers: List[str] = []
+        if scalp and not getattr(self.cfg.trading, "patient_execution_allow_scalps", False):
+            blockers.append("tactical scalp calls stay on the radar but do not receive capital")
+        if self._label_rank(quality) < self._label_rank(min_quality):
+            blockers.append(f"thesis quality {quality} is below {min_quality}")
+        max_conflicts = float(getattr(self.cfg.trading, "patient_execution_max_conflict_points", 1.0) or 1.0)
+        if conflicts > max_conflicts:
+            blockers.append(f"thesis has {conflicts:.2f} conflict points (max {max_conflicts:.2f})")
+        min_probability = float(getattr(self.cfg.trading, "patient_execution_min_probability", 0.56) or 0.56)
+        if probability < min_probability:
+            blockers.append(f"probability {probability:.0%} is below {min_probability:.0%}")
+        min_expected_r = float(getattr(self.cfg.trading, "patient_execution_min_expected_r", 0.20) or 0.20)
+        if expected_r < min_expected_r:
+            blockers.append(f"expected value {expected_r:+.2f}R is below {min_expected_r:+.2f}R")
+        max_uncertainty = float(getattr(self.cfg.trading, "patient_execution_max_uncertainty", 0.48) or 0.48)
+        if uncertainty > max_uncertainty:
+            blockers.append(f"uncertainty {uncertainty:.0%} exceeds {max_uncertainty:.0%}")
+
+        profile.update({
+            "permitted": not blockers,
+            "reason": "durable_thesis" if not blockers else "selection_block",
+            "summary": "; ".join(blockers) if blockers else "durable thesis qualifies for patient execution",
+            "scalp": scalp,
+            "quality": quality,
+            "conflict_points": round(conflicts, 2),
+            "probability": round(probability, 4),
+            "expected_r": round(expected_r, 4),
+            "uncertainty": round(uncertainty, 4),
+            "blockers": blockers,
+        })
+        return profile
+
+    def _apply_patient_leverage_cap(self, order) -> None:
+        if not getattr(self.cfg.trading, "patient_execution_enabled", True):
+            return
+        max_leverage = max(1, int(getattr(self.cfg.trading, "patient_execution_max_leverage", 3) or 3))
+        leverage = self._order_leverage(order)
+        if leverage <= max_leverage:
+            return
+        order.leverage = max_leverage
+        order.margin_usd = float(getattr(order, "size_usd", 0.0) or 0.0) / max_leverage
+        note = str(getattr(order, "leverage_note", "") or "").strip()
+        order.leverage_note = f"{max_leverage}x patient-execution cap" + (f"; {note}" if note else "")
 
     def _recent_momentum_context(self, df, live_price: float) -> dict:
         try:
@@ -1686,6 +1837,8 @@ class TradingAgent:
                 continue
 
             previous_snapshot = dict(signal_context.get(coin) or {})
+            if not self._signal_snapshot_is_fresh(previous_snapshot):
+                continue
             if not allow_map_only and not self._snapshot_is_bullish_call(previous_snapshot):
                 continue
 
@@ -1830,6 +1983,17 @@ class TradingAgent:
             self._refresh_first_principles_view(coin)
 
             signal = self._signal_from_trigger_snapshot(self._last_signals[coin])
+            patient_execution = self._patient_execution_profile(coin, signal)
+            self._last_signals[coin]["patient_execution"] = patient_execution
+            if not patient_execution.get("permitted", True):
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="patient_execution_block",
+                    signal=signal,
+                    blocked=True,
+                )
+                continue
             order = self.risk.compute_order(
                 coin=coin,
                 direction="LONG",
@@ -1849,6 +2013,7 @@ class TradingAgent:
                 event_starter=False,
                 scalp=False,
             )
+            self._apply_patient_leverage_cap(order)
             if not order.approved:
                 log.info(f"[{coin}] Trigger-watch rejected: {order.rejection_reason}")
                 signal.action = "FLAT"
@@ -2160,6 +2325,9 @@ class TradingAgent:
             [level for level in market_map_short_triggers if level <= float(live_price or 0.0)] or [0.0]
         )
         self._last_signals[coin] = {
+            "analysis_updated_ts": time.time(),
+            "analysis_updated_at": datetime.now().isoformat(timespec="seconds"),
+            "analysis_deferred": False,
             "action":          signal.action,
             "decision":        signal.action,
             "score":           signal.score,
@@ -3030,6 +3198,23 @@ class TradingAgent:
         ):
             return
 
+        patient_execution = self._patient_execution_profile(coin, signal)
+        self._last_signals.setdefault(coin, {})
+        self._last_signals[coin]["patient_execution"] = patient_execution
+        if not current_pos and not patient_execution.get("permitted", True):
+            log.info(
+                f"[{coin}] Patient execution keeps the call unfunded: "
+                f"{patient_execution.get('summary', '')}"
+            )
+            self._record_decision_snapshot(
+                coin,
+                portfolio_usd=portfolio_usd,
+                stage="patient_execution_block",
+                signal=signal,
+                blocked=True,
+            )
+            return
+
         # ── Directional signal: reset flat streak ──────────────────────────
         self._flat_streak.pop(coin, None)
 
@@ -3116,6 +3301,7 @@ class TradingAgent:
             event_starter     = event_starter,
             scalp             = scalp_trade,
         )
+        self._apply_patient_leverage_cap(order)
 
         if not order.approved:
             log.info(f"[{coin}] Rejected: {order.rejection_reason}")
@@ -3426,6 +3612,9 @@ class TradingAgent:
         conviction_entry = dict(thesis.get("conviction_entry") or {})
         snap = self._last_signals[coin]
         snap.update({
+            "analysis_updated_ts": time.time(),
+            "analysis_updated_at": datetime.now().isoformat(timespec="seconds"),
+            "analysis_deferred": False,
             "action": signal.action,
             "decision": signal.action,
             "score": float(getattr(signal, "score", snap.get("score", 50.0)) or snap.get("score", 50.0)),
@@ -4813,6 +5002,91 @@ class TradingAgent:
         )
         return False
 
+    def _scalp_graduation_profile(self, coin: str, signal=None, price: float | None = None) -> dict:
+        profile = {
+            "active": False,
+            "eligible": False,
+            "summary": "",
+            "tp_progress": 0.0,
+            "hold_minutes": 0.0,
+        }
+        pos = self.risk.positions.get(coin)
+        if not pos or not getattr(self.cfg.trading, "scalp_graduation_enabled", True):
+            return profile
+
+        metadata = dict(pos.metadata or {})
+        existing = dict(metadata.get("scalp_graduation") or {})
+        if existing.get("active"):
+            return {**profile, **existing, "active": True, "eligible": True}
+
+        entry_ctx = dict(metadata.get("entry_context") or {})
+        sig = dict(self._last_signals.get(coin, {}) or {})
+        thesis = dict(sig.get("thesis") or getattr(signal, "thesis", {}) or entry_ctx.get("thesis") or {})
+        conviction_entry = dict(sig.get("conviction_entry") or entry_ctx.get("conviction_entry") or {})
+        scalp = bool(
+            entry_ctx.get("scalp_trade")
+            or sig.get("scalp_trade")
+            or conviction_entry.get("scalp")
+            or dict(thesis.get("scalp") or {}).get("selected", False)
+            or str(dict(entry_ctx.get("trade_plan") or {}).get("trade_style", "")).lower() == "scalp"
+        )
+        if not scalp:
+            return profile
+
+        direction = str(pos.direction or "").upper()
+        live_price = float(price or sig.get("live_price") or getattr(signal, "price", 0.0) or pos.entry_price)
+        planned_tp = float(entry_ctx.get("planned_take_profit") or pos.take_profit or 0.0)
+        reward_distance = abs(planned_tp - pos.entry_price) if planned_tp > 0 else 0.0
+        favorable_move = self._signed_move(direction, pos.entry_price, live_price)
+        tp_progress = favorable_move / max(reward_distance, 1e-9) if reward_distance > 0 else 0.0
+        hold_minutes = (time.time() - pos.opened_at) / 60.0 if pos.opened_at else 0.0
+        signal_action = str(getattr(signal, "action", sig.get("action", "")) or "").upper()
+        thesis_permitted = bool(thesis.get("permitted", signal_action == direction))
+        conflicts = float(thesis.get("conflict_points", sig.get("thesis_conflict_points", 0.0)) or 0.0)
+        mtf_bias = str(sig.get("mtf_bias", entry_ctx.get("mtf_bias", "FLAT")) or "FLAT").upper()
+        mtf_against = (
+            (direction == "LONG" and mtf_bias == "BEARISH")
+            or (direction == "SHORT" and mtf_bias == "BULLISH")
+        )
+        min_progress = float(getattr(self.cfg.trading, "scalp_graduation_min_tp_progress", 0.50) or 0.50)
+        min_hold = float(getattr(self.cfg.trading, "scalp_graduation_min_hold_minutes", 60.0) or 60.0)
+        max_conflicts = float(getattr(self.cfg.trading, "scalp_graduation_max_conflict_points", 1.0) or 1.0)
+        eligible = bool(
+            favorable_move > 0
+            and tp_progress >= min_progress
+            and hold_minutes >= min_hold
+            and signal_action == direction
+            and thesis_permitted
+            and conflicts <= max_conflicts
+            and not mtf_against
+        )
+        profile.update({
+            "eligible": eligible,
+            "tp_progress": round(tp_progress, 4),
+            "hold_minutes": round(hold_minutes, 2),
+            "signal_action": signal_action or "UNKNOWN",
+            "thesis_conflict_points": round(conflicts, 2),
+            "summary": (
+                f"profitable scalp earned thesis status after {tp_progress:.0%} target progress"
+                if eligible
+                else "scalp has not earned a longer thesis hold"
+            ),
+        })
+        if not eligible:
+            return profile
+
+        profile.update({
+            "active": True,
+            "graduated_at": datetime.now().isoformat(timespec="seconds"),
+            "graduated_price": round(live_price, 6),
+        })
+        metadata["scalp_graduation"] = dict(profile)
+        pos.metadata = metadata
+        self._last_signals.setdefault(coin, {})
+        self._last_signals[coin]["scalp_graduation"] = dict(profile)
+        log.info(f"[{coin}] Scalp graduated into patient thesis: {profile['summary']}")
+        return profile
+
     def _position_runner_profile(self, coin: str, signal=None, price: float | None = None) -> dict:
         inactive = {
             "active": False,
@@ -4837,12 +5111,13 @@ class TradingAgent:
         thesis_entry = thesis.get("conviction_entry")
         if isinstance(thesis_entry, dict) and not conviction_entry:
             conviction_entry = dict(thesis_entry)
+        graduated_scalp = bool(dict(metadata.get("scalp_graduation") or {}).get("active"))
         if (
             entry_ctx.get("scalp_trade")
             or sig.get("scalp_trade")
             or conviction_entry.get("scalp")
             or dict(thesis.get("scalp") or {}).get("selected", False)
-        ):
+        ) and not graduated_scalp:
             return inactive
 
         instrument_type = str(
@@ -5250,6 +5525,8 @@ class TradingAgent:
             or dict(thesis.get("scalp") or {}).get("selected", False)
             or str((entry_ctx.get("trade_plan") or {}).get("trade_style", "")).lower() == "scalp"
         )
+        if dict(metadata.get("scalp_graduation") or {}).get("active"):
+            scalp_trade = False
 
         thesis_state = str(thesis.get("state", sig.get("thesis_state", "")) or "").upper()
         thesis_conflicts = float(
@@ -5659,6 +5936,8 @@ class TradingAgent:
             or dict(thesis.get("scalp") or {}).get("selected", False)
             or str((entry_ctx.get("trade_plan") or {}).get("trade_style", "")).lower() == "scalp"
         )
+        if dict(metadata.get("scalp_graduation") or {}).get("active"):
+            scalp_trade = False
         if scalp_trade and not getattr(self.cfg.trading, "soft_exit_apply_to_scalps", False):
             profile["reason"] = "scalp_trade"
             profile["summary"] = "scalp trades keep their faster exit rules"
@@ -5769,6 +6048,124 @@ class TradingAgent:
         )
         return profile
 
+    def _confirm_thesis_invalidation(
+        self,
+        coin: str,
+        candidate: str,
+        signal,
+        *,
+        live_price: float,
+        hold_minutes: float,
+        adverse_r: float,
+        event_setup: bool,
+    ) -> str:
+        if not candidate:
+            return ""
+        pos = self.risk.positions.get(coin)
+        if not pos:
+            return ""
+
+        metadata = dict(pos.metadata or {})
+        if dict(metadata.get("scalp_graduation") or {}).get("active") is not True:
+            entry_ctx = dict(metadata.get("entry_context") or {})
+            if bool(entry_ctx.get("scalp_trade")):
+                return candidate
+
+        loss_guard = self._loss_realization_guard_profile(coin, live_price, signal)
+        if loss_guard.get("active"):
+            self._last_signals.setdefault(coin, {})
+            self._last_signals[coin]["loss_realization_guard"] = loss_guard
+            metadata.pop("invalidation_confirmation", None)
+            pos.metadata = metadata
+            return ""
+
+        required = max(
+            1,
+            int(getattr(self.cfg.trading, "thesis_invalidation_confirmation_cycles", 2) or 2),
+        )
+        min_hold = float(
+            getattr(self.cfg.trading, "thesis_invalidation_min_hold_minutes", 720.0) or 720.0
+        )
+        if event_setup:
+            min_hold = max(
+                min_hold,
+                float(
+                    getattr(self.cfg.trading, "thesis_invalidation_event_min_hold_minutes", 2880.0)
+                    or 2880.0
+                ),
+            )
+
+        sig = dict(self._last_signals.get(coin, {}) or {})
+        reliability = float(sig.get("data_reliability_score", 0.0) or 0.0)
+        min_reliability = float(
+            getattr(self.cfg.trading, "thesis_invalidation_min_data_reliability_score", 65.0) or 65.0
+        )
+        signal_action = str(getattr(signal, "action", sig.get("action", "")) or "").upper()
+        thesis = dict(sig.get("thesis") or getattr(signal, "thesis", {}) or {})
+        thesis_conflicts = float(thesis.get("conflict_points", sig.get("thesis_conflict_points", 0.0)) or 0.0)
+        thesis_state = str(thesis.get("state", sig.get("thesis_state", "")) or "").upper()
+        thesis_explicitly_broken = bool(
+            thesis_state == "NO_TRADE"
+            or thesis.get("permitted") is False
+            or (
+                signal_action in {"LONG", "SHORT"}
+                and signal_action != str(pos.direction or "").upper()
+            )
+        )
+        hard_conflict = bool(
+            (candidate == "stale_adverse" and thesis_explicitly_broken)
+            or (
+                thesis_conflicts >= 2.0
+                and (
+                    candidate in {"structure_invalidation", "htf_invalidation"}
+                    or (
+                        signal_action in {"LONG", "SHORT"}
+                        and signal_action != str(pos.direction or "").upper()
+                    )
+                )
+            )
+        )
+
+        tracker = dict(metadata.get("invalidation_confirmation") or {})
+        count = int(tracker.get("count", 0) or 0) + 1 if tracker.get("candidate") == candidate else 1
+        tracker.update({
+            "candidate": candidate,
+            "count": count,
+            "required": required,
+            "first_seen_at": tracker.get("first_seen_at") or datetime.now().isoformat(timespec="seconds"),
+            "last_seen_at": datetime.now().isoformat(timespec="seconds"),
+            "hold_minutes": round(hold_minutes, 2),
+            "minimum_hold_minutes": round(min_hold, 2),
+            "adverse_r": round(adverse_r, 4),
+            "data_reliability_score": round(reliability, 2),
+            "hard_conflict": hard_conflict,
+        })
+        metadata["invalidation_confirmation"] = tracker
+        pos.metadata = metadata
+        self._last_signals.setdefault(coin, {})
+        self._last_signals[coin]["invalidation_confirmation"] = dict(tracker)
+
+        if reliability < min_reliability and not hard_conflict:
+            tracker["summary"] = (
+                f"exit deferred: data reliability {reliability:.0f}/{min_reliability:.0f} is too weak"
+            )
+            self._last_signals[coin]["invalidation_confirmation"] = dict(tracker)
+            return ""
+        if hold_minutes < min_hold and not hard_conflict:
+            tracker["summary"] = (
+                f"exit deferred inside patient hold window ({hold_minutes:.0f}/{min_hold:.0f}m)"
+            )
+            self._last_signals[coin]["invalidation_confirmation"] = dict(tracker)
+            return ""
+        if count < required and not hard_conflict:
+            tracker["summary"] = f"waiting for thesis-break confirmation {count}/{required}"
+            self._last_signals[coin]["invalidation_confirmation"] = dict(tracker)
+            return ""
+
+        tracker["summary"] = "thesis break confirmed; exit may proceed"
+        self._last_signals[coin]["invalidation_confirmation"] = dict(tracker)
+        return candidate
+
     def _detect_position_invalidation(self, coin: str, current_pos: str, signal) -> str:
         pos = self.risk.positions.get(coin)
         if not pos:
@@ -5797,6 +6194,7 @@ class TradingAgent:
         thesis_state = str(thesis.get("state", "") or "").upper()
         thesis_conflicts = float(thesis.get("conflict_points", 0.0) or 0.0)
         conviction_entry = dict(sig.get("conviction_entry") or entry_ctx.get("conviction_entry") or {})
+        metadata = dict(pos.metadata or {})
         scalp_trade = bool(
             entry_ctx.get("scalp_trade")
             or sig.get("scalp_trade")
@@ -5804,6 +6202,9 @@ class TradingAgent:
             or dict(thesis.get("scalp") or {}).get("selected", False)
             or str((entry_ctx.get("trade_plan") or {}).get("trade_style", "")).lower() == "scalp"
         )
+        graduation = self._scalp_graduation_profile(coin, signal, live_price) if scalp_trade else {}
+        if graduation.get("active"):
+            scalp_trade = False
         if scalp_trade:
             scalp_max_hold = float(
                 entry_ctx.get("scalp_max_hold_minutes")
@@ -5836,12 +6237,13 @@ class TradingAgent:
             (pos.direction == "SHORT" and mtf_bias == "BULLISH")
         )
 
+        candidate = ""
         if hold_minutes <= early_minutes and adverse_r >= early_adverse_r and not thesis_supports_position:
-            return "micro_invalidation"
-        if (structure_against or breakout_against) and (not thesis_supports_position or thesis_state == "NO_TRADE" or thesis_conflicts >= 2):
-            return "structure_invalidation"
-        if hold_minutes >= htf_min_minutes and mtf_against and (not thesis_supports_position or thesis_conflicts >= 1):
-            return "htf_invalidation"
+            candidate = "micro_invalidation"
+        elif (structure_against or breakout_against) and (not thesis_supports_position or thesis_state == "NO_TRADE" or thesis_conflicts >= 2):
+            candidate = "structure_invalidation"
+        elif hold_minutes >= htf_min_minutes and mtf_against and (not thesis_supports_position or thesis_conflicts >= 1):
+            candidate = "htf_invalidation"
         if (
             getattr(self.cfg.trading, "stale_adverse_exit_enabled", True)
             and hold_minutes >= float(getattr(self.cfg.trading, "stale_adverse_min_minutes", 1440.0) or 1440.0)
@@ -5859,9 +6261,9 @@ class TradingAgent:
                 self._last_signals.setdefault(coin, {})
                 self._last_signals[coin]["loss_realization_guard"] = loss_guard
                 return ""
-            if not (runner_profile.get("active") and thesis_supports_position and adverse_r < runner_adverse_limit):
-                return "stale_adverse"
-        if hold_minutes >= time_stop_minutes and tp_progress < time_stop_min_progress and (not thesis_supports_position or thesis_state == "NO_TRADE"):
+            if not candidate and not (runner_profile.get("active") and thesis_supports_position and adverse_r < runner_adverse_limit):
+                candidate = "stale_adverse"
+        if not candidate and hold_minutes >= time_stop_minutes and tp_progress < time_stop_min_progress and (not thesis_supports_position or thesis_state == "NO_TRADE"):
             runner_profile = self._position_runner_profile(coin, signal, live_price)
             runner_adverse_limit = float(
                 runner_profile.get("adverse_r_limit")
@@ -5878,8 +6280,33 @@ class TradingAgent:
                 self._last_signals.setdefault(coin, {})
                 self._last_signals[coin]["runner_profile"] = runner_profile
                 return ""
-            return "time_stop"
-        return ""
+            candidate = "time_stop"
+
+        if not candidate:
+            metadata.pop("invalidation_confirmation", None)
+            pos.metadata = metadata
+            return ""
+
+        event_score = max(
+            float(sig.get("news_event_score") or entry_ctx.get("news_event_score") or 0.0),
+            float(sig.get("official_event_score") or entry_ctx.get("official_event_score") or 0.0),
+            float(sig.get("sec_event_score") or entry_ctx.get("sec_event_score") or 0.0),
+        )
+        event_setup = bool(
+            sig.get("conviction_entry_event")
+            or entry_ctx.get("conviction_entry_event")
+            or conviction_entry.get("event_conviction")
+            or event_score >= float(getattr(self.cfg.trading, "thesis_runner_min_event_score", 2.75) or 2.75)
+        )
+        return self._confirm_thesis_invalidation(
+            coin,
+            candidate,
+            signal,
+            live_price=live_price,
+            hold_minutes=hold_minutes,
+            adverse_r=adverse_r,
+            event_setup=event_setup,
+        )
 
     def _build_closed_trade_dataset_record(
         self,
@@ -6473,8 +6900,23 @@ class TradingAgent:
 
     def _build_proactive_market_map(self) -> dict:
         signals = getattr(self, "_last_signals", {}) or {}
+        budget = max(1, int(getattr(self.cfg.trading, "analysis_max_symbols_per_cycle", 16) or 16))
+        tracked: List[str] = []
+        for coin in [
+            *self.risk.positions,
+            *self.order_mgr.pending_orders,
+            *self._last_analysis_batch,
+            *(getattr(self.cfg.trading, "analysis_priority_coins", []) or []),
+        ]:
+            coin_upper = str(coin or "").upper()
+            if coin_upper in self._analysis_coins and coin_upper not in tracked:
+                tracked.append(coin_upper)
+            if len(tracked) >= budget:
+                break
+        if not tracked:
+            tracked = self._analysis_coins[:budget]
         return market_map.build_effective_market_map(
-            self._analysis_coins,
+            tracked,
             current_prices={
                 coin: float((sig or {}).get("live_price") or (sig or {}).get("price") or 0.0)
                 for coin, sig in signals.items()
@@ -6544,6 +6986,8 @@ class TradingAgent:
             return "venue market is inactive"
 
         snapshot = dict(self._last_signals.get(coin, {}) or {})
+        if getattr(self.cfg.trading, "patient_execution_enabled", True) and not self._signal_snapshot_is_fresh(snapshot):
+            return "latest thesis snapshot is stale; wait for a fresh analysis cycle"
         hard_block_stages = {
             str(stage or "").strip()
             for stage in getattr(self.cfg.trading, "proactive_starter_execution_hard_block_stages", [])
@@ -6599,14 +7043,22 @@ class TradingAgent:
         }
 
         try:
-            state = self._build_proactive_runtime_state(portfolio_usd, sentiment)
-            market_map_data = self._build_proactive_market_map()
-            report = proactive_intelligence.build_and_save_report(
-                state=state,
-                market_map=market_map_data,
-                config=self.cfg.trading,
-                data_dir=DATA_DIR,
+            refresh_seconds = max(
+                60.0,
+                float(getattr(self.cfg.trading, "proactive_report_refresh_minutes", 30.0) or 30.0) * 60.0,
             )
+            report = self._last_proactive_report
+            if not report or (time.time() - self._last_proactive_report_refresh_ts) >= refresh_seconds:
+                state = self._build_proactive_runtime_state(portfolio_usd, sentiment)
+                market_map_data = self._build_proactive_market_map()
+                report = proactive_intelligence.build_and_save_report(
+                    state=state,
+                    market_map=market_map_data,
+                    config=self.cfg.trading,
+                    data_dir=DATA_DIR,
+                )
+                self._last_proactive_report = dict(report or {})
+                self._last_proactive_report_refresh_ts = time.time()
         except Exception as exc:
             execution["summary"]["reason"] = f"proactive report build failed: {exc}"
             self._last_proactive_execution = execution
@@ -6801,6 +7253,24 @@ class TradingAgent:
             self._last_signals[coin] = updated_snapshot
             self._sync_signal_snapshot(coin, signal)
 
+            patient_execution = self._patient_execution_profile(coin, signal)
+            self._last_signals[coin]["patient_execution"] = patient_execution
+            if not patient_execution.get("permitted", True):
+                execution["skipped"].append({
+                    "coin": coin,
+                    "direction": direction,
+                    "reason": patient_execution.get("summary", "patient execution blocked starter"),
+                    "patient_execution": patient_execution,
+                })
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="patient_execution_block",
+                    signal=signal,
+                    blocked=True,
+                )
+                continue
+
             if self._apply_llm_referee(coin, signal, current_position=""):
                 self._proactive_starter_attempt_ts[coin] = time.time()
                 execution["skipped"].append({"coin": coin, "direction": direction, "reason": "LLM referee blocked proactive starter"})
@@ -6841,6 +7311,7 @@ class TradingAgent:
                 conviction_pct=signal.score,
                 is_scale_in=False,
             )
+            self._apply_patient_leverage_cap(order)
             if not self._apply_north_star_guard_to_order(
                 coin,
                 signal,
@@ -8169,6 +8640,10 @@ class TradingAgent:
                 p_out["loss_realization_guard_reason"] = loss_guard.get("summary", "")
                 p_out["loss_realization_hard_stop"] = loss_guard.get("hard_stop_price", 0.0)
                 p_out["unrealized_pnl_usd"] = loss_guard.get("unrealized_pnl_usd", 0.0)
+                p_out["scalp_graduation"] = dict((pos.metadata or {}).get("scalp_graduation") or {})
+                p_out["invalidation_confirmation"] = dict(
+                    (pos.metadata or {}).get("invalidation_confirmation") or {}
+                )
                 p_out["entry_logic"] = (
                     entry_ctx.get("reason")
                     or entry_thesis.get("summary")
@@ -8218,6 +8693,17 @@ class TradingAgent:
             "loss_circuit_breaker": self.risk.circuit_breaker_status(),
             "north_star": self._north_star_scorecard(),
             "listing_sync": getattr(self, "_last_listing_sync_report", {}),
+            "analysis_cycle": {
+                "budget_enabled": bool(
+                    getattr(self.cfg.trading, "analysis_cycle_budget_enabled", True)
+                ),
+                "budget": int(
+                    getattr(self.cfg.trading, "analysis_max_symbols_per_cycle", 16) or 16
+                ),
+                "total_symbols": len(self._analysis_coins),
+                "analysed_symbols": list(self._last_analysis_batch),
+                "analysed_count": len(self._last_analysis_batch),
+            },
             "trade_memory":  self._memory.get_stats(),
             "power":         self._last_power_status,
             "config": {
@@ -8274,7 +8760,10 @@ class TradingAgent:
             log.debug(f"trade_dataset.jsonl read failed: {e}")
         decision_dataset_records = []
         try:
-            decision_dataset_records = decision_dataset.load_decisions(limit=25000, data_dir=decision_history_dir)
+            decision_dataset_records = decision_dataset.load_decisions(
+                limit=int(getattr(self.cfg.trading, "policy_health_decision_sample_lines", 5000) or 5000),
+                data_dir=decision_history_dir,
+            )
         except Exception as e:
             log.debug(f"decision_dataset.jsonl read failed: {e}")
         enriched_trade_records = merge_dataset_into_trades(trades_data, trade_dataset_records)
@@ -8288,17 +8777,7 @@ class TradingAgent:
         except Exception as e:
             log.debug(f"state.json performance-edge write failed: {e}")
 
-        market_map_data = market_map.build_effective_market_map(
-            self._analysis_coins,
-            current_prices={
-                coin: float((sig or {}).get("live_price") or (sig or {}).get("price") or 0.0)
-                for coin, sig in (getattr(self, "_last_signals", {}) or {}).items()
-            },
-            closed_prices={
-                coin: float((sig or {}).get("analysis_price") or (sig or {}).get("price") or 0.0)
-                for coin, sig in (getattr(self, "_last_signals", {}) or {}).items()
-            },
-        )
+        market_map_data = self._build_proactive_market_map()
         review_data = trade_review.load_reviews()
         decision_review_data = {}
         if DECISION_REVIEW_REPORT_JSON.exists():
@@ -8368,21 +8847,12 @@ class TradingAgent:
                 except Exception:
                     asset_dossier_data = {}
 
-        proactive_trader_data = {}
-        try:
-            proactive_trader_data = proactive_intelligence.build_and_save_report(
-                state=state,
-                market_map=market_map_data,
-                config=self.cfg.trading,
-                data_dir=DATA_DIR,
-            )
-        except Exception as e:
-            log.debug(f"proactive_trader_report.json write failed: {e}")
-            if PROACTIVE_TRADER_REPORT_JSON.exists():
-                try:
-                    proactive_trader_data = json.loads(PROACTIVE_TRADER_REPORT_JSON.read_text())
-                except Exception:
-                    proactive_trader_data = {}
+        proactive_trader_data = dict(self._last_proactive_report or {})
+        if not proactive_trader_data and PROACTIVE_TRADER_REPORT_JSON.exists():
+            try:
+                proactive_trader_data = json.loads(PROACTIVE_TRADER_REPORT_JSON.read_text())
+            except Exception:
+                proactive_trader_data = {}
         if self._last_proactive_execution:
             proactive_trader_data = dict(proactive_trader_data or {})
             proactive_trader_data["starter_execution"] = dict(self._last_proactive_execution or {})

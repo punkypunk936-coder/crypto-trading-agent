@@ -55,14 +55,12 @@ def _csv_path(data_dir: Path | None = None) -> Path:
     return (Path(data_dir).expanduser() if data_dir else TRADES_CSV.parent) / TRADES_CSV.name
 
 
-def _count_jsonl_rows(path: Path) -> int:
-    if not path.exists():
-        return 0
+def _file_richness(path: Path) -> tuple[int, float]:
     try:
-        with path.open(encoding="utf-8") as handle:
-            return sum(1 for line in handle if line.strip())
+        stat = path.stat()
+        return stat.st_size, stat.st_mtime
     except Exception:
-        return 0
+        return 0, 0.0
 
 
 def _count_csv_rows(path: Path) -> int:
@@ -84,17 +82,19 @@ def resolve_richest_history_data_dir(preferred: Path | None = None) -> Path:
         if path not in candidates:
             candidates.append(path)
 
-    scored: list[tuple[tuple[int, int, int, int], Path]] = []
+    scored: list[tuple[tuple[int, float, int, float, int, int], Path]] = []
     for path in candidates:
-        dataset_rows = _count_jsonl_rows(_dataset_path(path))
+        dataset_size, dataset_mtime = _file_richness(_dataset_path(path))
         csv_rows = _count_csv_rows(_csv_path(path))
-        decision_rows = _count_jsonl_rows(path / "decision_dataset.jsonl")
-        feature_rows = _count_jsonl_rows(path / "feature_store.jsonl")
+        decision_size, _ = _file_richness(path / "decision_dataset.jsonl")
+        feature_size, _ = _file_richness(path / "feature_store.jsonl")
         score = (
-            max(dataset_rows, csv_rows),  # best closed-trade history wins first
-            dataset_rows,
-            decision_rows,
-            feature_rows,
+            max(dataset_size, csv_rows),  # best closed-trade history wins first
+            dataset_mtime,
+            dataset_size,
+            float(csv_rows),
+            decision_size,
+            feature_size,
         )
         scored.append((score, path))
 
@@ -120,13 +120,33 @@ def append_closed_trade(record: dict, *, data_dir: Path | None = None) -> None:
         f.write(json.dumps(payload, default=_json_default, sort_keys=True) + "\n")
 
 
-def _load_jsonl_rows(path: Path) -> list[dict]:
+def _tail_lines(path: Path, limit: int, chunk_bytes: int = 1024 * 1024) -> list[str]:
+    if limit <= 0 or not path.exists():
+        return []
+    with path.open("rb") as handle:
+        handle.seek(0, 2)
+        position = handle.tell()
+        chunks: list[bytes] = []
+        newline_count = 0
+        while position > 0 and newline_count <= limit:
+            read_size = min(chunk_bytes, position)
+            position -= read_size
+            handle.seek(position)
+            chunk = handle.read(read_size)
+            chunks.append(chunk)
+            newline_count += chunk.count(b"\n")
+    payload = b"".join(reversed(chunks))
+    return payload.decode("utf-8", errors="replace").splitlines()[-limit:]
+
+
+def _load_jsonl_rows(path: Path, limit: int | None = None) -> list[dict]:
     if not path.exists():
         return []
 
     rows: list[dict] = []
-    with path.open(encoding="utf-8") as f:
-        for line in f:
+    source = _tail_lines(path, limit) if limit is not None else path.open(encoding="utf-8")
+    try:
+        for line in source:
             line = line.strip()
             if not line:
                 continue
@@ -134,6 +154,9 @@ def _load_jsonl_rows(path: Path) -> list[dict]:
                 rows.append(json.loads(line))
             except Exception as exc:
                 log.debug(f"Skipping malformed trade dataset line: {exc}")
+    finally:
+        if limit is None:
+            source.close()
     return rows
 
 
@@ -263,13 +286,13 @@ def load_closed_trades(
 ) -> list[dict]:
     target_dir = resolve_history_data_dir(data_dir)
     dataset_path = _dataset_path(target_dir)
-    rows = _load_jsonl_rows(dataset_path)
+    rows = _load_jsonl_rows(dataset_path, limit=limit)
 
-    csv_rows = load_csv_closed_trades(data_dir=target_dir) if backfill_from_csv else []
-    if backfill_from_csv and csv_rows and len(rows) < len(csv_rows):
+    csv_rows = load_csv_closed_trades(limit=limit, data_dir=target_dir) if backfill_from_csv else []
+    if backfill_from_csv and limit is None and csv_rows and len(rows) < len(csv_rows):
         try:
             ensure_backfilled_from_csv(data_dir=target_dir)
-            rows = _load_jsonl_rows(dataset_path)
+            rows = _load_jsonl_rows(dataset_path, limit=limit)
         except Exception as exc:
             log.warning("CSV backfill into %s failed: %s", dataset_path, exc)
 

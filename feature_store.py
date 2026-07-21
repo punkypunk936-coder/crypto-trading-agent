@@ -10,6 +10,7 @@ This module gives the agent a stable feature vocabulary that can be reused for:
 from __future__ import annotations
 
 import json
+import os
 import time
 from typing import Any, Iterable, Mapping
 
@@ -19,6 +20,7 @@ from paths import FEATURE_STORE_JSONL
 log = get_logger("feature_store")
 
 FEATURE_VERSION = 1
+MAX_ACTIVE_FEATURE_STORE_BYTES = int(os.getenv("FEATURE_STORE_MAX_ACTIVE_MB", "512")) * 1024 * 1024
 
 NUMERIC_FEATURE_KEYS = (
     "score",
@@ -433,6 +435,20 @@ def append_feature_row(row: Mapping[str, Any]) -> None:
     if not isinstance(row, Mapping) or not row:
         return
     FEATURE_STORE_JSONL.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        if (
+            MAX_ACTIVE_FEATURE_STORE_BYTES > 0
+            and FEATURE_STORE_JSONL.stat().st_size >= MAX_ACTIVE_FEATURE_STORE_BYTES
+        ):
+            archive = FEATURE_STORE_JSONL.with_name(
+                f"{FEATURE_STORE_JSONL.stem}.archive-{time.strftime('%Y%m%d-%H%M%S')}{FEATURE_STORE_JSONL.suffix}"
+            )
+            FEATURE_STORE_JSONL.replace(archive)
+            log.info("Rotated oversized feature store to %s", archive)
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        log.warning("Could not rotate oversized feature store: %s", exc)
     with FEATURE_STORE_JSONL.open("a", encoding="utf-8") as f:
         f.write(json.dumps(dict(row), default=_json_default, sort_keys=True) + "\n")
 

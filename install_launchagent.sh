@@ -85,7 +85,7 @@ fi
 if [[ ! -x "$RUNTIME_DIR/.venv/bin/python" ]]; then
   "$PYTHON_BOOTSTRAP_BIN" -m venv "$RUNTIME_DIR/.venv"
 fi
-"$RUNTIME_DIR/.venv/bin/pip" install -q -r "$RUNTIME_DIR/requirements.txt"
+"$RUNTIME_DIR/.venv/bin/python" -m pip install -q -r "$RUNTIME_DIR/requirements.txt"
 
 : > "$LOG_DIR/launchd.stdout.log"
 : > "$LOG_DIR/launchd.stderr.log"

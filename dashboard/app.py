@@ -134,7 +134,7 @@ def _load_trade_dataset_local() -> list:
 def _load_decision_dataset_local() -> list:
     try:
         history_dir = decision_dataset.resolve_richest_decision_data_dir()
-        return decision_dataset.load_decisions(limit=25000, data_dir=history_dir)
+        return decision_dataset.load_decisions(limit=5000, data_dir=history_dir)
     except Exception:
         return []
 

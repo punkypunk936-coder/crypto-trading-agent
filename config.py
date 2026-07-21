@@ -147,6 +147,15 @@ class TradingConfig:
     # the executable universe whenever the connected venue exposes them.
     analysis_coins: List[str]   = field(default_factory=_default_analysis_coins)
 
+    # Keep the live decision loop bounded. The full universe remains visible and
+    # is scanned on a rotating basis, while open positions and core markets are
+    # refreshed every cycle.
+    analysis_cycle_budget_enabled: bool = True
+    analysis_max_symbols_per_cycle: int = 16
+    analysis_priority_coins: List[str] = field(default_factory=lambda: list(_BASE_EXECUTION_COINS))
+    analysis_signal_max_age_minutes: float = 20.0
+    checkpoint_recovery_max_age_seconds: float = 86400.0
+
     # ── Instrument type classification ───────────────────────────────────────
     # "crypto"  → standard crypto perp logic
     # "index"   → macro / non-crypto instrument (SP500, BRENT, WTI, etc.) —
@@ -394,6 +403,7 @@ class TradingConfig:
     orderbook_feed_poll_seconds: float = 3.0
     orderbook_feed_history_size: int = 120
     orderbook_feed_max_snapshot_age_seconds: float = 45.0
+    orderbook_feed_max_symbols: int = 16
     orderbook_feed_breakout_samples: int = 2
     orderbook_guard_distance_pct: float = 1.25
     orderbook_reaction_distance_pct: float = 0.45
@@ -523,6 +533,22 @@ class TradingConfig:
     scalp_reversal_can_bypass_runner: bool = True
     scalp_reversal_open_immediately: bool = True
 
+    # Patient execution separates a useful tactical call from a position worth
+    # funding. Scalp ideas can stay on the radar, but do not receive capital by
+    # default; an already-open scalp can graduate only after favorable proof.
+    patient_execution_enabled: bool = True
+    patient_execution_allow_scalps: bool = False
+    patient_execution_min_thesis_quality: str = "MEDIUM"
+    patient_execution_max_conflict_points: float = 1.0
+    patient_execution_min_probability: float = 0.56
+    patient_execution_min_expected_r: float = 0.20
+    patient_execution_max_uncertainty: float = 0.48
+    patient_execution_max_leverage: int = 3
+    scalp_graduation_enabled: bool = True
+    scalp_graduation_min_tp_progress: float = 0.50
+    scalp_graduation_min_hold_minutes: float = 60.0
+    scalp_graduation_max_conflict_points: float = 1.5
+
     # ── Official event intelligence feeds ────────────────────
     official_event_feed_enabled: bool = True
     official_event_feed_cache_seconds: int = 1800
@@ -553,6 +579,10 @@ class TradingConfig:
     soft_exit_event_min_hold_minutes: float = 1440.0
     soft_exit_max_adverse_r: float = 0.55
     soft_exit_apply_to_scalps: bool = False
+    thesis_invalidation_confirmation_cycles: int = 2
+    thesis_invalidation_min_data_reliability_score: float = 65.0
+    thesis_invalidation_min_hold_minutes: float = 720.0
+    thesis_invalidation_event_min_hold_minutes: float = 2880.0
     use_daily_market_map: bool = True
     market_map_guard_distance_pct: float = 1.10
     market_map_score_influence: float = 1.00
@@ -785,14 +815,15 @@ class TradingConfig:
     proactive_forecast_horizon_hours: float = 24.0
     proactive_forecast_max_open: int = 60
     proactive_report_max_theses: int = 24
+    proactive_report_refresh_minutes: float = 30.0
     proactive_starter_execution_enabled: bool = field(
         default_factory=lambda: os.getenv("PROACTIVE_STARTER_EXECUTION_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
     )
-    proactive_starter_execution_max_per_cycle: int = 3
-    proactive_starter_execution_min_score: float = 60.0
-    proactive_starter_execution_cooldown_minutes: float = 240.0
+    proactive_starter_execution_max_per_cycle: int = 1
+    proactive_starter_execution_min_score: float = 72.0
+    proactive_starter_execution_cooldown_minutes: float = 720.0
     pair_trade_book_enabled: bool = True
-    pair_trade_execution_enabled: bool = True
+    pair_trade_execution_enabled: bool = False
     pair_trade_max_notional_pct: float = 0.015
     pair_trade_hedge_ratio: float = 0.35
     pair_trade_max_pairs: int = 2

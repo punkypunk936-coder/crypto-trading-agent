@@ -4017,6 +4017,7 @@ def test_proactive_starter_execution_opens_capped_event_orders() -> None:
     cfg.trading.proactive_starter_execution_max_per_cycle = 3
     cfg.trading.proactive_starter_execution_min_score = 58.0
     cfg.trading.proactive_starter_execution_cooldown_minutes = 0.0
+    cfg.trading.patient_execution_enabled = False
     cfg.trading.decision_dataset_enabled = False
     cfg.trading.feature_store_enabled = False
 
@@ -9170,7 +9171,182 @@ def test_win_rate_recovery_blocks_crypto_risk_off_long_without_reclaim() -> None
     assert "risk-off" in signal.reason
 
 
+def test_hyperliquid_all_mids_is_shared_across_symbols() -> None:
+    original_post = market_data_module.requests.post
+    original_supported = market_data_module.is_hyperliquid_supported
+    original_resolve = market_data_module.resolve_hyperliquid_symbol
+    original_dex = market_data_module.get_hyperliquid_market_dex
+    original_mids = dict(market_data_module._all_mids_cache)
+    original_backoff = dict(market_data_module._all_mids_backoff_until)
+    calls = []
+
+    class _Resp:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"xyz:AAPL": "101.5", "xyz:GOOGL": "202.5"}
+
+    try:
+        market_data_module._all_mids_cache.clear()
+        market_data_module._all_mids_backoff_until.clear()
+        market_data_module.is_hyperliquid_supported = lambda _coin: True
+        market_data_module.resolve_hyperliquid_symbol = lambda coin: f"xyz:{coin}"
+        market_data_module.get_hyperliquid_market_dex = lambda _coin: "xyz"
+        market_data_module.requests.post = lambda *args, **kwargs: calls.append(kwargs.get("json")) or _Resp()
+        assert market_data_module.get_current_price("AAPL") == 101.5
+        assert market_data_module.get_current_price("GOOGL") == 202.5
+        assert len(calls) == 1, "one allMids payload should serve every symbol on the same DEX"
+    finally:
+        market_data_module.requests.post = original_post
+        market_data_module.is_hyperliquid_supported = original_supported
+        market_data_module.resolve_hyperliquid_symbol = original_resolve
+        market_data_module.get_hyperliquid_market_dex = original_dex
+        market_data_module._all_mids_cache.clear()
+        market_data_module._all_mids_cache.update(original_mids)
+        market_data_module._all_mids_backoff_until.clear()
+        market_data_module._all_mids_backoff_until.update(original_backoff)
+
+
+def test_analysis_budget_prioritizes_core_and_rotates_the_rest() -> None:
+    cfg = build_config()
+    cfg.trading.analysis_cycle_budget_enabled = True
+    cfg.trading.analysis_max_symbols_per_cycle = 5
+    cfg.trading.analysis_priority_coins = ["BTC", "ETH"]
+    cfg.trading.analysis_coins = ["BTC", "ETH", "SOL", "HYPE", "MON", "TAO", "AAPL", "GOOGL"]
+    agent = TradingAgent(cfg, [])
+    first = agent._analysis_batch_for_cycle()
+    second = agent._analysis_batch_for_cycle()
+    assert len(first) == 5 and len(second) == 5
+    assert first[:2] == ["BTC", "ETH"] and second[:2] == ["BTC", "ETH"]
+    assert set(first[2:]) != set(second[2:]), "non-priority symbols should rotate between cycles"
+
+
+def test_patient_execution_keeps_scalp_call_visible_but_unfunded() -> None:
+    cfg = build_config()
+    cfg.trading.patient_execution_enabled = True
+    cfg.trading.patient_execution_allow_scalps = False
+    agent = TradingAgent(cfg, [])
+    signal = SimpleNamespace(
+        action="SHORT",
+        thesis={
+            "quality": "HIGH",
+            "conflict_points": 0.0,
+            "conviction_entry": {"active": True, "scalp": True},
+        },
+        expectancy={"probability": 0.80, "expected_r": 1.2, "uncertainty": 0.20},
+    )
+    profile = agent._patient_execution_profile("BTC", signal)
+    assert profile["permitted"] is False
+    assert profile["scalp"] is True
+    assert "stay on the radar" in profile["summary"]
+
+
+def test_profitable_scalp_can_graduate_into_patient_thesis() -> None:
+    cfg = build_config()
+    agent = TradingAgent(cfg, [])
+    agent.risk.positions["BTC"] = OpenPosition(
+        coin="BTC",
+        direction="LONG",
+        entry_price=100.0,
+        size_usd=100.0,
+        size_coin=1.0,
+        stop_loss=95.0,
+        take_profit=120.0,
+        leverage=2.0,
+        opened_at=time.time() - 120 * 60,
+        metadata={
+            "entry_context": {
+                "scalp_trade": True,
+                "planned_take_profit": 120.0,
+                "trade_plan": {"trade_style": "scalp"},
+            }
+        },
+    )
+    agent._last_signals["BTC"] = {
+        "action": "LONG",
+        "live_price": 111.0,
+        "mtf_bias": "BULLISH",
+        "thesis": {"permitted": True, "conflict_points": 1.5},
+    }
+    signal = SimpleNamespace(action="LONG", price=111.0, thesis=agent._last_signals["BTC"]["thesis"])
+    profile = agent._scalp_graduation_profile("BTC", signal, 111.0)
+    assert profile["active"] is True
+    assert profile["tp_progress"] >= 0.50
+    assert agent.risk.positions["BTC"].metadata["scalp_graduation"]["active"] is True
+
+
+def test_patient_thesis_invalidation_requires_confirmation() -> None:
+    cfg = build_config()
+    cfg.trading.thesis_invalidation_confirmation_cycles = 2
+    cfg.trading.thesis_invalidation_min_hold_minutes = 720.0
+    cfg.trading.thesis_invalidation_event_min_hold_minutes = 720.0
+    agent = TradingAgent(cfg, [])
+    agent.risk.positions["BTC"] = OpenPosition(
+        coin="BTC",
+        direction="LONG",
+        entry_price=100.0,
+        size_usd=100.0,
+        size_coin=1.0,
+        stop_loss=90.0,
+        take_profit=130.0,
+        leverage=2.0,
+        opened_at=time.time() - 800 * 60,
+        metadata={"entry_context": {"planned_stop_loss": 90.0, "planned_take_profit": 130.0}},
+    )
+    agent._last_signals["BTC"] = {
+        "action": "FLAT",
+        "live_price": 95.0,
+        "structure_trend": "DOWNTREND",
+        "mtf_bias": "NEUTRAL",
+        "orderbook_breakout_state": "NONE",
+        "data_reliability_score": 90.0,
+        "thesis": {"permitted": False, "state": "NO_TRADE", "conflict_points": 1.0},
+    }
+    signal = SimpleNamespace(action="FLAT", price=95.0, thesis=agent._last_signals["BTC"]["thesis"])
+    assert agent._detect_position_invalidation("BTC", "LONG", signal) == ""
+    assert agent._detect_position_invalidation("BTC", "LONG", signal) == "structure_invalidation"
+
+
+def test_trade_logger_recovery_allocates_unique_closed_ids() -> None:
+    original_log = trade_logger_module.LOG_FILE
+    original_counter = trade_logger_module._trade_counter
+    original_open = dict(trade_logger_module._open_trades)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "trades.csv"
+        with path.open("w", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=trade_logger_module.HEADERS)
+            writer.writeheader()
+            writer.writerow({"trade_id": 7, "coin": "BTC", "direction": "LONG", "closed_at": "2026-01-01 00:00"})
+        try:
+            trade_logger_module.LOG_FILE = path
+            trade_logger_module._trade_counter = 7
+            trade_logger_module._open_trades.clear()
+            trade_logger_module.restore_open("BTC", "LONG", 100.0, 100.0, 90.0, 120.0)
+            first = trade_logger_module.log_close("BTC", 101.0, "test")
+            trade_logger_module.restore_open("BTC", "LONG", 102.0, 100.0, 90.0, 120.0)
+            second = trade_logger_module.log_close("BTC", 103.0, "test")
+            assert first["trade_id"] == 8 and second["trade_id"] == 9
+        finally:
+            trade_logger_module.LOG_FILE = original_log
+            trade_logger_module._trade_counter = original_counter
+            trade_logger_module._open_trades.clear()
+            trade_logger_module._open_trades.update(original_open)
+
+
 def run_all() -> None:
+    test_hyperliquid_all_mids_is_shared_across_symbols()
+    print("PASS shared Hyperliquid allMids cache")
+    test_analysis_budget_prioritizes_core_and_rotates_the_rest()
+    print("PASS bounded rotating analysis budget")
+    test_patient_execution_keeps_scalp_call_visible_but_unfunded()
+    print("PASS patient execution scalp selection")
+    test_profitable_scalp_can_graduate_into_patient_thesis()
+    print("PASS profitable scalp graduation")
+    test_patient_thesis_invalidation_requires_confirmation()
+    print("PASS patient thesis invalidation confirmation")
+    test_trade_logger_recovery_allocates_unique_closed_ids()
+    print("PASS unique recovered trade IDs")
     test_checkpoint_recovery()
     print("PASS checkpoint recovery")
     test_checkpoint_recovery_rehydrates_dry_run_pending_limits()

@@ -35,11 +35,16 @@ LIGHTER_API_BASE_URL = "https://mainnet.zklighter.elliot.ai"
 _cache: dict = {}
 _price_cache: dict = {}
 _reference_price_cache: dict = {}
+_all_mids_cache: dict = {}
+_all_mids_backoff_until: dict = {}
+_candle_backoff_until: dict = {}
 CACHE_TTL_SECONDS = 60   # re-fetch after 60 s
 STALE_CACHE_TTL_SECONDS = 1800
 STALE_PRICE_TTL_SECONDS = 900
 REFERENCE_PRICE_TTL_SECONDS = 60
 DEFAULT_REFERENCE_MAX_DEVIATION_PCT = 2.0
+ALL_MIDS_CACHE_TTL_SECONDS = 5
+HYPERLIQUID_RATE_LIMIT_BACKOFF_SECONDS = 30
 
 
 def _hyperliquid_max_candle_staleness_seconds(coin: str, interval: str) -> int:
@@ -112,6 +117,47 @@ def _get_cached_reference_price(
     except Exception:
         return None
     return value if value > 0 else None
+
+
+def _http_status(exc: Exception) -> int:
+    response = getattr(exc, "response", None)
+    try:
+        return int(getattr(response, "status_code", 0) or 0)
+    except Exception:
+        return 0
+
+
+def _all_mids_for_dex(dex: str) -> dict:
+    """Fetch one allMids payload per DEX and share it across every symbol."""
+    key = str(dex or "default").lower()
+    now = time.time()
+    cached = _all_mids_cache.get(key)
+    if cached and now - float(cached[0] or 0.0) < ALL_MIDS_CACHE_TTL_SECONDS:
+        return dict(cached[1] or {})
+    if now < float(_all_mids_backoff_until.get(key, 0.0) or 0.0):
+        return dict(cached[1] or {}) if cached else {}
+
+    payload = {"type": "allMids"}
+    if dex:
+        payload["dex"] = dex
+    try:
+        resp = requests.post(HL_INFO_URL, json=payload, timeout=5)
+        resp.raise_for_status()
+        mids = dict(resp.json() or {})
+        _all_mids_cache[key] = (now, mids)
+        _all_mids_backoff_until.pop(key, None)
+        return mids
+    except Exception as exc:
+        if _http_status(exc) == 429:
+            _all_mids_backoff_until[key] = now + HYPERLIQUID_RATE_LIMIT_BACKOFF_SECONDS
+            log.warning(
+                "Hyperliquid allMids rate-limited for %s; pausing duplicate requests for %ss",
+                key,
+                HYPERLIQUID_RATE_LIMIT_BACKOFF_SECONDS,
+            )
+        else:
+            log.error(f"Failed to get Hyperliquid allMids for {key}: {exc}")
+        return dict(cached[1] or {}) if cached else {}
 
 
 def _cache_frame(cache_key: str, df: Optional[pd.DataFrame], *, coin: str = "") -> None:
@@ -368,12 +414,26 @@ def fetch_candles(
         if dex:
             payload["dex"] = dex
 
+        backoff_key = str(dex or "default").lower()
+        if now < float(_candle_backoff_until.get(backoff_key, 0.0) or 0.0):
+            stale = _get_stale_frame(cache_key)
+            if stale is not None:
+                return stale
+            return None
+
         try:
             resp = requests.post(HL_INFO_URL, json=payload, timeout=10)
             resp.raise_for_status()
             raw = resp.json()
         except Exception as e:
-            log.error(f"Failed to fetch Hyperliquid candles for {coin_upper}/{hl_coin}: {e}")
+            if _http_status(e) == 429:
+                _candle_backoff_until[backoff_key] = now + HYPERLIQUID_RATE_LIMIT_BACKOFF_SECONDS
+                log.warning(
+                    f"Hyperliquid candles rate-limited for {backoff_key}; "
+                    f"pausing duplicate requests for {HYPERLIQUID_RATE_LIMIT_BACKOFF_SECONDS}s"
+                )
+            else:
+                log.error(f"Failed to fetch Hyperliquid candles for {coin_upper}/{hl_coin}: {e}")
             stale = _get_stale_frame(cache_key)
             if stale is not None:
                 log.info(f"[{coin_upper}] Reusing stale Hyperliquid candles while the live feed recovers")
@@ -532,12 +592,7 @@ def get_current_price(coin: str) -> Optional[float]:
         hl_coin = resolve_hyperliquid_symbol(coin_upper)
         dex = get_hyperliquid_market_dex(coin_upper)
         try:
-            payload = {"type": "allMids"}
-            if dex:
-                payload["dex"] = dex
-            resp = requests.post(HL_INFO_URL, json=payload, timeout=5)
-            resp.raise_for_status()
-            mids = resp.json()
+            mids = _all_mids_for_dex(dex)
             price = float(mids.get(hl_coin, 0) or 0.0)
             if price > 0:
                 _cache_price(coin_upper, price)

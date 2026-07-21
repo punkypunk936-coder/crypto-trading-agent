@@ -96,12 +96,13 @@ def read_closed_trades(limit: Optional[int] = None) -> list[dict]:
 
 def _load_last_id() -> int:
     rows = _read_rows()
-    if rows:
+    ids = []
+    for row in rows:
         try:
-            return int(rows[-1].get("trade_id", 0) or 0)
+            ids.append(int(row.get("trade_id", 0) or 0))
         except Exception:
-            return 0
-    return 0
+            continue
+    return max(ids or [0])
 
 
 # In-memory open trades waiting to be closed
@@ -152,18 +153,17 @@ def restore_open(
 ) -> None:
     """
     Restore an open trade so later closes still hit the CSV log.
-    Does NOT increment _trade_counter to avoid duplicate rows on restart.
-    Re-uses the last known trade_id from the CSV for this coin if found.
+
+    Closed rows are immutable. A recovered open position therefore receives the
+    next globally unique ID instead of reusing the last closed ID for that coin.
     """
     _ensure_headers()
     if coin in _open_trades:
         return
 
-    restored_id = _find_last_open_id(coin)
-    if restored_id is None:
-        global _trade_counter
-        _trade_counter += 1
-        restored_id = _trade_counter
+    global _trade_counter
+    _trade_counter = max(_trade_counter, _load_last_id()) + 1
+    restored_id = _trade_counter
 
     _open_trades[coin] = {
         "trade_id": restored_id,
@@ -199,18 +199,6 @@ def update_open(coin: str, entry_price: float, size_usd: float, stop_loss: float
 def get_open_trade(coin: str) -> Optional[dict]:
     trade = _open_trades.get(coin)
     return dict(trade) if trade else None
-
-
-def _find_last_open_id(coin: str) -> Optional[int]:
-    if not LOG_FILE.exists():
-        return None
-    rows = [r for r in _read_rows() if r.get("coin") == coin]
-    if rows:
-        try:
-            return int(rows[-1].get("trade_id", 0) or 0)
-        except Exception:
-            return None
-    return None
 
 
 def log_close(coin: str, exit_price: float, exit_reason: str) -> Optional[dict]:
