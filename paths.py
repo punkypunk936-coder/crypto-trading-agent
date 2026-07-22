@@ -49,6 +49,7 @@ LLM_REFEREE_REPORT_JSON = DATA_DIR / "llm_referee_report.json"  # Latest structu
 PLAYBOOK_DISTILLER_REPORT_JSON = DATA_DIR / "playbook_distiller_report.json"  # Rolling rewrite of what is working by asset/regime
 POLICY_HEALTH_REPORT_JSON = DATA_DIR / "policy_health_report.json"  # Compact architecture/policy health report for win-rate leaks
 PROACTIVE_TRADER_REPORT_JSON = DATA_DIR / "proactive_trader_report.json"  # Research brain: scout book, theses, read-through, starter basket, forecast calibration
+EARNINGS_SESSION_JSON = DATA_DIR / "earnings_session.json"  # Pre/post earnings metric checklist and decision ledger
 THESIS_LEDGER_JSONL = DATA_DIR / "thesis_ledger.jsonl"      # Persistent structured pre-trade theses
 FORECAST_LEDGER_JSONL = DATA_DIR / "forecast_ledger.jsonl"  # Persistent probability forecasts and later outcomes
 

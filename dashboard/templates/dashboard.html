@@ -393,6 +393,124 @@
     display: grid;
     gap: 10px;
   }
+  .radar-context-stack {
+    display: grid;
+    margin: 2px 0 14px;
+    border-top: 1px solid rgba(255,255,255,0.07);
+  }
+  .radar-context-band {
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    min-width: 0;
+  }
+  .radar-context-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 9px;
+  }
+  .radar-context-title {
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+  .radar-context-meta {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 10px;
+    text-align: right;
+  }
+  .durable-list,
+  .earnings-list {
+    display: grid;
+  }
+  .durable-row {
+    display: grid;
+    grid-template-columns: minmax(118px, 0.48fr) minmax(250px, 1.5fr) minmax(230px, 1fr);
+    gap: 14px;
+    align-items: start;
+    padding: 10px 0;
+    border-top: 1px solid rgba(255,255,255,0.045);
+  }
+  .durable-row:first-child,
+  .earnings-row:first-child {
+    border-top: 0;
+    padding-top: 2px;
+  }
+  .durable-name {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex-wrap: wrap;
+  }
+  .durable-symbol {
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 850;
+  }
+  .durable-strength {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 10px;
+    margin-top: 5px;
+  }
+  .context-copy {
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.48;
+  }
+  .context-copy strong {
+    color: var(--text);
+  }
+  .asia-headline {
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 760;
+    line-height: 1.4;
+    margin-bottom: 9px;
+  }
+  .asia-benchmarks {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1px;
+    background: rgba(255,255,255,0.055);
+    margin-bottom: 10px;
+  }
+  .asia-benchmark {
+    min-width: 0;
+    background: var(--card);
+    padding: 8px 9px;
+  }
+  .asia-benchmark-name {
+    color: var(--text);
+    font-size: 11px;
+    font-weight: 780;
+    overflow-wrap: anywhere;
+  }
+  .asia-benchmark-read {
+    font-family: var(--mono);
+    font-size: 10px;
+    margin-top: 4px;
+  }
+  .context-thesis-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.45fr) minmax(240px, 1fr);
+    gap: 16px;
+  }
+  .earnings-row {
+    display: grid;
+    grid-template-columns: minmax(112px, 0.4fr) minmax(250px, 1.35fr) minmax(240px, 1fr);
+    gap: 14px;
+    padding: 10px 0;
+    border-top: 1px solid rgba(255,255,255,0.045);
+  }
+  .earnings-metrics {
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.5;
+  }
   .radar-summary {
     color: var(--text-secondary);
     font-size: 12px;
@@ -437,6 +555,9 @@
   .radar-line strong {
     color: var(--text);
     font-weight: 700;
+  }
+  .radar-thesis-line {
+    min-height: 52px;
   }
   .xyz-card {
     background: #111313;
@@ -614,31 +735,6 @@
     font-size: 10px;
     line-height: 1.35;
     margin-top: 5px;
-  }
-  .radar-step-row {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 6px;
-    margin-top: 9px;
-  }
-  .radar-step {
-    border: 1px solid rgba(255,255,255,0.05);
-    border-radius: 8px;
-    padding: 7px;
-    min-width: 0;
-    background: rgba(0,0,0,0.12);
-  }
-  .radar-step-label {
-    color: var(--muted);
-    font-family: var(--mono);
-    font-size: 9px;
-    text-transform: uppercase;
-  }
-  .radar-step-text {
-    color: var(--text-secondary);
-    font-size: 11px;
-    line-height: 1.35;
-    margin-top: 4px;
   }
   .call-bucket-top {
     display: flex;
@@ -2564,6 +2660,17 @@
   @media (max-width: 640px) {
     .container { padding: 0 12px; }
     header { flex-direction: column; gap: 12px; align-items: flex-start; }
+    .header-right {
+      width: 100%;
+      min-width: 0;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    #last-update {
+      flex-basis: 100%;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
     .grid-4, .grid-3 { grid-template-columns: 1fr 1fr; gap: 10px; }
     .grid-2 { grid-template-columns: 1fr; }
     .card { padding: 16px; }
@@ -2596,8 +2703,22 @@
     .radar-grid {
       grid-template-columns: 1fr;
     }
-    .radar-step-row {
+    .durable-row,
+    .earnings-row,
+    .context-thesis-grid {
+      grid-template-columns: 1fr;
+      gap: 7px;
+    }
+    .asia-benchmarks {
       grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .radar-context-head {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .radar-context-meta {
+      text-align: left;
     }
     .call-watchlist-head {
       flex-direction: column;
@@ -2748,6 +2869,11 @@
     <div class="card-label-row">
       <div class="card-label">Today's Radar</div>
       <div class="card-sub" id="daily-radar-meta">Waiting for the next radar pass...</div>
+    </div>
+    <div class="radar-context-stack">
+      <div id="durable-thesis-body" class="radar-context-band" hidden></div>
+      <div id="asia-session-body" class="radar-context-band" hidden></div>
+      <div id="earnings-session-body" class="radar-context-band" hidden></div>
     </div>
     <div id="daily-radar-body">
       <div class="empty-state">The agent will surface today's focus list after the next cycle.</div>
@@ -3757,6 +3883,8 @@ let latestPlaybookDistillerReport = { summary: {}, assets: {} };
 let latestPolicyHealthReport = { summary: {}, findings: [], roadmap: [] };
 let latestProactiveTraderReport = { summary: {} };
 let latestDailyRadar = { summary: {}, top_assets: [] };
+let latestAsiaSession = { active: false, benchmarks: [] };
+let latestEarningsSession = { active: false, rows: [] };
 let latestXyz = { summary: {}, items: [], segments: [] };
 let latestPnlAttribution = {};
 let commandSearchOpen = false;
@@ -4558,36 +4686,91 @@ function radarStatusChip(item) {
   return '<span class="' + modeClass + '">' + esc(status) + '</span>';
 }
 
-function radarStepsHtml(item) {
-  const steps = Array.isArray((item || {}).first_principles) ? item.first_principles.slice(0, 4) : [];
-  if (!steps.length) return '';
-  return '<div class="radar-step-row">'
-    + steps.map((step) => {
-      const label = String((step || {}).label || 'Check');
-      const text = String((step || {}).text || 'Still forming.');
-      const score = Number((step || {}).score || 0);
-      return '<div class="radar-step">'
-        + '<div class="radar-step-label">' + esc(label + (score > 0 ? ' ' + Math.round(score) : '')) + '</div>'
-        + '<div class="radar-step-text">' + esc(shortText(text, 58)) + '</div>'
-      + '</div>';
-    }).join('')
-  + '</div>';
-}
-
 function radarItemHtml(item) {
   const safe = item || {};
   const score = Number(safe.radar_score || 0);
+  const durable = safe.durable_thesis && safe.durable_profile ? '<span class="review-chip event-chip-starter">DURABLE LONG</span>' : '';
   return '<div class="radar-item">'
     + '<div class="radar-item-top">'
-      + '<div class="token-line"><div class="radar-symbol">' + esc(safe.coin || '--') + '</div>' + radarSideChip(safe) + radarStatusChip(safe) + (safe.add_candidate ? '<span class="review-chip event-chip-starter">ADD SCOPE</span>' : '') + '</div>'
+      + '<div class="token-line"><div class="radar-symbol">' + esc(safe.coin || '--') + '</div>' + radarSideChip(safe) + radarStatusChip(safe) + durable + '</div>'
       + '<div class="radar-score">' + esc(score ? Math.round(score) + '/100' : '--') + '</div>'
     + '</div>'
-    + '<div class="radar-line"><strong>Why:</strong> ' + esc(shortText(safe.why || 'Merit still forming.', 104)) + '</div>'
-    + '<div class="radar-line"><strong>Next:</strong> ' + esc(shortText(safe.next || 'Wait for trigger.', 92)) + '</div>'
-    + '<div class="radar-line"><strong>Invalid:</strong> ' + esc(shortText(safe.invalidation || 'Invalidation forming.', 88)) + '</div>'
-    + '<div class="radar-line"><strong>Scope:</strong> ' + esc(shortText(safe.scope || 'Track only.', 88)) + '</div>'
-    + radarStepsHtml(safe)
+    + '<div class="radar-line radar-thesis-line"><strong>Thesis:</strong> ' + esc(shortText(safe.thesis || safe.why || 'Evidence is still forming.', 290)) + '</div>'
+    + '<div class="radar-line"><strong>Invalidation:</strong> ' + esc(shortText(safe.invalidation || 'No trade until invalidation is explicit.', 190)) + '</div>'
   + '</div>';
+}
+
+function renderDurableTheses(report) {
+  const body = document.getElementById('durable-thesis-body');
+  if (!body) return;
+  const rows = Array.isArray((report || {}).durable_theses) ? report.durable_theses.filter((row) => row && row.coin) : [];
+  body.hidden = !rows.length;
+  if (!rows.length) {
+    body.innerHTML = '';
+    return;
+  }
+  body.innerHTML = '<div class="radar-context-head">'
+    + '<div class="radar-context-title">Durable theses</div>'
+    + '<div class="radar-context-meta">Strategic long bias • ' + esc(String(rows.length)) + ' qualified</div>'
+  + '</div>'
+  + '<div class="durable-list">' + rows.slice(0, 6).map((row) => {
+    const tactical = String(row.tactical_state || 'WAITING FOR ENTRY');
+    return '<div class="durable-row">'
+      + '<div><div class="durable-name"><span class="durable-symbol">' + esc(row.coin) + '</span><span class="review-chip event-chip-starter">' + esc(row.label || 'DEVELOPING') + '</span></div><div class="durable-strength">' + esc(String(Math.round(Number(row.strength || 0)))) + '/100 • ' + esc(tactical) + '</div></div>'
+      + '<div class="context-copy"><strong>Case:</strong> ' + esc(shortText(row.thesis || '', 290)) + '</div>'
+      + '<div class="context-copy"><strong>Thesis breaks:</strong> ' + esc(shortText(row.invalidation || '', 240)) + '</div>'
+    + '</div>';
+  }).join('') + '</div>';
+}
+
+function renderAsiaSession(report) {
+  const body = document.getElementById('asia-session-body');
+  if (!body) return;
+  const safe = report || {};
+  const rows = Array.isArray(safe.benchmarks) ? safe.benchmarks.filter((row) => row && row.fresh) : [];
+  body.hidden = !safe.active || !rows.length;
+  if (body.hidden) {
+    body.innerHTML = '';
+    return;
+  }
+  const bias = String(safe.regional_bias || 'MIXED');
+  const biasTone = bias === 'RISK_ON' ? biasClass('bullish') : bias === 'RISK_OFF' ? biasClass('bearish') : biasClass('neutral');
+  body.innerHTML = '<div class="radar-context-head">'
+    + '<div class="radar-context-title">Asia lead-in</div>'
+    + '<div class="radar-context-meta"><span class="' + biasTone + '">' + esc(bias.replace('_', ' ')) + '</span></div>'
+  + '</div>'
+  + '<div class="asia-headline">' + esc(shortText(safe.headline || '', 220)) + '</div>'
+  + '<div class="asia-benchmarks">' + rows.slice(0, 4).map((row) => {
+    const tone = row.direction === 'LONG' ? 'green' : row.direction === 'SHORT' ? 'red' : 'muted';
+    const move = Number(row.move_pct || 0);
+    return '<div class="asia-benchmark"><div class="asia-benchmark-name">' + esc(row.label || row.symbol) + '</div><div class="asia-benchmark-read ' + tone + '">' + esc(row.direction || 'FLAT') + (move ? ' • ' + (move > 0 ? '+' : '') + move.toFixed(1) + '%' : '') + '</div></div>';
+  }).join('') + '</div>'
+  + '<div class="context-thesis-grid"><div class="context-copy"><strong>US read-through:</strong> ' + esc(shortText(safe.us_readthrough || '', 360)) + '</div><div class="context-copy"><strong>Invalidation:</strong> ' + esc(shortText(safe.invalidation || '', 250)) + '</div></div>';
+}
+
+function renderEarningsSession(report) {
+  const body = document.getElementById('earnings-session-body');
+  if (!body) return;
+  const safe = report || {};
+  const rows = Array.isArray(safe.rows) ? safe.rows.filter((row) => row && row.coin) : [];
+  body.hidden = !safe.active || !rows.length;
+  if (body.hidden) {
+    body.innerHTML = '';
+    return;
+  }
+  body.innerHTML = '<div class="radar-context-head">'
+    + '<div class="radar-context-title">Earnings session</div>'
+    + '<div class="radar-context-meta">' + esc(String(safe.pre_event_count || 0)) + ' pre • ' + esc(String(safe.live_count || 0)) + ' live • ' + esc(String(safe.post_report_count || 0)) + ' review</div>'
+  + '</div>'
+  + '<div class="earnings-list">' + rows.slice(0, 6).map((row) => {
+    const phase = String(row.phase || 'PRE_EVENT').replaceAll('_', ' ');
+    const metrics = Array.isArray(row.metrics) ? row.metrics.slice(0, 5).join(' • ') : '';
+    return '<div class="earnings-row">'
+      + '<div><div class="durable-name"><span class="durable-symbol">' + esc(row.coin) + '</span><span class="review-chip event-chip-starter">' + esc(phase) + '</span></div><div class="durable-strength">' + esc(row.decision || 'WAIT FOR PRINT') + (Number(row.implied_move_pct || 0) ? ' • ' + Number(row.implied_move_pct).toFixed(1) + '% implied' : '') + '</div></div>'
+      + '<div><div class="earnings-metrics"><strong>Scorecard:</strong> ' + esc(metrics) + '</div><div class="context-copy" style="margin-top:5px;"><strong>Into print:</strong> ' + esc(shortText(row.pre_thesis || row.event_context || '', 250)) + '</div></div>'
+      + '<div class="context-copy"><strong>After print:</strong> ' + esc(shortText(row.flip_condition || row.post_report_check || '', 300)) + '</div>'
+    + '</div>';
+  }).join('') + '</div>';
 }
 
 function renderDailyRadar(report) {
@@ -5481,6 +5664,8 @@ async function refresh() {
     latestPolicyHealthReport = data.policy_health_report || ((s || {}).policy_health) || { summary: {}, findings: [], roadmap: [] };
     latestProactiveTraderReport = data.proactive_trader_report || { summary: {} };
     latestDailyRadar = data.daily_radar || ((s || {}).daily_radar) || { summary: {}, top_assets: [] };
+    latestAsiaSession = data.asia_session || { active: false, benchmarks: [] };
+    latestEarningsSession = data.earnings_session || { active: false, rows: [] };
     latestXyz = data.xyz || ((s || {}).xyz) || { summary: {}, items: [], segments: [] };
     latestPnlAttribution = data.pnl_attribution || {};
     const actionBoard = data.action_board || { items: [], lead: null };
@@ -5607,6 +5792,9 @@ async function refresh() {
         '</div>';
     }
 
+    renderDurableTheses(latestDailyRadar);
+    renderAsiaSession(latestAsiaSession);
+    renderEarningsSession(latestEarningsSession);
     renderDailyRadar(latestDailyRadar);
     renderXyzSection(latestXyz);
     renderActionBoard(actionBoard);

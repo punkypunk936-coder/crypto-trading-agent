@@ -19,6 +19,8 @@ from datetime import datetime
 from pathlib import Path
 
 import decision_dataset
+import asia_session
+import earnings_session
 from flask import Flask, render_template, jsonify, request, abort, send_file, Response
 import market_map as market_map_store
 import trade_dataset
@@ -33,6 +35,7 @@ from paths import (
     DAILY_MARKET_MAP_JSON,
     DASHBOARD_SNAPSHOT_JSON,
     DECISION_REVIEW_REPORT_JSON,
+    EARNINGS_SESSION_JSON,
     KILL_FILE,
     LLM_REFEREE_REPORT_JSON,
     MISSED_MOVE_REPORT_JSON,
@@ -275,11 +278,20 @@ def _load_snapshot_local() -> dict | None:
     if not isinstance(payload, dict) or "state" not in payload:
         return None
     if _snapshot_is_prebuilt(payload) and "daily_radar" in payload:
+        shaped_state = augment_state(payload.get("state") or {})
         if "xyz" not in payload:
             try:
-                payload["xyz"] = build_xyz_section(augment_state(payload.get("state") or {}), payload.get("action_board") or {})
+                payload["xyz"] = build_xyz_section(shaped_state, payload.get("action_board") or {})
             except Exception:
                 payload["xyz"] = {"title": "xyz", "summary": {}, "items": [], "segments": []}
+        if "asia_session" not in payload:
+            payload["asia_session"] = asia_session.build_asia_session(shaped_state)
+        if "earnings_session" not in payload:
+            payload["earnings_session"] = earnings_session.build_earnings_session(
+                shaped_state,
+                payload.get("daily_radar") or {},
+                ledger_path=EARNINGS_SESSION_JSON,
+            )
         return _cache_local_snapshot(payload, mtime_ns=mtime_ns)
     hydrated = _hydrate_snapshot_payload({"snapshot": payload}, server_timestamp=payload.get("server_time"))
     return _cache_local_snapshot(hydrated, mtime_ns=mtime_ns)
@@ -366,6 +378,7 @@ def _build_local_snapshot(server_timestamp: str | None = None) -> dict:
         playbook_distiller_report=_load_playbook_distiller_report_local(),
         policy_health_report=_load_policy_health_report_local(),
         proactive_trader_report=_load_proactive_trader_report_local(),
+        earnings_ledger_path=EARNINGS_SESSION_JSON,
         server_timestamp=server_timestamp,
     )
 

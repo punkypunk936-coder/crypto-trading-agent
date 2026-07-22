@@ -19,6 +19,7 @@ load_dotenv()
 
 
 _BASE_EXECUTION_COINS = ["BTC", "ETH", "SOL", "HYPE", "MON", "TAO", "SP500", "XAU"]
+_ASIA_CONTEXT_COINS = ["KR200", "JP225", "EWY", "EWJ"]
 
 _BASE_INSTRUMENT_TYPES = {
     "BTC": "crypto",
@@ -151,8 +152,10 @@ class TradingConfig:
     # is scanned on a rotating basis, while open positions and core markets are
     # refreshed every cycle.
     analysis_cycle_budget_enabled: bool = True
-    analysis_max_symbols_per_cycle: int = 16
-    analysis_priority_coins: List[str] = field(default_factory=lambda: list(_BASE_EXECUTION_COINS))
+    analysis_max_symbols_per_cycle: int = 20
+    analysis_priority_coins: List[str] = field(
+        default_factory=lambda: _unique_coins(_BASE_EXECUTION_COINS, _ASIA_CONTEXT_COINS)
+    )
     analysis_signal_max_age_minutes: float = 20.0
     cycle_price_poll_max_trigger_symbols: int = 24
     checkpoint_recovery_max_age_seconds: float = 86400.0

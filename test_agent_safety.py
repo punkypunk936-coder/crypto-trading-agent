@@ -32,6 +32,8 @@ import backtest as backtest_module
 import challenger_model as challenger_model_module
 import data_reliability as data_reliability_module
 import daily_radar as daily_radar_module
+import asia_session as asia_session_module
+import earnings_session as earnings_session_module
 import decision_dataset as decision_dataset_module
 import decision_review_lab as decision_review_lab_module
 import execution_coach as execution_coach_module
@@ -3492,6 +3494,8 @@ def test_dashboard_upgrades_legacy_prebuilt_snapshot_with_daily_radar() -> None:
             assert payload is not None
             assert payload["state"]["cycle_number"] == 78
             assert payload["daily_radar"]["top_assets"][0]["coin"] == "GOOGL"
+            assert "asia_session" in payload
+            assert "earnings_session" in payload
             assert payload["xyz"]["title"] == "xyz"
         finally:
             dashboard_module.SNAPSHOT = original_snapshot
@@ -3648,6 +3652,7 @@ def test_install_launchagent_preserves_learning_datasets() -> None:
         "trade_dataset.jsonl",
         "precision_lab_report.json",
         "playbook_distiller_report.json",
+        "earnings_session.json",
     ):
         assert f'--exclude "{filename}"' in script, f"runtime sync should preserve {filename}"
 
@@ -9130,6 +9135,141 @@ def test_daily_radar_surfaces_first_principles_and_add_scope() -> None:
     ]
 
 
+def test_daily_radar_explains_and_ranks_durable_semiconductor_thesis() -> None:
+    state = {
+        "signals": {
+            "AMD": {
+                "action": "LONG",
+                "score": 84.0,
+                "execution_mode": "tradable",
+                "instrument_type": "equity",
+                "asset_categories": ["semis_memory", "ai_infra"],
+                "analyst_revision_score": 5.0,
+                "analyst_revision_summary": "EPS revisions 2 up/0 down; Street 28 buy/8 hold/0 sell",
+                "first_principles": {
+                    "why_now": "Data-centre demand is accelerating into the next earnings window.",
+                    "wrong_if": "Invalid below 155.",
+                    "fundamental_score": 100.0,
+                    "attention_score": 72.0,
+                    "flow_score": 70.0,
+                    "price_score": 78.0,
+                    "sequence_score": 93.0,
+                    "theme": "semis_memory",
+                },
+            }
+        },
+        "positions": [],
+        "config": {
+            "coins": ["AMD"],
+            "analysis_coins": ["AMD"],
+            "core_long_thesis_coins": ["AMD"],
+            "core_long_break_confirmation_cycles": 3,
+        },
+    }
+    market_map = {
+        "coins": {
+            "AMD": {
+                "bias": "BULLISH",
+                "supports": [155.0],
+                "summary": "Daily reclaim was confirmed; price is testing mapped support.",
+            }
+        }
+    }
+    radar = daily_radar_module.build_daily_radar(state, market_map, {"items": []}, limit=4)
+    row = radar["top_assets"][0]
+    assert row["thesis"].startswith("Bullish because AI accelerators")
+    assert "EPS revisions are 2 up versus 0 down" in row["thesis"]
+    assert "testing mapped support" in row["thesis"]
+    assert row["durable_thesis"] is True
+    assert radar["durable_theses"][0]["coin"] == "AMD"
+    assert radar["durable_theses"][0]["strategic_direction"] == "LONG"
+    assert "for 4 fresh checks" in radar["durable_theses"][0]["invalidation"]
+
+
+def test_asia_session_builds_regional_us_semiconductor_readthrough() -> None:
+    now = datetime(2026, 7, 22, 4, 0, tzinfo=timezone.utc)
+    fresh_ts = now.timestamp() - 600
+    state = {
+        "signals": {
+            "KR200": {"action": "LONG", "recent_move_pct": 1.4, "analysis_updated_ts": fresh_ts},
+            "JP225": {"action": "LONG", "recent_move_pct": 0.8, "analysis_updated_ts": fresh_ts},
+            "SKHX": {"action": "LONG", "recent_move_pct": 2.1, "analysis_updated_ts": fresh_ts},
+            "TSM": {"action": "LONG", "recent_move_pct": 1.2, "analysis_updated_ts": fresh_ts},
+        }
+    }
+    report = asia_session_module.build_asia_session(state, now=now)
+    assert report["active"] is True
+    assert report["regional_bias"] == "RISK_ON"
+    assert "SKHX" in report["us_readthrough"]
+    assert "MU, SNDK, AMD, NVDA, MRVL" in report["us_readthrough"]
+    assert "reverse lower" in report["invalidation"]
+
+
+def test_earnings_session_is_gated_and_tracks_post_report_decisions() -> None:
+    now = datetime(2026, 7, 22, 4, 0, tzinfo=timezone.utc)
+    quiet = {
+        "signals": {
+            "AMD": {
+                "instrument_type": "equity",
+                "news_event_score": 4.0,
+                "news_event_summary": "Analyst raised the price target.",
+            }
+        },
+        "config": {},
+    }
+    assert earnings_session_module.build_earnings_session(quiet, now=now)["active"] is False
+
+    active = {
+        "signals": {
+            "AMD": {
+                "instrument_type": "equity",
+                "asset_categories": ["semis_memory"],
+                "action": "LONG",
+                "analyst_revision_score": 2.0,
+                "official_event_score": 4.0,
+                "official_event_summary": "AMD reported results: Data Center revenue $7.2 billion and raised guidance.",
+            },
+            "NVDA": {
+                "instrument_type": "equity",
+                "asset_categories": ["semis_memory"],
+                "action": "FLAT",
+                "news_event_score": 3.0,
+                "news_event_summary": "Earnings calendar: conference call today after the close.",
+            },
+        },
+        "config": {},
+    }
+    radar = {
+        "top_assets": [
+            {"coin": "AMD", "thesis": "AI demand is compounding.", "invalidation": "Invalid below 155."},
+            {"coin": "NVDA", "thesis": "Blackwell demand is strong.", "invalidation": "Invalid below 165."},
+        ]
+    }
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        ledger = Path(tmp_dir) / "earnings.json"
+        report = earnings_session_module.build_earnings_session(active, radar, ledger_path=ledger, now=now)
+        assert ledger.exists()
+    assert report["active"] is True
+    amd = next(row for row in report["rows"] if row["coin"] == "AMD")
+    assert amd["phase"] == "POST_REPORT"
+    assert amd["decision"] == "THESIS CONFIRMED"
+    assert "Data Center revenue" in amd["metrics"]
+    assert "at least two core metrics miss" in amd["flip_condition"]
+
+
+def test_dashboard_radar_renders_context_without_vague_step_tiles() -> None:
+    template = Path("dashboard/templates/dashboard.html").read_text()
+    assert "renderDurableTheses" in template
+    assert "renderAsiaSession" in template
+    assert "renderEarningsSession" in template
+    assert "durable-thesis-body" in template
+    assert "asia-session-body" in template
+    assert "earnings-session-body" in template
+    assert "radarStepsHtml" not in template
+    assert "<strong>Thesis:</strong>" in template
+    assert "<strong>Invalidation:</strong>" in template
+
+
 def test_dashboard_snapshot_includes_daily_radar() -> None:
     snapshot = build_dashboard_snapshot(
         {
@@ -9158,6 +9298,8 @@ def test_dashboard_snapshot_includes_daily_radar() -> None:
     )
     assert snapshot["daily_radar"]["summary"]["focus_count"] >= 1
     assert snapshot["daily_radar"]["top_assets"][0]["coin"] == "META"
+    assert "asia_session" in snapshot
+    assert "earnings_session" in snapshot
 
 
 def test_first_principles_guard_blocks_marginal_price_only_entry() -> None:
@@ -10033,6 +10175,14 @@ def run_all() -> None:
     print("PASS dashboard performance edge snapshot")
     test_daily_radar_surfaces_first_principles_and_add_scope()
     print("PASS daily radar first-principles add scope")
+    test_daily_radar_explains_and_ranks_durable_semiconductor_thesis()
+    print("PASS daily radar durable semiconductor thesis")
+    test_asia_session_builds_regional_us_semiconductor_readthrough()
+    print("PASS Asia-to-US semiconductor read-through")
+    test_earnings_session_is_gated_and_tracks_post_report_decisions()
+    print("PASS season-gated earnings session")
+    test_dashboard_radar_renders_context_without_vague_step_tiles()
+    print("PASS dashboard contextual radar rendering")
     test_dashboard_snapshot_includes_daily_radar()
     print("PASS dashboard daily radar snapshot")
     test_first_principles_guard_blocks_marginal_price_only_entry()

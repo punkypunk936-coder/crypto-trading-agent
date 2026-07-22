@@ -8,9 +8,44 @@ the few questions an operator actually needs answered today.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import re
 from typing import Any
 
 from asset_context import asset_bucket, asset_categories_for_coin, instrument_type_for_coin
+
+
+COMPANY_DRIVERS: dict[str, str] = {
+    "AAPL": "services growth, device demand, and the next AI-enabled upgrade cycle",
+    "AMD": "AI accelerators and server CPUs expanding the data-centre revenue runway",
+    "AMZN": "AWS growth, Trainium adoption, and improving retail operating leverage",
+    "GOOGL": "Search cash flow funding Cloud, Gemini, TPU capacity, and Waymo optionality",
+    "META": "ad monetization funding a durable AI infrastructure and engagement cycle",
+    "MSFT": "Azure and Copilot converting AI demand into recurring enterprise revenue",
+    "NVDA": "Blackwell and Rubin demand sustaining the accelerated-compute platform cycle",
+    "TSM": "leading-edge capacity and advanced packaging capturing broad AI-chip demand",
+    "MU": "HBM and server-memory demand tightening supply and lifting memory economics",
+    "SNDK": "NAND discipline and enterprise SSD demand improving flash pricing power",
+    "SKHX": "HBM leadership and AI-memory demand supporting a multi-year capacity cycle",
+    "MRVL": "custom silicon and interconnect demand broadening the AI infrastructure buildout",
+    "INTC": "Xeon demand and 18A foundry execution determining whether the turnaround compounds",
+    "CRWV": "contracted GPU-cloud capacity converting AI demand into a visible revenue backlog",
+    "CBRS": "wafer-scale deployments offering differentiated exposure to AI inference demand",
+    "COIN": "crypto trading activity, stablecoin economics, and institutional adoption driving operating leverage",
+    "HIMS": "subscriber growth and retention determining whether consumer-health distribution compounds",
+    "COST": "membership renewal, traffic, and pricing power sustaining defensive earnings growth",
+    "BABA": "cloud and AI monetization improving while China consumption expectations reset",
+}
+
+SECTOR_DRIVERS: dict[str, str] = {
+    "semis_memory": "AI compute demand, supply discipline, and estimate revisions",
+    "mag7": "earnings durability, AI monetization, and capital-spending returns",
+    "neoclouds": "contracted capacity, financing discipline, and GPU-cloud utilization",
+    "ai_infra": "AI infrastructure deployments, backlog conversion, and customer concentration",
+    "crypto_equities": "crypto volumes, stablecoin economics, and risk appetite",
+    "consumer": "traffic, pricing power, margins, and forward guidance",
+    "biotech_glp1": "patient growth, retention, access, and margin durability",
+    "financials": "asset growth, fee income, credit quality, and capital returns",
+}
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
@@ -119,28 +154,110 @@ def _first_principles(signal: dict) -> dict:
     }
 
 
-def _merit_text(coin: str, direction: str, fp: dict, signal: dict, item: dict, map_entry: dict) -> str:
-    explicit = _safe_str(
-        fp.get("why_now")
-        or fp.get("fundamental_driver")
-        or signal.get("official_event_summary")
-        or signal.get("news_event_summary")
-        or signal.get("analyst_revision_summary")
-        or signal.get("news_catalyst_summary")
-        or fp.get("plain_thesis")
-        or item.get("headline")
-        or item.get("why_this_lead")
-        or signal.get("thesis_summary")
-        or signal.get("decision_reason")
-        or map_entry.get("summary")
+def _sentence(value: Any) -> str:
+    text = " ".join(_safe_str(value).split()).strip(" ,.;")
+    return text[:1].upper() + text[1:] if text else ""
+
+
+def _revision_evidence(signal: dict) -> tuple[str, str]:
+    summary = _safe_str(signal.get("analyst_revision_summary"))
+    score = _safe_float(signal.get("analyst_revision_score"))
+    if not summary:
+        return "", "neutral"
+    eps = re.search(r"EPS revisions\s+(\d+)\s+up/(\d+)\s+down", summary, flags=re.IGNORECASE)
+    street = re.search(
+        r"street\s+(\d+)\s+buy(?:/(\d+)\s+hold)?/(\d+)\s+sell|street\s+(\d+)\s+buy\s+vs\s+(\d+)\s+sell",
+        summary,
+        flags=re.IGNORECASE,
     )
-    if explicit:
-        return _short(explicit, 132)
+    parts: list[str] = []
+    if eps:
+        parts.append(f"EPS revisions are {eps.group(1)} up versus {eps.group(2)} down")
+    if street:
+        buys = street.group(1) or street.group(4)
+        sells = street.group(3) or street.group(5)
+        parts.append(f"the street is {buys} buy versus {sells} sell")
+    if not parts:
+        bias = "positive" if score > 0.75 else "negative" if score < -0.75 else "mixed"
+        parts.append(f"the live analyst-revision read is {bias}")
+    tone = "positive" if score > 0.75 else "negative" if score < -0.75 else "mixed"
+    return "; ".join(parts), tone
+
+
+def _price_evidence(signal: dict, map_entry: dict) -> str:
+    summary = _safe_str(signal.get("market_map_summary") or map_entry.get("summary")).lower()
+    if "reclaim was confirmed" in summary and "slipped back below" in summary:
+        return "the larger reclaim is intact, but live price is retesting it from below"
+    if "breakdown was confirmed" in summary and "bounced back above" in summary:
+        return "buyers absorbed the daily breakdown and reclaimed the level"
+    if "testing mapped support" in summary:
+        return "price is testing mapped support rather than breaking structure"
+    if "sitting in mapped demand" in summary and "pressing mapped resistance" in summary:
+        return "price is holding demand but still has to clear mapped resistance"
+    if "sitting in mapped demand" in summary:
+        return "price is holding inside mapped demand"
+    if "pressing mapped resistance" in summary:
+        return "price is pressing mapped resistance"
+    if "bearish" in summary or "breakdown" in summary:
+        return "price structure remains damaged and needs a reclaim"
+    if "bullish" in summary or "reclaim" in summary or "breakout" in summary:
+        return "price structure is confirming the bullish case"
+    return _safe_str(signal.get("first_principles_price_confirmation") or signal.get("price_action_summary"))
+
+
+def _business_driver(coin: str, categories: list[str], fp: dict) -> str:
+    if coin in COMPANY_DRIVERS:
+        return COMPANY_DRIVERS[coin]
+    for category in categories:
+        if category in SECTOR_DRIVERS:
+            return SECTOR_DRIVERS[category]
+    return _safe_str(fp.get("what_matters") or fp.get("fundamental_driver"), "the earnings and demand setup")
+
+
+def _merit_text(
+    coin: str,
+    direction: str,
+    fp: dict,
+    signal: dict,
+    item: dict,
+    map_entry: dict,
+    categories: list[str],
+) -> str:
+    driver = _business_driver(coin, categories, fp)
+    revision, revision_tone = _revision_evidence(signal)
+    price = _price_evidence(signal, map_entry)
+    event_text = _safe_str(
+        signal.get("official_event_summary")
+        or signal.get("news_event_summary")
+        or fp.get("why_now")
+    )
+    event_is_specific = bool(event_text and not re.fullmatch(r"[a-z _+\-/]+", event_text.lower()))
+
     if direction == "LONG":
-        return f"{coin} has enough fundamental, attention, and setup pressure to stay on the bullish radar."
-    if direction == "SHORT":
-        return f"{coin} has enough weakness or crowded-risk pressure to stay on the bearish radar."
-    return f"{coin} is tracked, but merit is not strong enough for a directional call yet."
+        if revision_tone == "negative":
+            lead = f"Bullish tactically despite a fundamental warning: {revision}"
+        else:
+            lead = f"Bullish because {driver}"
+    elif direction == "SHORT":
+        if revision_tone == "positive":
+            lead = f"Tactical bearish call, not a durable short: {revision}"
+        else:
+            lead = f"Bearish because {revision or driver + ' is weakening'}"
+    else:
+        lead = f"No directional trade yet: {driver} matters, but the evidence is not aligned"
+
+    evidence: list[str] = []
+    if revision and not (direction == "SHORT" and revision_tone == "positive") and revision.lower() not in lead.lower():
+        evidence.append(revision)
+    if event_is_specific:
+        evidence.append(_sentence(event_text))
+    if price:
+        evidence.append(price)
+    if not evidence:
+        evidence.append(_safe_str(item.get("headline") or fp.get("plain_thesis") or signal.get("decision_reason")))
+    joined = ". ".join(_sentence(value) for value in evidence if value)
+    thesis = lead.rstrip(".") + (f". {joined}" if joined else "")
+    return _short(thesis, 290)
 
 
 def _next_text(direction: str, signal: dict, item: dict, map_entry: dict, position: dict) -> str:
@@ -190,6 +307,63 @@ def _invalidation(direction: str, fp: dict, signal: dict, item: dict, map_entry:
             resistance = min([x for x in [resistance] + resistances if x > 0])
         return f"Invalid above {resistance:,.4g}" if resistance else "Invalid if supply is reclaimed."
     return "No trade until invalidation is explicit."
+
+
+def _durable_profile(
+    coin: str,
+    *,
+    categories: list[str],
+    config: dict,
+    fp: dict,
+    signal: dict,
+    tactical_direction: str,
+    tactical_invalidation: str,
+    thesis: str,
+) -> dict:
+    core_names = {str(value or "").upper() for value in config.get("core_long_thesis_coins") or []}
+    semiconductor = "semis_memory" in categories
+    eligible = coin in core_names or semiconductor
+    fundamental = _safe_float(fp.get("fundamental_score"))
+    sequence = _safe_float(fp.get("sequence_score"))
+    revision = _safe_float(signal.get("analyst_revision_score"))
+    if not eligible or fundamental < 62.0 or sequence < 66.0 or revision < -0.75:
+        return {"active": False}
+
+    strength = min(
+        100.0,
+        fundamental * 0.42
+        + sequence * 0.38
+        + max(0.0, revision) * 2.2
+        + (8.0 if coin in core_names else 4.0),
+    )
+    if strength < 72.0:
+        return {"active": False}
+    maturity = "DURABLE" if strength >= 88.0 else "DEVELOPING"
+    cycles = 4 if semiconductor else int(config.get("core_long_break_confirmation_cycles") or 3)
+    invalidation = tactical_invalidation or "Invalid if price structure and revisions break together."
+    level_clause = invalidation.replace("Wrong ", "").replace("Invalid ", "").strip().rstrip(".")
+    driver = _business_driver(coin, categories, fp)
+    if level_clause.lower().startswith(("above ", "below ")):
+        price_condition = f"price remains {level_clause}"
+    else:
+        price_condition = f"the tactical invalidation persists ({invalidation.rstrip('.')})"
+    strategic_invalidation = (
+        f"Thesis breaks only if {driver} deteriorates, revisions turn negative, and {price_condition} "
+        f"for {cycles} fresh checks."
+    )
+    tactical_state = "TACTICAL PULLBACK" if tactical_direction == "SHORT" else "TACTICALLY ALIGNED" if tactical_direction == "LONG" else "WAITING FOR ENTRY"
+    return {
+        "active": True,
+        "coin": coin,
+        "label": maturity,
+        "strength": round(strength, 1),
+        "strategic_direction": "LONG",
+        "tactical_direction": tactical_direction,
+        "tactical_state": tactical_state,
+        "thesis": thesis,
+        "invalidation": _short(strategic_invalidation, 240),
+        "categories": categories,
+    }
 
 
 def _scope_text(direction: str, signal: dict, item: dict, position: dict, score: float) -> tuple[str, bool]:
@@ -343,6 +517,17 @@ def build_daily_radar(
         )
         scope, add_candidate = _scope_text(direction, signal, item, position, score)
         invalidation = _invalidation(direction, fp, signal, item, map_entry, position)
+        thesis = _merit_text(coin, direction, fp, signal, item, map_entry, categories)
+        durable = _durable_profile(
+            coin,
+            categories=categories,
+            config=config,
+            fp=fp,
+            signal=signal,
+            tactical_direction=direction,
+            tactical_invalidation=invalidation,
+            thesis=thesis,
+        )
         rows.append({
             "coin": coin,
             "direction": direction,
@@ -356,7 +541,8 @@ def build_daily_radar(
             "tradable": bool(item.get("tradable")) or _safe_str(signal.get("execution_mode")) == "tradable" or bool(position),
             "open_position": bool(position),
             "add_candidate": add_candidate,
-            "why": _merit_text(coin, direction, fp, signal, item, map_entry),
+            "why": thesis,
+            "thesis": thesis,
             "next": _next_text(direction, signal, item, map_entry, position),
             "invalidation": invalidation,
             "scope": scope,
@@ -366,6 +552,8 @@ def build_daily_radar(
             "fundamental_score": round(_safe_float(fp.get("fundamental_score")), 1),
             "attention_score": round(_safe_float(fp.get("attention_score")), 1),
             "price": _safe_float(signal.get("live_price") or signal.get("price") or position.get("current_price")),
+            "durable_thesis": bool(durable.get("active")),
+            "durable_profile": durable,
         })
 
     rows.sort(key=lambda row: (
@@ -379,6 +567,10 @@ def build_daily_radar(
     bearish = [row for row in top_assets if row.get("side") == "bearish"]
     add_candidates = [row for row in top_assets if row.get("add_candidate")]
     open_assets = [row for row in top_assets if row.get("open_position")]
+    durable_theses = sorted(
+        [dict(row.get("durable_profile") or {}) for row in rows if row.get("durable_thesis")],
+        key=lambda row: (-_safe_float(row.get("strength")), str(row.get("coin") or "")),
+    )[:6]
     themes: dict[str, int] = {}
     for row in top_assets:
         theme = _safe_str(row.get("theme"), "other")
@@ -404,4 +596,5 @@ def build_daily_radar(
         "bearish": bearish,
         "add_candidates": add_candidates,
         "open_assets": open_assets,
+        "durable_theses": durable_theses,
     }

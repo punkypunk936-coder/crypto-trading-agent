@@ -10,6 +10,8 @@ from datetime import datetime
 from typing import Any, Iterable
 
 import daily_radar
+import asia_session
+import earnings_session
 from pnl_explanation import (
     build_pnl_attribution_summary,
     explain_closed_trade,
@@ -2483,6 +2485,7 @@ def build_dashboard_snapshot(
     playbook_distiller_report: Any = None,
     policy_health_report: Any = None,
     proactive_trader_report: Any = None,
+    earnings_ledger_path: Any = None,
     *,
     server_timestamp: str | None = None,
 ) -> dict:
@@ -2499,6 +2502,12 @@ def build_dashboard_snapshot(
         board,
         dict(proactive_trader_report or {}),
     )
+    asia_context = asia_session.build_asia_session(shaped_state)
+    earnings_context = earnings_session.build_earnings_session(
+        shaped_state,
+        radar,
+        ledger_path=earnings_ledger_path,
+    )
     xyz = build_xyz_section(shaped_state, board)
     return {
         "state": shaped_state,
@@ -2507,6 +2516,8 @@ def build_dashboard_snapshot(
         "control": normalize_control(control),
         "action_board": board,
         "daily_radar": radar,
+        "asia_session": asia_context,
+        "earnings_session": earnings_context,
         "xyz": xyz,
         "market_map": normalized_market_map,
         "market_map_summary": market_map_summary(normalized_market_map),

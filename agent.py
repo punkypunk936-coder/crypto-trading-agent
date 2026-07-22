@@ -40,6 +40,7 @@ from paths import (
     DAILY_MARKET_MAP_JSON,
     DASHBOARD_SNAPSHOT_JSON,
     DECISION_REVIEW_REPORT_JSON,
+    EARNINGS_SESSION_JSON,
     KILL_FILE,
     LLM_REFEREE_REPORT_JSON,
     MISSED_MOVE_REPORT_JSON,
@@ -9510,6 +9511,7 @@ class TradingAgent:
             playbook_distiller_report=playbook_distiller_report_data,
             policy_health_report=policy_health_report_data,
             proactive_trader_report=proactive_trader_data,
+            earnings_ledger_path=EARNINGS_SESSION_JSON,
         )
         try:
             DASHBOARD_SNAPSHOT_JSON.write_text(json.dumps(snapshot, indent=2))

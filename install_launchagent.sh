@@ -68,6 +68,7 @@ rsync -a \
   --exclude "trade_dataset.jsonl" \
   --exclude "precision_lab_report.json" \
   --exclude "playbook_distiller_report.json" \
+  --exclude "earnings_session.json" \
   --exclude "control.json" \
   --exclude "dashboard_snapshot.json" \
   --exclude "KILL" \
