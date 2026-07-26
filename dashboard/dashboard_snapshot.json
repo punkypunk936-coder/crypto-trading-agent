@@ -1,8 +1,8 @@
 {
   "state": {
     "status": "running",
-    "last_cycle": "2026-07-26 13:41:30",
-    "cycle_number": 11853,
+    "last_cycle": "2026-07-26 13:50:19",
+    "cycle_number": 11854,
     "portfolio_usd": 7456.99,
     "available_usd": 4847.04,
     "positions": [],
@@ -53811,7 +53811,7 @@
       "ZM": {
         "analysis_updated_ts": 1785050878.73079,
         "analysis_updated_at": "2026-07-26T12:57:58",
-        "analysis_deferred": false,
+        "analysis_deferred": true,
         "action": "SHORT",
         "decision": "SHORT",
         "score": 37.169799999999995,
@@ -83713,7 +83713,7 @@
       "XYZ100": {
         "analysis_updated_ts": 1785050876.3812218,
         "analysis_updated_at": "2026-07-26T12:57:56",
-        "analysis_deferred": false,
+        "analysis_deferred": true,
         "action": "FLAT",
         "decision": "FLAT",
         "score": 44.05,
@@ -92994,7 +92994,7 @@
       "XLE": {
         "analysis_updated_ts": 1785050874.09668,
         "analysis_updated_at": "2026-07-26T12:57:54",
-        "analysis_deferred": false,
+        "analysis_deferred": true,
         "action": "FLAT",
         "decision": "FLAT",
         "score": 53.62,
@@ -104941,64 +104941,37 @@
     "sentiment": {
       "raw_score": 26,
       "label": "Fear",
-      "signal_score": 66.322,
+      "signal_score": 65.6,
       "fng_contrarian_score": 74.0,
-      "structural_score": 60.04,
-      "market_mode": "RISK_ON",
-      "directional_bias": "BULLISH",
+      "structural_score": 50.0,
+      "market_mode": "UNKNOWN",
+      "directional_bias": "NEUTRAL",
       "risk_off": false,
       "major_breakdown_count": 0,
-      "major_reclaim_count": 2,
+      "major_reclaim_count": 0,
       "majors": {
         "BTC": {
           "coin": "BTC",
-          "valid": true,
-          "score": 51.27,
-          "state": "MIXED",
-          "close": 64407.0,
-          "return_24h_pct": 0.671,
-          "return_72h_pct": -2.066,
-          "return_7d_pct": -0.462,
-          "below_sma20": false,
-          "below_sma72": true,
-          "breaking": false,
-          "reclaiming": false,
-          "summary": "BTC mixed (+0.7% 24h, -0.5% 7d)"
+          "valid": false,
+          "score": 50.0,
+          "summary": "not enough candle history"
         },
         "ETH": {
           "coin": "ETH",
-          "valid": true,
-          "score": 65.28,
-          "state": "STRONG",
-          "close": 1884.0,
-          "return_24h_pct": 1.41,
-          "return_72h_pct": -2.094,
-          "return_7d_pct": 0.765,
-          "below_sma20": false,
-          "below_sma72": false,
-          "breaking": false,
-          "reclaiming": false,
-          "summary": "ETH strong (+1.4% 24h, +0.8% 7d)"
+          "valid": false,
+          "score": 50.0,
+          "summary": "not enough candle history"
         },
         "SOL": {
           "coin": "SOL",
-          "valid": true,
-          "score": 63.57,
-          "state": "STRONG",
-          "close": 75.09,
-          "return_24h_pct": 1.5,
-          "return_72h_pct": -3.155,
-          "return_7d_pct": -1.312,
-          "below_sma20": false,
-          "below_sma72": false,
-          "breaking": false,
-          "reclaiming": false,
-          "summary": "SOL strong (+1.5% 24h, -1.3% 7d)"
+          "valid": false,
+          "score": 50.0,
+          "summary": "not enough candle history"
         }
       },
-      "structure_summary": "Crypto majors risk_on: 0 breaking, 2 reclaiming, structure 60/100.",
+      "structure_summary": "Major crypto structure unavailable; treating sentiment as neutral.",
       "is_extreme": false,
-      "summary": "Sentiment: Fear (F&G=26) + crypto mode RISK_ON \u2192 NEUTRAL signal (66/100) | Crypto majors risk_on: 0 breaking, 2 reclaiming, structure 60/100."
+      "summary": "Sentiment: Fear (F&G=26) + crypto mode UNKNOWN \u2192 NEUTRAL signal (66/100) | Major crypto structure unavailable; treating sentiment as neutral."
     },
     "mode": "dry_run",
     "leverage": 2,
@@ -106213,14 +106186,14 @@
         "JP225",
         "EWY",
         "EWJ",
-        "VIX",
-        "VOL",
-        "WHEAT",
-        "XLE",
-        "XYZ100",
-        "ZM",
-        "AMAT",
-        "ARM"
+        "ASML",
+        "AVGO",
+        "BB",
+        "BE",
+        "DELL",
+        "GEV",
+        "IBM",
+        "NBIS"
       ],
       "analysed_count": 20
     },
@@ -114434,10 +114407,10 @@
     "power": {
       "available": true,
       "on_ac_power": false,
-      "battery_pct": 20,
+      "battery_pct": 14,
       "charging": false,
       "source": "Battery Power",
-      "raw": "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=26673251)\t20%; discharging; (no estimate) present: true"
+      "raw": "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=26673251)\t14%; discharging; (no estimate) present: true"
     },
     "config": {
       "coins": [
@@ -135055,7 +135028,7 @@
     }
   },
   "action_board": {
-    "updated_at": "2026-07-26 13:41:30",
+    "updated_at": "2026-07-26 13:50:19",
     "lead": {
       "coin": "AAPL",
       "tradable": true,
@@ -138524,7 +138497,7 @@
         "trigger": "Entry 87.00 (-0.64 / -0.73%)",
         "entry_status": "Live 87.64; trigger 87.00; gap +0.64 (+0.74%)",
         "execution_note": "ZM needs a real driver before trusting the chart move.",
-        "risk": "Reclaim 88.64 (+1.00 / +1.14%)",
+        "risk": "Reclaim 88.98 (+1.34 / +1.52%)",
         "invalidation": "Invalid above 88.32 (+0.68 / +0.78%)",
         "invalidation_short": "Invalid above 88.32 (+0.68 / +0.78%)",
         "planned_stop_loss": 88.324235,
@@ -144702,9 +144675,9 @@
         "trigger": "Break 28,226.50 (-86.50 / -0.31%)",
         "entry_status": "Live 28,313.00; breakdown 28,226.50; gap +86.50 (+0.31%)",
         "execution_note": "The higher-timeframe view is bearish, but the breakdown still has to confirm before the bot can short.",
-        "risk": "Reclaim 28,363.00 (+50.00 / +0.18%)",
-        "invalidation": "Invalid above 28,363.00 (+50.00 / +0.18%)",
-        "invalidation_short": "Invalid above 28,363.00 (+50.00 / +0.18%)",
+        "risk": "Reclaim 28,412.50 (+99.50 / +0.35%)",
+        "invalidation": "Invalid above 28,412.50 (+99.50 / +0.35%)",
+        "invalidation_short": "Invalid above 28,412.50 (+99.50 / +0.35%)",
         "planned_stop_loss": 0.0,
         "map_summary": "bearish daily view; price is in demand; price is in supply; price is at resistance",
         "friction_stack": [
@@ -145733,9 +145706,9 @@
         "trigger": "Hold 59.54 (+0.38 / +0.64%)",
         "entry_status": "Live 59.16; reclaim 59.54; gap -0.38 (-0.64%)",
         "execution_note": "The bot sees the reclaim, but it still wants stronger continuation, safer entry quality, and final sizing checks before buying.",
-        "risk": "Lose 58.16 (-1.00 / -1.69%)",
-        "invalidation": "Invalid below 58.16 (-1.00 / -1.69%)",
-        "invalidation_short": "Invalid below 58.16 (-1.00 / -1.69%)",
+        "risk": "Lose 58.00 (-1.16 / -1.96%)",
+        "invalidation": "Invalid below 58.00 (-1.16 / -1.96%)",
+        "invalidation_short": "Invalid below 58.00 (-1.16 / -1.96%)",
         "planned_stop_loss": 0.0,
         "map_summary": "bullish daily view; price is in supply; price is at resistance",
         "friction_stack": [
@@ -155367,17 +155340,17 @@
         "trigger": "Wait for structure and order-flow to agree.",
         "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
         "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-        "risk": "auto neutral fallback map",
+        "risk": "",
         "invalidation": "",
         "invalidation_short": "",
         "planned_stop_loss": 0.0,
-        "map_summary": "auto neutral fallback map",
+        "map_summary": "",
         "friction_stack": [
           {
             "key": "structure",
             "label": "Structure",
             "status": "block",
-            "summary": "auto neutral fallback map"
+            "summary": "No clean edge right now."
           },
           {
             "key": "flow",
@@ -155495,17 +155468,17 @@
         "trigger": "Wait for structure and order-flow to agree.",
         "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
         "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-        "risk": "auto neutral fallback map",
+        "risk": "",
         "invalidation": "",
         "invalidation_short": "",
         "planned_stop_loss": 0.0,
-        "map_summary": "auto neutral fallback map",
+        "map_summary": "",
         "friction_stack": [
           {
             "key": "structure",
             "label": "Structure",
             "status": "block",
-            "summary": "auto neutral fallback map"
+            "summary": "No clean edge right now."
           },
           {
             "key": "flow",
@@ -155623,17 +155596,17 @@
         "trigger": "Wait for structure and order-flow to agree.",
         "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
         "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-        "risk": "",
+        "risk": "auto neutral fallback map",
         "invalidation": "",
         "invalidation_short": "",
         "planned_stop_loss": 0.0,
-        "map_summary": "",
+        "map_summary": "auto neutral fallback map",
         "friction_stack": [
           {
             "key": "structure",
             "label": "Structure",
             "status": "block",
-            "summary": "No clean edge right now."
+            "summary": "auto neutral fallback map"
           },
           {
             "key": "flow",
@@ -155751,17 +155724,17 @@
         "trigger": "Wait for structure and order-flow to agree.",
         "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
         "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-        "risk": "",
+        "risk": "auto neutral fallback map",
         "invalidation": "",
         "invalidation_short": "",
         "planned_stop_loss": 0.0,
-        "map_summary": "",
+        "map_summary": "auto neutral fallback map",
         "friction_stack": [
           {
             "key": "structure",
             "label": "Structure",
             "status": "block",
-            "summary": "No clean edge right now."
+            "summary": "auto neutral fallback map"
           },
           {
             "key": "flow",
@@ -155879,17 +155852,17 @@
         "trigger": "Wait for structure and order-flow to agree.",
         "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
         "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-        "risk": "",
+        "risk": "auto neutral fallback map",
         "invalidation": "",
         "invalidation_short": "",
         "planned_stop_loss": 0.0,
-        "map_summary": "",
+        "map_summary": "auto neutral fallback map",
         "friction_stack": [
           {
             "key": "structure",
             "label": "Structure",
             "status": "block",
-            "summary": "No clean edge right now."
+            "summary": "auto neutral fallback map"
           },
           {
             "key": "flow",
@@ -156007,17 +155980,17 @@
         "trigger": "Wait for structure and order-flow to agree.",
         "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
         "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-        "risk": "",
+        "risk": "auto neutral fallback map",
         "invalidation": "",
         "invalidation_short": "",
         "planned_stop_loss": 0.0,
-        "map_summary": "",
+        "map_summary": "auto neutral fallback map",
         "friction_stack": [
           {
             "key": "structure",
             "label": "Structure",
             "status": "block",
-            "summary": "No clean edge right now."
+            "summary": "auto neutral fallback map"
           },
           {
             "key": "flow",
@@ -156263,17 +156236,17 @@
         "trigger": "Wait for structure and order-flow to agree.",
         "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
         "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-        "risk": "",
+        "risk": "auto neutral fallback map",
         "invalidation": "",
         "invalidation_short": "",
         "planned_stop_loss": 0.0,
-        "map_summary": "",
+        "map_summary": "auto neutral fallback map",
         "friction_stack": [
           {
             "key": "structure",
             "label": "Structure",
             "status": "block",
-            "summary": "No clean edge right now."
+            "summary": "auto neutral fallback map"
           },
           {
             "key": "flow",
@@ -156521,17 +156494,17 @@
         "trigger": "Wait for structure and order-flow to agree.",
         "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
         "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-        "risk": "",
+        "risk": "auto neutral fallback map",
         "invalidation": "",
         "invalidation_short": "",
         "planned_stop_loss": 0.0,
-        "map_summary": "",
+        "map_summary": "auto neutral fallback map",
         "friction_stack": [
           {
             "key": "structure",
             "label": "Structure",
             "status": "block",
-            "summary": "No clean edge right now."
+            "summary": "auto neutral fallback map"
           },
           {
             "key": "flow",
@@ -156649,17 +156622,17 @@
         "trigger": "Wait for structure and order-flow to agree.",
         "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
         "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-        "risk": "",
+        "risk": "auto neutral fallback map",
         "invalidation": "",
         "invalidation_short": "",
         "planned_stop_loss": 0.0,
-        "map_summary": "",
+        "map_summary": "auto neutral fallback map",
         "friction_stack": [
           {
             "key": "structure",
             "label": "Structure",
             "status": "block",
-            "summary": "No clean edge right now."
+            "summary": "auto neutral fallback map"
           },
           {
             "key": "flow",
@@ -156907,17 +156880,17 @@
         "trigger": "Wait for structure and order-flow to agree.",
         "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
         "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-        "risk": "",
+        "risk": "auto neutral fallback map",
         "invalidation": "",
         "invalidation_short": "",
         "planned_stop_loss": 0.0,
-        "map_summary": "",
+        "map_summary": "auto neutral fallback map",
         "friction_stack": [
           {
             "key": "structure",
             "label": "Structure",
             "status": "block",
-            "summary": "No clean edge right now."
+            "summary": "auto neutral fallback map"
           },
           {
             "key": "flow",
@@ -158447,17 +158420,17 @@
         "trigger": "Wait for structure and order-flow to agree.",
         "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
         "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-        "risk": "auto neutral fallback map",
+        "risk": "",
         "invalidation": "",
         "invalidation_short": "",
         "planned_stop_loss": 0.0,
-        "map_summary": "auto neutral fallback map",
+        "map_summary": "",
         "friction_stack": [
           {
             "key": "structure",
             "label": "Structure",
             "status": "block",
-            "summary": "auto neutral fallback map"
+            "summary": "No clean edge right now."
           },
           {
             "key": "flow",
@@ -158575,17 +158548,17 @@
         "trigger": "Wait for structure and order-flow to agree.",
         "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
         "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-        "risk": "auto neutral fallback map",
+        "risk": "",
         "invalidation": "",
         "invalidation_short": "",
         "planned_stop_loss": 0.0,
-        "map_summary": "auto neutral fallback map",
+        "map_summary": "",
         "friction_stack": [
           {
             "key": "structure",
             "label": "Structure",
             "status": "block",
-            "summary": "auto neutral fallback map"
+            "summary": "No clean edge right now."
           },
           {
             "key": "flow",
@@ -158831,17 +158804,17 @@
         "trigger": "Wait for structure and order-flow to agree.",
         "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
         "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-        "risk": "auto neutral fallback map",
+        "risk": "",
         "invalidation": "",
         "invalidation_short": "",
         "planned_stop_loss": 0.0,
-        "map_summary": "auto neutral fallback map",
+        "map_summary": "",
         "friction_stack": [
           {
             "key": "structure",
             "label": "Structure",
             "status": "block",
-            "summary": "auto neutral fallback map"
+            "summary": "No clean edge right now."
           },
           {
             "key": "flow",
@@ -162173,7 +162146,7 @@
         "trigger": "Entry 87.00 (-0.64 / -0.73%)",
         "entry_status": "Live 87.64; trigger 87.00; gap +0.64 (+0.74%)",
         "execution_note": "ZM needs a real driver before trusting the chart move.",
-        "risk": "Reclaim 88.64 (+1.00 / +1.14%)",
+        "risk": "Reclaim 88.98 (+1.34 / +1.52%)",
         "invalidation": "Invalid above 88.32 (+0.68 / +0.78%)",
         "invalidation_short": "Invalid above 88.32 (+0.68 / +0.78%)",
         "planned_stop_loss": 88.324235,
@@ -168351,9 +168324,9 @@
         "trigger": "Break 28,226.50 (-86.50 / -0.31%)",
         "entry_status": "Live 28,313.00; breakdown 28,226.50; gap +86.50 (+0.31%)",
         "execution_note": "The higher-timeframe view is bearish, but the breakdown still has to confirm before the bot can short.",
-        "risk": "Reclaim 28,363.00 (+50.00 / +0.18%)",
-        "invalidation": "Invalid above 28,363.00 (+50.00 / +0.18%)",
-        "invalidation_short": "Invalid above 28,363.00 (+50.00 / +0.18%)",
+        "risk": "Reclaim 28,412.50 (+99.50 / +0.35%)",
+        "invalidation": "Invalid above 28,412.50 (+99.50 / +0.35%)",
+        "invalidation_short": "Invalid above 28,412.50 (+99.50 / +0.35%)",
         "planned_stop_loss": 0.0,
         "map_summary": "bearish daily view; price is in demand; price is in supply; price is at resistance",
         "friction_stack": [
@@ -169382,9 +169355,9 @@
         "trigger": "Hold 59.54 (+0.38 / +0.64%)",
         "entry_status": "Live 59.16; reclaim 59.54; gap -0.38 (-0.64%)",
         "execution_note": "The bot sees the reclaim, but it still wants stronger continuation, safer entry quality, and final sizing checks before buying.",
-        "risk": "Lose 58.16 (-1.00 / -1.69%)",
-        "invalidation": "Invalid below 58.16 (-1.00 / -1.69%)",
-        "invalidation_short": "Invalid below 58.16 (-1.00 / -1.69%)",
+        "risk": "Lose 58.00 (-1.16 / -1.96%)",
+        "invalidation": "Invalid below 58.00 (-1.16 / -1.96%)",
+        "invalidation_short": "Invalid below 58.00 (-1.16 / -1.96%)",
         "planned_stop_loss": 0.0,
         "map_summary": "bullish daily view; price is in supply; price is at resistance",
         "friction_stack": [
@@ -179016,17 +178989,17 @@
         "trigger": "Wait for structure and order-flow to agree.",
         "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
         "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-        "risk": "auto neutral fallback map",
+        "risk": "",
         "invalidation": "",
         "invalidation_short": "",
         "planned_stop_loss": 0.0,
-        "map_summary": "auto neutral fallback map",
+        "map_summary": "",
         "friction_stack": [
           {
             "key": "structure",
             "label": "Structure",
             "status": "block",
-            "summary": "auto neutral fallback map"
+            "summary": "No clean edge right now."
           },
           {
             "key": "flow",
@@ -179144,17 +179117,17 @@
         "trigger": "Wait for structure and order-flow to agree.",
         "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
         "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-        "risk": "auto neutral fallback map",
+        "risk": "",
         "invalidation": "",
         "invalidation_short": "",
         "planned_stop_loss": 0.0,
-        "map_summary": "auto neutral fallback map",
+        "map_summary": "",
         "friction_stack": [
           {
             "key": "structure",
             "label": "Structure",
             "status": "block",
-            "summary": "auto neutral fallback map"
+            "summary": "No clean edge right now."
           },
           {
             "key": "flow",
@@ -179272,17 +179245,17 @@
         "trigger": "Wait for structure and order-flow to agree.",
         "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
         "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-        "risk": "",
+        "risk": "auto neutral fallback map",
         "invalidation": "",
         "invalidation_short": "",
         "planned_stop_loss": 0.0,
-        "map_summary": "",
+        "map_summary": "auto neutral fallback map",
         "friction_stack": [
           {
             "key": "structure",
             "label": "Structure",
             "status": "block",
-            "summary": "No clean edge right now."
+            "summary": "auto neutral fallback map"
           },
           {
             "key": "flow",
@@ -179400,17 +179373,17 @@
         "trigger": "Wait for structure and order-flow to agree.",
         "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
         "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-        "risk": "",
+        "risk": "auto neutral fallback map",
         "invalidation": "",
         "invalidation_short": "",
         "planned_stop_loss": 0.0,
-        "map_summary": "",
+        "map_summary": "auto neutral fallback map",
         "friction_stack": [
           {
             "key": "structure",
             "label": "Structure",
             "status": "block",
-            "summary": "No clean edge right now."
+            "summary": "auto neutral fallback map"
           },
           {
             "key": "flow",
@@ -179528,17 +179501,17 @@
         "trigger": "Wait for structure and order-flow to agree.",
         "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
         "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-        "risk": "",
+        "risk": "auto neutral fallback map",
         "invalidation": "",
         "invalidation_short": "",
         "planned_stop_loss": 0.0,
-        "map_summary": "",
+        "map_summary": "auto neutral fallback map",
         "friction_stack": [
           {
             "key": "structure",
             "label": "Structure",
             "status": "block",
-            "summary": "No clean edge right now."
+            "summary": "auto neutral fallback map"
           },
           {
             "key": "flow",
@@ -179656,17 +179629,17 @@
         "trigger": "Wait for structure and order-flow to agree.",
         "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
         "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-        "risk": "",
+        "risk": "auto neutral fallback map",
         "invalidation": "",
         "invalidation_short": "",
         "planned_stop_loss": 0.0,
-        "map_summary": "",
+        "map_summary": "auto neutral fallback map",
         "friction_stack": [
           {
             "key": "structure",
             "label": "Structure",
             "status": "block",
-            "summary": "No clean edge right now."
+            "summary": "auto neutral fallback map"
           },
           {
             "key": "flow",
@@ -179912,17 +179885,17 @@
         "trigger": "Wait for structure and order-flow to agree.",
         "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
         "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-        "risk": "",
+        "risk": "auto neutral fallback map",
         "invalidation": "",
         "invalidation_short": "",
         "planned_stop_loss": 0.0,
-        "map_summary": "",
+        "map_summary": "auto neutral fallback map",
         "friction_stack": [
           {
             "key": "structure",
             "label": "Structure",
             "status": "block",
-            "summary": "No clean edge right now."
+            "summary": "auto neutral fallback map"
           },
           {
             "key": "flow",
@@ -180170,17 +180143,17 @@
         "trigger": "Wait for structure and order-flow to agree.",
         "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
         "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-        "risk": "",
+        "risk": "auto neutral fallback map",
         "invalidation": "",
         "invalidation_short": "",
         "planned_stop_loss": 0.0,
-        "map_summary": "",
+        "map_summary": "auto neutral fallback map",
         "friction_stack": [
           {
             "key": "structure",
             "label": "Structure",
             "status": "block",
-            "summary": "No clean edge right now."
+            "summary": "auto neutral fallback map"
           },
           {
             "key": "flow",
@@ -180298,17 +180271,17 @@
         "trigger": "Wait for structure and order-flow to agree.",
         "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
         "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-        "risk": "",
+        "risk": "auto neutral fallback map",
         "invalidation": "",
         "invalidation_short": "",
         "planned_stop_loss": 0.0,
-        "map_summary": "",
+        "map_summary": "auto neutral fallback map",
         "friction_stack": [
           {
             "key": "structure",
             "label": "Structure",
             "status": "block",
-            "summary": "No clean edge right now."
+            "summary": "auto neutral fallback map"
           },
           {
             "key": "flow",
@@ -180556,17 +180529,17 @@
         "trigger": "Wait for structure and order-flow to agree.",
         "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
         "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-        "risk": "",
+        "risk": "auto neutral fallback map",
         "invalidation": "",
         "invalidation_short": "",
         "planned_stop_loss": 0.0,
-        "map_summary": "",
+        "map_summary": "auto neutral fallback map",
         "friction_stack": [
           {
             "key": "structure",
             "label": "Structure",
             "status": "block",
-            "summary": "No clean edge right now."
+            "summary": "auto neutral fallback map"
           },
           {
             "key": "flow",
@@ -182096,17 +182069,17 @@
         "trigger": "Wait for structure and order-flow to agree.",
         "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
         "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-        "risk": "auto neutral fallback map",
+        "risk": "",
         "invalidation": "",
         "invalidation_short": "",
         "planned_stop_loss": 0.0,
-        "map_summary": "auto neutral fallback map",
+        "map_summary": "",
         "friction_stack": [
           {
             "key": "structure",
             "label": "Structure",
             "status": "block",
-            "summary": "auto neutral fallback map"
+            "summary": "No clean edge right now."
           },
           {
             "key": "flow",
@@ -182224,17 +182197,17 @@
         "trigger": "Wait for structure and order-flow to agree.",
         "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
         "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-        "risk": "auto neutral fallback map",
+        "risk": "",
         "invalidation": "",
         "invalidation_short": "",
         "planned_stop_loss": 0.0,
-        "map_summary": "auto neutral fallback map",
+        "map_summary": "",
         "friction_stack": [
           {
             "key": "structure",
             "label": "Structure",
             "status": "block",
-            "summary": "auto neutral fallback map"
+            "summary": "No clean edge right now."
           },
           {
             "key": "flow",
@@ -182480,17 +182453,17 @@
         "trigger": "Wait for structure and order-flow to agree.",
         "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
         "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-        "risk": "auto neutral fallback map",
+        "risk": "",
         "invalidation": "",
         "invalidation_short": "",
         "planned_stop_loss": 0.0,
-        "map_summary": "auto neutral fallback map",
+        "map_summary": "",
         "friction_stack": [
           {
             "key": "structure",
             "label": "Structure",
             "status": "block",
-            "summary": "auto neutral fallback map"
+            "summary": "No clean edge right now."
           },
           {
             "key": "flow",
@@ -199123,7 +199096,7 @@
             "trigger": "Entry 87.00 (-0.64 / -0.73%)",
             "entry_status": "Live 87.64; trigger 87.00; gap +0.64 (+0.74%)",
             "execution_note": "ZM needs a real driver before trusting the chart move.",
-            "risk": "Reclaim 88.64 (+1.00 / +1.14%)",
+            "risk": "Reclaim 88.98 (+1.34 / +1.52%)",
             "invalidation": "Invalid above 88.32 (+0.68 / +0.78%)",
             "invalidation_short": "Invalid above 88.32 (+0.68 / +0.78%)",
             "planned_stop_loss": 88.324235,
@@ -204521,9 +204494,9 @@
             "trigger": "Break 28,226.50 (-86.50 / -0.31%)",
             "entry_status": "Live 28,313.00; breakdown 28,226.50; gap +86.50 (+0.31%)",
             "execution_note": "The higher-timeframe view is bearish, but the breakdown still has to confirm before the bot can short.",
-            "risk": "Reclaim 28,363.00 (+50.00 / +0.18%)",
-            "invalidation": "Invalid above 28,363.00 (+50.00 / +0.18%)",
-            "invalidation_short": "Invalid above 28,363.00 (+50.00 / +0.18%)",
+            "risk": "Reclaim 28,412.50 (+99.50 / +0.35%)",
+            "invalidation": "Invalid above 28,412.50 (+99.50 / +0.35%)",
+            "invalidation_short": "Invalid above 28,412.50 (+99.50 / +0.35%)",
             "planned_stop_loss": 0.0,
             "map_summary": "bearish daily view; price is in demand; price is in supply; price is at resistance",
             "friction_stack": [
@@ -205552,9 +205525,9 @@
             "trigger": "Hold 59.54 (+0.38 / +0.64%)",
             "entry_status": "Live 59.16; reclaim 59.54; gap -0.38 (-0.64%)",
             "execution_note": "The bot sees the reclaim, but it still wants stronger continuation, safer entry quality, and final sizing checks before buying.",
-            "risk": "Lose 58.16 (-1.00 / -1.69%)",
-            "invalidation": "Invalid below 58.16 (-1.00 / -1.69%)",
-            "invalidation_short": "Invalid below 58.16 (-1.00 / -1.69%)",
+            "risk": "Lose 58.00 (-1.16 / -1.96%)",
+            "invalidation": "Invalid below 58.00 (-1.16 / -1.96%)",
+            "invalidation_short": "Invalid below 58.00 (-1.16 / -1.96%)",
             "planned_stop_loss": 0.0,
             "map_summary": "bullish daily view; price is in supply; price is at resistance",
             "friction_stack": [
@@ -209626,17 +209599,17 @@
             "trigger": "Wait for structure and order-flow to agree.",
             "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
             "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-            "risk": "auto neutral fallback map",
+            "risk": "",
             "invalidation": "",
             "invalidation_short": "",
             "planned_stop_loss": 0.0,
-            "map_summary": "auto neutral fallback map",
+            "map_summary": "",
             "friction_stack": [
               {
                 "key": "structure",
                 "label": "Structure",
                 "status": "block",
-                "summary": "auto neutral fallback map"
+                "summary": "No clean edge right now."
               },
               {
                 "key": "flow",
@@ -209754,17 +209727,17 @@
             "trigger": "Wait for structure and order-flow to agree.",
             "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
             "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-            "risk": "auto neutral fallback map",
+            "risk": "",
             "invalidation": "",
             "invalidation_short": "",
             "planned_stop_loss": 0.0,
-            "map_summary": "auto neutral fallback map",
+            "map_summary": "",
             "friction_stack": [
               {
                 "key": "structure",
                 "label": "Structure",
                 "status": "block",
-                "summary": "auto neutral fallback map"
+                "summary": "No clean edge right now."
               },
               {
                 "key": "flow",
@@ -209882,17 +209855,17 @@
             "trigger": "Wait for structure and order-flow to agree.",
             "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
             "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-            "risk": "",
+            "risk": "auto neutral fallback map",
             "invalidation": "",
             "invalidation_short": "",
             "planned_stop_loss": 0.0,
-            "map_summary": "",
+            "map_summary": "auto neutral fallback map",
             "friction_stack": [
               {
                 "key": "structure",
                 "label": "Structure",
                 "status": "block",
-                "summary": "No clean edge right now."
+                "summary": "auto neutral fallback map"
               },
               {
                 "key": "flow",
@@ -210010,17 +209983,17 @@
             "trigger": "Wait for structure and order-flow to agree.",
             "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
             "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-            "risk": "",
+            "risk": "auto neutral fallback map",
             "invalidation": "",
             "invalidation_short": "",
             "planned_stop_loss": 0.0,
-            "map_summary": "",
+            "map_summary": "auto neutral fallback map",
             "friction_stack": [
               {
                 "key": "structure",
                 "label": "Structure",
                 "status": "block",
-                "summary": "No clean edge right now."
+                "summary": "auto neutral fallback map"
               },
               {
                 "key": "flow",
@@ -210138,17 +210111,17 @@
             "trigger": "Wait for structure and order-flow to agree.",
             "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
             "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-            "risk": "",
+            "risk": "auto neutral fallback map",
             "invalidation": "",
             "invalidation_short": "",
             "planned_stop_loss": 0.0,
-            "map_summary": "",
+            "map_summary": "auto neutral fallback map",
             "friction_stack": [
               {
                 "key": "structure",
                 "label": "Structure",
                 "status": "block",
-                "summary": "No clean edge right now."
+                "summary": "auto neutral fallback map"
               },
               {
                 "key": "flow",
@@ -210266,17 +210239,17 @@
             "trigger": "Wait for structure and order-flow to agree.",
             "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
             "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-            "risk": "",
+            "risk": "auto neutral fallback map",
             "invalidation": "",
             "invalidation_short": "",
             "planned_stop_loss": 0.0,
-            "map_summary": "",
+            "map_summary": "auto neutral fallback map",
             "friction_stack": [
               {
                 "key": "structure",
                 "label": "Structure",
                 "status": "block",
-                "summary": "No clean edge right now."
+                "summary": "auto neutral fallback map"
               },
               {
                 "key": "flow",
@@ -210522,17 +210495,17 @@
             "trigger": "Wait for structure and order-flow to agree.",
             "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
             "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-            "risk": "",
+            "risk": "auto neutral fallback map",
             "invalidation": "",
             "invalidation_short": "",
             "planned_stop_loss": 0.0,
-            "map_summary": "",
+            "map_summary": "auto neutral fallback map",
             "friction_stack": [
               {
                 "key": "structure",
                 "label": "Structure",
                 "status": "block",
-                "summary": "No clean edge right now."
+                "summary": "auto neutral fallback map"
               },
               {
                 "key": "flow",
@@ -210780,17 +210753,17 @@
             "trigger": "Wait for structure and order-flow to agree.",
             "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
             "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-            "risk": "",
+            "risk": "auto neutral fallback map",
             "invalidation": "",
             "invalidation_short": "",
             "planned_stop_loss": 0.0,
-            "map_summary": "",
+            "map_summary": "auto neutral fallback map",
             "friction_stack": [
               {
                 "key": "structure",
                 "label": "Structure",
                 "status": "block",
-                "summary": "No clean edge right now."
+                "summary": "auto neutral fallback map"
               },
               {
                 "key": "flow",
@@ -210908,17 +210881,17 @@
             "trigger": "Wait for structure and order-flow to agree.",
             "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
             "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-            "risk": "",
+            "risk": "auto neutral fallback map",
             "invalidation": "",
             "invalidation_short": "",
             "planned_stop_loss": 0.0,
-            "map_summary": "",
+            "map_summary": "auto neutral fallback map",
             "friction_stack": [
               {
                 "key": "structure",
                 "label": "Structure",
                 "status": "block",
-                "summary": "No clean edge right now."
+                "summary": "auto neutral fallback map"
               },
               {
                 "key": "flow",
@@ -211166,17 +211139,17 @@
             "trigger": "Wait for structure and order-flow to agree.",
             "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
             "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-            "risk": "",
+            "risk": "auto neutral fallback map",
             "invalidation": "",
             "invalidation_short": "",
             "planned_stop_loss": 0.0,
-            "map_summary": "",
+            "map_summary": "auto neutral fallback map",
             "friction_stack": [
               {
                 "key": "structure",
                 "label": "Structure",
                 "status": "block",
-                "summary": "No clean edge right now."
+                "summary": "auto neutral fallback map"
               },
               {
                 "key": "flow",
@@ -212706,17 +212679,17 @@
             "trigger": "Wait for structure and order-flow to agree.",
             "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
             "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-            "risk": "auto neutral fallback map",
+            "risk": "",
             "invalidation": "",
             "invalidation_short": "",
             "planned_stop_loss": 0.0,
-            "map_summary": "auto neutral fallback map",
+            "map_summary": "",
             "friction_stack": [
               {
                 "key": "structure",
                 "label": "Structure",
                 "status": "block",
-                "summary": "auto neutral fallback map"
+                "summary": "No clean edge right now."
               },
               {
                 "key": "flow",
@@ -212834,17 +212807,17 @@
             "trigger": "Wait for structure and order-flow to agree.",
             "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
             "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-            "risk": "auto neutral fallback map",
+            "risk": "",
             "invalidation": "",
             "invalidation_short": "",
             "planned_stop_loss": 0.0,
-            "map_summary": "auto neutral fallback map",
+            "map_summary": "",
             "friction_stack": [
               {
                 "key": "structure",
                 "label": "Structure",
                 "status": "block",
-                "summary": "auto neutral fallback map"
+                "summary": "No clean edge right now."
               },
               {
                 "key": "flow",
@@ -213090,17 +213063,17 @@
             "trigger": "Wait for structure and order-flow to agree.",
             "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
             "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-            "risk": "auto neutral fallback map",
+            "risk": "",
             "invalidation": "",
             "invalidation_short": "",
             "planned_stop_loss": 0.0,
-            "map_summary": "auto neutral fallback map",
+            "map_summary": "",
             "friction_stack": [
               {
                 "key": "structure",
                 "label": "Structure",
                 "status": "block",
-                "summary": "auto neutral fallback map"
+                "summary": "No clean edge right now."
               },
               {
                 "key": "flow",
@@ -215830,7 +215803,7 @@
             "trigger": "Entry 87.00 (-0.64 / -0.73%)",
             "entry_status": "Live 87.64; trigger 87.00; gap +0.64 (+0.74%)",
             "execution_note": "ZM needs a real driver before trusting the chart move.",
-            "risk": "Reclaim 88.64 (+1.00 / +1.14%)",
+            "risk": "Reclaim 88.98 (+1.34 / +1.52%)",
             "invalidation": "Invalid above 88.32 (+0.68 / +0.78%)",
             "invalidation_short": "Invalid above 88.32 (+0.68 / +0.78%)",
             "planned_stop_loss": 88.324235,
@@ -221228,9 +221201,9 @@
             "trigger": "Break 28,226.50 (-86.50 / -0.31%)",
             "entry_status": "Live 28,313.00; breakdown 28,226.50; gap +86.50 (+0.31%)",
             "execution_note": "The higher-timeframe view is bearish, but the breakdown still has to confirm before the bot can short.",
-            "risk": "Reclaim 28,363.00 (+50.00 / +0.18%)",
-            "invalidation": "Invalid above 28,363.00 (+50.00 / +0.18%)",
-            "invalidation_short": "Invalid above 28,363.00 (+50.00 / +0.18%)",
+            "risk": "Reclaim 28,412.50 (+99.50 / +0.35%)",
+            "invalidation": "Invalid above 28,412.50 (+99.50 / +0.35%)",
+            "invalidation_short": "Invalid above 28,412.50 (+99.50 / +0.35%)",
             "planned_stop_loss": 0.0,
             "map_summary": "bearish daily view; price is in demand; price is in supply; price is at resistance",
             "friction_stack": [
@@ -222259,9 +222232,9 @@
             "trigger": "Hold 59.54 (+0.38 / +0.64%)",
             "entry_status": "Live 59.16; reclaim 59.54; gap -0.38 (-0.64%)",
             "execution_note": "The bot sees the reclaim, but it still wants stronger continuation, safer entry quality, and final sizing checks before buying.",
-            "risk": "Lose 58.16 (-1.00 / -1.69%)",
-            "invalidation": "Invalid below 58.16 (-1.00 / -1.69%)",
-            "invalidation_short": "Invalid below 58.16 (-1.00 / -1.69%)",
+            "risk": "Lose 58.00 (-1.16 / -1.96%)",
+            "invalidation": "Invalid below 58.00 (-1.16 / -1.96%)",
+            "invalidation_short": "Invalid below 58.00 (-1.16 / -1.96%)",
             "planned_stop_loss": 0.0,
             "map_summary": "bullish daily view; price is in supply; price is at resistance",
             "friction_stack": [
@@ -226333,17 +226306,17 @@
             "trigger": "Wait for structure and order-flow to agree.",
             "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
             "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-            "risk": "auto neutral fallback map",
+            "risk": "",
             "invalidation": "",
             "invalidation_short": "",
             "planned_stop_loss": 0.0,
-            "map_summary": "auto neutral fallback map",
+            "map_summary": "",
             "friction_stack": [
               {
                 "key": "structure",
                 "label": "Structure",
                 "status": "block",
-                "summary": "auto neutral fallback map"
+                "summary": "No clean edge right now."
               },
               {
                 "key": "flow",
@@ -226461,17 +226434,17 @@
             "trigger": "Wait for structure and order-flow to agree.",
             "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
             "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-            "risk": "auto neutral fallback map",
+            "risk": "",
             "invalidation": "",
             "invalidation_short": "",
             "planned_stop_loss": 0.0,
-            "map_summary": "auto neutral fallback map",
+            "map_summary": "",
             "friction_stack": [
               {
                 "key": "structure",
                 "label": "Structure",
                 "status": "block",
-                "summary": "auto neutral fallback map"
+                "summary": "No clean edge right now."
               },
               {
                 "key": "flow",
@@ -226589,17 +226562,17 @@
             "trigger": "Wait for structure and order-flow to agree.",
             "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
             "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-            "risk": "",
+            "risk": "auto neutral fallback map",
             "invalidation": "",
             "invalidation_short": "",
             "planned_stop_loss": 0.0,
-            "map_summary": "",
+            "map_summary": "auto neutral fallback map",
             "friction_stack": [
               {
                 "key": "structure",
                 "label": "Structure",
                 "status": "block",
-                "summary": "No clean edge right now."
+                "summary": "auto neutral fallback map"
               },
               {
                 "key": "flow",
@@ -226717,17 +226690,17 @@
             "trigger": "Wait for structure and order-flow to agree.",
             "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
             "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-            "risk": "",
+            "risk": "auto neutral fallback map",
             "invalidation": "",
             "invalidation_short": "",
             "planned_stop_loss": 0.0,
-            "map_summary": "",
+            "map_summary": "auto neutral fallback map",
             "friction_stack": [
               {
                 "key": "structure",
                 "label": "Structure",
                 "status": "block",
-                "summary": "No clean edge right now."
+                "summary": "auto neutral fallback map"
               },
               {
                 "key": "flow",
@@ -226845,17 +226818,17 @@
             "trigger": "Wait for structure and order-flow to agree.",
             "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
             "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-            "risk": "",
+            "risk": "auto neutral fallback map",
             "invalidation": "",
             "invalidation_short": "",
             "planned_stop_loss": 0.0,
-            "map_summary": "",
+            "map_summary": "auto neutral fallback map",
             "friction_stack": [
               {
                 "key": "structure",
                 "label": "Structure",
                 "status": "block",
-                "summary": "No clean edge right now."
+                "summary": "auto neutral fallback map"
               },
               {
                 "key": "flow",
@@ -226973,17 +226946,17 @@
             "trigger": "Wait for structure and order-flow to agree.",
             "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
             "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-            "risk": "",
+            "risk": "auto neutral fallback map",
             "invalidation": "",
             "invalidation_short": "",
             "planned_stop_loss": 0.0,
-            "map_summary": "",
+            "map_summary": "auto neutral fallback map",
             "friction_stack": [
               {
                 "key": "structure",
                 "label": "Structure",
                 "status": "block",
-                "summary": "No clean edge right now."
+                "summary": "auto neutral fallback map"
               },
               {
                 "key": "flow",
@@ -227229,17 +227202,17 @@
             "trigger": "Wait for structure and order-flow to agree.",
             "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
             "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-            "risk": "",
+            "risk": "auto neutral fallback map",
             "invalidation": "",
             "invalidation_short": "",
             "planned_stop_loss": 0.0,
-            "map_summary": "",
+            "map_summary": "auto neutral fallback map",
             "friction_stack": [
               {
                 "key": "structure",
                 "label": "Structure",
                 "status": "block",
-                "summary": "No clean edge right now."
+                "summary": "auto neutral fallback map"
               },
               {
                 "key": "flow",
@@ -227487,17 +227460,17 @@
             "trigger": "Wait for structure and order-flow to agree.",
             "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
             "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-            "risk": "",
+            "risk": "auto neutral fallback map",
             "invalidation": "",
             "invalidation_short": "",
             "planned_stop_loss": 0.0,
-            "map_summary": "",
+            "map_summary": "auto neutral fallback map",
             "friction_stack": [
               {
                 "key": "structure",
                 "label": "Structure",
                 "status": "block",
-                "summary": "No clean edge right now."
+                "summary": "auto neutral fallback map"
               },
               {
                 "key": "flow",
@@ -227615,17 +227588,17 @@
             "trigger": "Wait for structure and order-flow to agree.",
             "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
             "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-            "risk": "",
+            "risk": "auto neutral fallback map",
             "invalidation": "",
             "invalidation_short": "",
             "planned_stop_loss": 0.0,
-            "map_summary": "",
+            "map_summary": "auto neutral fallback map",
             "friction_stack": [
               {
                 "key": "structure",
                 "label": "Structure",
                 "status": "block",
-                "summary": "No clean edge right now."
+                "summary": "auto neutral fallback map"
               },
               {
                 "key": "flow",
@@ -227873,17 +227846,17 @@
             "trigger": "Wait for structure and order-flow to agree.",
             "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
             "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-            "risk": "",
+            "risk": "auto neutral fallback map",
             "invalidation": "",
             "invalidation_short": "",
             "planned_stop_loss": 0.0,
-            "map_summary": "",
+            "map_summary": "auto neutral fallback map",
             "friction_stack": [
               {
                 "key": "structure",
                 "label": "Structure",
                 "status": "block",
-                "summary": "No clean edge right now."
+                "summary": "auto neutral fallback map"
               },
               {
                 "key": "flow",
@@ -229413,17 +229386,17 @@
             "trigger": "Wait for structure and order-flow to agree.",
             "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
             "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-            "risk": "auto neutral fallback map",
+            "risk": "",
             "invalidation": "",
             "invalidation_short": "",
             "planned_stop_loss": 0.0,
-            "map_summary": "auto neutral fallback map",
+            "map_summary": "",
             "friction_stack": [
               {
                 "key": "structure",
                 "label": "Structure",
                 "status": "block",
-                "summary": "auto neutral fallback map"
+                "summary": "No clean edge right now."
               },
               {
                 "key": "flow",
@@ -229541,17 +229514,17 @@
             "trigger": "Wait for structure and order-flow to agree.",
             "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
             "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-            "risk": "auto neutral fallback map",
+            "risk": "",
             "invalidation": "",
             "invalidation_short": "",
             "planned_stop_loss": 0.0,
-            "map_summary": "auto neutral fallback map",
+            "map_summary": "",
             "friction_stack": [
               {
                 "key": "structure",
                 "label": "Structure",
                 "status": "block",
-                "summary": "auto neutral fallback map"
+                "summary": "No clean edge right now."
               },
               {
                 "key": "flow",
@@ -229797,17 +229770,17 @@
             "trigger": "Wait for structure and order-flow to agree.",
             "entry_status": "No trade is allowed right now because the thesis is still incomplete.",
             "execution_note": "No trade is allowed right now because the thesis is still incomplete.",
-            "risk": "auto neutral fallback map",
+            "risk": "",
             "invalidation": "",
             "invalidation_short": "",
             "planned_stop_loss": 0.0,
-            "map_summary": "auto neutral fallback map",
+            "map_summary": "",
             "friction_stack": [
               {
                 "key": "structure",
                 "label": "Structure",
                 "status": "block",
-                "summary": "auto neutral fallback map"
+                "summary": "No clean edge right now."
               },
               {
                 "key": "flow",
@@ -229932,7 +229905,7 @@
   },
   "daily_radar": {
     "enabled": true,
-    "updated_at": "2026-07-26T08:11:33.124589+00:00",
+    "updated_at": "2026-07-26T08:20:20.657213+00:00",
     "summary": {
       "focus_count": 12,
       "bullish_count": 7,
@@ -232133,7 +232106,7 @@
   "asia_session": {
     "enabled": true,
     "active": true,
-    "updated_at": "2026-07-26T08:11:33.124707+00:00",
+    "updated_at": "2026-07-26T08:20:20.657304+00:00",
     "regional_bias": "RISK_OFF",
     "headline": "Asia is defensive: 4/4 fresh benchmark reads are bearish.",
     "us_readthrough": "Regional semiconductor leadership is weak (SKHX, KIOXIA, DRAM); treat strength in MU, SNDK, AMD, NVDA, MRVL as less trustworthy until Asia stabilizes.",
@@ -232225,7 +232198,7 @@
   "earnings_session": {
     "enabled": true,
     "active": true,
-    "updated_at": "2026-07-26T08:11:33.124798+00:00",
+    "updated_at": "2026-07-26T08:20:20.657370+00:00",
     "headline": "Earnings season: 7 tracked company setups are active.",
     "rows": [
       {
@@ -232248,7 +232221,7 @@
         "post_report_check": "Compare actual versus consensus for AI/HPC growth, advanced-node mix, CoWoS capacity, gross margin; then require guidance and price to agree before changing the strategic stance.",
         "flip_condition": "Review or flip only if at least two core metrics miss, guidance weakens, and price confirms wrong below 407.",
         "decision": "THESIS CONFIRMED",
-        "last_seen": "2026-07-26T08:11:33.124798+00:00",
+        "last_seen": "2026-07-26T08:20:20.657370+00:00",
         "first_seen": "2026-07-24T15:05:16.584205+00:00"
       },
       {
@@ -232271,7 +232244,7 @@
         "post_report_check": "Compare actual versus consensus for deliveries, automotive gross margin, cash burn, R2 milestones; then require guidance and price to agree before changing the strategic stance.",
         "flip_condition": "Review or flip only if at least two core metrics miss, guidance weakens, and price confirms wrong below 15.92.",
         "decision": "REVIEW",
-        "last_seen": "2026-07-26T08:11:33.124798+00:00",
+        "last_seen": "2026-07-26T08:20:20.657370+00:00",
         "first_seen": "2026-07-22T03:05:18.324962+00:00"
       },
       {
@@ -232294,7 +232267,7 @@
         "post_report_check": "Compare actual versus consensus for revenue, operating margin, engagement, ad-tier growth; then require guidance and price to agree before changing the strategic stance.",
         "flip_condition": "Review or flip only if at least two core metrics miss, guidance weakens, and price confirms wrong above 70.41.",
         "decision": "REVIEW",
-        "last_seen": "2026-07-26T08:11:33.124798+00:00",
+        "last_seen": "2026-07-26T08:20:20.657370+00:00",
         "first_seen": "2026-07-22T02:53:15.972829+00:00"
       },
       {
@@ -232317,7 +232290,7 @@
         "post_report_check": "Compare actual versus consensus for revenue, earnings, margin, key operating KPI; then require guidance and price to agree before changing the strategic stance.",
         "flip_condition": "Review or flip only if at least two core metrics miss, guidance weakens, and price confirms invalid below 128.24 (-0.73 / -0.56%).",
         "decision": "REVIEW",
-        "last_seen": "2026-07-26T08:11:33.124798+00:00",
+        "last_seen": "2026-07-26T08:20:20.657370+00:00",
         "first_seen": "2026-07-23T22:58:44.404644+00:00"
       },
       {
@@ -232340,7 +232313,7 @@
         "post_report_check": "Compare actual versus consensus for AWS growth, AWS operating margin, retail margin, capex; then require guidance and price to agree before changing the strategic stance.",
         "flip_condition": "Review or flip only if at least two core metrics miss, guidance weakens, and price confirms invalid above 232.02 (-0.48 / -0.21%).",
         "decision": "WAIT FOR PRINT",
-        "last_seen": "2026-07-26T08:11:33.124798+00:00",
+        "last_seen": "2026-07-26T08:20:20.657370+00:00",
         "first_seen": "2026-07-22T20:30:32.265960+00:00"
       },
       {
@@ -232363,7 +232336,7 @@
         "post_report_check": "Compare actual versus consensus for revenue, earnings, margin, key operating KPI; then require guidance and price to agree before changing the strategic stance.",
         "flip_condition": "Review or flip only if at least two core metrics miss, guidance weakens, and price confirms wrong below 1,189.",
         "decision": "WAIT FOR PRINT",
-        "last_seen": "2026-07-26T08:11:33.124798+00:00",
+        "last_seen": "2026-07-26T08:20:20.657370+00:00",
         "first_seen": "2026-07-25T05:36:25.877027+00:00"
       },
       {
@@ -232386,7 +232359,7 @@
         "post_report_check": "Compare actual versus consensus for iPhone revenue, Services growth, gross margin, China demand; then require guidance and price to agree before changing the strategic stance.",
         "flip_condition": "Review or flip only if at least two core metrics miss, guidance weakens, and price confirms invalid below 299.60 (-33.29 / -10.00%).",
         "decision": "WAIT FOR PRINT",
-        "last_seen": "2026-07-26T08:11:33.124798+00:00",
+        "last_seen": "2026-07-26T08:20:20.657370+00:00",
         "first_seen": "2026-07-22T02:40:02.221722+00:00"
       }
     ],
@@ -232396,7 +232369,7 @@
   },
   "xyz": {
     "title": "xyz",
-    "updated_at": "2026-07-26 13:41:30",
+    "updated_at": "2026-07-26 13:50:19",
     "items": [
       {
         "coin": "AMD",
@@ -233863,7 +233836,7 @@
         "status": "WAIT_BREAKDOWN",
         "bias": "BEARISH",
         "tradable": true,
-        "invalidation": "Invalid above 28,363.00 (+50.00 / +0.18%)",
+        "invalidation": "Invalid above 28,412.50 (+99.50 / +0.35%)",
         "next": "Break 28,226.50 (-86.50 / -0.31%)"
       },
       {
@@ -234117,7 +234090,7 @@
         "status": "WATCH_LONG",
         "bias": "BULLISH",
         "tradable": true,
-        "invalidation": "Invalid below 58.16 (-1.00 / -1.69%)",
+        "invalidation": "Invalid below 58.00 (-1.16 / -1.96%)",
         "next": "Hold 59.54 (+0.38 / +0.64%)"
       },
       {
@@ -234644,7 +234617,7 @@
   },
   "market_map": {
     "date": "2026-07-26",
-    "updated_at": "2026-07-26 13:41:32",
+    "updated_at": "2026-07-26 13:50:20",
     "global_notes": "",
     "coins": {
       "BTC": {
@@ -234681,7 +234654,7 @@
         "summary": "auto neutral map (low confidence); support around 64,305.74; resistance around 64,694.00",
         "source": "AUTO",
         "auto_generated": true,
-        "updated_at": "2026-07-26 13:41:31"
+        "updated_at": "2026-07-26 13:50:20"
       },
       "ETH": {
         "bias": "NEUTRAL",
@@ -234715,7 +234688,7 @@
         "summary": "auto neutral fallback map",
         "source": "AUTO",
         "auto_generated": true,
-        "updated_at": "2026-07-26 13:41:31"
+        "updated_at": "2026-07-26 13:50:20"
       },
       "SOL": {
         "bias": "NEUTRAL",
@@ -234749,7 +234722,7 @@
         "summary": "auto neutral fallback map",
         "source": "AUTO",
         "auto_generated": true,
-        "updated_at": "2026-07-26 13:41:31"
+        "updated_at": "2026-07-26 13:50:20"
       },
       "HYPE": {
         "bias": "NEUTRAL",
@@ -234783,7 +234756,7 @@
         "summary": "auto neutral fallback map",
         "source": "AUTO",
         "auto_generated": true,
-        "updated_at": "2026-07-26 13:41:31"
+        "updated_at": "2026-07-26 13:50:20"
       },
       "MON": {
         "bias": "NEUTRAL",
@@ -234811,7 +234784,7 @@
         "summary": "auto neutral fallback map",
         "source": "AUTO",
         "auto_generated": true,
-        "updated_at": "2026-07-26 13:41:31"
+        "updated_at": "2026-07-26 13:50:20"
       },
       "TAO": {
         "bias": "NEUTRAL",
@@ -234845,7 +234818,7 @@
         "summary": "auto neutral fallback map",
         "source": "AUTO",
         "auto_generated": true,
-        "updated_at": "2026-07-26 13:41:31"
+        "updated_at": "2026-07-26 13:50:20"
       },
       "SP500": {
         "bias": "NEUTRAL",
@@ -234881,7 +234854,7 @@
         "summary": "auto neutral map (low confidence); support around 7,416.06; resistance around 7,467.40",
         "source": "AUTO",
         "auto_generated": true,
-        "updated_at": "2026-07-26 13:41:32"
+        "updated_at": "2026-07-26 13:50:20"
       },
       "XAU": {
         "bias": "NEUTRAL",
@@ -234915,7 +234888,7 @@
         "summary": "auto neutral fallback map",
         "source": "AUTO",
         "auto_generated": true,
-        "updated_at": "2026-07-26 13:41:32"
+        "updated_at": "2026-07-26 13:50:20"
       },
       "KR200": {
         "bias": "BEARISH",
@@ -234951,7 +234924,7 @@
         "summary": "auto bearish map (medium confidence); support around 1,024.70; resistance around 1,075.00",
         "source": "AUTO",
         "auto_generated": true,
-        "updated_at": "2026-07-26 13:41:32"
+        "updated_at": "2026-07-26 13:50:20"
       },
       "JP225": {
         "bias": "NEUTRAL",
@@ -234985,7 +234958,7 @@
         "summary": "auto neutral fallback map",
         "source": "AUTO",
         "auto_generated": true,
-        "updated_at": "2026-07-26 13:41:32"
+        "updated_at": "2026-07-26 13:50:20"
       },
       "EWY": {
         "bias": "NEUTRAL",
@@ -235019,7 +234992,7 @@
         "summary": "auto neutral fallback map",
         "source": "AUTO",
         "auto_generated": true,
-        "updated_at": "2026-07-26 13:41:32"
+        "updated_at": "2026-07-26 13:50:20"
       },
       "EWJ": {
         "bias": "NEUTRAL",
@@ -235053,9 +235026,9 @@
         "summary": "auto neutral fallback map",
         "source": "AUTO",
         "auto_generated": true,
-        "updated_at": "2026-07-26 13:41:32"
+        "updated_at": "2026-07-26 13:50:20"
       },
-      "VIX": {
+      "ASML": {
         "bias": "NEUTRAL",
         "confidence": "LOW",
         "supports": [],
@@ -235075,9 +235048,9 @@
         "summary": "auto neutral fallback map",
         "source": "AUTO",
         "auto_generated": true,
-        "updated_at": "2026-07-26 13:41:32"
+        "updated_at": "2026-07-26 13:50:19"
       },
-      "VOL": {
+      "AVGO": {
         "bias": "NEUTRAL",
         "confidence": "LOW",
         "supports": [],
@@ -235097,9 +235070,9 @@
         "summary": "auto neutral fallback map",
         "source": "AUTO",
         "auto_generated": true,
-        "updated_at": "2026-07-26 13:41:32"
+        "updated_at": "2026-07-26 13:50:19"
       },
-      "WHEAT": {
+      "BB": {
         "bias": "NEUTRAL",
         "confidence": "LOW",
         "supports": [],
@@ -235119,111 +235092,9 @@
         "summary": "auto neutral fallback map",
         "source": "AUTO",
         "auto_generated": true,
-        "updated_at": "2026-07-26 13:41:32"
+        "updated_at": "2026-07-26 13:50:19"
       },
-      "XLE": {
-        "bias": "NEUTRAL",
-        "confidence": "LOW",
-        "supports": [
-          57.159,
-          58.159
-        ],
-        "resistances": [
-          60.159,
-          61.159
-        ],
-        "daily_close_long_above": [
-          60.159,
-          61.159
-        ],
-        "daily_close_short_below": [
-          57.159,
-          58.159
-        ],
-        "demand_zone": {
-          "low": 58.159,
-          "high": 58.159
-        },
-        "supply_zone": {
-          "low": 60.159,
-          "high": 60.159
-        },
-        "notes": "Auto map fallback: limited history available, using neutral guardrails only.",
-        "trade_mode": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
-        "summary": "auto neutral fallback map",
-        "source": "AUTO",
-        "auto_generated": true,
-        "updated_at": "2026-07-26 13:41:32"
-      },
-      "XYZ100": {
-        "bias": "NEUTRAL",
-        "confidence": "LOW",
-        "supports": [
-          28213.0,
-          28263.0
-        ],
-        "resistances": [
-          28363.0,
-          28413.0
-        ],
-        "daily_close_long_above": [
-          28363.0,
-          28413.0
-        ],
-        "daily_close_short_below": [
-          28213.0,
-          28263.0
-        ],
-        "demand_zone": {
-          "low": 28263.0,
-          "high": 28263.0
-        },
-        "supply_zone": {
-          "low": 28363.0,
-          "high": 28363.0
-        },
-        "notes": "Auto map fallback: limited history available, using neutral guardrails only.",
-        "trade_mode": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
-        "summary": "auto neutral fallback map",
-        "source": "AUTO",
-        "auto_generated": true,
-        "updated_at": "2026-07-26 13:41:32"
-      },
-      "ZM": {
-        "bias": "NEUTRAL",
-        "confidence": "LOW",
-        "supports": [
-          85.642,
-          86.642
-        ],
-        "resistances": [
-          88.642,
-          89.642
-        ],
-        "daily_close_long_above": [
-          88.642,
-          89.642
-        ],
-        "daily_close_short_below": [
-          85.642,
-          86.642
-        ],
-        "demand_zone": {
-          "low": 86.642,
-          "high": 86.642
-        },
-        "supply_zone": {
-          "low": 88.642,
-          "high": 88.642
-        },
-        "notes": "Auto map fallback: limited history available, using neutral guardrails only.",
-        "trade_mode": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
-        "summary": "auto neutral fallback map",
-        "source": "AUTO",
-        "auto_generated": true,
-        "updated_at": "2026-07-26 13:41:32"
-      },
-      "AMAT": {
+      "BE": {
         "bias": "NEUTRAL",
         "confidence": "LOW",
         "supports": [],
@@ -235243,9 +235114,9 @@
         "summary": "auto neutral fallback map",
         "source": "AUTO",
         "auto_generated": true,
-        "updated_at": "2026-07-26 13:41:32"
+        "updated_at": "2026-07-26 13:50:19"
       },
-      "ARM": {
+      "DELL": {
         "bias": "NEUTRAL",
         "confidence": "LOW",
         "supports": [],
@@ -235265,7 +235136,73 @@
         "summary": "auto neutral fallback map",
         "source": "AUTO",
         "auto_generated": true,
-        "updated_at": "2026-07-26 13:41:32"
+        "updated_at": "2026-07-26 13:50:19"
+      },
+      "GEV": {
+        "bias": "NEUTRAL",
+        "confidence": "LOW",
+        "supports": [],
+        "resistances": [],
+        "daily_close_long_above": [],
+        "daily_close_short_below": [],
+        "demand_zone": {
+          "low": 0.0,
+          "high": 0.0
+        },
+        "supply_zone": {
+          "low": 0.0,
+          "high": 0.0
+        },
+        "notes": "Auto map fallback: limited history available, using neutral guardrails only.",
+        "trade_mode": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
+        "summary": "auto neutral fallback map",
+        "source": "AUTO",
+        "auto_generated": true,
+        "updated_at": "2026-07-26 13:50:19"
+      },
+      "IBM": {
+        "bias": "NEUTRAL",
+        "confidence": "LOW",
+        "supports": [],
+        "resistances": [],
+        "daily_close_long_above": [],
+        "daily_close_short_below": [],
+        "demand_zone": {
+          "low": 0.0,
+          "high": 0.0
+        },
+        "supply_zone": {
+          "low": 0.0,
+          "high": 0.0
+        },
+        "notes": "Auto map fallback: limited history available, using neutral guardrails only.",
+        "trade_mode": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
+        "summary": "auto neutral fallback map",
+        "source": "AUTO",
+        "auto_generated": true,
+        "updated_at": "2026-07-26 13:50:19"
+      },
+      "NBIS": {
+        "bias": "NEUTRAL",
+        "confidence": "LOW",
+        "supports": [],
+        "resistances": [],
+        "daily_close_long_above": [],
+        "daily_close_short_below": [],
+        "demand_zone": {
+          "low": 0.0,
+          "high": 0.0
+        },
+        "supply_zone": {
+          "low": 0.0,
+          "high": 0.0
+        },
+        "notes": "Auto map fallback: limited history available, using neutral guardrails only.",
+        "trade_mode": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
+        "summary": "auto neutral fallback map",
+        "source": "AUTO",
+        "auto_generated": true,
+        "updated_at": "2026-07-26 13:50:19"
       }
     }
   },
@@ -235276,10 +235213,10 @@
     "neutral": 19,
     "manual_count": 0,
     "auto_count": 20,
-    "updated_at": "2026-07-26 13:41:32"
+    "updated_at": "2026-07-26 13:50:20"
   },
   "trade_reviews": {
-    "updated_at": "2026-07-26 13:41:32",
+    "updated_at": "2026-07-26 13:50:20",
     "reviews": {}
   },
   "review_summary": {
@@ -237622,8 +237559,8 @@
     ]
   },
   "asset_dossiers": {
-    "updated_at": 1785053492,
-    "last_cycle": "2026-07-26 13:41:30",
+    "updated_at": 1785054020,
+    "last_cycle": "2026-07-26 13:50:19",
     "count": 126,
     "tradable_count": 97,
     "summary": {
@@ -238324,7 +238261,7 @@
           "current_read": "No clean edge right now.",
           "next_unblock": "Wait for structure and execution quality to align.",
           "invalidation": "No clear invalidation level recorded yet.",
-          "playbook": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
+          "playbook": "Wait for cleaner session structure, catalyst alignment, and cleaner fills.",
           "narrative": "No special narrative risk flagged.",
           "analog": "No strong analog edge recorded yet.",
           "recent_lesson": "No symbol-specific lesson recorded yet.",
@@ -238731,7 +238668,7 @@
           "current_read": "No clean edge right now.",
           "next_unblock": "Wait for structure and execution quality to align.",
           "invalidation": "No clear invalidation level recorded yet.",
-          "playbook": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
+          "playbook": "Wait for cleaner session structure, catalyst alignment, and cleaner fills.",
           "narrative": "No special narrative risk flagged.",
           "analog": "No strong analog edge recorded yet.",
           "recent_lesson": "No symbol-specific lesson recorded yet.",
@@ -238769,7 +238706,7 @@
           "current_read": "No clean edge right now.",
           "next_unblock": "Wait for structure and execution quality to align.",
           "invalidation": "No clear invalidation level recorded yet.",
-          "playbook": "Wait for cleaner session structure, catalyst alignment, and cleaner fills.",
+          "playbook": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
           "narrative": "No special narrative risk flagged.",
           "analog": "No strong analog edge recorded yet.",
           "recent_lesson": "No symbol-specific lesson recorded yet.",
@@ -238958,7 +238895,7 @@
           "current_read": "No clean edge right now.",
           "next_unblock": "Wait for structure and execution quality to align.",
           "invalidation": "No clear invalidation level recorded yet.",
-          "playbook": "Wait for cleaner session structure, catalyst alignment, and cleaner fills.",
+          "playbook": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
           "narrative": "No special narrative risk flagged.",
           "analog": "No strong analog edge recorded yet.",
           "recent_lesson": "No symbol-specific lesson recorded yet.",
@@ -239109,7 +239046,7 @@
           "current_read": "No clean edge right now.",
           "next_unblock": "Wait for structure and execution quality to align.",
           "invalidation": "No clear invalidation level recorded yet.",
-          "playbook": "Wait for cleaner session structure, catalyst alignment, and cleaner fills.",
+          "playbook": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
           "narrative": "No special narrative risk flagged.",
           "analog": "No strong analog edge recorded yet.",
           "recent_lesson": "No symbol-specific lesson recorded yet.",
@@ -239185,7 +239122,7 @@
           "current_read": "No clean edge right now.",
           "next_unblock": "Wait for structure and execution quality to align.",
           "invalidation": "No clear invalidation level recorded yet.",
-          "playbook": "Wait for cleaner session structure, catalyst alignment, and cleaner fills.",
+          "playbook": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
           "narrative": "No special narrative risk flagged.",
           "analog": "No strong analog edge recorded yet.",
           "recent_lesson": "No symbol-specific lesson recorded yet.",
@@ -240651,7 +240588,7 @@
           "current_read": "No clean edge right now.",
           "next_unblock": "Wait for structure and execution quality to align.",
           "invalidation": "No clear invalidation level recorded yet.",
-          "playbook": "Wait for cleaner session structure, catalyst alignment, and cleaner fills.",
+          "playbook": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
           "narrative": "No special narrative risk flagged.",
           "analog": "No strong analog edge recorded yet.",
           "recent_lesson": "No symbol-specific lesson recorded yet.",
@@ -241552,7 +241489,7 @@
           "current_read": "No clean edge right now.",
           "next_unblock": "Wait for structure and execution quality to align.",
           "invalidation": "No clear invalidation level recorded yet.",
-          "playbook": "Wait for cleaner session structure, catalyst alignment, and cleaner fills.",
+          "playbook": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
           "narrative": "No special narrative risk flagged.",
           "analog": "No strong analog edge recorded yet.",
           "recent_lesson": "No symbol-specific lesson recorded yet.",
@@ -242628,7 +242565,7 @@
           "current_read": "No clean edge right now.",
           "next_unblock": "Wait for structure and execution quality to align.",
           "invalidation": "No clear invalidation level recorded yet.",
-          "playbook": "Wait for cleaner session structure, catalyst alignment, and cleaner fills.",
+          "playbook": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
           "narrative": "No special narrative risk flagged.",
           "analog": "No strong analog edge recorded yet.",
           "recent_lesson": "No symbol-specific lesson recorded yet.",
@@ -244583,7 +244520,7 @@
           "current_read": "No clean edge right now.",
           "next_unblock": "Wait for structure and execution quality to align.",
           "invalidation": "No clear invalidation level recorded yet.",
-          "playbook": "Wait for cleaner session structure, catalyst alignment, and cleaner fills.",
+          "playbook": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
           "narrative": "No special narrative risk flagged.",
           "analog": "No strong analog edge recorded yet.",
           "recent_lesson": "No symbol-specific lesson recorded yet.",
@@ -247592,7 +247529,7 @@
           "current_read": "No clean edge right now.",
           "next_unblock": "Wait for structure and execution quality to align.",
           "invalidation": "No clear invalidation level recorded yet.",
-          "playbook": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
+          "playbook": "Wait for structure, order-flow, and invalidation to agree before acting.",
           "narrative": "No special narrative risk flagged.",
           "analog": "No strong analog edge recorded yet.",
           "recent_lesson": "No symbol-specific lesson recorded yet.",
@@ -247630,7 +247567,7 @@
           "current_read": "No clean edge right now.",
           "next_unblock": "Wait for structure and execution quality to align.",
           "invalidation": "No clear invalidation level recorded yet.",
-          "playbook": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
+          "playbook": "Wait for structure, order-flow, and invalidation to agree before acting.",
           "narrative": "No special narrative risk flagged.",
           "analog": "No strong analog edge recorded yet.",
           "recent_lesson": "No symbol-specific lesson recorded yet.",
@@ -247706,7 +247643,7 @@
           "current_read": "No clean edge right now.",
           "next_unblock": "Wait for structure and execution quality to align.",
           "invalidation": "No clear invalidation level recorded yet.",
-          "playbook": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
+          "playbook": "Wait for structure, order-flow, and invalidation to agree before acting.",
           "narrative": "No special narrative risk flagged.",
           "analog": "No strong analog edge recorded yet.",
           "recent_lesson": "No symbol-specific lesson recorded yet.",
@@ -247862,16 +247799,16 @@
         "expectancy_expected_r": 0.0,
         "live_price": 59.159,
         "levels": {
-          "support": 58.159,
+          "support": 58.0,
           "resistance": 59.54,
           "long_trigger": 59.54,
-          "short_trigger": 58.159
+          "short_trigger": 58.0
         },
         "dossier": {
           "current_read": "Thesis low: Raw score remained inside the no-trade zone",
           "next_unblock": "Wait for structure and execution quality to align.",
-          "invalidation": "Lose 58.16",
-          "playbook": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
+          "invalidation": "Lose 58.00",
+          "playbook": "Buy reclaims and disciplined pullbacks; do not chase stretched moves.",
           "narrative": "Narrative flow is neutral",
           "analog": "no directional analog lookup for flat setup",
           "recent_lesson": "No symbol-specific lesson recorded yet.",
@@ -248014,16 +247951,16 @@
         "expectancy_expected_r": 0.0,
         "live_price": 28313.0,
         "levels": {
-          "support": 28263.0,
-          "resistance": 28363.0,
-          "long_trigger": 28363.0,
-          "short_trigger": 28263.0
+          "support": 28226.5,
+          "resistance": 28412.5,
+          "long_trigger": 28412.5,
+          "short_trigger": 28226.5
         },
         "dossier": {
           "current_read": "Thesis low: Raw score remained inside the no-trade zone",
           "next_unblock": "Wait for structure and execution quality to align.",
-          "invalidation": "Reclaim 28,363.00",
-          "playbook": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
+          "invalidation": "Reclaim 28,412.50",
+          "playbook": "Fade failed reclaims and clean breakdowns; avoid shorting into demand.",
           "narrative": "Narrative flow is neutral",
           "analog": "no directional analog lookup for flat setup",
           "recent_lesson": "Only re-take this pattern when the market map, structure, and order-flow line up more cleanly.",
@@ -248146,15 +248083,15 @@
         "live_price": 87.642,
         "levels": {
           "support": 87.0,
-          "resistance": 88.642,
-          "long_trigger": 88.642,
+          "resistance": 88.977329,
+          "long_trigger": 88.977329,
           "short_trigger": 87.0
         },
         "dossier": {
           "current_read": "Thesis medium: Scalp short: breakdown/breakout is confirmed, book pressure is short, daily map permits the short.",
           "next_unblock": "Scalp short: breakdown/breakout is confirmed, book pressure is short, daily map permits the short.",
-          "invalidation": "Reclaim 88.64",
-          "playbook": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
+          "invalidation": "Reclaim 88.98",
+          "playbook": "Fade failed reclaims and clean breakdowns; avoid shorting into demand.",
           "narrative": "Narrative flow is neutral",
           "analog": "5 analogs \u2022 win 30% \u2022 avg pnl -0.29% \u2022 avg R -0.11 \u2022 reliability 0.79",
           "recent_lesson": "No symbol-specific lesson recorded yet.",
@@ -254654,7 +254591,7 @@
   },
   "proactive_trader_report": {
     "enabled": true,
-    "updated_at": "2026-07-26T07:28:08.113425+00:00",
+    "updated_at": "2026-07-26T08:20:19.660370+00:00",
     "thesis_ledger": {
       "enabled": true,
       "path": "/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime/thesis_ledger.jsonl",
@@ -254662,7 +254599,7 @@
         {
           "thesis_id": "2026-07-26:AAPL:LONG:event",
           "created_at": "2026-07-26T01:11:15.250028+00:00",
-          "updated_at": "2026-07-26T07:28:08.089189+00:00",
+          "updated_at": "2026-07-26T08:20:19.644554+00:00",
           "coin": "AAPL",
           "direction": "LONG",
           "side": "bullish",
@@ -254754,7 +254691,7 @@
         {
           "thesis_id": "2026-07-26:AAVE:LONG:setup",
           "created_at": "2026-07-26T01:11:15.250143+00:00",
-          "updated_at": "2026-07-26T07:28:08.089245+00:00",
+          "updated_at": "2026-07-26T08:20:19.644577+00:00",
           "coin": "AAVE",
           "direction": "LONG",
           "side": "bullish",
@@ -254841,7 +254778,7 @@
         {
           "thesis_id": "2026-07-26:ADA:SHORT:setup",
           "created_at": "2026-07-26T01:11:15.250500+00:00",
-          "updated_at": "2026-07-26T07:28:08.089269+00:00",
+          "updated_at": "2026-07-26T08:20:19.644592+00:00",
           "coin": "ADA",
           "direction": "SHORT",
           "side": "bearish",
@@ -254928,7 +254865,7 @@
         {
           "thesis_id": "2026-07-26:AMD:LONG:event",
           "created_at": "2026-07-26T01:11:15.250988+00:00",
-          "updated_at": "2026-07-26T07:28:08.089284+00:00",
+          "updated_at": "2026-07-26T08:20:19.644600+00:00",
           "coin": "AMD",
           "direction": "LONG",
           "side": "bullish",
@@ -255020,7 +254957,7 @@
         {
           "thesis_id": "2026-07-26:AMZN:LONG:event",
           "created_at": "2026-07-26T01:11:15.251005+00:00",
-          "updated_at": "2026-07-26T07:28:08.089323+00:00",
+          "updated_at": "2026-07-26T08:20:19.644618+00:00",
           "coin": "AMZN",
           "direction": "LONG",
           "side": "bullish",
@@ -255114,7 +255051,7 @@
         {
           "thesis_id": "2026-07-26:BABA:SHORT:event",
           "created_at": "2026-07-26T04:45:59.341147+00:00",
-          "updated_at": "2026-07-26T07:28:08.089342+00:00",
+          "updated_at": "2026-07-26T08:20:19.644631+00:00",
           "coin": "BABA",
           "direction": "SHORT",
           "side": "bearish",
@@ -255206,7 +255143,7 @@
         {
           "thesis_id": "2026-07-26:BX:LONG:event",
           "created_at": "2026-07-26T01:11:15.252180+00:00",
-          "updated_at": "2026-07-26T07:28:08.089355+00:00",
+          "updated_at": "2026-07-26T08:20:19.644639+00:00",
           "coin": "BX",
           "direction": "LONG",
           "side": "bullish",
@@ -255298,7 +255235,7 @@
         {
           "thesis_id": "2026-07-26:CBRS:LONG:event",
           "created_at": "2026-07-26T01:11:15.252202+00:00",
-          "updated_at": "2026-07-26T07:28:08.089368+00:00",
+          "updated_at": "2026-07-26T08:20:19.644646+00:00",
           "coin": "CBRS",
           "direction": "LONG",
           "side": "bullish",
@@ -255393,7 +255330,7 @@
         {
           "thesis_id": "2026-07-26:COIN:SHORT:event",
           "created_at": "2026-07-26T01:11:15.253161+00:00",
-          "updated_at": "2026-07-26T07:28:08.089381+00:00",
+          "updated_at": "2026-07-26T08:20:19.644652+00:00",
           "coin": "COIN",
           "direction": "SHORT",
           "side": "bearish",
@@ -255484,7 +255421,7 @@
         {
           "thesis_id": "2026-07-26:COPPER:LONG:setup",
           "created_at": "2026-07-26T06:33:06.726803+00:00",
-          "updated_at": "2026-07-26T07:28:08.089439+00:00",
+          "updated_at": "2026-07-26T08:20:19.644664+00:00",
           "coin": "COPPER",
           "direction": "LONG",
           "side": "bullish",
@@ -255571,7 +255508,7 @@
         {
           "thesis_id": "2026-07-26:COST:SHORT:event",
           "created_at": "2026-07-26T02:14:57.227666+00:00",
-          "updated_at": "2026-07-26T07:28:08.089454+00:00",
+          "updated_at": "2026-07-26T08:20:19.644671+00:00",
           "coin": "COST",
           "direction": "SHORT",
           "side": "bearish",
@@ -255665,7 +255602,7 @@
         {
           "thesis_id": "2026-07-26:CRCL:SHORT:setup",
           "created_at": "2026-07-26T01:11:15.253198+00:00",
-          "updated_at": "2026-07-26T07:28:08.089473+00:00",
+          "updated_at": "2026-07-26T08:20:19.644678+00:00",
           "coin": "CRCL",
           "direction": "SHORT",
           "side": "bearish",
@@ -255755,7 +255692,7 @@
         {
           "thesis_id": "2026-07-26:CRWV:LONG:event",
           "created_at": "2026-07-26T05:23:41.345947+00:00",
-          "updated_at": "2026-07-26T07:28:08.089491+00:00",
+          "updated_at": "2026-07-26T08:20:19.644685+00:00",
           "coin": "CRWV",
           "direction": "LONG",
           "side": "bullish",
@@ -255846,7 +255783,7 @@
         {
           "thesis_id": "2026-07-26:DKNG:SHORT:setup",
           "created_at": "2026-07-26T01:11:15.254229+00:00",
-          "updated_at": "2026-07-26T07:28:08.089503+00:00",
+          "updated_at": "2026-07-26T08:20:19.644698+00:00",
           "coin": "DKNG",
           "direction": "SHORT",
           "side": "bearish",
@@ -255938,7 +255875,7 @@
         {
           "thesis_id": "2026-07-26:GME:LONG:event",
           "created_at": "2026-07-26T01:11:15.255294+00:00",
-          "updated_at": "2026-07-26T07:28:08.089514+00:00",
+          "updated_at": "2026-07-26T08:20:19.644705+00:00",
           "coin": "GME",
           "direction": "LONG",
           "side": "bullish",
@@ -256028,7 +255965,7 @@
         {
           "thesis_id": "2026-07-26:GOOGL:SHORT:event",
           "created_at": "2026-07-26T01:11:15.255308+00:00",
-          "updated_at": "2026-07-26T07:28:08.089527+00:00",
+          "updated_at": "2026-07-26T08:20:19.644716+00:00",
           "coin": "GOOGL",
           "direction": "SHORT",
           "side": "bearish",
@@ -256120,7 +256057,7 @@
         {
           "thesis_id": "2026-07-26:GRAM:SHORT:setup",
           "created_at": "2026-07-26T03:17:52.398027+00:00",
-          "updated_at": "2026-07-26T07:28:08.089547+00:00",
+          "updated_at": "2026-07-26T08:20:19.644723+00:00",
           "coin": "GRAM",
           "direction": "SHORT",
           "side": "bearish",
@@ -256207,7 +256144,7 @@
         {
           "thesis_id": "2026-07-26:HIMS:LONG:event",
           "created_at": "2026-07-26T01:11:15.255321+00:00",
-          "updated_at": "2026-07-26T07:28:08.089583+00:00",
+          "updated_at": "2026-07-26T08:20:19.644737+00:00",
           "coin": "HIMS",
           "direction": "LONG",
           "side": "bullish",
@@ -256302,7 +256239,7 @@
         {
           "thesis_id": "2026-07-26:HOOD:SHORT:setup",
           "created_at": "2026-07-26T03:17:52.398051+00:00",
-          "updated_at": "2026-07-26T07:28:08.089596+00:00",
+          "updated_at": "2026-07-26T08:20:19.644744+00:00",
           "coin": "HOOD",
           "direction": "SHORT",
           "side": "bearish",
@@ -256392,7 +256329,7 @@
         {
           "thesis_id": "2026-07-26:HYUNDAI:LONG:setup",
           "created_at": "2026-07-26T04:45:59.341344+00:00",
-          "updated_at": "2026-07-26T07:28:08.089609+00:00",
+          "updated_at": "2026-07-26T08:20:19.644750+00:00",
           "coin": "HYUNDAI",
           "direction": "LONG",
           "side": "bullish",
@@ -256479,7 +256416,7 @@
         {
           "thesis_id": "2026-07-26:INTC:LONG:event",
           "created_at": "2026-07-26T04:45:59.341361+00:00",
-          "updated_at": "2026-07-26T07:28:08.089620+00:00",
+          "updated_at": "2026-07-26T08:20:19.644757+00:00",
           "coin": "INTC",
           "direction": "LONG",
           "side": "bullish",
@@ -256572,7 +256509,7 @@
         {
           "thesis_id": "2026-07-26:KIOXIA:SHORT:setup",
           "created_at": "2026-07-26T05:23:41.346682+00:00",
-          "updated_at": "2026-07-26T07:28:08.089633+00:00",
+          "updated_at": "2026-07-26T08:20:19.644765+00:00",
           "coin": "KIOXIA",
           "direction": "SHORT",
           "side": "bearish",
@@ -256661,7 +256598,7 @@
         {
           "thesis_id": "2026-07-26:LINK:LONG:setup",
           "created_at": "2026-07-26T05:23:41.346705+00:00",
-          "updated_at": "2026-07-26T07:28:08.089644+00:00",
+          "updated_at": "2026-07-26T08:20:19.644771+00:00",
           "coin": "LINK",
           "direction": "LONG",
           "side": "bullish",
@@ -256748,7 +256685,7 @@
         {
           "thesis_id": "2026-07-26:LITE:LONG:event",
           "created_at": "2026-07-26T05:23:41.346726+00:00",
-          "updated_at": "2026-07-26T07:28:08.089654+00:00",
+          "updated_at": "2026-07-26T08:20:19.644778+00:00",
           "coin": "LITE",
           "direction": "LONG",
           "side": "bullish",
@@ -256842,7 +256779,7 @@
         {
           "thesis_id": "2026-07-26:LITE:LONG:event",
           "created_at": "2026-07-26T05:23:41.346726+00:00",
-          "updated_at": "2026-07-26T07:28:08.089654+00:00",
+          "updated_at": "2026-07-26T08:20:19.644778+00:00",
           "coin": "LITE",
           "direction": "LONG",
           "side": "bullish",
@@ -256934,7 +256871,7 @@
         {
           "thesis_id": "2026-07-26:LINK:LONG:setup",
           "created_at": "2026-07-26T05:23:41.346705+00:00",
-          "updated_at": "2026-07-26T07:28:08.089644+00:00",
+          "updated_at": "2026-07-26T08:20:19.644771+00:00",
           "coin": "LINK",
           "direction": "LONG",
           "side": "bullish",
@@ -257021,7 +256958,7 @@
         {
           "thesis_id": "2026-07-26:KIOXIA:SHORT:setup",
           "created_at": "2026-07-26T05:23:41.346682+00:00",
-          "updated_at": "2026-07-26T07:28:08.089633+00:00",
+          "updated_at": "2026-07-26T08:20:19.644765+00:00",
           "coin": "KIOXIA",
           "direction": "SHORT",
           "side": "bearish",
@@ -257110,7 +257047,7 @@
         {
           "thesis_id": "2026-07-26:INTC:LONG:event",
           "created_at": "2026-07-26T04:45:59.341361+00:00",
-          "updated_at": "2026-07-26T07:28:08.089620+00:00",
+          "updated_at": "2026-07-26T08:20:19.644757+00:00",
           "coin": "INTC",
           "direction": "LONG",
           "side": "bullish",
@@ -257203,7 +257140,7 @@
         {
           "thesis_id": "2026-07-26:HYUNDAI:LONG:setup",
           "created_at": "2026-07-26T04:45:59.341344+00:00",
-          "updated_at": "2026-07-26T07:28:08.089609+00:00",
+          "updated_at": "2026-07-26T08:20:19.644750+00:00",
           "coin": "HYUNDAI",
           "direction": "LONG",
           "side": "bullish",
@@ -257290,7 +257227,7 @@
         {
           "thesis_id": "2026-07-26:HOOD:SHORT:setup",
           "created_at": "2026-07-26T03:17:52.398051+00:00",
-          "updated_at": "2026-07-26T07:28:08.089596+00:00",
+          "updated_at": "2026-07-26T08:20:19.644744+00:00",
           "coin": "HOOD",
           "direction": "SHORT",
           "side": "bearish",
@@ -257380,7 +257317,7 @@
         {
           "thesis_id": "2026-07-26:HIMS:LONG:event",
           "created_at": "2026-07-26T01:11:15.255321+00:00",
-          "updated_at": "2026-07-26T07:28:08.089583+00:00",
+          "updated_at": "2026-07-26T08:20:19.644737+00:00",
           "coin": "HIMS",
           "direction": "LONG",
           "side": "bullish",
@@ -257475,7 +257412,7 @@
         {
           "thesis_id": "2026-07-26:GRAM:SHORT:setup",
           "created_at": "2026-07-26T03:17:52.398027+00:00",
-          "updated_at": "2026-07-26T07:28:08.089547+00:00",
+          "updated_at": "2026-07-26T08:20:19.644723+00:00",
           "coin": "GRAM",
           "direction": "SHORT",
           "side": "bearish",
@@ -257562,7 +257499,7 @@
         {
           "thesis_id": "2026-07-26:GOOGL:SHORT:event",
           "created_at": "2026-07-26T01:11:15.255308+00:00",
-          "updated_at": "2026-07-26T07:28:08.089527+00:00",
+          "updated_at": "2026-07-26T08:20:19.644716+00:00",
           "coin": "GOOGL",
           "direction": "SHORT",
           "side": "bearish",
@@ -257654,7 +257591,7 @@
         {
           "thesis_id": "2026-07-26:GME:LONG:event",
           "created_at": "2026-07-26T01:11:15.255294+00:00",
-          "updated_at": "2026-07-26T07:28:08.089514+00:00",
+          "updated_at": "2026-07-26T08:20:19.644705+00:00",
           "coin": "GME",
           "direction": "LONG",
           "side": "bullish",
@@ -257744,7 +257681,7 @@
         {
           "thesis_id": "2026-07-26:DKNG:SHORT:setup",
           "created_at": "2026-07-26T01:11:15.254229+00:00",
-          "updated_at": "2026-07-26T07:28:08.089503+00:00",
+          "updated_at": "2026-07-26T08:20:19.644698+00:00",
           "coin": "DKNG",
           "direction": "SHORT",
           "side": "bearish",
@@ -257836,7 +257773,7 @@
         {
           "thesis_id": "2026-07-26:CRWV:LONG:event",
           "created_at": "2026-07-26T05:23:41.345947+00:00",
-          "updated_at": "2026-07-26T07:28:08.089491+00:00",
+          "updated_at": "2026-07-26T08:20:19.644685+00:00",
           "coin": "CRWV",
           "direction": "LONG",
           "side": "bullish",
@@ -257927,7 +257864,7 @@
         {
           "thesis_id": "2026-07-26:CRCL:SHORT:setup",
           "created_at": "2026-07-26T01:11:15.253198+00:00",
-          "updated_at": "2026-07-26T07:28:08.089473+00:00",
+          "updated_at": "2026-07-26T08:20:19.644678+00:00",
           "coin": "CRCL",
           "direction": "SHORT",
           "side": "bearish",
@@ -258017,7 +257954,7 @@
         {
           "thesis_id": "2026-07-26:COST:SHORT:event",
           "created_at": "2026-07-26T02:14:57.227666+00:00",
-          "updated_at": "2026-07-26T07:28:08.089454+00:00",
+          "updated_at": "2026-07-26T08:20:19.644671+00:00",
           "coin": "COST",
           "direction": "SHORT",
           "side": "bearish",
@@ -258111,7 +258048,7 @@
         {
           "thesis_id": "2026-07-26:COPPER:LONG:setup",
           "created_at": "2026-07-26T06:33:06.726803+00:00",
-          "updated_at": "2026-07-26T07:28:08.089439+00:00",
+          "updated_at": "2026-07-26T08:20:19.644664+00:00",
           "coin": "COPPER",
           "direction": "LONG",
           "side": "bullish",
@@ -258198,7 +258135,7 @@
         {
           "thesis_id": "2026-07-26:COIN:SHORT:event",
           "created_at": "2026-07-26T01:11:15.253161+00:00",
-          "updated_at": "2026-07-26T07:28:08.089381+00:00",
+          "updated_at": "2026-07-26T08:20:19.644652+00:00",
           "coin": "COIN",
           "direction": "SHORT",
           "side": "bearish",
@@ -258289,7 +258226,7 @@
         {
           "thesis_id": "2026-07-26:CBRS:LONG:event",
           "created_at": "2026-07-26T01:11:15.252202+00:00",
-          "updated_at": "2026-07-26T07:28:08.089368+00:00",
+          "updated_at": "2026-07-26T08:20:19.644646+00:00",
           "coin": "CBRS",
           "direction": "LONG",
           "side": "bullish",
@@ -258384,7 +258321,7 @@
         {
           "thesis_id": "2026-07-26:BX:LONG:event",
           "created_at": "2026-07-26T01:11:15.252180+00:00",
-          "updated_at": "2026-07-26T07:28:08.089355+00:00",
+          "updated_at": "2026-07-26T08:20:19.644639+00:00",
           "coin": "BX",
           "direction": "LONG",
           "side": "bullish",
@@ -258476,7 +258413,7 @@
         {
           "thesis_id": "2026-07-26:BABA:SHORT:event",
           "created_at": "2026-07-26T04:45:59.341147+00:00",
-          "updated_at": "2026-07-26T07:28:08.089342+00:00",
+          "updated_at": "2026-07-26T08:20:19.644631+00:00",
           "coin": "BABA",
           "direction": "SHORT",
           "side": "bearish",
@@ -258568,7 +258505,7 @@
         {
           "thesis_id": "2026-07-26:AMZN:LONG:event",
           "created_at": "2026-07-26T01:11:15.251005+00:00",
-          "updated_at": "2026-07-26T07:28:08.089323+00:00",
+          "updated_at": "2026-07-26T08:20:19.644618+00:00",
           "coin": "AMZN",
           "direction": "LONG",
           "side": "bullish",
@@ -258662,7 +258599,7 @@
         {
           "thesis_id": "2026-07-26:AMD:LONG:event",
           "created_at": "2026-07-26T01:11:15.250988+00:00",
-          "updated_at": "2026-07-26T07:28:08.089284+00:00",
+          "updated_at": "2026-07-26T08:20:19.644600+00:00",
           "coin": "AMD",
           "direction": "LONG",
           "side": "bullish",
@@ -258754,7 +258691,7 @@
         {
           "thesis_id": "2026-07-26:ADA:SHORT:setup",
           "created_at": "2026-07-26T01:11:15.250500+00:00",
-          "updated_at": "2026-07-26T07:28:08.089269+00:00",
+          "updated_at": "2026-07-26T08:20:19.644592+00:00",
           "coin": "ADA",
           "direction": "SHORT",
           "side": "bearish",
@@ -258841,7 +258778,7 @@
         {
           "thesis_id": "2026-07-26:AAVE:LONG:setup",
           "created_at": "2026-07-26T01:11:15.250143+00:00",
-          "updated_at": "2026-07-26T07:28:08.089245+00:00",
+          "updated_at": "2026-07-26T08:20:19.644577+00:00",
           "coin": "AAVE",
           "direction": "LONG",
           "side": "bullish",
@@ -258928,7 +258865,7 @@
         {
           "thesis_id": "2026-07-26:AAPL:LONG:event",
           "created_at": "2026-07-26T01:11:15.250028+00:00",
-          "updated_at": "2026-07-26T07:28:08.089189+00:00",
+          "updated_at": "2026-07-26T08:20:19.644554+00:00",
           "coin": "AAPL",
           "direction": "LONG",
           "side": "bullish",
@@ -259027,7 +258964,7 @@
     },
     "morning_scout_book": {
       "enabled": true,
-      "generated_at": "2026-07-26T07:28:08.107621+00:00",
+      "generated_at": "2026-07-26T08:20:19.656653+00:00",
       "session": "morning_scout_book",
       "bullish_calls": [
         {
@@ -275529,87 +275466,129 @@
       "recent_resolved": [
         {
           "asset_bucket": "equity",
+          "coin": "DKNG",
+          "created_at": "2026-07-25T08:10:46.600250+00:00",
+          "created_at_ts": 1784967046.6002078,
+          "direction": "SHORT",
+          "entry_price": 23.211,
+          "forecast_id": "2026-07-25:DKNG:SHORT:24h",
+          "horizon_hours": 24.0,
+          "probability": 0.8871,
+          "resolved": true,
+          "source": "morning_scout_book",
+          "target_move_pct": 0.018,
+          "theme": "CONSUMER_GROWTH",
+          "thesis_id": "2026-07-25:DKNG:SHORT:setup",
+          "resolved_at": "2026-07-26T08:20:19.658637+00:00",
+          "resolved_price": 23.11,
+          "directional_return_pct": 0.4351,
+          "outcome": 0,
+          "brier": 0.786946
+        },
+        {
+          "asset_bucket": "equity",
+          "coin": "CRWV",
+          "created_at": "2026-07-25T07:38:51.892303+00:00",
+          "created_at_ts": 1784965131.892263,
+          "direction": "SHORT",
+          "entry_price": 72.57,
+          "forecast_id": "2026-07-25:CRWV:SHORT:24h",
+          "horizon_hours": 24.0,
+          "probability": 0.9029,
+          "resolved": true,
+          "source": "morning_scout_book",
+          "target_move_pct": 0.025,
+          "theme": "NEOCLOUDS",
+          "thesis_id": "2026-07-25:CRWV:SHORT:event",
+          "resolved_at": "2026-07-26T08:20:19.658647+00:00",
+          "resolved_price": 72.93,
+          "directional_return_pct": -0.4961,
+          "outcome": 0,
+          "brier": 0.815228
+        },
+        {
+          "asset_bucket": "equity",
+          "brier": 0.9025,
           "coin": "CL",
           "created_at": "2026-07-25T07:06:59.783193+00:00",
           "created_at_ts": 1784963219.783179,
           "direction": "LONG",
+          "directional_return_pct": -3.4318,
           "entry_price": 89.632,
           "forecast_id": "2026-07-25:CL:LONG:24h",
           "horizon_hours": 24.0,
+          "outcome": 0,
           "probability": 0.95,
           "resolved": true,
+          "resolved_at": "2026-07-26T07:28:08.110219+00:00",
+          "resolved_price": 86.556,
           "source": "morning_scout_book",
           "target_move_pct": 0.018,
           "theme": "ENERGY_COMPLEX",
-          "thesis_id": "2026-07-25:CL:LONG:setup",
-          "resolved_at": "2026-07-26T07:28:08.110219+00:00",
-          "resolved_price": 86.556,
-          "directional_return_pct": -3.4318,
-          "outcome": 0,
-          "brier": 0.9025
+          "thesis_id": "2026-07-25:CL:LONG:setup"
         },
         {
           "asset_bucket": "equity",
+          "brier": 0.64032,
           "coin": "HOOD",
           "created_at": "2026-07-25T06:35:03.860683+00:00",
           "created_at_ts": 1784961303.86062,
           "direction": "LONG",
+          "directional_return_pct": 0.4247,
           "entry_price": 94.893,
           "forecast_id": "2026-07-25:HOOD:LONG:24h",
           "horizon_hours": 24.0,
+          "outcome": 0,
           "probability": 0.8002,
           "resolved": true,
+          "resolved_at": "2026-07-26T07:28:08.110238+00:00",
+          "resolved_price": 95.296,
           "source": "morning_scout_book",
           "target_move_pct": 0.018,
           "theme": "CRYPTO_EQUITIES",
-          "thesis_id": "2026-07-25:HOOD:LONG:setup",
-          "resolved_at": "2026-07-26T07:28:08.110238+00:00",
-          "resolved_price": 95.296,
-          "directional_return_pct": 0.4247,
-          "outcome": 0,
-          "brier": 0.64032
+          "thesis_id": "2026-07-25:HOOD:LONG:setup"
         },
         {
           "asset_bucket": "equity",
+          "brier": 0.839972,
           "coin": "HIMS",
           "created_at": "2026-07-25T06:35:03.860673+00:00",
           "created_at_ts": 1784961303.86062,
           "direction": "LONG",
+          "directional_return_pct": -1.0283,
           "entry_price": 28.688,
           "forecast_id": "2026-07-25:HIMS:LONG:24h",
           "horizon_hours": 24.0,
+          "outcome": 0,
           "probability": 0.9165,
           "resolved": true,
+          "resolved_at": "2026-07-26T07:28:08.110248+00:00",
+          "resolved_price": 28.393,
           "source": "morning_scout_book",
           "target_move_pct": 0.025,
           "theme": "BIOTECH_GLP1",
-          "thesis_id": "2026-07-25:HIMS:LONG:event",
-          "resolved_at": "2026-07-26T07:28:08.110248+00:00",
-          "resolved_price": 28.393,
-          "directional_return_pct": -1.0283,
-          "outcome": 0,
-          "brier": 0.839972
+          "thesis_id": "2026-07-25:HIMS:LONG:event"
         },
         {
           "asset_bucket": "equity",
+          "brier": 0.853961,
           "coin": "COST",
           "created_at": "2026-07-25T06:35:03.860653+00:00",
           "created_at_ts": 1784961303.86062,
           "direction": "LONG",
+          "directional_return_pct": -0.2661,
           "entry_price": 932.12,
           "forecast_id": "2026-07-25:COST:LONG:24h",
           "horizon_hours": 24.0,
+          "outcome": 0,
           "probability": 0.9241,
           "resolved": true,
+          "resolved_at": "2026-07-26T07:28:08.110258+00:00",
+          "resolved_price": 929.64,
           "source": "morning_scout_book",
           "target_move_pct": 0.025,
           "theme": "CONSUMER_GROWTH",
-          "thesis_id": "2026-07-25:COST:LONG:event",
-          "resolved_at": "2026-07-26T07:28:08.110258+00:00",
-          "resolved_price": 929.64,
-          "directional_return_pct": -0.2661,
-          "outcome": 0,
-          "brier": 0.853961
+          "thesis_id": "2026-07-25:COST:LONG:event"
         },
         {
           "asset_bucket": "equity",
@@ -275904,56 +275883,14 @@
           "target_move_pct": 0.018,
           "theme": "ASIA_MACRO",
           "thesis_id": "2026-07-25:EWJ:LONG:setup"
-        },
-        {
-          "asset_bucket": "equity",
-          "brier": 0.9025,
-          "coin": "COPPER",
-          "created_at": "2026-07-25T00:10:32.392793+00:00",
-          "created_at_ts": 1784938232.3925781,
-          "direction": "LONG",
-          "directional_return_pct": 0.06,
-          "entry_price": 6.3351,
-          "forecast_id": "2026-07-25:COPPER:LONG:24h",
-          "horizon_hours": 24.0,
-          "outcome": 0,
-          "probability": 0.95,
-          "resolved": true,
-          "resolved_at": "2026-07-26T01:11:15.275583+00:00",
-          "resolved_price": 6.3389,
-          "source": "morning_scout_book",
-          "target_move_pct": 0.018,
-          "theme": "COMMODITIES_METALS",
-          "thesis_id": "2026-07-25:COPPER:LONG:setup"
-        },
-        {
-          "asset_bucket": "equity",
-          "brier": 0.459955,
-          "coin": "CBRS",
-          "created_at": "2026-07-25T00:10:32.392776+00:00",
-          "created_at_ts": 1784938232.3925781,
-          "direction": "LONG",
-          "directional_return_pct": -0.9456,
-          "entry_price": 199.87,
-          "forecast_id": "2026-07-25:CBRS:LONG:24h",
-          "horizon_hours": 24.0,
-          "outcome": 0,
-          "probability": 0.6782,
-          "resolved": true,
-          "resolved_at": "2026-07-26T01:11:15.275588+00:00",
-          "resolved_price": 197.98,
-          "source": "morning_scout_book",
-          "target_move_pct": 0.025,
-          "theme": "PRE_IPO_EVENT",
-          "thesis_id": "2026-07-25:CBRS:LONG:event"
         }
       ],
       "summary": {
-        "open_count": 41,
-        "resolved_count": 140,
-        "brier_score": 0.5947,
-        "hit_rate": 0.1714,
-        "calibration_note": "17% hit rate, Brier 0.595"
+        "open_count": 39,
+        "resolved_count": 142,
+        "brier_score": 0.5976,
+        "hit_rate": 0.169,
+        "calibration_note": "17% hit rate, Brier 0.598"
       }
     },
     "summary": {
@@ -275978,14 +275915,14 @@
       "starter_plan_count": 5,
       "pair_trade_count": 0,
       "read_through_count": 285,
-      "forecast_note": "17% hit rate, Brier 0.595",
+      "forecast_note": "17% hit rate, Brier 0.598",
       "starter_execution_opened_count": 0,
       "starter_execution_opened_usd": 0.0,
       "starter_execution_attempted_count": 0
     },
     "starter_execution": {
       "enabled": true,
-      "updated_at": "2026-07-26T12:58:01",
+      "updated_at": "2026-07-26T13:50:19",
       "mode": "dry_run",
       "attempts": [],
       "opened": [],
@@ -276046,7 +275983,7 @@
   },
   "runtime": {
     "stale": false,
-    "state_age_seconds": 3
+    "state_age_seconds": 1
   },
-  "server_time": "2026-07-26 13:41:33"
+  "server_time": "2026-07-26 13:50:20"
 }
