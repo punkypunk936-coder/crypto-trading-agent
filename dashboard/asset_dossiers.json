@@ -1,6 +1,6 @@
 {
-  "updated_at": 1785105386,
-  "last_cycle": "2026-07-27 04:06:22",
+  "updated_at": 1785112735,
+  "last_cycle": "2026-07-27 06:08:54",
   "count": 126,
   "tradable_count": 97,
   "summary": {
@@ -17,7 +17,7 @@
     "coin_count": 35,
     "equity_count": 91,
     "llm_enabled": true,
-    "missed_win_count": 115
+    "missed_win_count": 63
   },
   "assets": {
     "AAPL": {
@@ -268,7 +268,20 @@
       "missed_move_context": {
         "miss_count": 0,
         "latest": {},
-        "daily_top_mover_replay": {}
+        "daily_top_mover_replay": {
+          "blocked_at": "2026-07-27 01:34:09",
+          "blocked_stage": "patient_execution_block",
+          "coin": "AAVE",
+          "conviction_entry_event": true,
+          "direction": "LONG",
+          "event_budget_summary": "event budget has room for a starter",
+          "move_pct": 4.505,
+          "news_catalyst_score": 0.0,
+          "news_event_score": 0.0,
+          "probability": 0.5,
+          "score": 100.0,
+          "summary": "Long wait: chart is moving, but the driver is not strong yet."
+        }
       },
       "playbook_distiller": {
         "avg_pnl_pct": -0.0393,
@@ -457,7 +470,7 @@
         "recent_trade_logic": "Long wait: chart is moving, but the driver is not strong yet. \u2022 auto neutral map; price is sitting in mapped supply \u2022 levels: below breakdown"
       },
       "missed_move_context": {
-        "miss_count": 12,
+        "miss_count": 0,
         "latest": {},
         "daily_top_mover_replay": {}
       },
@@ -1607,21 +1620,8 @@
         "recent_trade_logic": "Backfilled from CSV history"
       },
       "missed_move_context": {
-        "miss_count": 0,
-        "latest": {
-          "action": "SHORT",
-          "breakout": "confirmed_bearish_breakdown",
-          "coin": "BNB",
-          "interaction": "at_support",
-          "probability": 0.7195,
-          "recorded_at": "2026-07-26 14:05:52",
-          "regime": "trend",
-          "risk_reward_ratio": 2.56,
-          "score": 93.38,
-          "stage": "first_principles_guard_block",
-          "summary": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 43% WR, $-74.43.",
-          "ts": 1785054952.1555781
-        },
+        "miss_count": 3,
+        "latest": {},
         "daily_top_mover_replay": {}
       },
       "playbook_distiller": {},
@@ -1749,24 +1749,24 @@
       "asset_state": "ARMED",
       "bias": "NEUTRAL",
       "action": "FLAT",
-      "confidence": "MEDIUM",
-      "score": 37.1,
-      "expectancy_probability": 0.7583,
-      "expectancy_expected_r": 0.519,
-      "live_price": 64652.0,
+      "confidence": "HIGH",
+      "score": 59.1,
+      "expectancy_probability": 0.7269,
+      "expectancy_expected_r": 1.48,
+      "live_price": 65355.0,
       "levels": {
-        "support": 64305.742851,
-        "resistance": 64694.0,
-        "long_trigger": 64694.0,
-        "short_trigger": 64305.742851
+        "support": 65022.781101,
+        "resistance": 65582.0,
+        "long_trigger": 65582.0,
+        "short_trigger": 65022.781101
       },
       "dossier": {
-        "current_read": "Thesis low: higher structure is still an uptrend",
-        "next_unblock": "higher structure is still an uptrend",
+        "current_read": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 43% WR, $-74.43.",
+        "next_unblock": "historical analogs oppose this setup (5 close matches)",
         "invalidation": "lose 71,500",
         "playbook": "Recent history says avoid BTC SHORT in BREAKOUT until that family earns trust back.",
         "narrative": "Narrative flow is neutral",
-        "analog": "5 analogs \u2022 win 0% \u2022 avg pnl -1.13% \u2022 avg R +0.00 \u2022 reliability 0.81",
+        "analog": "5 analogs \u2022 win 40% \u2022 avg pnl -0.12% \u2022 avg R -0.16 \u2022 reliability 0.87",
         "recent_lesson": "This setup paid. Keep favoring trades where structure, levels, and invalidation stay this coherent.",
         "recent_trade_logic": "Backfilled from CSV history"
       },
@@ -1922,7 +1922,20 @@
       },
       "missed_move_context": {
         "miss_count": 0,
-        "latest": {},
+        "latest": {
+          "action": "LONG",
+          "breakout": "probing_bullish_breakout",
+          "coin": "BX",
+          "interaction": "at_resistance",
+          "probability": 0.6512,
+          "recorded_at": "2026-07-27 01:33:36",
+          "regime": "absorption",
+          "risk_reward_ratio": 1.67,
+          "score": 62.02,
+          "stage": "win_rate_context_guard_block",
+          "summary": "win-rate recovery blocks LONG: needs cleaner odds/expected-R before adding risk",
+          "ts": 1785096216.644181
+        },
         "daily_top_mover_replay": {}
       },
       "playbook_distiller": {
@@ -2115,8 +2128,21 @@
         "recent_trade_logic": "Backfilled from CSV history"
       },
       "missed_move_context": {
-        "miss_count": 0,
-        "latest": {},
+        "miss_count": 3,
+        "latest": {
+          "action": "LONG",
+          "breakout": "confirmed_bearish_breakdown",
+          "coin": "CBRS",
+          "interaction": "at_support",
+          "probability": 0.8909,
+          "recorded_at": "2026-07-27 01:33:43",
+          "regime": "breakout",
+          "risk_reward_ratio": 2.51,
+          "score": 98.12,
+          "stage": "patient_execution_block",
+          "summary": "Thesis medium: Pre-event starter long allowed: catalyst 6.22, news 61, p 92%, score 68.2 vs 65 trigger. Begin 44% size before full confirmation. Thesis: platform anchor + partner attached + strategic deal + capacity lock-in + options implied move + analyst revision.",
+          "ts": 1785096223.3793752
+        },
         "daily_top_mover_replay": {}
       },
       "playbook_distiller": {},
@@ -2553,7 +2579,20 @@
       },
       "missed_move_context": {
         "miss_count": 0,
-        "latest": {},
+        "latest": {
+          "action": "LONG",
+          "breakout": "confirmed_bearish_breakdown",
+          "coin": "COST",
+          "interaction": "at_support",
+          "probability": 0.9806,
+          "recorded_at": "2026-07-27 01:34:03",
+          "regime": "trend",
+          "risk_reward_ratio": 1.05,
+          "score": 97.2,
+          "stage": "win_rate_guard_block",
+          "summary": "COST LONG has 3/4 recent non-quality outcomes",
+          "ts": 1785096243.752474
+        },
         "daily_top_mover_replay": {}
       },
       "playbook_distiller": {
@@ -2745,7 +2784,20 @@
       },
       "missed_move_context": {
         "miss_count": 0,
-        "latest": {},
+        "latest": {
+          "action": "SHORT",
+          "breakout": "confirmed_bearish_breakdown",
+          "coin": "CRCL",
+          "interaction": "at_resistance",
+          "probability": 0.8015,
+          "recorded_at": "2026-07-27 01:34:08",
+          "regime": "absorption",
+          "risk_reward_ratio": 1.85,
+          "score": 90.17,
+          "stage": "guardrails_flat",
+          "summary": "RL tightened SHORT threshold to \u226431 (absorption trap)",
+          "ts": 1785096248.496704
+        },
         "daily_top_mover_replay": {}
       },
       "playbook_distiller": {
@@ -3310,7 +3362,7 @@
         "current_read": "Thesis low: higher structure is still an uptrend",
         "next_unblock": "higher structure is still an uptrend",
         "invalidation": "Reclaim 55.19",
-        "playbook": "Sell rallies into supply/resistance; press harder after breakdown closes confirm.",
+        "playbook": "Fade failed reclaims and clean breakdowns; avoid shorting into demand.",
         "narrative": "Narrative flow is neutral",
         "analog": "5 analogs \u2022 win 19% \u2022 avg pnl -0.35% \u2022 avg R -0.17 \u2022 reliability 0.69",
         "recent_lesson": "No symbol-specific lesson recorded yet.",
@@ -3348,7 +3400,7 @@
         "current_read": "No clean edge right now.",
         "next_unblock": "Wait for structure and execution quality to align.",
         "invalidation": "No clear invalidation level recorded yet.",
-        "playbook": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
+        "playbook": "Wait for structure, order-flow, and invalidation to agree before acting.",
         "narrative": "No special narrative risk flagged.",
         "analog": "No strong analog edge recorded yet.",
         "recent_lesson": "No symbol-specific lesson recorded yet.",
@@ -3520,37 +3572,50 @@
       "tradable": true,
       "execution_mode": "tradable",
       "asset_state": "EARLY_CONVICTION",
-      "bias": "NEUTRAL",
+      "bias": "BULLISH",
       "action": "SHORT",
       "confidence": "MEDIUM",
-      "score": 47.5,
-      "expectancy_probability": 0.8047,
-      "expectancy_expected_r": 1.58,
-      "live_price": 1914.0,
+      "score": 57.5,
+      "expectancy_probability": 0.6985,
+      "expectancy_expected_r": 0.522,
+      "live_price": 1952.7,
       "levels": {
-        "support": 1900.0,
-        "resistance": 1948.25,
-        "long_trigger": 1948.25,
-        "short_trigger": 1900.0
+        "support": 1925.0,
+        "resistance": 1955.9,
+        "long_trigger": 1955.9,
+        "short_trigger": 1925.0
       },
       "dossier": {
         "current_read": "Thesis medium: Scalp short: breakdown/breakout is confirmed, countertrend scalp only, book pressure is short.",
         "next_unblock": "Scalp short: breakdown/breakout is confirmed, countertrend scalp only, book pressure is short.",
-        "invalidation": "Reclaim 1,948.25",
+        "invalidation": "Lose 1,925.00",
         "playbook": "Recent history says avoid ETH SHORT in TREND until that family earns trust back.",
         "narrative": "Narrative flow is neutral",
-        "analog": "5 analogs \u2022 win 100% \u2022 avg pnl +0.41% \u2022 avg R +0.59 \u2022 reliability 0.85",
+        "analog": "5 analogs \u2022 win 100% \u2022 avg pnl +0.63% \u2022 avg R +0.71 \u2022 reliability 0.82",
         "recent_lesson": "Structure turned against the trade. Respect invalidation faster when the higher timeframe disagrees.",
         "recent_trade_logic": "Backfilled from CSV history"
       },
       "missed_move_context": {
         "miss_count": 0,
         "latest": {},
-        "daily_top_mover_replay": {}
+        "daily_top_mover_replay": {
+          "blocked_at": "2026-07-27 00:07:37",
+          "blocked_stage": "guardrails_flat",
+          "coin": "ETH",
+          "conviction_entry_event": false,
+          "direction": "LONG",
+          "event_budget_summary": "",
+          "move_pct": 3.955,
+          "news_catalyst_score": 0.0,
+          "news_event_score": 0.0,
+          "probability": 0.7627,
+          "score": 96.19,
+          "summary": "RL tightened LONG threshold to \u226573 (ranging trap, absorption trap)"
+        }
       },
       "playbook_distiller": {
-        "avg_pnl_pct": -0.1059,
-        "avg_pnl_usd": -0.0676,
+        "avg_pnl_pct": -0.289,
+        "avg_pnl_usd": -0.2431,
         "avoid_family": {
           "avg_captured_r": -0.0617,
           "avg_hold_minutes": 79.03,
@@ -3575,24 +3640,24 @@
         "coin": "ETH",
         "families": [
           {
-            "avg_captured_r": 0.2385,
-            "avg_hold_minutes": 214.36,
-            "avg_pnl_pct": 0.5403,
-            "avg_pnl_usd": 0.5403,
-            "avg_tp_progress_ratio": 0.092,
+            "avg_captured_r": 0.396,
+            "avg_hold_minutes": 24.39,
+            "avg_pnl_pct": 0.2714,
+            "avg_pnl_usd": 0.2714,
+            "avg_tp_progress_ratio": 0.168,
             "direction": "SHORT",
             "execution_style": "MARKET",
             "execution_styles": {
-              "MARKET": 2
+              "MARKET": 1
             },
-            "headline": "SHORT in ABSORPTION is winning 100% across 2 trades",
+            "headline": "SHORT in ABSORPTION is winning 100% across 1 trades",
             "latest_logic": "Long AAPL thesis paired with short ETH while crypto tape is weaker.",
             "losses": 0,
-            "profit_factor": 1.0806,
+            "profit_factor": 0.2714,
             "regime": "ABSORPTION",
-            "samples": 2,
+            "samples": 1,
             "win_rate": 1.0,
-            "wins": 2
+            "wins": 1
           },
           {
             "avg_captured_r": 0.04,
@@ -3636,23 +3701,23 @@
           },
           {
             "avg_captured_r": 0.0,
-            "avg_hold_minutes": 133.4,
-            "avg_pnl_pct": -0.154,
-            "avg_pnl_usd": -0.154,
+            "avg_hold_minutes": 65.5,
+            "avg_pnl_pct": -0.395,
+            "avg_pnl_usd": -0.395,
             "avg_tp_progress_ratio": 0.0,
             "direction": "SHORT",
             "execution_style": "UNKNOWN",
             "execution_styles": {
-              "UNKNOWN": 5
+              "UNKNOWN": 4
             },
-            "headline": "SHORT in UNKNOWN is winning 60% across 5 trades",
+            "headline": "SHORT in UNKNOWN is winning 50% across 4 trades",
             "latest_logic": "",
             "losses": 2,
-            "profit_factor": 0.5904,
+            "profit_factor": 0.1596,
             "regime": "UNKNOWN",
-            "samples": 5,
-            "win_rate": 0.6,
-            "wins": 3
+            "samples": 4,
+            "win_rate": 0.5,
+            "wins": 2
           },
           {
             "avg_captured_r": -0.0617,
@@ -3679,9 +3744,9 @@
         "latest_logic": "Long AAPL thesis paired with short ETH while crypto tape is weaker.",
         "lead_execution_style": "MARKET",
         "playbook": "Recent history says avoid ETH SHORT in TREND until that family earns trust back.",
-        "profit_factor": 0.784,
-        "samples": 12,
-        "win_rate": 0.6667
+        "profit_factor": 0.3532,
+        "samples": 10,
+        "win_rate": 0.6
       },
       "llm_referee": {}
     },
@@ -3709,7 +3774,7 @@
         "current_read": "Thesis high: daily breakout is already confirmed; breakout regime supports follow-through; orderbook and key levels support the short",
         "next_unblock": "Thesis high: daily breakout is already confirmed; breakout regime supports follow-through; orderbook and key levels support the short",
         "invalidation": "Reclaim 1.15",
-        "playbook": "Sell rallies into supply/resistance; press harder after breakdown closes confirm.",
+        "playbook": "Fade failed reclaims and clean breakdowns; avoid shorting into demand.",
         "narrative": "Narrative flow is neutral",
         "analog": "5 analogs \u2022 win 40% \u2022 avg pnl -0.43% \u2022 avg R +0.06 \u2022 reliability 0.70",
         "recent_lesson": "No symbol-specific lesson recorded yet.",
@@ -3733,15 +3798,15 @@
       "bias": "NEUTRAL",
       "action": "FLAT",
       "confidence": "MEDIUM",
-      "score": 39.4,
+      "score": 63.5,
       "expectancy_probability": 0.5,
       "expectancy_expected_r": 0.0,
-      "live_price": 92.328,
+      "live_price": 92.708,
       "levels": {
-        "support": 91.4845,
-        "resistance": 92.560434,
-        "long_trigger": 92.560434,
-        "short_trigger": 91.4845
+        "support": 92.522201,
+        "resistance": 93.318,
+        "long_trigger": 93.318,
+        "short_trigger": 92.522201
       },
       "dossier": {
         "current_read": "Thesis low: Raw score remained inside the no-trade zone",
@@ -3822,24 +3887,24 @@
       "asset_bucket": "equity",
       "tradable": true,
       "execution_mode": "tradable",
-      "asset_state": "DATA_QUALITY_HOLD",
+      "asset_state": "OBSERVING",
       "bias": "BEARISH",
       "action": "FLAT",
       "confidence": "LOW",
-      "score": 41.2,
+      "score": 55.8,
       "expectancy_probability": 0.5,
       "expectancy_expected_r": 0.0,
-      "live_price": 167.77,
+      "live_price": 170.35,
       "levels": {
-        "support": 165.0,
-        "resistance": 173.509346,
-        "long_trigger": 173.509346,
-        "short_trigger": 165.0
+        "support": 168.62,
+        "resistance": 173.25132,
+        "long_trigger": 173.25132,
+        "short_trigger": 168.62
       },
       "dossier": {
         "current_read": "Thesis low: Raw score remained inside the no-trade zone",
-        "next_unblock": "orderbook feed is stale (977s old)",
-        "invalidation": "Reclaim 173.51",
+        "next_unblock": "Wait for structure and execution quality to align.",
+        "invalidation": "Reclaim 173.25",
         "playbook": "Sell rallies into supply/resistance; press harder after breakdown closes confirm.",
         "narrative": "Narrative flow is neutral",
         "analog": "no directional analog lookup for flat setup",
@@ -3878,7 +3943,7 @@
         "current_read": "Thesis low: Raw score remained inside the no-trade zone",
         "next_unblock": "Wait for structure and execution quality to align.",
         "invalidation": "No clear invalidation level recorded yet.",
-        "playbook": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
+        "playbook": "Wait for structure, order-flow, and invalidation to agree before acting.",
         "narrative": "headline flow is leaning bullish",
         "analog": "no directional analog lookup for flat setup",
         "recent_lesson": "No symbol-specific lesson recorded yet.",
@@ -4090,24 +4155,24 @@
       "tradable": true,
       "execution_mode": "tradable",
       "asset_state": "OBSERVING",
-      "bias": "BEARISH",
+      "bias": "NEUTRAL",
       "action": "FLAT",
       "confidence": "LOW",
-      "score": 42.5,
+      "score": 58.9,
       "expectancy_probability": 0.5,
       "expectancy_expected_r": 0.0,
-      "live_price": 4059.5,
+      "live_price": 4094.6,
       "levels": {
-        "support": 4025.275,
-        "resistance": 4072.263816,
-        "long_trigger": 4072.263816,
-        "short_trigger": 4025.275
+        "support": 4073.482176,
+        "resistance": 4125.0,
+        "long_trigger": 4125.0,
+        "short_trigger": 4073.482176
       },
       "dossier": {
         "current_read": "Thesis low: Raw score remained inside the no-trade zone",
         "next_unblock": "Wait for structure and execution quality to align.",
-        "invalidation": "Reclaim 4,072.26",
-        "playbook": "Fade failed reclaims and clean breakdowns; avoid shorting into demand.",
+        "invalidation": "No clear invalidation level recorded yet.",
+        "playbook": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
         "narrative": "Narrative flow is neutral",
         "analog": "no directional analog lookup for flat setup",
         "recent_lesson": "No symbol-specific lesson recorded yet.",
@@ -4127,27 +4192,27 @@
       "asset_bucket": "equity",
       "tradable": true,
       "execution_mode": "tradable",
-      "asset_state": "MAJOR_CATALYST_WATCH",
+      "asset_state": "EARLY_CONVICTION",
       "bias": "BEARISH",
-      "action": "FLAT",
-      "confidence": "HIGH",
-      "score": 39.2,
-      "expectancy_probability": 0.95,
-      "expectancy_expected_r": 1.188,
-      "live_price": 320.59,
+      "action": "LONG",
+      "confidence": "LOW",
+      "score": 64.1,
+      "expectancy_probability": 0.8539,
+      "expectancy_expected_r": 2.921,
+      "live_price": 324.15,
       "levels": {
-        "support": 315.319687,
-        "resistance": 325.0,
-        "long_trigger": 325.0,
-        "short_trigger": 315.319687
+        "support": 320.0,
+        "resistance": 330.0,
+        "long_trigger": 330.0,
+        "short_trigger": 320.0
       },
       "dossier": {
-        "current_read": "Temporary bearish tape inside the core long thesis; hold or wait, do not flip short.",
-        "next_unblock": "Major catalyst watch: breakdown pressure is live, but it still needs acceptance below 315.32.",
-        "invalidation": "Reclaim 325.00",
+        "current_read": "Thesis medium: Pre-event starter long allowed: catalyst 8.55, news 61, p 91%, score 68.1 vs 65 trigger. Begin 44% size before full confirmation. Thesis: platform anchor + demand commitment + capacity lock-in + SEC filing flow + options implied move + analyst revision.",
+        "next_unblock": "Pre-event starter long allowed: catalyst 8.55, news 61, p 91%, score 68.1 vs 65 trigger. Begin 44% size before full confirmation. Thesis: platform anchor + demand commitment + capacity lock-in + SEC filing flow + options implied move + analyst revision.",
+        "invalidation": "Lose 320.00",
         "playbook": "GOOGL does not have enough closed-trade history yet for a distilled playbook.",
-        "narrative": "headline flow is leaning bullish; catalyst checklist aligned: platform anchor + capital commitment + demand commitment + SEC filing flow + options implied move + analyst revision",
-        "analog": "5 analogs \u2022 win 60% \u2022 avg pnl +0.62% \u2022 avg R +0.18 \u2022 reliability 0.84",
+        "narrative": "headline flow is leaning bullish; catalyst checklist aligned: platform anchor + demand commitment + capacity lock-in + SEC filing flow + options implied move + analyst revision",
+        "analog": "5 analogs \u2022 win 0% \u2022 avg pnl -0.80% \u2022 avg R -1.47 \u2022 reliability 0.84",
         "recent_lesson": "This setup paid. Keep favoring trades where structure, levels, and invalidation stay this coherent.",
         "recent_trade_logic": "Backfilled from CSV history"
       },
@@ -4359,11 +4424,11 @@
       "asset_state": "EARLY_CONVICTION",
       "bias": "NEUTRAL",
       "action": "LONG",
-      "confidence": "MEDIUM",
-      "score": 53.9,
-      "expectancy_probability": 0.8664,
-      "expectancy_expected_r": 3.212,
-      "live_price": 28.393,
+      "confidence": "HIGH",
+      "score": 76.4,
+      "expectancy_probability": 0.9248,
+      "expectancy_expected_r": 2.497,
+      "live_price": 28.449,
       "levels": {
         "support": 27.67,
         "resistance": 29.0,
@@ -4371,12 +4436,12 @@
         "short_trigger": 27.67
       },
       "dossier": {
-        "current_read": "Thesis medium: Pre-event starter long allowed: catalyst 5.32, news 61, p 90%, score 56.1 vs 65 trigger. Begin 44% size before full confirmation. Thesis: platform anchor + capital commitment + earnings event + SEC filing flow + options implied move + analyst revision.",
-        "next_unblock": "Pre-event starter long allowed: catalyst 5.32, news 61, p 90%, score 56.1 vs 65 trigger. Begin 44% size before full confirmation. Thesis: platform anchor + capital commitment + earnings event + SEC filing flow + options implied move + analyst revision.",
+        "current_read": "Thesis medium: strong support defense is holding beneath price; pre-event catalyst flow supports taking starter risk before full price confirmation; demand/supply catalyst is directly tied to the equity theme",
+        "next_unblock": "Pre-event starter long allowed: catalyst 5.42, news 61, p 95%, score 78.1 vs 65 trigger. Begin 44% size before full confirmation. Thesis: platform anchor + strategic deal + capital commitment + SEC filing flow + options implied move + analyst revision.",
         "invalidation": "Lose 27.67",
-        "playbook": "Recent history says avoid HIMS LONG in ABSORPTION until that family earns trust back.",
-        "narrative": "headline flow is leaning bullish; catalyst checklist aligned: platform anchor + capital commitment + earnings event + SEC filing flow + options implied move + analyst revision",
-        "analog": "5 analogs \u2022 win 39% \u2022 avg pnl -0.95% \u2022 avg R -2.51 \u2022 reliability 0.84",
+        "playbook": "HIMS does not have enough closed-trade history yet for a distilled playbook.",
+        "narrative": "headline flow is leaning bullish; catalyst checklist aligned: platform anchor + strategic deal + capital commitment + SEC filing flow + options implied move + analyst revision",
+        "analog": "5 analogs \u2022 win 59% \u2022 avg pnl +0.03% \u2022 avg R -1.39 \u2022 reliability 0.84",
         "recent_lesson": "The invalidation was hit quickly. Demand cleaner alignment before taking this setup again.",
         "recent_trade_logic": "Backfilled from CSV history"
       },
@@ -4386,32 +4451,53 @@
         "daily_top_mover_replay": {}
       },
       "playbook_distiller": {
-        "avg_pnl_pct": -0.338,
-        "avg_pnl_usd": -0.3151,
-        "avoid_family": {
-          "avg_captured_r": -0.44,
-          "avg_hold_minutes": 564.27,
-          "avg_pnl_pct": -0.6269,
-          "avg_pnl_usd": -0.5736,
-          "avg_tp_progress_ratio": -0.1747,
-          "direction": "LONG",
-          "execution_style": "PASSIVE",
-          "execution_styles": {
-            "AGGRESSIVE": 1,
-            "PASSIVE": 2
-          },
-          "headline": "LONG in ABSORPTION is winning 33% across 3 trades",
-          "latest_logic": "Thesis medium: pre-event catalyst flow supports taking starter risk before full price confirmation; background orderbook feed shows the breakout holding between cycles; market structure break is bullish | Expectancy: estimated win probability 95%; expected value +1.75R; uncertainty 30% | Bullish BOS: broke above swing high 35.52 | Regime: ABSORPTION | Fib: Near swing high (fib 78.6\u2013100%) | RSI overbought (83) | MACD bullish | F&G: Extreme Fear (25) | Crypto mode: RISK_ON / BULLISH | High vol (x2.5) | News: 61/100 (EXTREME) | Catalyst: platform anchor + price discovery breakout + SEC filing flow + options implied move + analyst revision + analyst conviction | Levels: At Support | Breakout: Persistent Bullish Breakout | Book imbalance -0.14 | Map: auto bullish map; daily breakdown was confirmed, but live price bounced back above breakdown | Narrative: headline flow is leaning bullish; catalyst checklist aligned: platform anchor + price discovery breakout + SEC filing flow + options implied move + analyst revision + analyst conviction",
-          "losses": 2,
-          "profit_factor": 0.394,
-          "regime": "ABSORPTION",
-          "samples": 3,
-          "win_rate": 0.3333,
-          "wins": 1
-        },
+        "avg_pnl_pct": 0.0394,
+        "avg_pnl_usd": 0.066,
+        "avoid_family": {},
         "best_family": {},
         "coin": "HIMS",
         "families": [
+          {
+            "avg_captured_r": -0.66,
+            "avg_hold_minutes": 380.5,
+            "avg_pnl_pct": 0.3616,
+            "avg_pnl_usd": 0.4416,
+            "avg_tp_progress_ratio": 0.1155,
+            "direction": "LONG",
+            "execution_style": "PASSIVE",
+            "execution_styles": {
+              "AGGRESSIVE": 1,
+              "PASSIVE": 1
+            },
+            "headline": "LONG in ABSORPTION is winning 50% across 2 trades",
+            "latest_logic": "Thesis medium: pre-event catalyst flow supports taking starter risk before full price confirmation; background orderbook feed shows the breakout holding between cycles; market structure break is bullish | Expectancy: estimated win probability 95%; expected value +1.75R; uncertainty 30% | Bullish BOS: broke above swing high 35.52 | Regime: ABSORPTION | Fib: Near swing high (fib 78.6\u2013100%) | RSI overbought (83) | MACD bullish | F&G: Extreme Fear (25) | Crypto mode: RISK_ON / BULLISH | High vol (x2.5) | News: 61/100 (EXTREME) | Catalyst: platform anchor + price discovery breakout + SEC filing flow + options implied move + analyst revision + analyst conviction | Levels: At Support | Breakout: Persistent Bullish Breakout | Book imbalance -0.14 | Map: auto bullish map; daily breakdown was confirmed, but live price bounced back above breakdown | Narrative: headline flow is leaning bullish; catalyst checklist aligned: platform anchor + price discovery breakout + SEC filing flow + options implied move + analyst revision + analyst conviction",
+            "losses": 1,
+            "profit_factor": 4.7487,
+            "regime": "ABSORPTION",
+            "samples": 2,
+            "win_rate": 0.5,
+            "wins": 1
+          },
+          {
+            "avg_captured_r": 0.0,
+            "avg_hold_minutes": 204.67,
+            "avg_pnl_pct": 0.0383,
+            "avg_pnl_usd": 0.065,
+            "avg_tp_progress_ratio": 0.0,
+            "direction": "LONG",
+            "execution_style": "UNKNOWN",
+            "execution_styles": {
+              "UNKNOWN": 6
+            },
+            "headline": "LONG in UNKNOWN is winning 50% across 6 trades",
+            "latest_logic": "",
+            "losses": 3,
+            "profit_factor": 1.1921,
+            "regime": "UNKNOWN",
+            "samples": 6,
+            "win_rate": 0.5,
+            "wins": 3
+          },
           {
             "avg_captured_r": -2.8475,
             "avg_hold_minutes": 172.68,
@@ -4452,56 +4538,15 @@
             "samples": 2,
             "win_rate": 0.5,
             "wins": 1
-          },
-          {
-            "avg_captured_r": 0.0,
-            "avg_hold_minutes": 308.57,
-            "avg_pnl_pct": -0.3386,
-            "avg_pnl_usd": -0.3157,
-            "avg_tp_progress_ratio": 0.0,
-            "direction": "LONG",
-            "execution_style": "UNKNOWN",
-            "execution_styles": {
-              "UNKNOWN": 7
-            },
-            "headline": "LONG in UNKNOWN is winning 43% across 7 trades",
-            "latest_logic": "",
-            "losses": 4,
-            "profit_factor": 0.5227,
-            "regime": "UNKNOWN",
-            "samples": 7,
-            "win_rate": 0.4286,
-            "wins": 3
-          },
-          {
-            "avg_captured_r": -0.44,
-            "avg_hold_minutes": 564.27,
-            "avg_pnl_pct": -0.6269,
-            "avg_pnl_usd": -0.5736,
-            "avg_tp_progress_ratio": -0.1747,
-            "direction": "LONG",
-            "execution_style": "PASSIVE",
-            "execution_styles": {
-              "AGGRESSIVE": 1,
-              "PASSIVE": 2
-            },
-            "headline": "LONG in ABSORPTION is winning 33% across 3 trades",
-            "latest_logic": "Thesis medium: pre-event catalyst flow supports taking starter risk before full price confirmation; background orderbook feed shows the breakout holding between cycles; market structure break is bullish | Expectancy: estimated win probability 95%; expected value +1.75R; uncertainty 30% | Bullish BOS: broke above swing high 35.52 | Regime: ABSORPTION | Fib: Near swing high (fib 78.6\u2013100%) | RSI overbought (83) | MACD bullish | F&G: Extreme Fear (25) | Crypto mode: RISK_ON / BULLISH | High vol (x2.5) | News: 61/100 (EXTREME) | Catalyst: platform anchor + price discovery breakout + SEC filing flow + options implied move + analyst revision + analyst conviction | Levels: At Support | Breakout: Persistent Bullish Breakout | Book imbalance -0.14 | Map: auto bullish map; daily breakdown was confirmed, but live price bounced back above breakdown | Narrative: headline flow is leaning bullish; catalyst checklist aligned: platform anchor + price discovery breakout + SEC filing flow + options implied move + analyst revision + analyst conviction",
-            "losses": 2,
-            "profit_factor": 0.394,
-            "regime": "ABSORPTION",
-            "samples": 3,
-            "win_rate": 0.3333,
-            "wins": 1
           }
         ],
         "instrument_type": "crypto",
         "latest_logic": "Thesis medium: strong support defense is holding beneath price; pre-event catalyst flow supports taking starter risk before full price confirmation; daily breakout is already confirmed | Expectancy: estimated win probability 95%; expected value +1.71R; uncertainty 12% | Structure: RANGING | Regime: TREND | Fib: Near swing high (fib 78.6\u2013100%) \u2190 at 78.6% (golden ratio resistance) | RSI 62 | MACD bearish | F&G: Extreme Fear (25) | Crypto mode: BALANCED / NEUTRAL | News: 61/100 (EXTREME) | Catalyst: platform anchor + capital commitment + SEC filing flow + options implied move + analyst revision + analyst conviction | Levels: At Support | Breakout: Confirmed Bullish Breakout | Book imbalance +0.68 | Map: auto bullish map; price is sitting in mapped supply; price is pressing mapped resistance | Narrative: headline flow is leaning bullish; catalyst checklist aligned: platform anchor + capital commitment + SEC filing flow + options implied move + analyst revision + analyst conviction",
         "lead_execution_style": "UNKNOWN",
-        "playbook": "Recent history says avoid HIMS LONG in ABSORPTION until that family earns trust back.",
-        "profit_factor": 0.5235,
-        "samples": 14,
-        "win_rate": 0.4286
+        "playbook": "HIMS does not have enough closed-trade history yet for a distilled playbook.",
+        "profit_factor": 1.1955,
+        "samples": 12,
+        "win_rate": 0.5
       },
       "llm_referee": {}
     },
@@ -4514,24 +4559,24 @@
       "asset_state": "ARMED",
       "bias": "NEUTRAL",
       "action": "FLAT",
-      "confidence": "HIGH",
-      "score": 42.6,
-      "expectancy_probability": 0.7809,
-      "expectancy_expected_r": 2.481,
-      "live_price": 95.296,
+      "confidence": "MEDIUM",
+      "score": 50.8,
+      "expectancy_probability": 0.5876,
+      "expectancy_expected_r": 1.275,
+      "live_price": 97.302,
       "levels": {
-        "support": 94.0,
-        "resistance": 96.0755,
-        "long_trigger": 96.0755,
-        "short_trigger": 94.0
+        "support": 96.75,
+        "resistance": 98.0,
+        "long_trigger": 98.0,
+        "short_trigger": 96.75
       },
       "dossier": {
         "current_read": "win-rate recovery blocks SHORT: needs fundamentals, attention, and flow to line up",
-        "next_unblock": "historical analogs oppose this setup (5 close matches)",
+        "next_unblock": "win-rate recovery blocks SHORT: needs fundamentals, attention, and flow to line up",
         "invalidation": "No clear invalidation level recorded yet.",
-        "playbook": "Lean into HOOD LONG in BREAKOUT (67% wins, 3 samples) and stay away from LONG in ABSORPTION (43% wins).",
+        "playbook": "Lean into HOOD LONG in BREAKOUT (67% wins, 3 samples) and stay away from LONG in ABSORPTION (33% wins).",
         "narrative": "Narrative flow is neutral",
-        "analog": "5 analogs \u2022 win 19% \u2022 avg pnl -0.77% \u2022 avg R -0.50 \u2022 reliability 0.82",
+        "analog": "5 analogs \u2022 win 19% \u2022 avg pnl -1.04% \u2022 avg R -0.48 \u2022 reliability 0.86",
         "recent_lesson": "This setup paid. Keep favoring trades where structure, levels, and invalidation stay this coherent.",
         "recent_trade_logic": "Backfilled from CSV history"
       },
@@ -4541,29 +4586,29 @@
         "daily_top_mover_replay": {}
       },
       "playbook_distiller": {
-        "avg_pnl_pct": -0.1883,
-        "avg_pnl_usd": -2.1695,
+        "avg_pnl_pct": -0.2174,
+        "avg_pnl_usd": -2.3787,
         "avoid_family": {
-          "avg_captured_r": -0.0749,
-          "avg_hold_minutes": 299.85,
-          "avg_pnl_pct": -0.7102,
-          "avg_pnl_usd": -3.5354,
-          "avg_tp_progress_ratio": -0.0173,
+          "avg_captured_r": -0.0873,
+          "avg_hold_minutes": 194.51,
+          "avg_pnl_pct": -0.8509,
+          "avg_pnl_usd": -4.1471,
+          "avg_tp_progress_ratio": -0.0283,
           "direction": "LONG",
           "execution_style": "AGGRESSIVE",
           "execution_styles": {
             "AGGRESSIVE": 3,
             "MARKET": 2,
-            "PASSIVE": 2
+            "PASSIVE": 1
           },
-          "headline": "LONG in ABSORPTION is winning 43% across 7 trades",
+          "headline": "LONG in ABSORPTION is winning 33% across 6 trades",
           "latest_logic": "Thesis medium: Pre-event starter long allowed: catalyst 5.44, news 61, p 93%, score 47.8 vs 65 trigger. Begin 44% size before full confirmation. Thesis: capital commitment + capacity lock-in + SEC filing flow + options implied move + analyst revision + analyst conviction. | Expectancy: Pre-event starter long allowed: catalyst 5.44, news 61, p 93%, score 47.8 vs 65 trigger. Begin 44% size before full confirmation. Thesis: capital commitment + capacity lock-in + SEC filing flow + options implied move + analyst revision + analyst conviction. | Structure: DOWNTREND | Regime: ABSORPTION | Fib: Near swing low (fib 0\u201323.6%) | RSI 43 | MACD bullish | F&G: Extreme Fear (22) | News: 61/100 (EXTREME) | Catalyst: capital commitment + capacity lock-in + SEC filing flow + options implied move + analyst revision + analyst conviction | Levels: At Support | Breakout: Confirmed Bullish Breakout | Book imbalance -0.07 | Map: auto neutral map; price is sitting in mapped demand; price is sitting in mapped supply; price is testing mapped support | Narrative: headline flow is leaning bullish; catalyst checklist aligned: capital commitment + capacity lock-in + SEC filing flow + options implied move + analyst revision + analyst conviction",
           "losses": 4,
-          "profit_factor": 0.2063,
+          "profit_factor": 0.202,
           "regime": "ABSORPTION",
-          "samples": 7,
-          "win_rate": 0.4286,
-          "wins": 3
+          "samples": 6,
+          "win_rate": 0.3333,
+          "wins": 2
         },
         "best_family": {
           "avg_captured_r": 1.1357,
@@ -4632,54 +4677,54 @@
           },
           {
             "avg_captured_r": 0.0,
-            "avg_hold_minutes": 375.58,
-            "avg_pnl_pct": -0.1883,
-            "avg_pnl_usd": -2.1692,
+            "avg_hold_minutes": 325.0,
+            "avg_pnl_pct": -0.2173,
+            "avg_pnl_usd": -2.3782,
             "avg_tp_progress_ratio": 0.0,
             "direction": "LONG",
             "execution_style": "UNKNOWN",
             "execution_styles": {
-              "UNKNOWN": 12
+              "UNKNOWN": 11
             },
-            "headline": "LONG in UNKNOWN is winning 50% across 12 trades",
+            "headline": "LONG in UNKNOWN is winning 45% across 11 trades",
             "latest_logic": "",
             "losses": 6,
-            "profit_factor": 0.3234,
+            "profit_factor": 0.32,
             "regime": "UNKNOWN",
-            "samples": 12,
-            "win_rate": 0.5,
-            "wins": 6
+            "samples": 11,
+            "win_rate": 0.4545,
+            "wins": 5
           },
           {
-            "avg_captured_r": -0.0749,
-            "avg_hold_minutes": 299.85,
-            "avg_pnl_pct": -0.7102,
-            "avg_pnl_usd": -3.5354,
-            "avg_tp_progress_ratio": -0.0173,
+            "avg_captured_r": -0.0873,
+            "avg_hold_minutes": 194.51,
+            "avg_pnl_pct": -0.8509,
+            "avg_pnl_usd": -4.1471,
+            "avg_tp_progress_ratio": -0.0283,
             "direction": "LONG",
             "execution_style": "AGGRESSIVE",
             "execution_styles": {
               "AGGRESSIVE": 3,
               "MARKET": 2,
-              "PASSIVE": 2
+              "PASSIVE": 1
             },
-            "headline": "LONG in ABSORPTION is winning 43% across 7 trades",
+            "headline": "LONG in ABSORPTION is winning 33% across 6 trades",
             "latest_logic": "Thesis medium: Pre-event starter long allowed: catalyst 5.44, news 61, p 93%, score 47.8 vs 65 trigger. Begin 44% size before full confirmation. Thesis: capital commitment + capacity lock-in + SEC filing flow + options implied move + analyst revision + analyst conviction. | Expectancy: Pre-event starter long allowed: catalyst 5.44, news 61, p 93%, score 47.8 vs 65 trigger. Begin 44% size before full confirmation. Thesis: capital commitment + capacity lock-in + SEC filing flow + options implied move + analyst revision + analyst conviction. | Structure: DOWNTREND | Regime: ABSORPTION | Fib: Near swing low (fib 0\u201323.6%) | RSI 43 | MACD bullish | F&G: Extreme Fear (22) | News: 61/100 (EXTREME) | Catalyst: capital commitment + capacity lock-in + SEC filing flow + options implied move + analyst revision + analyst conviction | Levels: At Support | Breakout: Confirmed Bullish Breakout | Book imbalance -0.07 | Map: auto neutral map; price is sitting in mapped demand; price is sitting in mapped supply; price is testing mapped support | Narrative: headline flow is leaning bullish; catalyst checklist aligned: capital commitment + capacity lock-in + SEC filing flow + options implied move + analyst revision + analyst conviction",
             "losses": 4,
-            "profit_factor": 0.2063,
+            "profit_factor": 0.202,
             "regime": "ABSORPTION",
-            "samples": 7,
-            "win_rate": 0.4286,
-            "wins": 3
+            "samples": 6,
+            "win_rate": 0.3333,
+            "wins": 2
           }
         ],
         "instrument_type": "crypto",
         "latest_logic": "Thesis medium: Pre-event starter long allowed: catalyst 5.44, news 61, p 93%, score 47.8 vs 65 trigger. Begin 44% size before full confirmation. Thesis: capital commitment + capacity lock-in + SEC filing flow + options implied move + analyst revision + analyst conviction. | Expectancy: Pre-event starter long allowed: catalyst 5.44, news 61, p 93%, score 47.8 vs 65 trigger. Begin 44% size before full confirmation. Thesis: capital commitment + capacity lock-in + SEC filing flow + options implied move + analyst revision + analyst conviction. | Structure: DOWNTREND | Regime: ABSORPTION | Fib: Near swing low (fib 0\u201323.6%) | RSI 43 | MACD bullish | F&G: Extreme Fear (22) | News: 61/100 (EXTREME) | Catalyst: capital commitment + capacity lock-in + SEC filing flow + options implied move + analyst revision + analyst conviction | Levels: At Support | Breakout: Confirmed Bullish Breakout | Book imbalance -0.07 | Map: auto neutral map; price is sitting in mapped demand; price is sitting in mapped supply; price is testing mapped support | Narrative: headline flow is leaning bullish; catalyst checklist aligned: capital commitment + capacity lock-in + SEC filing flow + options implied move + analyst revision + analyst conviction",
         "lead_execution_style": "UNKNOWN",
-        "playbook": "Lean into HOOD LONG in BREAKOUT (67% wins, 3 samples) and stay away from LONG in ABSORPTION (43% wins).",
-        "profit_factor": 0.3233,
-        "samples": 24,
-        "win_rate": 0.5
+        "playbook": "Lean into HOOD LONG in BREAKOUT (67% wins, 3 samples) and stay away from LONG in ABSORPTION (33% wins).",
+        "profit_factor": 0.3199,
+        "samples": 22,
+        "win_rate": 0.4545
       },
       "llm_referee": {}
     },
@@ -4689,27 +4734,27 @@
       "asset_bucket": "coin",
       "tradable": true,
       "execution_mode": "tradable",
-      "asset_state": "ARMED",
+      "asset_state": "OBSERVING",
       "bias": "BEARISH",
       "action": "FLAT",
-      "confidence": "MEDIUM",
-      "score": 39.4,
-      "expectancy_probability": 0.7651,
-      "expectancy_expected_r": 0.686,
-      "live_price": 58.849,
+      "confidence": "LOW",
+      "score": 53.1,
+      "expectancy_probability": 0.5,
+      "expectancy_expected_r": 0.0,
+      "live_price": 59.768,
       "levels": {
-        "support": 58.2775,
-        "resistance": 60.0,
-        "long_trigger": 60.0,
-        "short_trigger": 58.2775
+        "support": 59.0,
+        "resistance": 61.0,
+        "long_trigger": 61.0,
+        "short_trigger": 59.0
       },
       "dossier": {
-        "current_read": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 43% WR, $-74.43.",
-        "next_unblock": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 43% WR, $-74.43.",
-        "invalidation": "Reclaim 60.00",
+        "current_read": "Thesis low: Raw score remained inside the no-trade zone",
+        "next_unblock": "Wait for structure and execution quality to align.",
+        "invalidation": "Reclaim 61.00",
         "playbook": "Recent history says avoid HYPE SHORT in UNKNOWN until that family earns trust back.",
         "narrative": "Narrative flow is neutral",
-        "analog": "5 analogs \u2022 win 60% \u2022 avg pnl +0.73% \u2022 avg R +0.74 \u2022 reliability 0.79",
+        "analog": "no directional analog lookup for flat setup",
         "recent_lesson": "Structure turned against the trade. Respect invalidation faster when the higher timeframe disagrees.",
         "recent_trade_logic": "Backfilled from CSV history"
       },
@@ -4884,11 +4929,11 @@
       "asset_state": "ARMED",
       "bias": "NEUTRAL",
       "action": "FLAT",
-      "confidence": "HIGH",
-      "score": 13.6,
-      "expectancy_probability": 0.7963,
-      "expectancy_expected_r": 2.436,
-      "live_price": 278.79,
+      "confidence": "MEDIUM",
+      "score": 48.9,
+      "expectancy_probability": 0.6684,
+      "expectancy_expected_r": 0.469,
+      "live_price": 280.69,
       "levels": {
         "support": 278.6,
         "resistance": 283.55,
@@ -4896,12 +4941,12 @@
         "short_trigger": 278.6
       },
       "dossier": {
-        "current_read": "win-rate recovery blocks SHORT: needs fundamentals, attention, and flow to line up",
+        "current_read": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid SHORT score over 35: 53% WR, $-1.19.",
         "next_unblock": "historical analogs oppose this setup (5 close matches)",
         "invalidation": "No clear invalidation level recorded yet.",
         "playbook": "HYUNDAI does not have enough closed-trade history yet for a distilled playbook.",
         "narrative": "Narrative flow is neutral",
-        "analog": "5 analogs \u2022 win 41% \u2022 avg pnl -0.28% \u2022 avg R -0.57 \u2022 reliability 0.81",
+        "analog": "5 analogs \u2022 win 20% \u2022 avg pnl -0.41% \u2022 avg R +0.06 \u2022 reliability 0.82",
         "recent_lesson": "Only re-take this pattern when the market map, structure, and order-flow line up more cleanly.",
         "recent_trade_logic": "Backfilled from CSV history"
       },
@@ -5246,20 +5291,20 @@
       "bias": "BEARISH",
       "action": "FLAT",
       "confidence": "LOW",
-      "score": 48.5,
+      "score": 48.9,
       "expectancy_probability": 0.5,
       "expectancy_expected_r": 0.0,
-      "live_price": 65199.0,
+      "live_price": 65416.0,
       "levels": {
-        "support": 64500.0,
-        "resistance": 65500.0,
-        "long_trigger": 65500.0,
-        "short_trigger": 64500.0
+        "support": 65365.0,
+        "resistance": 66000.0,
+        "long_trigger": 66000.0,
+        "short_trigger": 65365.0
       },
       "dossier": {
         "current_read": "Thesis low: Raw score remained inside the no-trade zone",
         "next_unblock": "Wait for structure and execution quality to align.",
-        "invalidation": "Reclaim 65,500.00",
+        "invalidation": "Reclaim 66,000.00",
         "playbook": "Sell rallies into supply/resistance; press harder after breakdown closes confirm.",
         "narrative": "Narrative flow is neutral",
         "analog": "no directional analog lookup for flat setup",
@@ -5284,21 +5329,21 @@
       "bias": "BULLISH",
       "action": "FLAT",
       "confidence": "LOW",
-      "score": 48.0,
+      "score": 50.1,
       "expectancy_probability": 0.5,
       "expectancy_expected_r": 0.0,
-      "live_price": 163.83,
+      "live_price": 163.5,
       "levels": {
-        "support": 162.525956,
+        "support": 162.734198,
         "resistance": 164.4,
         "long_trigger": 164.4,
-        "short_trigger": 162.525956
+        "short_trigger": 162.734198
       },
       "dossier": {
         "current_read": "Thesis low: Raw score remained inside the no-trade zone",
         "next_unblock": "Wait for structure and execution quality to align.",
-        "invalidation": "Lose 162.53",
-        "playbook": "Buy reclaims and disciplined pullbacks; do not chase stretched moves.",
+        "invalidation": "Lose 162.73",
+        "playbook": "Buy pullbacks into support/demand; press harder after reclaim closes confirm.",
         "narrative": "Narrative flow is neutral",
         "analog": "no directional analog lookup for flat setup",
         "recent_lesson": "This setup paid. Keep favoring trades where structure, levels, and invalidation stay this coherent.",
@@ -5318,27 +5363,27 @@
       "asset_bucket": "equity",
       "tradable": true,
       "execution_mode": "tradable",
-      "asset_state": "ARMED",
+      "asset_state": "OBSERVING",
       "bias": "BEARISH",
       "action": "FLAT",
-      "confidence": "MEDIUM",
-      "score": 18.7,
-      "expectancy_probability": 0.7315,
-      "expectancy_expected_r": 1.844,
-      "live_price": 341.97,
+      "confidence": "LOW",
+      "score": 44.2,
+      "expectancy_probability": 0.5,
+      "expectancy_expected_r": 0.0,
+      "live_price": 314.7,
       "levels": {
-        "support": 335.0,
-        "resistance": 345.0,
-        "long_trigger": 345.0,
-        "short_trigger": 335.0
+        "support": 310.0,
+        "resistance": 320.0,
+        "long_trigger": 320.0,
+        "short_trigger": 310.0
       },
       "dossier": {
-        "current_read": "win-rate recovery blocks SHORT: needs fundamentals, attention, and flow to line up",
-        "next_unblock": "historical analogs oppose this setup (5 close matches)",
-        "invalidation": "Reclaim 345.00",
+        "current_read": "Thesis low: Raw score remained inside the no-trade zone",
+        "next_unblock": "Wait for structure and execution quality to align.",
+        "invalidation": "Reclaim 320.00",
         "playbook": "KIOXIA does not have enough closed-trade history yet for a distilled playbook.",
         "narrative": "Narrative flow is neutral",
-        "analog": "5 analogs \u2022 win 39% \u2022 avg pnl -0.82% \u2022 avg R -0.52 \u2022 reliability 0.81",
+        "analog": "no directional analog lookup for flat setup",
         "recent_lesson": "The invalidation was hit quickly. Demand cleaner alignment before taking this setup again.",
         "recent_trade_logic": "Backfilled from CSV history"
       },
@@ -5414,21 +5459,21 @@
       "asset_state": "OBSERVING",
       "bias": "BEARISH",
       "action": "FLAT",
-      "confidence": "MEDIUM",
-      "score": 39.7,
+      "confidence": "LOW",
+      "score": 45.2,
       "expectancy_probability": 0.5,
       "expectancy_expected_r": 0.0,
-      "live_price": 1050.6,
+      "live_price": 1076.6,
       "levels": {
-        "support": 1024.7,
-        "resistance": 1075.0,
-        "long_trigger": 1075.0,
-        "short_trigger": 1024.7
+        "support": 1050.0,
+        "resistance": 1100.0,
+        "long_trigger": 1100.0,
+        "short_trigger": 1050.0
       },
       "dossier": {
         "current_read": "Thesis low: Raw score remained inside the no-trade zone",
         "next_unblock": "Wait for structure and execution quality to align.",
-        "invalidation": "Reclaim 1,075.00",
+        "invalidation": "Reclaim 1,100.00",
         "playbook": "Sell rallies into supply/resistance; press harder after breakdown closes confirm.",
         "narrative": "Narrative flow is neutral",
         "analog": "no directional analog lookup for flat setup",
@@ -5513,20 +5558,7 @@
       },
       "missed_move_context": {
         "miss_count": 0,
-        "latest": {
-          "action": "LONG",
-          "breakout": "confirmed_bullish_breakout",
-          "coin": "LINK",
-          "interaction": "at_support",
-          "probability": 0.9798,
-          "recorded_at": "2026-07-26 14:09:37",
-          "regime": "absorption",
-          "risk_reward_ratio": 1.39,
-          "score": 100.0,
-          "stage": "win_rate_context_guard_block",
-          "summary": "win-rate recovery blocks LONG: needs fundamentals, attention, and flow to line up",
-          "ts": 1785055177.1957278
-        },
+        "latest": {},
         "daily_top_mover_replay": {}
       },
       "playbook_distiller": {},
@@ -6040,16 +6072,16 @@
       "asset_state": "ARMED",
       "bias": "BEARISH",
       "action": "FLAT",
-      "confidence": "HIGH",
-      "score": 47.2,
-      "expectancy_probability": 0.9481,
-      "expectancy_expected_r": 3.371,
-      "live_price": 0.020823,
+      "confidence": "MEDIUM",
+      "score": 42.8,
+      "expectancy_probability": 0.903,
+      "expectancy_expected_r": 2.667,
+      "live_price": 0.02135,
       "levels": {
-        "support": 0.020582,
+        "support": 0.020964,
         "resistance": 0.021572,
         "long_trigger": 0.021572,
-        "short_trigger": 0.020582
+        "short_trigger": 0.020964
       },
       "dossier": {
         "current_read": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 43% WR, $-74.43.",
@@ -6057,7 +6089,7 @@
         "invalidation": "Reclaim 0.02",
         "playbook": "Sell rallies into supply/resistance; press harder after breakdown closes confirm.",
         "narrative": "Narrative flow is neutral",
-        "analog": "5 analogs \u2022 win 60% \u2022 avg pnl +0.39% \u2022 avg R +0.64 \u2022 reliability 0.78",
+        "analog": "5 analogs \u2022 win 80% \u2022 avg pnl +0.77% \u2022 avg R +0.74 \u2022 reliability 0.80",
         "recent_lesson": "No symbol-specific lesson recorded yet.",
         "recent_trade_logic": ""
       },
@@ -6102,20 +6134,7 @@
       "missed_move_context": {
         "miss_count": 0,
         "latest": {},
-        "daily_top_mover_replay": {
-          "blocked_at": "2026-07-26 08:31:01",
-          "blocked_stage": "first_principles_guard_block",
-          "coin": "MORPHO",
-          "conviction_entry_event": false,
-          "direction": "SHORT",
-          "event_budget_summary": "",
-          "move_pct": -2.396,
-          "news_catalyst_score": 0.0,
-          "news_event_score": 0.0,
-          "probability": 0.8657,
-          "score": 100.0,
-          "summary": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 43% WR, $-74.43."
-        }
+        "daily_top_mover_replay": {}
       },
       "playbook_distiller": {},
       "llm_referee": {}
@@ -6992,7 +7011,20 @@
       },
       "missed_move_context": {
         "miss_count": 4,
-        "latest": {},
+        "latest": {
+          "action": "SHORT",
+          "breakout": "confirmed_bearish_breakdown",
+          "coin": "NFLX",
+          "interaction": "at_support",
+          "probability": 0.8399,
+          "recorded_at": "2026-07-27 00:59:32",
+          "regime": "breakout",
+          "risk_reward_ratio": 2.75,
+          "score": 97.91,
+          "stage": "patient_execution_block",
+          "summary": "Thesis medium: Scalp short: breakdown/breakout is confirmed, recent candles confirm, book pressure is short.",
+          "ts": 1785094172.007172
+        },
         "daily_top_mover_replay": {}
       },
       "playbook_distiller": {
@@ -7238,20 +7270,20 @@
         "recent_trade_logic": "Backfilled from CSV history"
       },
       "missed_move_context": {
-        "miss_count": 4,
+        "miss_count": 3,
         "latest": {
           "action": "LONG",
-          "breakout": "confirmed_bullish_breakout",
+          "breakout": "confirmed_bearish_breakdown",
           "coin": "NVDA",
-          "interaction": "at_resistance",
+          "interaction": "at_support",
           "probability": 0.89,
-          "recorded_at": "2026-07-26 11:49:11",
-          "regime": "trend",
-          "risk_reward_ratio": 1.69,
+          "recorded_at": "2026-07-27 01:02:38",
+          "regime": "absorption",
+          "risk_reward_ratio": 1.92,
           "score": 96.0,
           "stage": "major_catalyst_watch",
           "summary": "embargoed after 10 LONG trades with 10% win rate",
-          "ts": 1785046751.5126898
+          "ts": 1785094358.0055292
         },
         "daily_top_mover_replay": {}
       },
@@ -7437,20 +7469,20 @@
         "recent_trade_logic": "Backfilled from CSV history"
       },
       "missed_move_context": {
-        "miss_count": 5,
+        "miss_count": 6,
         "latest": {
-          "action": "LONG",
+          "action": "SHORT",
           "breakout": "confirmed_bearish_breakdown",
           "coin": "ORCL",
           "interaction": "at_support",
-          "probability": 0.8823,
-          "recorded_at": "2026-07-26 11:49:27",
-          "regime": "breakout",
-          "risk_reward_ratio": 1.31,
-          "score": 97.08,
-          "stage": "mtf_block",
-          "summary": "Thesis medium: Pre-event starter long allowed: catalyst 4.01, news 61, p 91%, score 52.0 vs 65 trigger. Begin 44% size before full confirmation. Thesis: strategic deal + AI policy read-through + options implied move + analyst revision + analyst conviction.",
-          "ts": 1785046767.5652852
+          "probability": 0.7332,
+          "recorded_at": "2026-07-27 01:02:43",
+          "regime": "absorption",
+          "risk_reward_ratio": 2.47,
+          "score": 92.97,
+          "stage": "core_long_short_suppressed",
+          "summary": "Temporary bearish tape inside the core long thesis; hold or wait, do not flip short.",
+          "ts": 1785094363.712338
         },
         "daily_top_mover_replay": {}
       },
@@ -7681,8 +7713,21 @@
         "recent_trade_logic": "Backfilled from CSV history"
       },
       "missed_move_context": {
-        "miss_count": 0,
-        "latest": {},
+        "miss_count": 5,
+        "latest": {
+          "action": "SHORT",
+          "breakout": "confirmed_bearish_breakdown",
+          "coin": "PLTR",
+          "interaction": "at_support",
+          "probability": 0.8769,
+          "recorded_at": "2026-07-27 01:02:52",
+          "regime": "trend",
+          "risk_reward_ratio": 2.73,
+          "score": 96.0,
+          "stage": "guardrails_flat",
+          "summary": "RL tightened SHORT threshold to \u226431 (absorption trap)",
+          "ts": 1785094372.2433972
+        },
         "daily_top_mover_replay": {}
       },
       "playbook_distiller": {
@@ -8350,20 +8395,7 @@
       },
       "missed_move_context": {
         "miss_count": 0,
-        "latest": {
-          "action": "SHORT",
-          "breakout": "confirmed_bearish_breakdown",
-          "coin": "SKHX",
-          "interaction": "at_support",
-          "probability": 0.7523,
-          "recorded_at": "2026-07-26 11:53:45",
-          "regime": "absorption",
-          "risk_reward_ratio": 1.26,
-          "score": 75.74,
-          "stage": "major_catalyst_watch",
-          "summary": "RL tightened SHORT threshold to \u226426 (news conflict, candle conflict, marginal edge)",
-          "ts": 1785047025.059942
-        },
+        "latest": {},
         "daily_top_mover_replay": {}
       },
       "playbook_distiller": {
@@ -8593,21 +8625,21 @@
       },
       "missed_move_context": {
         "miss_count": 0,
-        "latest": {
-          "action": "SHORT",
-          "breakout": "confirmed_bearish_breakdown",
+        "latest": {},
+        "daily_top_mover_replay": {
+          "blocked_at": "2026-07-27 01:26:26",
+          "blocked_stage": "first_principles_guard_block",
           "coin": "SKY",
-          "interaction": "at_resistance",
-          "probability": 0.7776,
-          "recorded_at": "2026-07-26 14:13:46",
-          "regime": "absorption",
-          "risk_reward_ratio": 4.54,
-          "score": 100.0,
-          "stage": "first_principles_guard_block",
-          "summary": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 43% WR, $-74.43.",
-          "ts": 1785055426.241885
-        },
-        "daily_top_mover_replay": {}
+          "conviction_entry_event": false,
+          "direction": "SHORT",
+          "event_budget_summary": "",
+          "move_pct": -2.634,
+          "news_catalyst_score": 0.0,
+          "news_event_score": 0.0,
+          "probability": 0.6744,
+          "score": 90.12,
+          "summary": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 43% WR, $-74.43."
+        }
       },
       "playbook_distiller": {},
       "llm_referee": {}
@@ -8644,20 +8676,7 @@
       },
       "missed_move_context": {
         "miss_count": 0,
-        "latest": {
-          "action": "LONG",
-          "breakout": "confirmed_bullish_breakout",
-          "coin": "SMSN",
-          "interaction": "at_support",
-          "probability": 0.691,
-          "recorded_at": "2026-07-26 11:53:49",
-          "regime": "absorption",
-          "risk_reward_ratio": 3.34,
-          "score": 96.0,
-          "stage": "mtf_block",
-          "summary": "Thesis medium: Scalp long: breakdown/breakout is confirmed, structure flipped up, book pressure is long.",
-          "ts": 1785047029.575816
-        },
+        "latest": {},
         "daily_top_mover_replay": {}
       },
       "playbook_distiller": {},
@@ -8841,33 +8860,46 @@
       "tradable": true,
       "execution_mode": "tradable",
       "asset_state": "ARMED",
-      "bias": "BEARISH",
+      "bias": "NEUTRAL",
       "action": "FLAT",
       "confidence": "MEDIUM",
-      "score": 52.0,
-      "expectancy_probability": 0.7445,
-      "expectancy_expected_r": 0.822,
-      "live_price": 75.308,
+      "score": 64.6,
+      "expectancy_probability": 0.5881,
+      "expectancy_expected_r": 1.259,
+      "live_price": 76.663,
       "levels": {
-        "support": 74.0295,
-        "resistance": 76.135184,
-        "long_trigger": 76.135184,
-        "short_trigger": 74.0295
+        "support": 76.381839,
+        "resistance": 78.0,
+        "long_trigger": 78.0,
+        "short_trigger": 76.381839
       },
       "dossier": {
         "current_read": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 43% WR, $-74.43.",
-        "next_unblock": "historical analogs oppose this setup (5 close matches)",
-        "invalidation": "Reclaim 76.14",
+        "next_unblock": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 43% WR, $-74.43.",
+        "invalidation": "No clear invalidation level recorded yet.",
         "playbook": "SOL does not have enough closed-trade history yet for a distilled playbook.",
         "narrative": "Narrative flow is neutral",
-        "analog": "5 analogs \u2022 win 40% \u2022 avg pnl -0.08% \u2022 avg R +0.06 \u2022 reliability 0.75",
+        "analog": "5 analogs \u2022 win 40% \u2022 avg pnl +0.15% \u2022 avg R +0.01 \u2022 reliability 0.78",
         "recent_lesson": "The invalidation was hit quickly. Demand cleaner alignment before taking this setup again.",
         "recent_trade_logic": "Backfilled from CSV history"
       },
       "missed_move_context": {
         "miss_count": 0,
         "latest": {},
-        "daily_top_mover_replay": {}
+        "daily_top_mover_replay": {
+          "blocked_at": "2026-07-26 14:13:06",
+          "blocked_stage": "mtf_block",
+          "coin": "SOL",
+          "conviction_entry_event": false,
+          "direction": "LONG",
+          "event_budget_summary": "",
+          "move_pct": 2.735,
+          "news_catalyst_score": 0.0,
+          "news_event_score": 0.0,
+          "probability": 0.7085,
+          "score": 93.68,
+          "summary": "Thesis medium: Scalp long: breakdown/breakout is confirmed, book pressure is long."
+        }
       },
       "playbook_distiller": {
         "avg_pnl_pct": -1.7822,
@@ -8933,14 +8965,14 @@
       "asset_bucket": "equity",
       "tradable": true,
       "execution_mode": "tradable",
-      "asset_state": "OBSERVING",
+      "asset_state": "ARMED",
       "bias": "NEUTRAL",
       "action": "FLAT",
-      "confidence": "LOW",
-      "score": 47.2,
-      "expectancy_probability": 0.5,
-      "expectancy_expected_r": 0.0,
-      "live_price": 7440.1,
+      "confidence": "MEDIUM",
+      "score": 34.3,
+      "expectancy_probability": 0.8948,
+      "expectancy_expected_r": 1.188,
+      "live_price": 7464.0,
       "levels": {
         "support": 7416.0625,
         "resistance": 7466.881806,
@@ -8948,17 +8980,17 @@
         "short_trigger": 7416.0625
       },
       "dossier": {
-        "current_read": "Thesis low: Raw score remained inside the no-trade zone",
-        "next_unblock": "Wait for structure and execution quality to align.",
+        "current_read": "Thesis low: planned R:R 1.45 is below 1.75",
+        "next_unblock": "planned R:R 1.45 is below 1.75",
         "invalidation": "No clear invalidation level recorded yet.",
         "playbook": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
         "narrative": "Narrative flow is neutral",
-        "analog": "no directional analog lookup for flat setup",
+        "analog": "5 analogs \u2022 win 40% \u2022 avg pnl +0.40% \u2022 avg R +0.00 \u2022 reliability 0.70",
         "recent_lesson": "Structure turned against the trade. Respect invalidation faster when the higher timeframe disagrees.",
         "recent_trade_logic": "Backfilled from CSV history"
       },
       "missed_move_context": {
-        "miss_count": 14,
+        "miss_count": 0,
         "latest": {},
         "daily_top_mover_replay": {}
       },
@@ -9089,23 +9121,23 @@
       "bias": "BEARISH",
       "action": "FLAT",
       "confidence": "HIGH",
-      "score": 36.3,
-      "expectancy_probability": 0.8796,
-      "expectancy_expected_r": 1.305,
-      "live_price": 196.93,
+      "score": 50.9,
+      "expectancy_probability": 0.8018,
+      "expectancy_expected_r": 2.281,
+      "live_price": 199.42,
       "levels": {
-        "support": 195.53,
-        "resistance": 200.313107,
-        "long_trigger": 200.313107,
-        "short_trigger": 195.53
+        "support": 197.63,
+        "resistance": 200.518014,
+        "long_trigger": 200.518014,
+        "short_trigger": 197.63
       },
       "dossier": {
         "current_read": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 43% WR, $-74.43.",
-        "next_unblock": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 43% WR, $-74.43.",
-        "invalidation": "Reclaim 200.31",
+        "next_unblock": "historical analogs oppose this setup (5 close matches)",
+        "invalidation": "Reclaim 200.52",
         "playbook": "TAO does not have enough closed-trade history yet for a distilled playbook.",
         "narrative": "Narrative flow is neutral",
-        "analog": "5 analogs \u2022 win 59% \u2022 avg pnl +0.72% \u2022 avg R +0.68 \u2022 reliability 0.80",
+        "analog": "5 analogs \u2022 win 20% \u2022 avg pnl -0.42% \u2022 avg R -0.42 \u2022 reliability 0.80",
         "recent_lesson": "Only re-take this pattern when the market map, structure, and order-flow line up more cleanly.",
         "recent_trade_logic": "Backfilled from CSV history"
       },
@@ -10156,16 +10188,16 @@
       "asset_state": "OBSERVING",
       "bias": "NEUTRAL",
       "action": "FLAT",
-      "confidence": "MEDIUM",
-      "score": 63.4,
+      "confidence": "LOW",
+      "score": 48.7,
       "expectancy_probability": 0.5,
       "expectancy_expected_r": 0.0,
-      "live_price": 4064.2,
+      "live_price": 4079.4,
       "levels": {
-        "support": 4056.153403,
+        "support": 4064.620493,
         "resistance": 4100.0,
         "long_trigger": 4100.0,
-        "short_trigger": 4056.153403
+        "short_trigger": 4064.620493
       },
       "dossier": {
         "current_read": "Thesis low: Raw score remained inside the no-trade zone",
@@ -10254,21 +10286,8 @@
         "recent_trade_logic": "Backfilled from CSV history"
       },
       "missed_move_context": {
-        "miss_count": 0,
-        "latest": {
-          "action": "LONG",
-          "breakout": "confirmed_bullish_breakout",
-          "coin": "XLM",
-          "interaction": "at_support",
-          "probability": 0.7108,
-          "recorded_at": "2026-07-26 14:06:13",
-          "regime": "absorption",
-          "risk_reward_ratio": 3.35,
-          "score": 96.13,
-          "stage": "mtf_block",
-          "summary": "Thesis medium: Scalp long: breakdown/breakout is confirmed, book pressure is long, daily map permits the long.",
-          "ts": 1785054973.7061398
-        },
+        "miss_count": 3,
+        "latest": {},
         "daily_top_mover_replay": {}
       },
       "playbook_distiller": {},
@@ -10305,21 +10324,8 @@
         "recent_trade_logic": ""
       },
       "missed_move_context": {
-        "miss_count": 4,
-        "latest": {
-          "action": "LONG",
-          "breakout": "confirmed_bullish_breakout",
-          "coin": "XMR",
-          "interaction": "at_support",
-          "probability": 0.9503,
-          "recorded_at": "2026-07-26 14:06:09",
-          "regime": "absorption",
-          "risk_reward_ratio": 2.72,
-          "score": 100.0,
-          "stage": "win_rate_context_guard_block",
-          "summary": "win-rate recovery blocks LONG: needs fundamentals, attention, and flow to line up",
-          "ts": 1785054969.574243
-        },
+        "miss_count": 3,
+        "latest": {},
         "daily_top_mover_replay": {}
       },
       "playbook_distiller": {},
@@ -10356,21 +10362,8 @@
         "recent_trade_logic": ""
       },
       "missed_move_context": {
-        "miss_count": 5,
-        "latest": {
-          "action": "SHORT",
-          "breakout": "confirmed_bearish_breakdown",
-          "coin": "XRP",
-          "interaction": "at_resistance",
-          "probability": 0.7098,
-          "recorded_at": "2026-07-26 14:05:56",
-          "regime": "absorption",
-          "risk_reward_ratio": 2.5,
-          "score": 88.59,
-          "stage": "first_principles_guard_block",
-          "summary": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 43% WR, $-74.43.",
-          "ts": 1785054956.372304
-        },
+        "miss_count": 0,
+        "latest": {},
         "daily_top_mover_replay": {}
       },
       "playbook_distiller": {},
@@ -10445,7 +10438,7 @@
         "recent_trade_logic": "Backfilled from CSV history"
       },
       "missed_move_context": {
-        "miss_count": 4,
+        "miss_count": 0,
         "latest": {},
         "daily_top_mover_replay": {}
       },
