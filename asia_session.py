@@ -13,7 +13,7 @@ BENCHMARKS = (
     ("JP225", "Nikkei 225", "Japan"),
     ("EWJ", "Japan ETF", "Japan"),
 )
-ASIA_SEMIS = ("SKHX", "SMSN", "KIOXIA", "TSM", "DRAM")
+ASIA_SEMIS = ("SKHX", "SMSN", "KIOXIA", "CXMT", "TSM", "DRAM")
 US_SEMI_READTHROUGH = ("MU", "SNDK", "AMD", "NVDA", "MRVL")
 
 

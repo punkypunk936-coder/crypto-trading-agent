@@ -344,6 +344,7 @@ class TradingAgent:
         self._last_tradexyz_listing_sync_cycle = self._cycle
         added_analysis: list[str] = []
         added_execution: list[str] = []
+        observation_only: list[str] = []
         try:
             catalog = get_hyperliquid_market_catalog(force_refresh=True)
             supported = self._exchange_supported_coin_set(catalog)
@@ -379,16 +380,21 @@ class TradingAgent:
                     or self.cfg.trading.instrument_types.get(coin_upper, "")
                     or "equity"
                 ).strip().lower()
-                if (
+                market_cap_eligible = not (
                     eligible_market_cap_symbols is not None
                     and instrument_type in {"equity", "crypto"}
                     and coin_upper not in eligible_market_cap_symbols
-                ):
-                    continue
+                )
+                if not market_cap_eligible:
+                    observation_only.append(coin_upper)
                 active = True
                 if enforce_active and not promote_before_activity and is_hyperliquid_supported(coin_upper):
                     active = hyperliquid_market_is_active(coin_upper)
-                executable = bool(auto_promote and (active or promote_before_activity))
+                executable = bool(
+                    auto_promote
+                    and market_cap_eligible
+                    and (active or promote_before_activity)
+                )
                 result = self._add_runtime_symbol(
                     coin_upper,
                     executable=executable,
@@ -409,6 +415,7 @@ class TradingAgent:
                 ]),
                 "added_analysis": added_analysis,
                 "added_execution": added_execution,
+                "observation_only": observation_only,
                 "status": "ok",
             }
             if added_analysis or added_execution:

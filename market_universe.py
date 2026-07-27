@@ -235,16 +235,31 @@ def _build_equity_candidates(
     min_market_cap_usd: float,
     active_only: bool,
 ) -> list[dict]:
-    equity_symbols = [
-        str(coin).upper()
-        for coin, spec in catalog.items()
-        if str(spec.get("instrument_type") or "").lower() == "equity"
-    ]
+    equity_symbols: list[str] = []
+    lookup_symbol_by_coin: dict[str, str] = {}
+    for coin, spec in catalog.items():
+        if str(spec.get("instrument_type") or "").lower() != "equity":
+            continue
+        coin_upper = str(coin).upper()
+        lookup_symbol = str(spec.get("market_cap_ticker") or coin_upper).upper().strip()
+        lookup_symbol_by_coin[coin_upper] = lookup_symbol
+        if lookup_symbol and lookup_symbol not in equity_symbols:
+            equity_symbols.append(lookup_symbol)
+
     equity_market_caps = _fetch_equity_market_caps(equity_symbols)
     candidates: list[dict] = []
-    for coin in equity_symbols:
+    for coin, lookup_symbol in lookup_symbol_by_coin.items():
         spec = dict(catalog.get(coin) or {})
-        market_row = equity_market_caps.get(coin)
+        market_row = equity_market_caps.get(lookup_symbol)
+        reference_market_cap = _safe_float(spec.get("market_cap_reference_usd"))
+        if not market_row and reference_market_cap > 0:
+            market_row = {
+                "name": str(spec.get("display_name") or coin),
+                "market_cap": reference_market_cap,
+                "market_cap_rank": None,
+                "price_change_percentage_24h": 0.0,
+                "source": "catalog_reference",
+            }
         if not market_row:
             continue
         market_cap = _safe_float(market_row.get("market_cap"))
@@ -260,6 +275,35 @@ def _build_equity_candidates(
             "market_cap_usd": round(market_cap, 2),
             "market_cap_rank": _rank_or_default(market_row.get("market_cap_rank")),
             "price_change_pct_24h": _safe_float(market_row.get("price_change_percentage_24h")),
+            "venue_symbol": str(spec.get("venue_symbol") or coin).strip(),
+            "active": bool(active),
+        })
+    return candidates
+
+
+def _catalog_reference_equity_candidates(
+    *,
+    catalog: dict[str, dict],
+    min_market_cap_usd: float,
+    active_only: bool,
+) -> list[dict]:
+    candidates: list[dict] = []
+    for coin, spec in catalog.items():
+        if str(spec.get("instrument_type") or "").lower() != "equity":
+            continue
+        market_cap = _safe_float(spec.get("market_cap_reference_usd"))
+        if market_cap < float(min_market_cap_usd or 0.0):
+            continue
+        active = hyperliquid_market_is_active(coin) if active_only else True
+        if active_only and not active:
+            continue
+        candidates.append({
+            "coin": str(coin).upper(),
+            "name": str(spec.get("display_name") or coin),
+            "symbol": str(spec.get("market_cap_ticker") or coin).upper(),
+            "market_cap_usd": round(market_cap, 2),
+            "market_cap_rank": 999999,
+            "price_change_pct_24h": 0.0,
             "venue_symbol": str(spec.get("venue_symbol") or coin).strip(),
             "active": bool(active),
         })
@@ -356,6 +400,12 @@ def build_hyperliquid_market_cap_watchlist(
             active_only=active_only,
         )
         merged: dict[str, dict] = {row["coin"]: row for row in base_records}
+        for row in _catalog_reference_equity_candidates(
+            catalog=catalog,
+            min_market_cap_usd=min_market_cap_usd,
+            active_only=active_only,
+        ):
+            merged[row["coin"]] = row
         if not merged:
             return None
         return _finalize_watchlist_payload(

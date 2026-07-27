@@ -26,6 +26,7 @@ COMPANY_DRIVERS: dict[str, str] = {
     "MU": "HBM and server-memory demand tightening supply and lifting memory economics",
     "SNDK": "NAND discipline and enterprise SSD demand improving flash pricing power",
     "SKHX": "HBM leadership and AI-memory demand supporting a multi-year capacity cycle",
+    "CXMT": "China DRAM localization, memory pricing, and manufacturing yields driving a durable share-gain cycle",
     "MRVL": "custom silicon and interconnect demand broadening the AI infrastructure buildout",
     "INTC": "Xeon demand and 18A foundry execution determining whether the turnaround compounds",
     "CRWV": "contracted GPU-cloud capacity converting AI demand into a visible revenue backlog",

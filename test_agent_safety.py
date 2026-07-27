@@ -3957,6 +3957,9 @@ def test_dashboard_snapshot_includes_xyz_tradexyz_segment_book() -> None:
     assert by_coin["GOOGL"]["strategic_bias"] == "LONG"
     assert by_coin["GOOGL"]["tactical_state"] == "CORE_WATCH"
     assert by_coin["CBRS"]["venue_symbol"] == "xyz:CBRS"
+    assert by_coin["CXMT"]["segment"] == "Memory"
+    assert by_coin["CXMT"]["pre_ipo"] is False
+    assert "dram" in by_coin["CXMT"]["name_thesis"].lower()
 
 
 def test_default_stock_categories_keep_mag7_complete() -> None:
@@ -4005,6 +4008,21 @@ def test_tradexyz_pre_ipo_cerebras_defaults_to_event_theme() -> None:
     assert catalog["CBRS"]["market_type"] == "perp"
     assert catalog["CBRS"]["live_tradeable"] is True
     assert catalog["CBRS"]["pre_ipo"] is True
+
+
+def test_tradexyz_cxmt_is_a_listed_memory_equity() -> None:
+    cfg = Config()
+    assert "CXMT" in cfg.trading.coins
+    assert "CXMT" in cfg.trading.analysis_coins
+    assert cfg.trading.instrument_types["CXMT"] == "equity"
+    assert cfg.trading.asset_category_map["CXMT"] == ["semis_memory", "asia_macro"]
+    assert cfg.trading.portfolio_theme_map["CXMT"] == "SEMIS_MEMORY"
+    catalog = hyperliquid_markets_module._catalog_from_fallback()
+    assert catalog["CXMT"]["venue_symbol"] == "xyz:CXMT"
+    assert catalog["CXMT"]["market_type"] == "perp"
+    assert catalog["CXMT"]["pre_ipo"] is False
+    assert catalog["CXMT"]["market_cap_ticker"] == "688825.SS"
+    assert catalog["CXMT"]["market_cap_reference_usd"] > 1_000_000_000.0
 
 
 def test_tradexyz_latest_launches_are_first_class_defaults() -> None:
@@ -7370,7 +7388,7 @@ def test_agent_runtime_tradexyz_listing_sync_onboards_new_symbols() -> None:
         agent_module.is_hyperliquid_supported = original_supported
 
 
-def test_agent_runtime_tradexyz_listing_sync_skips_low_cap_equities() -> None:
+def test_agent_runtime_tradexyz_listing_sync_observes_but_does_not_trade_low_cap_equities() -> None:
     cfg = build_config()
     cfg.trading.coins = ["BTC"]
     cfg.trading.analysis_coins = ["BTC"]
@@ -7419,10 +7437,11 @@ def test_agent_runtime_tradexyz_listing_sync_skips_low_cap_equities() -> None:
 
         added = agent._maybe_sync_tradexyz_listing_universe(force=True)
 
-        assert added == ["NEWIPO"]
+        assert added == ["BABY", "NEWIPO"]
         assert "NEWIPO" in agent._analysis_coins
-        assert "BABY" not in agent._analysis_coins
+        assert "BABY" in agent._analysis_coins
         assert "BABY" not in agent._tradable_coin_set
+        assert agent._last_listing_sync_report["observation_only"] == ["BABY"]
     finally:
         agent_module.get_hyperliquid_market_catalog = original_catalog
         agent_module.build_hyperliquid_market_cap_watchlist = original_builder
@@ -7491,6 +7510,43 @@ def test_market_universe_includes_large_cap_hyperliquid_equities() -> None:
             )
         assert payload["coins"] == ["INTC"]
         assert payload["records"][0]["venue_symbol"] == "xyz:INTC"
+    finally:
+        market_universe_module._fetch_coingecko_market_caps = original_fetch
+        market_universe_module._fetch_equity_market_caps = original_equity_fetch
+        market_universe_module.get_hyperliquid_market_catalog = original_catalog
+        market_universe_module.hyperliquid_market_is_active = original_active
+
+
+def test_market_universe_uses_catalog_reference_for_non_us_listed_equity() -> None:
+    original_fetch = market_universe_module._fetch_coingecko_market_caps
+    original_equity_fetch = market_universe_module._fetch_equity_market_caps
+    original_catalog = market_universe_module.get_hyperliquid_market_catalog
+    original_active = market_universe_module.hyperliquid_market_is_active
+    try:
+        market_universe_module._fetch_coingecko_market_caps = lambda pages: []
+        market_universe_module._fetch_equity_market_caps = lambda symbols: {}
+        market_universe_module.get_hyperliquid_market_catalog = lambda force_refresh=False: {
+            "CXMT": {
+                "market_type": "perp",
+                "instrument_type": "equity",
+                "venue_symbol": "xyz:CXMT",
+                "display_name": "ChangXin Memory Technologies",
+                "market_cap_ticker": "688825.SS",
+                "market_cap_reference_usd": 85_500_000_000.0,
+            },
+        }
+        market_universe_module.hyperliquid_market_is_active = lambda coin: True
+        with tempfile.TemporaryDirectory() as tmpdir:
+            payload = market_universe_module.build_hyperliquid_market_cap_watchlist(
+                min_market_cap_usd=1_000_000_000.0,
+                active_only=True,
+                max_coins=10,
+                cache_path=Path(tmpdir) / "market_cap_universe.json",
+                force_refresh=True,
+            )
+        assert payload["coins"] == ["CXMT"]
+        assert payload["records"][0]["venue_symbol"] == "xyz:CXMT"
+        assert payload["records"][0]["market_cap_usd"] == 85_500_000_000.0
     finally:
         market_universe_module._fetch_coingecko_market_caps = original_fetch
         market_universe_module._fetch_equity_market_caps = original_equity_fetch
@@ -9989,6 +10045,8 @@ def run_all() -> None:
     print("PASS default crypto category includes MON")
     test_tradexyz_pre_ipo_cerebras_defaults_to_event_theme()
     print("PASS TradeXYZ Cerebras pre-IPO defaults")
+    test_tradexyz_cxmt_is_a_listed_memory_equity()
+    print("PASS TradeXYZ CXMT listed-memory defaults")
     test_tradexyz_latest_launches_are_first_class_defaults()
     print("PASS TradeXYZ latest listing defaults")
     test_proactive_intelligence_builds_full_research_stack()
@@ -10127,10 +10185,12 @@ def run_all() -> None:
     print("PASS Trade.xyz market-cap execution gate")
     test_agent_runtime_tradexyz_listing_sync_onboards_new_symbols()
     print("PASS runtime TradeXYZ listing sync")
-    test_agent_runtime_tradexyz_listing_sync_skips_low_cap_equities()
-    print("PASS runtime TradeXYZ low-cap skip")
+    test_agent_runtime_tradexyz_listing_sync_observes_but_does_not_trade_low_cap_equities()
+    print("PASS runtime TradeXYZ observation-only cap gate")
     test_market_universe_filters_hyperliquid_large_caps_into_scout_watchlist()
     print("PASS market-cap scout universe")
+    test_market_universe_uses_catalog_reference_for_non_us_listed_equity()
+    print("PASS non-US equity market-cap reference")
     test_reentry_watch_inherits_dynamic_trade_plan()
     print("PASS re-entry dynamic trade plan")
     test_trade_logger_normalizes_legacy_headerless_log()

@@ -47,6 +47,7 @@ CATEGORY_SEGMENTS = {
 SEGMENT_OVERRIDES = {
     "AMD": "AI Compute",
     "CBRS": "AI Compute",
+    "CXMT": "Memory",
     "DRAM": "Memory",
     "INTC": "AI Compute",
     "KIOXIA": "Memory",
@@ -99,6 +100,7 @@ SEGMENT_THESES = {
 NAME_THESES = {
     "CBRS": "Cerebras is a scarce AI-compute pure play; only scale when liquidity and event risk are clean.",
     "CRWV": "CoreWeave is tied to GPU-cloud demand; backlog, utilization, and financing are the core checks.",
+    "CXMT": "CXMT is China DRAM-cycle exposure; memory pricing, yield progress, and domestic share gains anchor the hold.",
     "GOOGL": "Google needs AI cloud, search monetization, and capex efficiency to keep the long thesis alive.",
     "META": "Meta works when AI ad tools, engagement, and margin discipline beat capex worry.",
     "AMZN": "Amazon needs AWS reacceleration and retail margin leverage to justify a longer hold.",
@@ -268,7 +270,13 @@ def _name_thesis(coin: str, display_name: str, segment: str, item: dict | None, 
         _fundamental_driver_text(sig, limit=118),
         item.get("headline"),
     )
-    if driver:
+    generic_drivers = {
+        "no clean edge right now.",
+        "no clean edge right now",
+        "no first-principles driver confirmed yet.",
+        "no first-principles driver confirmed yet",
+    }
+    if driver and driver.strip().lower() not in generic_drivers:
         return _clip_text(driver, 118)
     override = NAME_THESES.get(normalize_symbol(coin))
     if override:
@@ -451,6 +459,7 @@ def build_xyz_section(state: dict, board: dict | None = None) -> dict:
             "instrument_type": instrument_type,
             "categories": categories,
             "category_labels": category_labels,
+            "pre_ipo": bool(meta.get("pre_ipo", False)),
             "segment": segment,
             "segment_key": key,
             "segment_thesis": SEGMENT_THESES.get(segment) or SEGMENT_THESES["Other Stocks"],

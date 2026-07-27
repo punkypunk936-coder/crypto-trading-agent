@@ -499,6 +499,7 @@ MACRO_NEWS_QUERIES: Dict[str, str] = {
     "MU": "Micron OR MU OR memory pricing OR HBM demand OR HBM3E OR DRAM OR data center memory",
     "SNDK": "SanDisk OR SNDK OR NAND pricing OR flash memory OR SSD demand OR enterprise storage OR all-time high OR record high",
     "SKHX": "SK Hynix OR SKHX OR HBM memory OR HBM3E OR DRAM OR South Korea semiconductors",
+    "CXMT": "ChangXin Memory Technologies OR CXMT OR 688825 OR China DRAM OR Chinese memory chips",
     "CRWV": "CoreWeave OR CRWV OR neocloud OR GPU cloud OR AI infrastructure OR capacity expansion",
     "EWY": "EWY OR South Korea ETF OR Samsung OR SK Hynix OR Korea equities OR semiconductor exports",
     "KR200": "KOSPI 200 OR South Korea stocks OR Samsung OR SK Hynix OR Korean semiconductor exports",
@@ -593,6 +594,12 @@ ASSET_NEWS_PROFILES: Dict[str, Dict[str, List[str]]] = {
         "context": ["hbm", "dram", "memory", "south korea chip", "hbm3e"],
         "strong_context": ["hbm", "hbm3e", "dram", "memory pricing", "ai memory"],
         "partner_context": ["nvidia", "nvda", "samsung"],
+    },
+    "CXMT": {
+        "primary": ["changxin memory technologies", "cxmt", "688825"],
+        "context": ["dram", "memory chips", "china semiconductors", "memory pricing", "domestic substitution"],
+        "strong_context": ["dram", "memory pricing", "china memory", "manufacturing yield", "capacity"],
+        "partner_context": ["micron", "sk hynix", "samsung"],
     },
     "CRWV": {
         "primary": ["coreweave", "crwv"],
@@ -1030,6 +1037,7 @@ def _fetch_macro_news(coin: str) -> NewsSignal:
         "MU":    "MU",
         "SNDK":  "SNDK",
         "CRWV":  "CRWV",
+        "CXMT":  "688825.SS",
         "HIMS":  "HIMS",
         "HOOD":  "HOOD",
         "LLY":   "LLY",

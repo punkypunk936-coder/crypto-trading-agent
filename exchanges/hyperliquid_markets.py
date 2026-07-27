@@ -195,6 +195,15 @@ TRADEXYZ_ASSET_METADATA: Dict[str, Dict[str, Any]] = {
     "COST": {"display_name": "Costco", "instrument_type": "equity", "categories": ["consumer"]},
     "CRCL": {"display_name": "Circle", "instrument_type": "equity", "categories": ["crypto_equities"]},
     "CRWV": {"display_name": "CoreWeave", "instrument_type": "equity", "categories": ["neoclouds"]},
+    "CXMT": {
+        "display_name": "ChangXin Memory Technologies",
+        "instrument_type": "equity",
+        "categories": ["semis_memory", "asia_macro"],
+        "pre_ipo": False,
+        "market_cap_ticker": "688825.SS",
+        # IPO valuation is a conservative fallback for the $1B execution gate.
+        "market_cap_reference_usd": 85_500_000_000.0,
+    },
     "DKNG": {"display_name": "DraftKings", "instrument_type": "equity", "categories": ["consumer", "growth"]},
     "DRAM": {"display_name": "DRAM", "instrument_type": "index", "categories": ["semis_memory"]},
     "DXY": {"display_name": "US Dollar Index", "instrument_type": "index", "categories": ["fx_rates", "indices_macro"]},
@@ -265,6 +274,8 @@ _TRADEXYZ_PERP_MARKETS: Dict[str, Dict[str, Any]] = {
         "display_name": str(meta.get("display_name") or coin),
         "categories": list(meta.get("categories") or ["other_stocks"]),
         "pre_ipo": bool(meta.get("pre_ipo", False)),
+        "market_cap_ticker": str(meta.get("market_cap_ticker") or ""),
+        "market_cap_reference_usd": float(meta.get("market_cap_reference_usd") or 0.0),
         "dex": TRADEXYZ_DEX,
     }
     for coin, meta in TRADEXYZ_ASSET_METADATA.items()
@@ -287,6 +298,8 @@ _TRADEXYZ_DYNAMIC_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "display_name": str(meta.get("display_name") or coin),
         "categories": list(meta.get("categories") or ["other_stocks"]),
         "pre_ipo": bool(meta.get("pre_ipo", False)),
+        "market_cap_ticker": str(meta.get("market_cap_ticker") or ""),
+        "market_cap_reference_usd": float(meta.get("market_cap_reference_usd") or 0.0),
     }
     for coin, meta in TRADEXYZ_ASSET_METADATA.items()
 }
@@ -445,6 +458,8 @@ def get_hyperliquid_market_catalog(*, force_refresh: bool = False) -> Dict[str, 
                     "display_name": str(override.get("display_name") or internal_coin),
                     "categories": list(override.get("categories") or ["other_stocks"]),
                     "pre_ipo": bool(override.get("pre_ipo", False)),
+                    "market_cap_ticker": str(override.get("market_cap_ticker") or ""),
+                    "market_cap_reference_usd": float(override.get("market_cap_reference_usd") or 0.0),
                     "dex": TRADEXYZ_DEX,
                 }
                 continue
