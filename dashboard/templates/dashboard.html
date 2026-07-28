@@ -2722,11 +2722,399 @@
     opacity: 0.5;
   }
 
+  /* ── Decision-first shell ───────────────── */
+  .section-kicker {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: uppercase;
+  }
+  .decision-cockpit {
+    margin: 8px 0 0;
+    padding: 24px 16px 20px;
+    border-top: 1px solid rgba(235, 237, 229, 0.14);
+    border-bottom: 1px solid rgba(235, 237, 229, 0.14);
+  }
+  .decision-cockpit-top,
+  .primary-section-head,
+  .workspace-divider {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+  }
+  .decision-regime-line {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-top: 8px;
+  }
+  .decision-confidence,
+  .decision-health {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+  .decision-health {
+    max-width: 330px;
+    padding-top: 2px;
+    text-align: right;
+  }
+  .decision-cockpit-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
+    gap: 42px;
+    margin-top: 22px;
+  }
+  .decision-narrative h2,
+  .primary-section-head h2,
+  .workspace-divider h2 {
+    margin: 0;
+    color: var(--text);
+    font-size: 22px;
+    line-height: 1.25;
+    letter-spacing: 0;
+  }
+  .decision-narrative h2 {
+    max-width: 780px;
+    font-size: 26px;
+  }
+  .decision-narrative p {
+    max-width: 780px;
+    margin: 10px 0 0;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.65;
+  }
+  .decision-playbook {
+    border-left: 1px solid rgba(235, 237, 229, 0.1);
+  }
+  .decision-playbook-row {
+    display: grid;
+    grid-template-columns: 92px minmax(0, 1fr);
+    gap: 12px;
+    padding: 9px 0 9px 18px;
+    border-bottom: 1px solid rgba(235, 237, 229, 0.06);
+  }
+  .decision-playbook-row:last-child { border-bottom: 0; }
+  .decision-playbook-row span {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .decision-playbook-row strong {
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.5;
+  }
+  .decision-playbook-primary strong { color: var(--green); }
+  .decision-benchmarks {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-top: 20px;
+    border-top: 1px solid rgba(235, 237, 229, 0.08);
+  }
+  .decision-benchmark {
+    min-width: 0;
+    padding: 14px 18px 4px 0;
+    border-right: 1px solid rgba(235, 237, 229, 0.07);
+  }
+  .decision-benchmark + .decision-benchmark { padding-left: 18px; }
+  .decision-benchmark:last-child { border-right: 0; }
+  .decision-benchmark-top,
+  .decision-benchmark-levels {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .decision-benchmark-name {
+    color: var(--text);
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .decision-benchmark-call {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+  }
+  .decision-benchmark-price {
+    margin-top: 4px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+  .decision-benchmark-levels {
+    justify-content: flex-start;
+    margin-top: 5px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 9px;
+  }
+  .evidence-details {
+    margin-top: 14px;
+    border-top: 1px solid rgba(235, 237, 229, 0.07);
+  }
+  .evidence-details > summary {
+    padding: 12px 0 0;
+    color: var(--muted);
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    list-style: none;
+    text-transform: uppercase;
+  }
+  .evidence-details > summary::-webkit-details-marker { display: none; }
+  .evidence-details > summary::after {
+    content: " +";
+    color: var(--text);
+  }
+  .evidence-details[open] > summary::after { content: " -"; }
+  .evidence-details .radar-context-band {
+    margin-top: 12px;
+    padding: 16px 0 0;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .account-strip {
+    display: grid;
+    grid-template-columns: 0.85fr 0.85fr 0.7fr 1.6fr;
+    margin-bottom: 18px;
+    border-bottom: 1px solid rgba(235, 237, 229, 0.12);
+  }
+  .account-metric {
+    min-width: 0;
+    padding: 17px 16px;
+    border-right: 1px solid rgba(235, 237, 229, 0.07);
+  }
+  .account-metric:first-child { padding-left: 16px; }
+  .account-metric:last-child { border-right: 0; }
+  .account-value {
+    margin-top: 7px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .account-lead-value {
+    font-size: 15px;
+    overflow-wrap: anywhere;
+  }
+  .account-metric .card-sub {
+    margin-top: 5px;
+    line-height: 1.45;
+  }
+
+  .primary-section-head {
+    align-items: flex-end;
+    margin-bottom: 16px;
+  }
+  .primary-section-head h2,
+  .workspace-divider h2 {
+    margin-top: 5px;
+  }
+  .primary-section-note {
+    max-width: 460px;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.45;
+    text-align: right;
+  }
+  .priority-section {
+    margin-top: 14px;
+    padding: 22px 16px 26px;
+    border-top: 1px solid rgba(235, 237, 229, 0.12);
+    border-bottom: 1px solid rgba(235, 237, 229, 0.12);
+  }
+  .priority-setups {
+    display: grid;
+    gap: 0;
+  }
+  .priority-setup {
+    display: grid;
+    grid-template-columns: minmax(180px, 0.7fr) minmax(180px, 0.9fr) minmax(220px, 1.1fr) minmax(260px, 1.3fr);
+    gap: 20px;
+    align-items: start;
+    padding: 15px 0;
+    border-top: 1px solid rgba(235, 237, 229, 0.07);
+  }
+  .priority-setup:last-child { border-bottom: 1px solid rgba(235, 237, 229, 0.07); }
+  .priority-setup-title {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+  }
+  .priority-setup-symbol {
+    color: var(--text);
+    font-size: 17px;
+    font-weight: 800;
+  }
+  .priority-field-label {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .priority-field-value {
+    color: var(--text);
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  .priority-field-value.priority-risk { color: var(--red); }
+
+  .workspace-divider {
+    align-items: flex-end;
+    margin: 40px 16px 10px;
+  }
+  .workspace-divider p {
+    max-width: 430px;
+    margin: 0;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.5;
+    text-align: right;
+  }
+  .workspace-section {
+    display: block;
+    padding: 0 16px;
+    border-top: 1px solid rgba(235, 237, 229, 0.09);
+    background: transparent;
+  }
+  .workspace-section:last-child { border-bottom: 1px solid rgba(235, 237, 229, 0.09); }
+  details.workspace-section > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    min-height: 54px;
+    color: var(--text);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 700;
+    list-style: none;
+  }
+  details.workspace-section > summary::-webkit-details-marker { display: none; }
+  details.workspace-section > summary::after {
+    content: "+";
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+  details.workspace-section[open] > summary::after { content: "-"; }
+  details.workspace-section[open] {
+    padding-bottom: 20px;
+    border-color: rgba(235, 237, 229, 0.16);
+  }
+  .workspace-meta {
+    min-width: 0;
+    margin-left: auto;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 500;
+    overflow: hidden;
+    text-align: right;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .closed-trades-section {
+    padding-top: 18px;
+    padding-bottom: 8px;
+  }
+
+  .position-shell {
+    padding: 2px 0 0;
+  }
+  .position-shell + .position-shell {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(235, 237, 229, 0.1);
+  }
+  .position-focus-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+  }
+  .position-focus-name {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .position-focus-symbol {
+    color: var(--text);
+    font-size: 24px;
+    font-weight: 800;
+  }
+  .position-focus-pnl {
+    text-align: right;
+  }
+  .position-focus-pnl .pos-val {
+    font-size: 18px;
+  }
+  .position-decision-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin-top: 17px;
+    border-top: 1px solid rgba(235, 237, 229, 0.07);
+    border-bottom: 1px solid rgba(235, 237, 229, 0.07);
+  }
+  .position-decision-item {
+    min-width: 0;
+    padding: 12px 14px 12px 0;
+    border-right: 1px solid rgba(235, 237, 229, 0.07);
+  }
+  .position-decision-item + .position-decision-item { padding-left: 14px; }
+  .position-decision-item:last-child { border-right: 0; }
+  .position-decision-value {
+    margin-top: 5px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.45;
+  }
+  .position-logic-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    padding: 13px 0 4px;
+  }
+  .position-logic {
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.55;
+  }
+  .position-logic strong { color: var(--text); }
+
   /* ── Responsive ─────────────────────────── */
   @media (max-width: 1024px) {
     .grid-4 { grid-template-columns: repeat(2, 1fr); }
     .grid-3 { grid-template-columns: 1fr 1fr; }
     .pos-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+    .decision-cockpit-grid { grid-template-columns: 1fr; gap: 22px; }
+    .decision-playbook {
+      border-top: 1px solid rgba(235, 237, 229, 0.1);
+      border-left: 0;
+    }
+    .decision-playbook-row { padding-left: 0; }
+    .account-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .account-metric:nth-child(2) { border-right: 0; }
+    .account-metric:nth-child(-n+2) { border-bottom: 1px solid rgba(235, 237, 229, 0.07); }
+    .priority-setup { grid-template-columns: minmax(180px, 0.75fr) 1fr 1fr; }
+    .priority-setup > :last-child { grid-column: 2 / -1; }
   }
   @media (max-width: 640px) {
     .container { padding: 0 12px; }
@@ -2848,6 +3236,64 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
     .position-chart-svg { min-height: 180px; }
+    .decision-cockpit {
+      margin-top: 0;
+      padding: 20px 4px 18px;
+    }
+    .decision-cockpit-top,
+    .primary-section-head,
+    .workspace-divider {
+      flex-direction: column;
+      gap: 9px;
+    }
+    .decision-health,
+    .primary-section-note,
+    .workspace-divider p {
+      max-width: none;
+      text-align: left;
+    }
+    .decision-narrative h2 { font-size: 22px; }
+    .decision-benchmarks { grid-template-columns: 1fr; }
+    .decision-benchmark,
+    .decision-benchmark + .decision-benchmark {
+      padding: 12px 0;
+      border-right: 0;
+      border-bottom: 1px solid rgba(235, 237, 229, 0.07);
+    }
+    .decision-benchmark:last-child { border-bottom: 0; }
+    .account-strip { grid-template-columns: 1fr 1fr; }
+    .account-metric { padding: 14px 10px; }
+    .account-metric:nth-child(2n) { border-right: 0; }
+    .account-value { font-size: 17px; }
+    .account-lead-value { font-size: 13px; }
+    .priority-section { padding: 20px 4px 22px; }
+    .priority-setup {
+      grid-template-columns: 1fr 1fr;
+      gap: 12px 16px;
+    }
+    .priority-setup > :last-child { grid-column: 1 / -1; }
+    .workspace-divider { margin: 34px 4px 8px; }
+    .workspace-section { padding-right: 4px; padding-left: 4px; }
+    details.workspace-section > summary { align-items: flex-start; }
+    .workspace-meta {
+      max-width: 48%;
+      white-space: normal;
+    }
+    .position-focus-head {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .position-focus-pnl { text-align: left; }
+    .position-focus-pnl .pnl-value-row {
+      justify-content: flex-start;
+      max-width: 100%;
+    }
+    .position-focus-symbol { font-size: 21px; }
+    .position-decision-grid { grid-template-columns: 1fr 1fr; }
+    .position-decision-item:nth-child(2) { border-right: 0; }
+    .position-decision-item:nth-child(-n+2) { border-bottom: 1px solid rgba(235, 237, 229, 0.07); }
+    .position-logic-grid { grid-template-columns: 1fr; gap: 8px; }
   }
   @media (max-width: 380px) {
     .grid-4 { grid-template-columns: 1fr; }
@@ -2865,7 +3311,6 @@
   </div>
   <div class="header-right">
     <button class="command-search-btn" id="command-search-btn" type="button" onclick="openCommandSearch()">STANCE SEARCH</button>
-    <button class="command-search-btn" id="tradexyz-volume-shortcut-btn" type="button" onclick="openTradexyzVolumeSearch()">XYZ VOLUME</button>
     <a href="/share" target="_blank" style="padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;font-family:var(--mono);letter-spacing:0.5px;background:var(--blue-dim);color:var(--blue);border:1px solid rgba(91,140,255,0.3);text-decoration:none;transition:all 0.2s ease;">Share P&amp;L</a>
     <button class="kill-btn" id="kill-btn" onclick="handleKill()">KILL SWITCH</button>
     <span id="mode-badge" class="badge badge-offline">OFFLINE</span>
@@ -2892,62 +3337,122 @@
   </div>
 </div>
 
-<!-- KPI Cards -->
-<div class="grid-4" id="kpis">
-  <div class="card">
-    <div class="kpi-icon green-bg">$</div>
-    <div class="card-label">Portfolio</div>
-    <div class="card-value" id="portfolio">$--</div>
+<!-- DECISION SURFACE -->
+<section class="decision-cockpit" id="decision-cockpit">
+  <div class="decision-cockpit-top">
+    <div>
+      <div class="section-kicker">Market decision</div>
+      <div class="decision-regime-line">
+        <span id="decision-regime" class="badge badge-offline">WAITING</span>
+        <span id="decision-confidence" class="decision-confidence">Building context...</span>
+      </div>
+    </div>
+    <div class="decision-health" id="decision-health">No forced trade. Evidence must align.</div>
+  </div>
+  <div class="decision-cockpit-grid">
+    <div class="decision-narrative">
+      <h2 id="decision-headline">Waiting for the first complete market read.</h2>
+      <p id="decision-commentary">The agent is joining index structure, breadth, volatility, catalysts, and asset-level price action.</p>
+    </div>
+    <div class="decision-playbook">
+      <div class="decision-playbook-row decision-playbook-primary">
+        <span>Do now</span>
+        <strong id="decision-now">Protect capital until the read is complete.</strong>
+      </div>
+      <div class="decision-playbook-row">
+        <span>Act when</span>
+        <strong id="decision-trigger">A clean setup confirms.</strong>
+      </div>
+      <div class="decision-playbook-row">
+        <span>View changes if</span>
+        <strong id="decision-invalidation">The market regime invalidates.</strong>
+      </div>
+    </div>
+  </div>
+  <div class="decision-benchmarks" id="decision-benchmarks"></div>
+  <details class="evidence-details" id="market-evidence-panel">
+    <summary>Full market evidence</summary>
+    <div id="us-market-body" class="radar-context-band" hidden></div>
+  </details>
+</section>
+
+<!-- ACCOUNT STRIP -->
+<section class="account-strip" id="kpis" aria-label="Account and execution summary">
+  <div class="account-metric">
+    <div class="card-label">Capital</div>
+    <div class="account-value" id="portfolio">$--</div>
     <div class="card-sub" id="available">Available: --</div>
   </div>
-  <div class="card">
-    <div class="kpi-icon blue-bg">P/L</div>
+  <div class="account-metric">
     <div class="card-label-row">
-      <div class="card-label">Total P&amp;L</div>
+      <div class="card-label">Realized P&amp;L</div>
       <button type="button" class="pnl-explain-button" data-pnl-explain="summary" title="Explain total realized PnL">Why?</button>
     </div>
-    <div class="card-value" id="total-pnl">$--</div>
-    <div class="card-sub" id="win-rate">Win rate: --</div>
+    <div class="account-value" id="total-pnl">$--</div>
+    <div class="card-sub" id="win-rate">Across all closed trades</div>
   </div>
-  <div class="card">
-    <div class="kpi-icon purple-bg">%</div>
-    <div class="card-label">Win Rate</div>
-    <div class="card-value" id="trade-count">--</div>
+  <div class="account-metric">
+    <div class="card-label">Hit Rate</div>
+    <div class="account-value" id="trade-count">--</div>
     <div class="card-sub" id="wins-losses">Closed: --</div>
   </div>
-  <div class="card">
-    <div class="kpi-icon yellow-bg">→</div>
-    <div class="card-label">Next Setup</div>
-    <div class="card-value" id="cycle">--</div>
+  <div class="account-metric account-metric-lead">
+    <div class="card-label">Best Next Setup</div>
+    <div class="account-value account-lead-value" id="cycle">--</div>
     <div class="card-sub" id="sentiment">Waiting for the next clean setup...</div>
   </div>
-</div>
+</section>
 
 <!-- OPEN TRADES -->
 <div class="full-width">
   <div class="card card-highlight" id="open-trades-card">
-    <div class="card-label">
-      <span class="pulse" id="pulse-dot"></span>
-      Open Trades
-      <span id="open-count" class="open-count" style="display:none;">0</span>
+    <div class="primary-section-head">
+      <div>
+        <div class="section-kicker">Current exposure</div>
+        <h2>Open Positions <span id="open-count" class="open-count" style="display:none;">0</span></h2>
+      </div>
+      <div class="primary-section-note"><span class="pulse" id="pulse-dot"></span> Thesis, risk, and the next decision only.</div>
     </div>
     <div id="open-trades-body">
       <div class="empty-state">
         <div class="empty-icon">--</div>
-        FLAT — no open positions
+        FLAT - no open positions
       </div>
     </div>
   </div>
 </div>
 
+<!-- PRIORITY SETUPS -->
 <div class="full-width">
-  <div class="card" id="daily-radar-card">
-    <div class="card-label-row">
-      <div class="card-label">Today's Radar</div>
-      <div class="card-sub" id="daily-radar-meta">Waiting for the next radar pass...</div>
+  <section class="priority-section" id="priority-setups-card">
+    <div class="primary-section-head">
+      <div>
+        <div class="section-kicker">Action queue</div>
+        <h2>Priority Setups</h2>
+      </div>
+      <div class="primary-section-note" id="priority-setups-meta">Only trades nearest to a valid decision appear here.</div>
     </div>
+    <div id="priority-setups-body">
+      <div class="empty-state">Waiting for the first clean setup...</div>
+    </div>
+  </section>
+</div>
+
+<div class="workspace-divider">
+  <div>
+    <div class="section-kicker">Deep work</div>
+    <h2>Research, Review &amp; Tools</h2>
+  </div>
+  <p>Open a workspace only when the decision above needs more evidence.</p>
+</div>
+
+<div class="full-width">
+  <details class="workspace-section" id="daily-radar-card">
+    <summary>
+      <span>Market Watch</span>
+      <span class="workspace-meta" id="daily-radar-meta">Waiting for the next radar pass...</span>
+    </summary>
     <div class="radar-context-stack">
-      <div id="us-market-body" class="radar-context-band" hidden></div>
       <div id="durable-thesis-body" class="radar-context-band" hidden></div>
       <div id="asia-session-body" class="radar-context-band" hidden></div>
       <div id="earnings-session-body" class="radar-context-band" hidden></div>
@@ -2955,48 +3460,52 @@
     <div id="daily-radar-body">
       <div class="empty-state">The agent will surface today's focus list after the next cycle.</div>
     </div>
-  </div>
+  </details>
 </div>
 
 <!-- xyz -->
 <div class="full-width">
-  <div class="card xyz-card" id="xyz-card">
-    <div class="card-label-row">
+  <details class="workspace-section xyz-card" id="xyz-card">
+    <summary>
       <div class="card-label">xyz</div>
-      <div class="card-sub" id="xyz-meta">Loading Trade.xyz universe...</div>
-    </div>
+      <div class="workspace-meta" id="xyz-meta">Loading Trade.xyz universe...</div>
+    </summary>
     <div id="xyz-body">
       <div class="empty-state">Trade.xyz segments will appear after the next snapshot.</div>
     </div>
-  </div>
+  </details>
 </div>
 
 <!-- Action Board -->
 <div class="full-width">
-  <div class="card">
-    <div class="card-label">Action Board</div>
-    <div class="card-sub" id="action-board-meta">Waiting for first cycle...</div>
+  <details class="workspace-section">
+    <summary>
+      <span>Full Action Board</span>
+      <span class="workspace-meta" id="action-board-meta">Waiting for first cycle...</span>
+    </summary>
     <div id="signals-body">
       <div class="empty-state">Waiting for first cycle...</div>
     </div>
-  </div>
+  </details>
 </div>
 
 <!-- Proactive Desk -->
 <div class="full-width">
-  <div class="card">
-    <div class="card-label">Proactive Desk</div>
-    <div class="card-sub" id="proactive-meta">Waiting for proactive research...</div>
+  <details class="workspace-section">
+    <summary>
+      <span>Proactive Desk</span>
+      <span class="workspace-meta" id="proactive-meta">Waiting for proactive research...</span>
+    </summary>
     <div id="proactive-body">
       <div class="empty-state">Scout book will populate after the next cycle.</div>
     </div>
-  </div>
+  </details>
 </div>
 
 <!-- Daily View -->
 <div class="full-width">
-  <details class="card details-card" id="daily-panel">
-    <summary class="card-label">Daily View</summary>
+  <details class="workspace-section" id="daily-panel">
+    <summary><span>Daily Level Sheet</span><span class="workspace-meta">Mapped entries, exits, and structure</span></summary>
     <div class="card-label-row">
       <div class="map-meta" id="market-map-meta">Waiting for daily view...</div>
       <div class="review-actions">
@@ -3010,8 +3519,8 @@
 </div>
 
 <div class="full-width">
-  <details class="card details-card" id="tools-panel">
-    <summary class="card-label">Advanced Tools</summary>
+  <details class="workspace-section" id="tools-panel">
+    <summary><span>Utilities</span><span class="workspace-meta">Trade.xyz volume and operator tools</span></summary>
     <div class="utility-grid">
       <div class="utility-card">
         <div class="utility-title">Trade.xyz Volume</div>
@@ -3038,8 +3547,8 @@
 </div>
 
 <div class="full-width">
-  <details class="card details-card" id="performance-panel">
-    <summary class="card-label">Performance</summary>
+  <details class="workspace-section" id="performance-panel">
+    <summary><span>Performance</span><span class="workspace-meta">Outcomes and realized edge</span></summary>
     <div id="stats-body">
       <div class="stat-row"><span class="stat-label">Best trade</span><span class="stat-value" id="stat-best">--</span></div>
       <div class="stat-row"><span class="stat-label">Worst trade</span><span class="stat-value" id="stat-worst">--</span></div>
@@ -3051,8 +3560,8 @@
 </div>
 
 <div class="full-width">
-  <details class="card details-card" id="learning-panel">
-    <summary class="card-label">Agent Learning <span class="muted" style="font-size:10px;margin-left:4px;" id="review-meta">Waiting for learning stats...</span></summary>
+  <details class="workspace-section" id="learning-panel">
+    <summary><span>Agent Learning</span><span class="workspace-meta" id="review-meta">Waiting for learning stats...</span></summary>
     <div id="review-body">
       <div class="empty-state">No lessons absorbed yet</div>
     </div>
@@ -3061,10 +3570,10 @@
 
 <!-- Closed Trade Log -->
 <div class="full-width" style="margin-bottom:32px;">
-  <div class="card" style="padding-bottom:8px;">
+  <div class="workspace-section closed-trades-section">
     <div class="card-label expand-toggle" onclick="toggleTrades()">
       <span class="expand-arrow" id="trades-arrow">▶</span>
-      Closed Trades
+      Closed Trade History
       <span class="muted" style="font-size:10px;margin-left:4px;" id="closed-count-label"></span>
     </div>
     <div id="trades-wrap" style="display:none;overflow-x:auto;">
@@ -4920,6 +5429,146 @@ function renderDailyRadar(report) {
   + '</div>';
 }
 
+function renderDecisionSurface(report, board, state) {
+  const safe = report || {};
+  const actionBoard = board || {};
+  const positions = Array.isArray((state || {}).positions) ? state.positions : [];
+  const regimeNode = document.getElementById('decision-regime');
+  const confidenceNode = document.getElementById('decision-confidence');
+  const headlineNode = document.getElementById('decision-headline');
+  const commentaryNode = document.getElementById('decision-commentary');
+  const nowNode = document.getElementById('decision-now');
+  const triggerNode = document.getElementById('decision-trigger');
+  const invalidationNode = document.getElementById('decision-invalidation');
+  const healthNode = document.getElementById('decision-health');
+  const benchmarksNode = document.getElementById('decision-benchmarks');
+  if (!regimeNode || !confidenceNode || !headlineNode || !commentaryNode || !nowNode || !triggerNode || !invalidationNode || !healthNode || !benchmarksNode) return;
+
+  const regime = String(safe.regime || 'UNKNOWN');
+  const regimeLabel = regime.replaceAll('_', ' ');
+  const confidence = Math.round(Number(safe.confidence || 0) * 100);
+  const breadth = safe.breadth || {};
+  const policy = safe.execution_policy || {};
+  const lead = actionBoard.lead || null;
+  const regimeClass = regime === 'RISK_ON'
+    ? biasClass('bullish')
+    : regime === 'RISK_OFF'
+      ? biasClass('bearish')
+      : biasClass('neutral');
+  regimeNode.className = regimeClass;
+  regimeNode.textContent = safe.active ? regimeLabel : 'WAITING';
+  confidenceNode.textContent = safe.active
+    ? confidence + '% confidence' + (breadth.summary ? ' • ' + breadth.summary : '')
+    : 'Building context...';
+  headlineNode.textContent = safe.headline || 'Waiting for the first complete market read.';
+  commentaryNode.textContent = shortText(
+    safe.commentary || 'The agent is joining index structure, breadth, volatility, catalysts, and asset-level price action.',
+    340
+  );
+
+  if (positions.length) {
+    nowNode.textContent = 'Manage ' + positions.length + ' open position' + (positions.length === 1 ? '' : 's') + '. Add risk only when a fresh setup confirms.';
+  } else if (regime === 'RISK_OFF') {
+    nowNode.textContent = 'Stay defensive. Short only confirmed breakdowns; do not chase extended red candles.';
+  } else if (regime === 'RISK_ON') {
+    nowNode.textContent = 'Favor supported longs. Buy pullbacks or clean breakouts, not stretched candles.';
+  } else {
+    nowNode.textContent = 'Stay selective. Mixed index structure offers no broad directional edge.';
+  }
+  triggerNode.textContent = lead
+    ? lead.coin + ': ' + simpleNextText(lead, 150)
+    : shortText(regime === 'RISK_OFF' ? safe.sell_plan : safe.buy_plan, 165) || 'A clean asset-level setup confirms.';
+  invalidationNode.textContent = shortText(safe.invalidation || 'The market regime and individual thesis must invalidate together.', 180);
+  healthNode.textContent = policy.summary
+    ? shortText(policy.summary, 180)
+    : 'No forced trade. Evidence must align.';
+
+  const rows = Array.isArray(safe.benchmarks) ? safe.benchmarks.filter((row) => row && row.fresh).slice(0, 3) : [];
+  const levelText = (value) => Number(value || 0) > 0 ? fmt(Number(value), Number(value) >= 1000 ? 0 : 2) : '--';
+  benchmarksNode.innerHTML = rows.map((row) => {
+    const direction = String(row.direction || 'FLAT');
+    const move = Number(row.move_pct || 0);
+    const tone = row.symbol === 'VIXINDEX'
+      ? (direction === 'LONG' ? 'red' : direction === 'SHORT' ? 'green' : 'muted')
+      : (direction === 'LONG' ? 'green' : direction === 'SHORT' ? 'red' : 'muted');
+    return '<div class="decision-benchmark">'
+      + '<div class="decision-benchmark-top"><span class="decision-benchmark-name">' + esc(row.label || row.symbol || '--') + '</span><span class="decision-benchmark-call ' + tone + '">' + esc(direction) + (move ? ' ' + (move > 0 ? '+' : '') + move.toFixed(1) + '%' : '') + '</span></div>'
+      + '<div class="decision-benchmark-price">' + esc(levelText(row.price)) + ' • ' + esc(row.structure || 'UNKNOWN') + '</div>'
+      + '<div class="decision-benchmark-levels"><span>S ' + esc(levelText(row.support || row.breakdown)) + '</span><span>R ' + esc(levelText(row.resistance || row.reclaim)) + '</span></div>'
+    + '</div>';
+  }).join('');
+}
+
+function prioritySetupDirection(item) {
+  const safe = item || {};
+  const status = String(safe.status || '').toUpperCase();
+  const direction = String(safe.direction || safe.signal || '').toUpperCase();
+  if (status.includes('LONG') || direction === 'LONG') return 'LONG';
+  if (status.includes('SHORT') || direction === 'SHORT') return 'SHORT';
+  const side = setupCallSide(safe);
+  if (side === 'bullish') return 'LONG';
+  if (side === 'bearish') return 'SHORT';
+  return 'WATCH';
+}
+
+function prioritySetupIsCoherent(item) {
+  const direction = prioritySetupDirection(item);
+  const invalidation = simpleInvalidationText(item, 140).toLowerCase();
+  if (direction === 'LONG' && (invalidation.includes('invalid above') || invalidation.includes('wrong above'))) return false;
+  if (direction === 'SHORT' && (invalidation.includes('invalid below') || invalidation.includes('wrong below'))) return false;
+  return true;
+}
+
+function priorityDirectionChipHtml(item) {
+  const direction = prioritySetupDirection(item);
+  if (direction === 'LONG') return '<span class="' + biasClass('bullish') + '">LONG</span>';
+  if (direction === 'SHORT') return '<span class="' + biasClass('bearish') + '">SHORT</span>';
+  return '<span class="' + biasClass('neutral') + '">WATCH</span>';
+}
+
+function renderPrioritySetups(board) {
+  const body = document.getElementById('priority-setups-body');
+  const meta = document.getElementById('priority-setups-meta');
+  if (!body || !meta) return;
+  const safe = board || {};
+  const allItems = Array.isArray(safe.items) ? safe.items.filter((item) => item && item.coin) : [];
+  const coherentItems = allItems.filter(prioritySetupIsCoherent);
+  const ranked = sortCallItems(coherentItems);
+  const selected = [];
+  const addUnique = (item) => {
+    if (!item || !item.coin || selected.some((entry) => entry.coin === item.coin)) return;
+    selected.push(item);
+  };
+  if (prioritySetupIsCoherent(safe.lead)) addUnique(safe.lead);
+  ranked.filter((item) => item.tradable).forEach(addUnique);
+  ranked.forEach(addUnique);
+  const visible = selected.slice(0, 3);
+  const executableCount = coherentItems.filter((item) => {
+    const status = String(item.status || '').toUpperCase();
+    return item.tradable && ['OPEN_LONG', 'OPEN_SHORT', 'PENDING_ENTRY', 'READY_LONG', 'READY_SHORT'].includes(status);
+  }).length;
+  meta.textContent = executableCount
+    ? executableCount + ' executable • showing the three closest decisions'
+    : 'No forced trade • showing the three clearest developing setups';
+  if (!visible.length) {
+    body.innerHTML = '<div class="empty-state">No setup is close enough to deserve attention yet.</div>';
+    return;
+  }
+  body.innerHTML = '<div class="priority-setups">' + visible.map((item) => {
+    const status = String(item.status || 'NO_SETUP').toUpperCase();
+    const modeClass = item.tradable ? 'signal-mode-tradable' : 'signal-mode-watch';
+    return '<div class="priority-setup">'
+      + '<div>'
+        + '<div class="priority-setup-title"><span class="priority-setup-symbol">' + esc(item.coin) + '</span><span class="' + modeClass + '">' + esc(surfaceModeBadge(item.mode_badge, item.tradable)) + '</span>' + priorityDirectionChipHtml(item) + '</div>'
+        + '<div class="priority-field-value" style="margin-top:6px;">' + esc(simpleActionText(item)) + (status === 'PENDING_ENTRY' ? ' • order live' : '') + '</div>'
+      + '</div>'
+      + '<div><span class="priority-field-label">Act when</span><div class="priority-field-value">' + esc(simpleNextText(item, 110)) + '</div></div>'
+      + '<div><span class="priority-field-label">Invalid if</span><div class="priority-field-value priority-risk">' + esc(simpleInvalidationText(item, 110)) + '</div></div>'
+      + '<div><span class="priority-field-label">Why it matters</span><div class="priority-field-value">' + esc(simpleThesisText(item, 150)) + '</div></div>'
+    + '</div>';
+  }).join('') + '</div>';
+}
+
 function xyzSegmentGroups(section) {
   const safe = section || {};
   const summary = safe.summary || {};
@@ -5793,11 +6442,14 @@ async function refresh() {
 
     // Header
     let updateText = 'Updated: ' + data.server_time;
+    let compactUpdateText = data.server_time ? 'Updated ' + data.server_time : 'Waiting for update';
     if (runtime.state_age_seconds != null) {
       updateText += ' • age ' + runtime.state_age_seconds + 's';
+      compactUpdateText = 'Updated ' + runtime.state_age_seconds + 's ago';
     }
     if (runtime.stale) {
       updateText += ' • STALE';
+      compactUpdateText += ' • STALE';
     }
     if (runtime.hosted_static_fallback) {
       updateText += ' • HOSTED MIRROR';
@@ -5810,8 +6462,11 @@ async function refresh() {
       const source = power.source || (power.on_ac_power ? 'AC' : 'Battery');
       const battery = power.battery_pct != null ? ` ${power.battery_pct}%` : '';
       updateText += ` • ${source}${battery}`;
+      compactUpdateText += ` • ${source}${battery}`;
     }
-    document.getElementById('last-update').textContent = updateText;
+    const lastUpdateNode = document.getElementById('last-update');
+    lastUpdateNode.textContent = compactUpdateText;
+    lastUpdateNode.title = updateText;
     const badge = document.getElementById('mode-badge');
     if (s.status === 'offline') {
       badge.className = 'badge badge-offline'; badge.textContent = 'OFFLINE';
@@ -5838,7 +6493,7 @@ async function refresh() {
 
     const pnlEl = document.getElementById('total-pnl');
     pnlEl.textContent = fmtD(st.total_pnl);
-    pnlEl.className = 'card-value ' + cls(st.total_pnl);
+    pnlEl.className = 'account-value ' + cls(st.total_pnl);
     const totalPnlButton = document.querySelector('[data-pnl-explain="summary"]');
     if (totalPnlButton) totalPnlButton.title = shortText(latestPnlAttribution.headline || 'Explain total realized PnL', 240);
 
@@ -5880,22 +6535,24 @@ async function refresh() {
           ? ((p.current_price - p.entry_price) / p.entry_price * 100 * (p.direction === 'LONG' ? 1 : -1))
           : 0;
         const arrow = p.direction === 'LONG' ? '↑' : '↓';
-        return '<section class="position-shell"><div class="pos-grid">' +
-          '<div><div class="pos-meta">Coin</div><div class="pos-val" style="font-size:18px;">' + p.coin + '</div></div>' +
-          '<div><div class="pos-meta">Direction</div><div class="pos-val"><span class="pos-direction ' + dirCls + '">' + arrow + ' ' + p.direction + '</span></div></div>' +
-          '<div><div class="pos-meta">Entry</div><div class="pos-val">$' + fmt(p.entry_price) + '</div></div>' +
-          '<div><div class="pos-meta">Current</div><div class="pos-val ' + pnlCls + '">$' + fmt(p.current_price) + '</div></div>' +
-          '<div><div class="pos-meta">Invalid If</div><div class="pos-val red">$' + fmt(p.stop_loss) + '</div></div>' +
-          '<div><div class="pos-meta">Take Profit</div><div class="pos-val green">$' + fmt(p.take_profit) + '</div></div>' +
-          '<div><div class="pos-meta">Margin (' + leverage.toFixed(1) + 'x)</div><div class="pos-val">$' + fmt(margin, 0) + '</div></div>' +
-          '<div><div class="pos-meta">Notional</div><div class="pos-val blue">$' + fmt(notional, 0) + '</div></div>' +
-          '<div><div class="pos-meta">Unrealised P&L</div><div class="pnl-value-row"><div class="pos-val ' + pnlCls + '" style="font-size:16px;">' + fmtD(p.unrealised_pnl) + '<span style="font-size:12px;opacity:0.7;margin-left:4px;">(' + (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%)</span></div><button type="button" class="pnl-explain-button" data-pnl-explain="open" data-pnl-index="' + positionIndex + '" title="' + esc(shortText(pnlExplanation.headline || 'Explain unrealized PnL', 240)) + '">Why?</button></div></div>' +
-        '</div>' +
-        priceSourceHtml(p) +
-        '<div class="signal-reason"><strong>Invalid if:</strong> ' + esc(simpleInvalidationText(p, 92)) + '</div>' +
-        '<div class="signal-reason"><strong>Opened because:</strong> ' + esc(p.entry_logic_short || plainTradeReason(p.entry_logic || 'No opening logic recorded.', 'open', 86)) + '</div>' +
-        '<div class="signal-reason"><strong>Holding because:</strong> ' + esc(p.current_logic_short || plainTradeReason(p.current_logic || 'Holding while the thesis stays valid.', 'hold', 86)) + '</div>' +
-        positionChartHtml(p, expandedPositionCharts.has(String(p.coin || ''))) + '</section>';
+        return '<section class="position-shell">'
+          + '<div class="position-focus-head">'
+            + '<div class="position-focus-name"><span class="position-focus-symbol">' + esc(p.coin) + '</span><span class="pos-direction ' + dirCls + '">' + arrow + ' ' + esc(p.direction) + '</span></div>'
+            + '<div class="position-focus-pnl"><div class="pos-meta">Unrealised P&amp;L</div><div class="pnl-value-row"><div class="pos-val ' + pnlCls + '">' + fmtD(p.unrealised_pnl) + '<span style="font-size:11px;opacity:0.7;margin-left:4px;">(' + (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%)</span></div><button type="button" class="pnl-explain-button" data-pnl-explain="open" data-pnl-index="' + positionIndex + '" title="' + esc(shortText(pnlExplanation.headline || 'Explain unrealized PnL', 240)) + '">Why?</button></div></div>'
+          + '</div>'
+          + '<div class="position-decision-grid">'
+            + '<div class="position-decision-item"><div class="pos-meta">Price</div><div class="position-decision-value">$' + fmt(p.entry_price) + ' → <span class="' + pnlCls + '">$' + fmt(p.current_price) + '</span></div></div>'
+            + '<div class="position-decision-item"><div class="pos-meta">Invalid if</div><div class="position-decision-value red">' + esc(simpleInvalidationText(p, 92)) + '</div></div>'
+            + '<div class="position-decision-item"><div class="pos-meta">Objective</div><div class="position-decision-value green">$' + fmt(p.take_profit) + '</div></div>'
+            + '<div class="position-decision-item"><div class="pos-meta">Exposure</div><div class="position-decision-value">$' + fmt(notional, 0) + ' • ' + leverage.toFixed(1) + 'x • $' + fmt(margin, 0) + ' margin</div></div>'
+          + '</div>'
+          + '<div class="position-logic-grid">'
+            + '<div class="position-logic"><strong>Opened because:</strong> ' + esc(p.entry_logic_short || plainTradeReason(p.entry_logic || 'No opening logic recorded.', 'open', 110)) + '</div>'
+            + '<div class="position-logic"><strong>Holding because:</strong> ' + esc(p.current_logic_short || plainTradeReason(p.current_logic || 'Holding while the thesis stays valid.', 'hold', 110)) + '</div>'
+          + '</div>'
+          + priceSourceHtml(p)
+          + positionChartHtml(p, expandedPositionCharts.has(String(p.coin || '')))
+        + '</section>';
       }).join('');
     } else {
       countBadge.textContent = '0';
@@ -5907,12 +6564,14 @@ async function refresh() {
       openBody.innerHTML =
         '<div class="empty-state">' +
           '<div class="empty-icon">--</div>' +
-          '<div><strong>FLAT — no open positions</strong></div>' +
+          '<div><strong>FLAT - no open positions</strong></div>' +
           leadEmpty +
         '</div>';
     }
 
+    renderDecisionSurface(latestUsMarketContext, actionBoard, s);
     renderUsMarketContext(latestUsMarketContext);
+    renderPrioritySetups(actionBoard);
     renderDurableTheses(latestDailyRadar);
     renderAsiaSession(latestAsiaSession);
     renderEarningsSession(latestEarningsSession);

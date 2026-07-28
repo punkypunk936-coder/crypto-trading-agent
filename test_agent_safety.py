@@ -3511,6 +3511,14 @@ def test_hosted_dashboard_bundle_matches_local_template() -> None:
 
 def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> None:
     template = Path("dashboard/templates/dashboard.html").read_text()
+    assert "Market decision" in template
+    assert "Priority Setups" in template
+    assert "renderDecisionSurface" in template
+    assert "renderPrioritySetups" in template
+    assert "Full market evidence" in template
+    assert "Research, Review &amp; Tools" in template
+    assert "Realized P&amp;L" in template
+    assert 'id="tradexyz-volume-shortcut-btn"' not in template
     assert "Desk Briefing" in template
     assert "Open Level Sheet" in template
     assert "Latest Win" in template
