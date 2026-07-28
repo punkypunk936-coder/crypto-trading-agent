@@ -20,7 +20,7 @@ load_dotenv()
 
 _BASE_EXECUTION_COINS = ["BTC", "ETH", "SOL", "HYPE", "MON", "TAO", "SP500", "XAU"]
 _ASIA_CONTEXT_COINS = ["KR200", "JP225", "EWY", "EWJ"]
-_US_CONTEXT_COINS = ["SP500", "NDX", "VIX"]
+_US_CONTEXT_COINS = ["SP500", "NDX", "VIXINDEX"]
 
 _BASE_INSTRUMENT_TYPES = {
     "BTC": "crypto",
@@ -32,6 +32,7 @@ _BASE_INSTRUMENT_TYPES = {
     "SP500": "index",
     "NDX": "index",
     "VIX": "index",
+    "VIXINDEX": "index",
     "XAU": "index",
     "BRENT": "index",
     "WTI": "index",
@@ -48,6 +49,7 @@ _BASE_ASSET_CATEGORY_MAP = {
     "SP500": ["indices_macro"],
     "NDX": ["indices_macro"],
     "VIX": ["indices_macro"],
+    "VIXINDEX": ["indices_macro"],
     "XAU": ["indices_macro"],
 }
 
@@ -97,6 +99,7 @@ def _default_portfolio_theme_map() -> dict:
         "SP500": "US_MACRO_BETA",
         "NDX": "US_MACRO_BETA",
         "VIX": "US_VOLATILITY",
+        "VIXINDEX": "US_VOLATILITY",
         "XAU": "DEFENSIVE_HARD_ASSET",
         "BRENT": "ENERGY_COMPLEX",
         "WTI": "ENERGY_COMPLEX",

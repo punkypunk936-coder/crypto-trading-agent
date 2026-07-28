@@ -213,6 +213,7 @@ INDEX_YAHOO_MAP = {
     "NDX":   "^IXIC",
     "DJI":   "^DJI",
     "VIX":   "^VIX",
+    "VIXINDEX": "^VIX",
 }
 
 EQUITY_YAHOO_MAP = {

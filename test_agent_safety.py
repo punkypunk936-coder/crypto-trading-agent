@@ -9288,7 +9288,7 @@ def test_us_market_context_builds_risk_off_anchor_and_trade_zones() -> None:
                 "orderbook_resistance": 23550.0,
                 "analysis_updated_ts": fresh_ts,
             },
-            "VIX": {
+            "VIXINDEX": {
                 "action": "LONG",
                 "instrument_type": "index",
                 "live_price": 24.2,
@@ -9334,10 +9334,11 @@ def test_us_market_context_builds_risk_off_anchor_and_trade_zones() -> None:
 def test_us_market_context_symbols_use_safe_execution_universe() -> None:
     cfg = Config()
     assert "NDX" in cfg.trading.analysis_coins
-    assert "VIX" in cfg.trading.analysis_coins
+    assert "VIXINDEX" in cfg.trading.analysis_coins
     assert "NDX" not in cfg.trading.coins
+    assert "VIXINDEX" not in cfg.trading.coins
     assert "VIX" in cfg.trading.coins
-    assert cfg.trading.analysis_priority_coins[:3] == ["SP500", "NDX", "VIX"]
+    assert cfg.trading.analysis_priority_coins[:3] == ["SP500", "NDX", "VIXINDEX"]
 
 
 def test_agent_market_anchor_caps_aligned_short_at_one_x() -> None:
@@ -9358,7 +9359,7 @@ def test_agent_market_anchor_caps_aligned_short_at_one_x() -> None:
             "market_regime": "DOWNTREND",
             "analysis_updated_ts": fresh_ts,
         },
-        "VIX": {
+        "VIXINDEX": {
             "action": "LONG",
             "instrument_type": "index",
             "recent_move_pct": 8.0,

@@ -9,7 +9,7 @@ from typing import Any
 BENCHMARKS = (
     ("SP500", "S&P 500"),
     ("NDX", "Nasdaq"),
-    ("VIX", "VIX"),
+    ("VIXINDEX", "VIX"),
 )
 BENCHMARK_SYMBOLS = tuple(symbol for symbol, _label in BENCHMARKS)
 
@@ -74,7 +74,7 @@ def _direction(signal: dict, *, symbol: str = "") -> str:
         votes -= 1
 
     move = _number(signal.get("recent_move_pct") or signal.get("move_pct_24h"))
-    threshold = 2.0 if symbol == "VIX" else 0.45
+    threshold = 2.0 if symbol == "VIXINDEX" else 0.45
     if move >= threshold:
         votes += 1
     elif move <= -threshold:
@@ -246,7 +246,7 @@ def build_us_market_context(
     for row in fresh_rows:
         direction = row["direction"]
         vote = 1 if direction == "LONG" else -1 if direction == "SHORT" else 0
-        if row["symbol"] == "VIX":
+        if row["symbol"] == "VIXINDEX":
             vote *= -1
             risk_score += vote * 0.75
         else:

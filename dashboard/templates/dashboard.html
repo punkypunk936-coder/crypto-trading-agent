@@ -4825,7 +4825,7 @@ function renderUsMarketContext(report) {
   + '<div class="market-benchmarks">' + rows.slice(0, 3).map((row) => {
     const direction = String(row.direction || 'FLAT');
     const move = Number(row.move_pct || 0);
-    const tone = row.symbol === 'VIX'
+    const tone = row.symbol === 'VIXINDEX'
       ? (direction === 'LONG' ? 'red' : direction === 'SHORT' ? 'green' : 'muted')
       : (direction === 'LONG' ? 'green' : direction === 'SHORT' ? 'red' : 'muted');
     return '<div class="market-benchmark">'
