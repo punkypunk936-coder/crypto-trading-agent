@@ -2506,6 +2506,7 @@ def build_dashboard_snapshot(
     asia_context = asia_session.build_asia_session(shaped_state)
     us_context = us_market_context.build_us_market_context(
         shaped_state,
+        market_map=normalized_market_map,
         asia_context=asia_context,
     )
     earnings_context = earnings_session.build_earnings_session(

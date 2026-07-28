@@ -90,12 +90,47 @@ def _first_level(signal: dict, keys: tuple[str, ...]) -> float:
     return 0.0
 
 
-def _benchmark_row(symbol: str, label: str, signal: dict, *, now_ts: float, max_age_hours: float) -> dict:
+def _mapped_level(values: Any, *, price: float, support: bool) -> float:
+    levels = sorted({_number(value) for value in (values or []) if _number(value) > 0})
+    if not levels:
+        return 0.0
+    if support:
+        below = [value for value in levels if value <= price]
+        return max(below) if below else min(levels)
+    above = [value for value in levels if value >= price]
+    return min(above) if above else max(levels)
+
+
+def _benchmark_row(
+    symbol: str,
+    label: str,
+    signal: dict,
+    mapped: dict,
+    *,
+    now_ts: float,
+    max_age_hours: float,
+) -> dict:
     price = _number(signal.get("live_price") or signal.get("price"))
-    support = _first_level(signal, ("orderbook_support", "support", "daily_breakdown_level"))
-    resistance = _first_level(signal, ("orderbook_resistance", "resistance", "daily_breakout_level"))
-    breakdown = _first_level(signal, ("daily_breakdown_level", "orderbook_support", "support"))
-    reclaim = _first_level(signal, ("daily_breakout_level", "orderbook_resistance", "resistance"))
+    support = _first_level(signal, ("orderbook_support", "support", "daily_breakdown_level")) or _mapped_level(
+        mapped.get("supports"),
+        price=price,
+        support=True,
+    )
+    resistance = _first_level(signal, ("orderbook_resistance", "resistance", "daily_breakout_level")) or _mapped_level(
+        mapped.get("resistances"),
+        price=price,
+        support=False,
+    )
+    breakdown = _first_level(signal, ("daily_breakdown_level", "orderbook_support", "support")) or _mapped_level(
+        mapped.get("daily_close_short_below") or mapped.get("supports"),
+        price=price,
+        support=True,
+    )
+    reclaim = _first_level(signal, ("daily_breakout_level", "orderbook_resistance", "resistance")) or _mapped_level(
+        mapped.get("daily_close_long_above") or mapped.get("resistances"),
+        price=price,
+        support=False,
+    )
     direction = _direction(signal, symbol=symbol)
     move = _number(signal.get("recent_move_pct") or signal.get("move_pct_24h"))
     return {
@@ -221,19 +256,28 @@ def _fmt_level(value: float) -> str:
 def build_us_market_context(
     state: dict | None,
     *,
+    market_map: dict | None = None,
     asia_context: dict | None = None,
     now: datetime | None = None,
     max_age_hours: float = 2.0,
 ) -> dict:
     safe_state = dict(state or {})
     signals = dict(safe_state.get("signals") or {})
+    mapped_coins = dict((market_map or {}).get("coins") or {})
     now_dt = now or datetime.now(timezone.utc)
     if now_dt.tzinfo is None:
         now_dt = now_dt.replace(tzinfo=timezone.utc)
     now_ts = now_dt.timestamp()
 
     rows = [
-        _benchmark_row(symbol, label, dict(signals.get(symbol) or {}), now_ts=now_ts, max_age_hours=max_age_hours)
+        _benchmark_row(
+            symbol,
+            label,
+            dict(signals.get(symbol) or {}),
+            dict(mapped_coins.get(symbol) or {}),
+            now_ts=now_ts,
+            max_age_hours=max_age_hours,
+        )
         for symbol, label in BENCHMARKS
         if signals.get(symbol)
     ]
@@ -271,8 +315,16 @@ def build_us_market_context(
 
     completeness = min(1.0, len(fresh_rows) / len(BENCHMARKS))
     agreement = abs(sum(directional_votes)) / len(directional_votes) if directional_votes else 0.0
-    breadth_strength = min(1.0, abs(breadth["net"]) + (0.2 if breadth["tracked"] >= 5 else 0.0))
-    confidence = 0.32 * completeness + 0.38 * agreement + 0.30 * breadth_strength
+    benchmark_net = (sum(directional_votes) / len(directional_votes)) if directional_votes else 0.0
+    if not breadth["bullish"] and not breadth["bearish"]:
+        breadth_confirmation = 0.20
+    elif benchmark_net and benchmark_net * breadth["net"] > 0:
+        breadth_confirmation = abs(breadth["net"])
+    elif benchmark_net and benchmark_net * breadth["net"] < 0:
+        breadth_confirmation = 0.0
+    else:
+        breadth_confirmation = 0.35
+    confidence = 0.35 * completeness + 0.35 * agreement + 0.30 * breadth_confirmation
     confidence = round(min(0.95, max(0.0, confidence)), 4)
 
     row_map = {row["symbol"]: row for row in rows}

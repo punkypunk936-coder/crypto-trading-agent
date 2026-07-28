@@ -9625,6 +9625,20 @@ class TradingAgent:
             log.debug(f"state.json performance-edge write failed: {e}")
 
         market_map_data = self._build_proactive_market_map()
+        asia_context = asia_session.build_asia_session(state)
+        self._last_us_market_context = us_market_context.build_us_market_context(
+            state,
+            market_map=market_map_data,
+            asia_context=asia_context,
+            max_age_hours=float(
+                getattr(self.cfg.trading, "us_market_anchor_max_age_hours", 2.0) or 2.0
+            ),
+        )
+        state["us_market_context"] = dict(self._last_us_market_context)
+        try:
+            state_path.write_text(json.dumps(state, indent=2))
+        except Exception as e:
+            log.debug(f"state.json market-anchor write failed: {e}")
         review_data = trade_review.load_reviews()
         decision_review_data = {}
         if DECISION_REVIEW_REPORT_JSON.exists():

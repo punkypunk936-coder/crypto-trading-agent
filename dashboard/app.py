@@ -290,6 +290,7 @@ def _load_snapshot_local() -> dict | None:
         if "us_market_context" not in payload:
             payload["us_market_context"] = us_market_context.build_us_market_context(
                 shaped_state,
+                market_map=payload.get("market_map") or {},
                 asia_context=payload.get("asia_session") or {},
             )
         if "earnings_session" not in payload:

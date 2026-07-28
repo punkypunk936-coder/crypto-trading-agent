@@ -9311,12 +9311,23 @@ def test_us_market_context_builds_risk_off_anchor_and_trade_zones() -> None:
             },
         }
     }
-    report = us_market_context_module.build_us_market_context(state, now=now)
+    report = us_market_context_module.build_us_market_context(
+        state,
+        market_map={
+            "coins": {
+                "SP500": {"supports": [7377.0], "resistances": [7465.5]},
+                "NDX": {"supports": [23050.0], "resistances": [23550.0]},
+                "VIXINDEX": {"supports": [22.0], "resistances": [25.0]},
+            }
+        },
+        now=now,
+    )
     assert report["active"] is True
     assert report["regime"] == "RISK_OFF"
     assert report["execution_policy"]["allow_tactical_short"] is True
     assert report["execution_policy"]["max_aligned_short_leverage"] == 1
     assert "7,465.50" in report["sell_plan"]
+    assert next(row for row in report["benchmarks"] if row["symbol"] == "NDX")["support"] == 23050.0
     assert "blind-buy" in report["buy_plan"]
     assert report["catalysts"][0]["symbol"] == "SP500"
 
@@ -9339,6 +9350,23 @@ def test_us_market_context_symbols_use_safe_execution_universe() -> None:
     assert "VIXINDEX" not in cfg.trading.coins
     assert "VIX" in cfg.trading.coins
     assert cfg.trading.analysis_priority_coins[:3] == ["SP500", "NDX", "VIXINDEX"]
+
+
+def test_us_market_context_lowers_confidence_when_breadth_disagrees() -> None:
+    now = datetime(2026, 7, 28, 8, 0, tzinfo=timezone.utc)
+    fresh_ts = now.timestamp() - 60
+    state = {
+        "signals": {
+            "SP500": {"action": "SHORT", "instrument_type": "index", "analysis_updated_ts": fresh_ts},
+            "NDX": {"action": "SHORT", "instrument_type": "index", "analysis_updated_ts": fresh_ts},
+            "VIXINDEX": {"action": "FLAT", "instrument_type": "index", "analysis_updated_ts": fresh_ts},
+            "AAPL": {"action": "LONG", "instrument_type": "equity", "analysis_updated_ts": fresh_ts},
+            "AMD": {"action": "LONG", "instrument_type": "equity", "analysis_updated_ts": fresh_ts},
+        }
+    }
+    report = us_market_context_module.build_us_market_context(state, now=now)
+    assert report["breadth"]["net"] == 1.0
+    assert report["confidence"] == 0.70
 
 
 def test_agent_market_anchor_caps_aligned_short_at_one_x() -> None:
@@ -10396,6 +10424,8 @@ def run_all() -> None:
     print("PASS US market risk-off anchor")
     test_us_market_context_symbols_use_safe_execution_universe()
     print("PASS US market context execution universe")
+    test_us_market_context_lowers_confidence_when_breadth_disagrees()
+    print("PASS US market cross-layer confidence calibration")
     test_agent_market_anchor_caps_aligned_short_at_one_x()
     print("PASS agent 1x market-aligned short cap")
     test_earnings_session_is_gated_and_tracks_post_report_decisions()
