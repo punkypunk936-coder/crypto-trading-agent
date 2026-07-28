@@ -63,6 +63,7 @@ import trade_dataset as trade_dataset_module
 import trade_logger as trade_logger_module
 import trade_review as trade_review_module
 import tradexyz_volume as tradexyz_volume_module
+import us_market_context as us_market_context_module
 from indicators import trade_memory as trade_memory_module
 from agent import TradingAgent
 from config import Config
@@ -6934,7 +6935,7 @@ def test_agent_bootstraps_background_orderbook_feed() -> None:
         agent_module.start_background_orderbook_feed = lambda: calls.append(("start",))
         agent._start_background_orderbook_feed()
         assert calls[0][0] == "configure"
-        assert calls[0][1] == ["BTC", "ETH", "SP500"], "agent should warm the feed for the full analysis universe"
+        assert set(calls[0][1]) == {"BTC", "ETH", "SP500"}, "agent should warm the feed for the full analysis universe"
         assert ("prime",) in calls
         assert ("start",) in calls
     finally:
@@ -9261,6 +9262,154 @@ def test_asia_session_builds_regional_us_semiconductor_readthrough() -> None:
     assert "reverse lower" in report["invalidation"]
 
 
+def test_us_market_context_builds_risk_off_anchor_and_trade_zones() -> None:
+    now = datetime(2026, 7, 28, 8, 0, tzinfo=timezone.utc)
+    fresh_ts = now.timestamp() - 300
+    state = {
+        "signals": {
+            "SP500": {
+                "action": "SHORT",
+                "instrument_type": "index",
+                "live_price": 7383.5,
+                "recent_move_pct": -1.3,
+                "market_regime": "DOWNTREND",
+                "orderbook_support": 7377.0,
+                "orderbook_resistance": 7465.5,
+                "news_headline": "S&P 500 declines as higher oil prices revive rate-hike risk.",
+                "analysis_updated_ts": fresh_ts,
+            },
+            "NDX": {
+                "action": "SHORT",
+                "instrument_type": "index",
+                "live_price": 23210.0,
+                "recent_move_pct": -1.8,
+                "market_regime": "DOWNTREND",
+                "orderbook_support": 23050.0,
+                "orderbook_resistance": 23550.0,
+                "analysis_updated_ts": fresh_ts,
+            },
+            "VIX": {
+                "action": "LONG",
+                "instrument_type": "index",
+                "live_price": 24.2,
+                "recent_move_pct": 11.0,
+                "analysis_updated_ts": fresh_ts,
+            },
+            "MU": {
+                "action": "SHORT",
+                "instrument_type": "equity",
+                "market_regime": "DOWNTREND",
+                "recent_move_pct": -8.4,
+                "analysis_updated_ts": fresh_ts,
+            },
+            "NVDA": {
+                "action": "SHORT",
+                "instrument_type": "equity",
+                "market_regime": "DOWNTREND",
+                "recent_move_pct": -5.3,
+                "analysis_updated_ts": fresh_ts,
+            },
+        }
+    }
+    report = us_market_context_module.build_us_market_context(state, now=now)
+    assert report["active"] is True
+    assert report["regime"] == "RISK_OFF"
+    assert report["execution_policy"]["allow_tactical_short"] is True
+    assert report["execution_policy"]["max_aligned_short_leverage"] == 1
+    assert "7,465.50" in report["sell_plan"]
+    assert "blind-buy" in report["buy_plan"]
+    assert report["catalysts"][0]["symbol"] == "SP500"
+
+    alignment = us_market_context_module.assess_trade_alignment(
+        report,
+        direction="SHORT",
+        instrument_type="equity",
+        signal={"action": "SHORT", "market_regime": "DOWNTREND"},
+    )
+    assert alignment["permitted"] is True
+    assert alignment["supporting_driver"] is True
+    assert alignment["leverage_cap"] == 1
+
+
+def test_us_market_context_symbols_use_safe_execution_universe() -> None:
+    cfg = Config()
+    assert "NDX" in cfg.trading.analysis_coins
+    assert "VIX" in cfg.trading.analysis_coins
+    assert "NDX" not in cfg.trading.coins
+    assert "VIX" in cfg.trading.coins
+    assert cfg.trading.analysis_priority_coins[:3] == ["SP500", "NDX", "VIX"]
+
+
+def test_agent_market_anchor_caps_aligned_short_at_one_x() -> None:
+    cfg = build_config()
+    cfg.trading.min_trade_usd = 100.0
+    agent = TradingAgent(cfg, [DryRunExchange(starting_balance_usd=1000.0)])
+    fresh_ts = time.time()
+    agent._last_signals = {
+        "SP500": {
+            "action": "SHORT",
+            "instrument_type": "index",
+            "market_regime": "DOWNTREND",
+            "analysis_updated_ts": fresh_ts,
+        },
+        "NDX": {
+            "action": "SHORT",
+            "instrument_type": "index",
+            "market_regime": "DOWNTREND",
+            "analysis_updated_ts": fresh_ts,
+        },
+        "VIX": {
+            "action": "LONG",
+            "instrument_type": "index",
+            "recent_move_pct": 8.0,
+            "analysis_updated_ts": fresh_ts,
+        },
+        "MU": {
+            "action": "SHORT",
+            "instrument_type": "equity",
+            "market_regime": "DOWNTREND",
+            "first_principles_price_score": 72.0,
+            "analysis_updated_ts": fresh_ts,
+        },
+        "NVDA": {
+            "action": "SHORT",
+            "instrument_type": "equity",
+            "market_regime": "DOWNTREND",
+            "analysis_updated_ts": fresh_ts,
+        },
+    }
+    agent._refresh_us_market_context()
+    signal = SimpleNamespace(
+        action="SHORT",
+        price=100.0,
+        reason="broad risk-off and stock breakdown agree",
+        flat_reason="",
+    )
+    order = OrderRequest(
+        coin="MU",
+        direction="SHORT",
+        size_usd=200.0,
+        size_coin=2.0,
+        price=100.0,
+        stop_loss=108.0,
+        take_profit=84.0,
+        leverage=3,
+        margin_usd=66.67,
+    )
+    allowed = agent._apply_us_market_anchor_to_order(
+        "MU",
+        signal,
+        order,
+        portfolio_usd=1000.0,
+        current_position=None,
+    )
+    assert allowed is True
+    assert order.leverage == 1
+    assert order.size_usd == 100.0
+    assert order.margin_usd == 100.0
+    assert agent._last_signals["MU"]["us_market_anchor"]["supporting_driver"] is True
+
+
 def test_earnings_session_is_gated_and_tracks_post_report_decisions() -> None:
     now = datetime(2026, 7, 22, 4, 0, tzinfo=timezone.utc)
     quiet = {
@@ -9315,9 +9464,11 @@ def test_earnings_session_is_gated_and_tracks_post_report_decisions() -> None:
 
 def test_dashboard_radar_renders_context_without_vague_step_tiles() -> None:
     template = Path("dashboard/templates/dashboard.html").read_text()
+    assert "renderUsMarketContext" in template
     assert "renderDurableTheses" in template
     assert "renderAsiaSession" in template
     assert "renderEarningsSession" in template
+    assert "us-market-body" in template
     assert "durable-thesis-body" in template
     assert "asia-session-body" in template
     assert "earnings-session-body" in template
@@ -9354,6 +9505,7 @@ def test_dashboard_snapshot_includes_daily_radar() -> None:
     )
     assert snapshot["daily_radar"]["summary"]["focus_count"] >= 1
     assert snapshot["daily_radar"]["top_assets"][0]["coin"] == "META"
+    assert "us_market_context" in snapshot
     assert "asia_session" in snapshot
     assert "earnings_session" in snapshot
 
@@ -10239,6 +10391,12 @@ def run_all() -> None:
     print("PASS daily radar durable semiconductor thesis")
     test_asia_session_builds_regional_us_semiconductor_readthrough()
     print("PASS Asia-to-US semiconductor read-through")
+    test_us_market_context_builds_risk_off_anchor_and_trade_zones()
+    print("PASS US market risk-off anchor")
+    test_us_market_context_symbols_use_safe_execution_universe()
+    print("PASS US market context execution universe")
+    test_agent_market_anchor_caps_aligned_short_at_one_x()
+    print("PASS agent 1x market-aligned short cap")
     test_earnings_session_is_gated_and_tracks_post_report_decisions()
     print("PASS season-gated earnings session")
     test_dashboard_radar_renders_context_without_vague_step_tiles()

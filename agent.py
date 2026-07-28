@@ -55,6 +55,7 @@ from datetime import datetime
 
 import os
 import analog_engine
+import asia_session
 import asset_dossier
 import challenger_model
 from config import Config
@@ -79,6 +80,7 @@ import proactive_intelligence
 import trade_dataset
 import trade_logger
 import trade_review
+import us_market_context
 import win_rate_guard
 from asset_context import DEFAULT_ASSET_CATEGORY_DESCRIPTIONS, normalize_asset_category_values, theme_from_categories
 from asset_state_machine import build_asset_state
@@ -144,6 +146,7 @@ class TradingAgent:
         self._last_available_usd = 0.0
         self._last_sentiment: Dict[str, object] = {}
         self._last_signals: Dict[str, dict] = {}
+        self._last_us_market_context: Dict[str, object] = {}
         self._last_power_status: Dict[str, object] = {}
         self._orderbook_history: Dict[str, List[dict]] = {}
         self._last_proactive_execution: Dict[str, object] = {}
@@ -1202,6 +1205,7 @@ class TradingAgent:
         # 7. Execute mapped trigger hits before the slower full analysis pass.
         prior_signals = dict(self._last_signals or {})
         self._last_signals = prior_signals
+        self._refresh_us_market_context()
         trigger_executed = self._execute_active_trigger_entries(
             current_prices,
             portfolio_usd,
@@ -1213,6 +1217,10 @@ class TradingAgent:
         # 8. Analyse a bounded, rotating batch. Open positions and core markets
         # remain first-class, while the full universe is covered over time.
         analysis_batch = self._analysis_batch_for_cycle()
+        anchor_symbols = set(us_market_context.BENCHMARK_SYMBOLS)
+        analysis_batch = [
+            coin for coin in us_market_context.BENCHMARK_SYMBOLS if coin in analysis_batch
+        ] + [coin for coin in analysis_batch if coin not in anchor_symbols]
         self._last_analysis_batch = list(analysis_batch)
         batch_set = set(analysis_batch)
         for coin, snapshot in self._last_signals.items():
@@ -1257,6 +1265,8 @@ class TradingAgent:
                 continue
             try:
                 self._analyse_coin(coin, sentiment, portfolio_usd)
+                if coin in anchor_symbols:
+                    self._refresh_us_market_context()
             except Exception as e:
                 log.error(f"[{coin}] Unexpected error: {e}", exc_info=True)
 
@@ -1311,6 +1321,74 @@ class TradingAgent:
         selected.extend(rotating[(start + offset) % len(rotating)] for offset in range(slots))
         self._analysis_cursor = (start + slots) % len(rotating)
         return selected
+
+    def _refresh_us_market_context(self) -> dict:
+        if not getattr(self.cfg.trading, "us_market_anchor_enabled", True):
+            self._last_us_market_context = {
+                "enabled": False,
+                "active": False,
+                "regime": "UNKNOWN",
+                "headline": "US market anchor is disabled.",
+            }
+            return dict(self._last_us_market_context)
+        state = {"signals": dict(self._last_signals or {})}
+        asia_context = asia_session.build_asia_session(state)
+        self._last_us_market_context = us_market_context.build_us_market_context(
+            state,
+            asia_context=asia_context,
+            max_age_hours=float(
+                getattr(self.cfg.trading, "us_market_anchor_max_age_hours", 18.0) or 18.0
+            ),
+        )
+        return dict(self._last_us_market_context)
+
+    def _us_market_trade_profile(self, coin: str, direction: str, signal=None) -> dict:
+        snapshot = dict(self._last_signals.get(coin, {}) or {})
+        if not self._last_us_market_context:
+            self._refresh_us_market_context()
+        profile = us_market_context.assess_trade_alignment(
+            self._last_us_market_context,
+            direction=direction,
+            instrument_type=str(
+                snapshot.get("instrument_type")
+                or hyperliquid_instrument_type(coin, "crypto")
+                or "crypto"
+            ),
+            signal=snapshot,
+            min_confidence=float(
+                getattr(self.cfg.trading, "us_market_anchor_min_confidence", 0.55) or 0.55
+            ),
+            block_countertrend=bool(
+                getattr(self.cfg.trading, "us_market_anchor_block_countertrend", True)
+            ),
+        )
+        if (
+            profile.get("aligned")
+            and str(direction or "").upper() == "SHORT"
+            and str(profile.get("regime") or "").upper() == "RISK_OFF"
+        ):
+            profile["size_multiplier"] = float(
+                getattr(
+                    self.cfg.trading,
+                    "us_market_anchor_aligned_short_size_multiplier",
+                    profile.get("size_multiplier", 0.50),
+                )
+                or profile.get("size_multiplier", 0.50)
+            )
+            profile["leverage_cap"] = max(
+                1,
+                int(getattr(self.cfg.trading, "us_market_anchor_short_max_leverage", 1) or 1),
+            )
+        elif profile.get("countertrend"):
+            profile["size_multiplier"] = float(
+                getattr(
+                    self.cfg.trading,
+                    "us_market_anchor_countertrend_size_multiplier",
+                    profile.get("size_multiplier", 0.35),
+                )
+                or profile.get("size_multiplier", 0.35)
+            )
+        return profile
 
     def _signal_snapshot_is_fresh(self, snapshot: dict) -> bool:
         if not snapshot:
@@ -4357,6 +4435,12 @@ class TradingAgent:
         thesis = dict(getattr(signal, "thesis", {}) or sig.get("thesis", {}) or {})
         conviction_entry = dict(thesis.get("conviction_entry") or sig.get("conviction_entry") or {})
         direction = str(getattr(signal, "action", sig.get("action", "")) or "").upper()
+        market_anchor = self._us_market_trade_profile(coin, direction, signal)
+        market_anchor_like = bool(
+            market_anchor.get("supporting_driver")
+            and direction == "SHORT"
+            and str(market_anchor.get("regime") or "").upper() == "RISK_OFF"
+        )
         signal_score = float(getattr(signal, "score", sig.get("score", 50.0)) or 50.0)
         probability = float(expectancy.get("probability", sig.get("expectancy_probability", 0.50)) or 0.50)
         expected_r = float(expectancy.get("expected_r", sig.get("expectancy_expected_r", 0.0)) or 0.0)
@@ -4384,6 +4468,10 @@ class TradingAgent:
         min_probability = float(getattr(self.cfg.trading, "north_star_recovery_min_probability", 0.60) or 0.60)
         event_min_probability = float(getattr(self.cfg.trading, "north_star_event_min_probability", 0.55) or 0.55)
         max_uncertainty = float(getattr(self.cfg.trading, "north_star_recovery_max_uncertainty", 0.48) or 0.48)
+        if market_anchor_like:
+            max_short += 6.0
+            min_probability = max(event_min_probability, min_probability - 0.04)
+            max_uncertainty += 0.05
         weak_score = (direction == "LONG" and signal_score < min_long) or (direction == "SHORT" and signal_score > max_short)
         weak_probability = probability < (event_min_probability if event_like else min_probability)
         too_uncertain = uncertainty > max_uncertainty
@@ -4404,15 +4492,15 @@ class TradingAgent:
 
         blockers: list[str] = []
         warnings: list[str] = []
-        if weak_score and not event_like and not pair_like:
+        if weak_score and not event_like and not pair_like and not market_anchor_like:
             blockers.append(f"north-star recovery needs A+ score ({signal_score:.0f} is not enough)")
         if weak_probability and not pair_like:
             blockers.append(f"north-star recovery needs better hit odds ({probability * 100:.0f}%)")
-        if too_uncertain and not event_like:
+        if too_uncertain and not event_like and not market_anchor_like:
             blockers.append("north-star recovery blocks high-uncertainty entries")
         if coin_hot_bad and not event_like and not pair_like:
             blockers.append(f"{coin.upper()} has too many recent non-quality outcomes")
-        if scorecard.get("critical") and weak_score and not event_like and not pair_like:
+        if scorecard.get("critical") and weak_score and not event_like and not pair_like and not market_anchor_like:
             blockers.append("critical recovery mode blocks marginal entries")
         if scorecard.get("stop_loss_rate", 0.0) >= float(getattr(self.cfg.trading, "north_star_stop_loss_cluster_rate", 0.30) or 0.30):
             warnings.append("recent stop/micro exits are clustered")
@@ -4424,6 +4512,18 @@ class TradingAgent:
             size_multiplier = min(size_multiplier, float(getattr(self.cfg.trading, "north_star_event_size_multiplier", 0.55) or 0.55))
             if weak_probability and signal_score < 60.0:
                 blockers.append("event starter is too shaky for recovery mode")
+        elif market_anchor_like:
+            size_multiplier = min(
+                size_multiplier,
+                float(
+                    getattr(
+                        self.cfg.trading,
+                        "us_market_anchor_aligned_short_size_multiplier",
+                        0.50,
+                    )
+                    or 0.50
+                ),
+            )
         else:
             size_multiplier = min(size_multiplier, float(getattr(self.cfg.trading, "north_star_recovery_size_multiplier", 0.45) or 0.45))
 
@@ -4442,6 +4542,8 @@ class TradingAgent:
             "size_multiplier": round(max(0.05, min(1.0, size_multiplier)), 4),
             "event_like": event_like,
             "pair_like": pair_like,
+            "market_anchor_like": market_anchor_like,
+            "market_anchor": market_anchor,
             "probability": round(probability, 4),
             "expected_r": round(expected_r, 4),
             "uncertainty": round(uncertainty, 4),
@@ -4485,7 +4587,8 @@ class TradingAgent:
             original_size = float(getattr(order, "size_usd", 0.0) or 0.0)
             trimmed = original_size * multiplier
             min_trade = float(getattr(self.cfg.trading, "min_trade_usd", 0.0) or 0.0)
-            if trimmed < min_trade and not (event_starter or pair_trade):
+            anchor_floor = bool(guard.get("market_anchor_like"))
+            if trimmed < min_trade and not (event_starter or pair_trade or anchor_floor):
                 reason = f"north-star recovery trim would fall below ${min_trade:.0f} minimum"
                 log.info(f"[{coin}] 🧭 {reason}")
                 signal.action = "FLAT"
@@ -4501,7 +4604,7 @@ class TradingAgent:
                     blocked=True,
                 )
                 return False
-            trimmed = max(min_trade if event_starter or pair_trade else 0.0, trimmed)
+            trimmed = max(min_trade if event_starter or pair_trade or anchor_floor else 0.0, trimmed)
             order.size_usd = trimmed
             order.size_coin = trimmed / max(float(getattr(order, "price", getattr(signal, "price", 0.0)) or 0.0), 1e-9)
             order.margin_usd = trimmed / max(self._order_leverage(order), 1)
@@ -4549,7 +4652,8 @@ class TradingAgent:
             original_size = float(getattr(order, "size_usd", 0.0) or 0.0)
             trimmed = original_size * hit_multiplier
             min_trade = float(getattr(self.cfg.trading, "min_trade_usd", 0.0) or 0.0)
-            if trimmed < min_trade and not (event_starter or pair_trade):
+            anchor_floor = bool(guard.get("market_anchor_like"))
+            if trimmed < min_trade and not (event_starter or pair_trade or anchor_floor):
                 reason = f"win-rate guard trim would fall below ${min_trade:.0f} minimum"
                 log.info(f"[{coin}] 🧠 {reason}")
                 signal.action = "FLAT"
@@ -4565,7 +4669,7 @@ class TradingAgent:
                     blocked=True,
                 )
                 return False
-            trimmed = max(min_trade if event_starter or pair_trade else 0.0, trimmed)
+            trimmed = max(min_trade if event_starter or pair_trade or anchor_floor else 0.0, trimmed)
             order.size_usd = trimmed
             order.size_coin = trimmed / max(float(getattr(order, "price", getattr(signal, "price", 0.0)) or 0.0), 1e-9)
             order.margin_usd = trimmed / max(self._order_leverage(order), 1)
@@ -4575,6 +4679,99 @@ class TradingAgent:
                 f"[{coin}] 🧠 Win-rate guard trims size ${original_size:.2f} → "
                 f"${trimmed:.2f}: {hit_guard.get('summary', '')}"
             )
+        return self._apply_us_market_anchor_to_order(
+            coin,
+            signal,
+            order,
+            portfolio_usd=portfolio_usd,
+            current_position=current_position,
+            north_star_guard=guard,
+        )
+
+    def _apply_us_market_anchor_to_order(
+        self,
+        coin: str,
+        signal,
+        order,
+        *,
+        portfolio_usd: float,
+        current_position: str | None,
+        north_star_guard: dict | None = None,
+    ) -> bool:
+        direction = str(getattr(signal, "action", "") or "").upper()
+        profile = self._us_market_trade_profile(coin, direction, signal)
+        self._last_signals.setdefault(coin, {})
+        self._last_signals[coin]["us_market_anchor"] = profile
+        self._last_signals[coin]["us_market_anchor_summary"] = profile.get("summary", "")
+        if not profile.get("permitted", True):
+            reason = str(profile.get("summary") or "US market anchor blocks a countertrend entry")
+            log.info(f"[{coin}] Market anchor blocks entry: {reason}")
+            signal.action = "FLAT"
+            signal.flat_reason = reason
+            signal.reason = reason
+            self._sync_signal_snapshot(coin, signal)
+            self._record_decision_snapshot(
+                coin,
+                portfolio_usd=portfolio_usd,
+                stage="us_market_anchor_block",
+                signal=signal,
+                current_position=current_position,
+                blocked=True,
+            )
+            return False
+
+        leverage_cap = int(profile.get("leverage_cap") or 0)
+        if leverage_cap and order is not None and self._order_leverage(order) > leverage_cap:
+            order.leverage = leverage_cap
+            order.margin_usd = float(getattr(order, "size_usd", 0.0) or 0.0) / leverage_cap
+            note = str(getattr(order, "leverage_note", "") or "").strip()
+            order.leverage_note = f"{leverage_cap}x US market-anchor cap" + (f"; {note}" if note else "")
+
+        # The active north-star recovery guard has already reduced the order.
+        # Avoid compounding two independent haircuts onto the same small trade.
+        multiplier = 1.0 if (north_star_guard or {}).get("active") else float(
+            profile.get("size_multiplier", 1.0) or 1.0
+        )
+        if multiplier < 0.999 and order is not None:
+            original_size = float(getattr(order, "size_usd", 0.0) or 0.0)
+            trimmed = original_size * multiplier
+            min_trade = float(getattr(self.cfg.trading, "min_trade_usd", 0.0) or 0.0)
+            aligned_short = bool(
+                profile.get("aligned")
+                and direction == "SHORT"
+                and str(profile.get("regime") or "").upper() == "RISK_OFF"
+            )
+            if trimmed < min_trade and not aligned_short:
+                reason = f"US market-anchor trim would fall below ${min_trade:.0f} minimum"
+                signal.action = "FLAT"
+                signal.flat_reason = reason
+                signal.reason = reason
+                self._sync_signal_snapshot(coin, signal)
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage="us_market_anchor_block",
+                    signal=signal,
+                    current_position=current_position,
+                    blocked=True,
+                )
+                return False
+            trimmed = max(min_trade if aligned_short else 0.0, trimmed)
+            order.size_usd = trimmed
+            order.size_coin = trimmed / max(
+                float(getattr(order, "price", getattr(signal, "price", 0.0)) or 0.0),
+                1e-9,
+            )
+            order.margin_usd = trimmed / max(self._order_leverage(order), 1)
+            log.info(
+                f"[{coin}] Market anchor trims size ${original_size:.2f} -> ${trimmed:.2f}: "
+                f"{profile.get('summary', '')}"
+            )
+
+        self._last_signals[coin]["leverage"] = getattr(order, "leverage", self.cfg.trading.leverage)
+        self._last_signals[coin]["margin_usd"] = getattr(order, "margin_usd", 0.0)
+        self._last_signals[coin]["order_notional_usd"] = getattr(order, "size_usd", 0.0)
+        self._last_signals[coin]["leverage_note"] = getattr(order, "leverage_note", "")
         return True
 
     def _performance_edge_rows(self) -> list[dict]:
@@ -4829,6 +5026,14 @@ class TradingAgent:
         momentum_context_ok = self._momentum_context_ok(coin, direction, signal, sig)
         price_only = bool(price_score >= 70.0 and fundamental_score < min_fundamental and attention_score < min_attention)
         instrument_type = str(sig.get("instrument_type") or "crypto").lower()
+        market_anchor = self._us_market_trade_profile(coin, direction, signal)
+        market_anchor_context_ok = bool(
+            market_anchor.get("supporting_driver")
+            and probability >= max(0.55, min_probability - 0.04)
+            and expected_r >= max(0.10, min_expected_r * 0.60)
+            and uncertainty <= max_uncertainty + 0.08
+            and (price_score >= 55.0 or sequence_score >= min_sequence - 8.0 or momentum_context_ok)
+        )
         real_world_driver_ok = bool(
             event_like
             or catalyst_score >= 1.75
@@ -4841,6 +5046,7 @@ class TradingAgent:
                 and social_mentions >= max(1, min_social_mentions)
             )
             or narrative_bias in {"BULLISH", "BEARISH"}
+            or market_anchor_context_ok
         )
         crypto_market_mode = str(sig.get("crypto_market_mode") or "UNKNOWN").upper()
         crypto_directional_bias = str(sig.get("crypto_directional_bias") or "NEUTRAL").upper()
@@ -4869,6 +5075,7 @@ class TradingAgent:
             and not context_stack_ok
             and not event_context_ok
             and not attention_context_ok
+            and not market_anchor_context_ok
         )
 
         performance_verdict = {"active": False, "permitted": True, "summary": ""}
@@ -4890,6 +5097,7 @@ class TradingAgent:
             or attention_context_ok
             or pair_context_ok
             or momentum_context_ok
+            or market_anchor_context_ok
         )
         if toxic_history and not (event_context_ok or attention_context_ok or momentum_context_ok or (context_stack_ok and odds_ok)):
             permitted = False
@@ -4920,7 +5128,11 @@ class TradingAgent:
             blockers.append(str(performance_verdict["summary"]))
 
         summary = (
-            "win-rate recovery allows entry: fundamentals/attention/flows support the trade"
+            (
+                "win-rate recovery allows a small market-aligned entry: US index regime, breadth, and asset structure agree"
+                if market_anchor_context_ok
+                else "win-rate recovery allows entry: fundamentals/attention/flows support the trade"
+            )
             if permitted
             else f"win-rate recovery blocks {direction}: {blockers[0] if blockers else 'context is not strong enough'}"
         )
@@ -4944,6 +5156,8 @@ class TradingAgent:
             "attention_like": attention_context_ok,
             "pair_like": pair_like,
             "momentum_context": momentum_context_ok,
+            "market_anchor_context": market_anchor_context_ok,
+            "us_market_anchor": market_anchor,
             "real_world_driver": real_world_driver_ok,
             "price_only": price_only,
             "driverless_momentum": driverless_momentum,
@@ -7061,6 +7275,9 @@ class TradingAgent:
             "market_map_summary": sig.get("market_map_summary", ""),
             "market_map_score_adjustment": sig.get("market_map_score_adjustment", 0.0),
             "market_map_notes": sig.get("market_map_notes", ""),
+            "us_market_context": dict(self._last_us_market_context or {}),
+            "us_market_anchor": dict(sig.get("us_market_anchor") or {}),
+            "us_market_anchor_summary": sig.get("us_market_anchor_summary", ""),
             "narrative_summary": sig.get("narrative_summary", ""),
             "narrative_event_risk_active": sig.get("narrative_event_risk_active", False),
             "narrative_event_name": sig.get("narrative_event_name", ""),
@@ -9111,6 +9328,7 @@ class TradingAgent:
         import os
         from pathlib import Path
 
+        self._refresh_us_market_context()
         positions_out = []
         for coin, p in self.risk.positions.items():
             price = get_current_price(coin) or p.entry_price
@@ -9305,6 +9523,7 @@ class TradingAgent:
             "positions":     positions_out,
             "pending_orders":pending_out,
             "signals":       getattr(self, "_last_signals", {}),
+            "us_market_context": dict(self._last_us_market_context or {}),
             "sentiment":     sentiment,
             "daily_pnl_usd":     round(getattr(self.risk, "daily_pnl_usd", 0.0), 2),
             "daily_trades":      getattr(self.risk, "daily_trades", 0),
@@ -9356,6 +9575,9 @@ class TradingAgent:
                 "asset_category_labels": getattr(self.cfg.trading, "asset_category_labels", {}),
                 "asset_category_descriptions": dict(DEFAULT_ASSET_CATEGORY_DESCRIPTIONS),
                 "portfolio_theme_map":   getattr(self.cfg.trading, "portfolio_theme_map", {}),
+                "us_market_anchor_enabled": getattr(self.cfg.trading, "us_market_anchor_enabled", True),
+                "us_market_anchor_min_confidence": getattr(self.cfg.trading, "us_market_anchor_min_confidence", 0.55),
+                "us_market_anchor_short_max_leverage": getattr(self.cfg.trading, "us_market_anchor_short_max_leverage", 1),
             },
         }
 

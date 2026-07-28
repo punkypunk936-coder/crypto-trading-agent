@@ -478,6 +478,77 @@
     background: rgba(255,255,255,0.055);
     margin-bottom: 10px;
   }
+  .market-anchor-headline {
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 780;
+    line-height: 1.42;
+    margin-bottom: 5px;
+  }
+  .market-anchor-copy {
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.5;
+    margin-bottom: 10px;
+  }
+  .market-benchmarks {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1px;
+    background: rgba(255,255,255,0.055);
+    margin-bottom: 10px;
+  }
+  .market-benchmark {
+    min-width: 0;
+    background: var(--card);
+    padding: 9px 10px;
+  }
+  .market-benchmark-top,
+  .market-benchmark-levels {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .market-benchmark-name {
+    color: var(--text);
+    font-size: 11px;
+    font-weight: 780;
+  }
+  .market-benchmark-price,
+  .market-benchmark-levels {
+    color: var(--muted);
+    font: 10px/1.4 var(--mono);
+  }
+  .market-benchmark-levels {
+    margin-top: 5px;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+  .market-plan-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+  .market-plan {
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  .market-plan strong {
+    color: var(--text);
+  }
+  .market-catalysts {
+    display: flex;
+    gap: 7px 14px;
+    flex-wrap: wrap;
+    margin: 8px 0 10px;
+    color: var(--muted);
+    font-size: 10px;
+    line-height: 1.45;
+  }
+  .market-catalyst strong {
+    color: var(--text-secondary);
+  }
   .asia-benchmark {
     min-width: 0;
     background: var(--card);
@@ -2712,6 +2783,11 @@
     .asia-benchmarks {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+    .market-benchmarks,
+    .market-plan-grid {
+      grid-template-columns: 1fr;
+      gap: 7px;
+    }
     .radar-context-head {
       align-items: flex-start;
       flex-direction: column;
@@ -2871,6 +2947,7 @@
       <div class="card-sub" id="daily-radar-meta">Waiting for the next radar pass...</div>
     </div>
     <div class="radar-context-stack">
+      <div id="us-market-body" class="radar-context-band" hidden></div>
       <div id="durable-thesis-body" class="radar-context-band" hidden></div>
       <div id="asia-session-body" class="radar-context-band" hidden></div>
       <div id="earnings-session-body" class="radar-context-band" hidden></div>
@@ -3883,6 +3960,7 @@ let latestPlaybookDistillerReport = { summary: {}, assets: {} };
 let latestPolicyHealthReport = { summary: {}, findings: [], roadmap: [] };
 let latestProactiveTraderReport = { summary: {} };
 let latestDailyRadar = { summary: {}, top_assets: [] };
+let latestUsMarketContext = { active: false, benchmarks: [] };
 let latestAsiaSession = { active: false, benchmarks: [] };
 let latestEarningsSession = { active: false, rows: [] };
 let latestXyz = { summary: {}, items: [], segments: [] };
@@ -4721,6 +4799,47 @@ function renderDurableTheses(report) {
       + '<div class="context-copy"><strong>Thesis breaks:</strong> ' + esc(shortText(row.invalidation || '', 240)) + '</div>'
     + '</div>';
   }).join('') + '</div>';
+}
+
+function renderUsMarketContext(report) {
+  const body = document.getElementById('us-market-body');
+  if (!body) return;
+  const safe = report || {};
+  const rows = Array.isArray(safe.benchmarks) ? safe.benchmarks.filter((row) => row && row.fresh) : [];
+  body.hidden = !safe.active || !rows.length;
+  if (body.hidden) {
+    body.innerHTML = '';
+    return;
+  }
+  const regime = String(safe.regime || 'UNKNOWN');
+  const regimeTone = regime === 'RISK_ON' ? biasClass('bullish') : regime === 'RISK_OFF' ? biasClass('bearish') : biasClass('neutral');
+  const breadth = safe.breadth || {};
+  const catalysts = Array.isArray(safe.catalysts) ? safe.catalysts.slice(0, 4) : [];
+  const levelText = (value) => Number(value || 0) > 0 ? fmt(Number(value), Number(value) >= 1000 ? 0 : 2) : '--';
+  body.innerHTML = '<div class="radar-context-head">'
+    + '<div class="radar-context-title">US market anchor</div>'
+    + '<div class="radar-context-meta"><span class="' + regimeTone + '">' + esc(regime.replace('_', ' ')) + '</span> • ' + esc(String(Math.round(Number(safe.confidence || 0) * 100))) + '% confidence • ' + esc(breadth.summary || '') + '</div>'
+  + '</div>'
+  + '<div class="market-anchor-headline">' + esc(shortText(safe.headline || '', 260)) + '</div>'
+  + '<div class="market-anchor-copy">' + esc(shortText(safe.commentary || '', 420)) + '</div>'
+  + '<div class="market-benchmarks">' + rows.slice(0, 3).map((row) => {
+    const direction = String(row.direction || 'FLAT');
+    const move = Number(row.move_pct || 0);
+    const tone = row.symbol === 'VIX'
+      ? (direction === 'LONG' ? 'red' : direction === 'SHORT' ? 'green' : 'muted')
+      : (direction === 'LONG' ? 'green' : direction === 'SHORT' ? 'red' : 'muted');
+    return '<div class="market-benchmark">'
+      + '<div class="market-benchmark-top"><span class="market-benchmark-name">' + esc(row.label || row.symbol) + '</span><span class="' + tone + '">' + esc(direction) + (move ? ' • ' + (move > 0 ? '+' : '') + move.toFixed(1) + '%' : '') + '</span></div>'
+      + '<div class="market-benchmark-price">' + esc(levelText(row.price)) + ' • ' + esc(row.structure || 'UNKNOWN') + '</div>'
+      + '<div class="market-benchmark-levels"><span>Support ' + esc(levelText(row.support || row.breakdown)) + '</span><span>Resistance ' + esc(levelText(row.resistance || row.reclaim)) + '</span></div>'
+    + '</div>';
+  }).join('') + '</div>'
+  + (catalysts.length ? '<div class="market-catalysts">' + catalysts.map((item) => '<span class="market-catalyst"><strong>' + esc(item.symbol || 'MARKET') + ':</strong> ' + esc(shortText(item.text || '', 150)) + '</span>').join('') + '</div>' : '')
+  + '<div class="market-plan-grid">'
+    + '<div class="market-plan"><strong>Buy:</strong> ' + esc(shortText(safe.buy_plan || '', 260)) + '</div>'
+    + '<div class="market-plan"><strong>Sell:</strong> ' + esc(shortText(safe.sell_plan || '', 260)) + '</div>'
+    + '<div class="market-plan"><strong>View breaks:</strong> ' + esc(shortText(safe.invalidation || '', 260)) + '</div>'
+  + '</div>';
 }
 
 function renderAsiaSession(report) {
@@ -5664,6 +5783,7 @@ async function refresh() {
     latestPolicyHealthReport = data.policy_health_report || ((s || {}).policy_health) || { summary: {}, findings: [], roadmap: [] };
     latestProactiveTraderReport = data.proactive_trader_report || { summary: {} };
     latestDailyRadar = data.daily_radar || ((s || {}).daily_radar) || { summary: {}, top_assets: [] };
+    latestUsMarketContext = data.us_market_context || ((s || {}).us_market_context) || { active: false, benchmarks: [] };
     latestAsiaSession = data.asia_session || { active: false, benchmarks: [] };
     latestEarningsSession = data.earnings_session || { active: false, rows: [] };
     latestXyz = data.xyz || ((s || {}).xyz) || { summary: {}, items: [], segments: [] };
@@ -5792,6 +5912,7 @@ async function refresh() {
         '</div>';
     }
 
+    renderUsMarketContext(latestUsMarketContext);
     renderDurableTheses(latestDailyRadar);
     renderAsiaSession(latestAsiaSession);
     renderEarningsSession(latestEarningsSession);

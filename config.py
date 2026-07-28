@@ -20,6 +20,7 @@ load_dotenv()
 
 _BASE_EXECUTION_COINS = ["BTC", "ETH", "SOL", "HYPE", "MON", "TAO", "SP500", "XAU"]
 _ASIA_CONTEXT_COINS = ["KR200", "JP225", "EWY", "EWJ"]
+_US_CONTEXT_COINS = ["SP500", "NDX", "VIX"]
 
 _BASE_INSTRUMENT_TYPES = {
     "BTC": "crypto",
@@ -29,6 +30,8 @@ _BASE_INSTRUMENT_TYPES = {
     "MON": "crypto",
     "TAO": "crypto",
     "SP500": "index",
+    "NDX": "index",
+    "VIX": "index",
     "XAU": "index",
     "BRENT": "index",
     "WTI": "index",
@@ -43,6 +46,8 @@ _BASE_ASSET_CATEGORY_MAP = {
     "MON": ["crypto"],
     "TAO": ["crypto"],
     "SP500": ["indices_macro"],
+    "NDX": ["indices_macro"],
+    "VIX": ["indices_macro"],
     "XAU": ["indices_macro"],
 }
 
@@ -59,11 +64,11 @@ def _unique_coins(*groups) -> List[str]:
 
 
 def _default_analysis_coins() -> List[str]:
-    return _unique_coins(_BASE_EXECUTION_COINS, TRADEXYZ_ASSET_METADATA.keys())
+    return _unique_coins(_BASE_EXECUTION_COINS, _US_CONTEXT_COINS, TRADEXYZ_ASSET_METADATA.keys())
 
 
 def _default_execution_coins() -> List[str]:
-    return _default_analysis_coins()
+    return _unique_coins(_BASE_EXECUTION_COINS, TRADEXYZ_ASSET_METADATA.keys())
 
 
 def _default_instrument_types() -> dict:
@@ -90,6 +95,8 @@ def _default_portfolio_theme_map() -> dict:
         "MON": "CRYPTO_HIGH_BETA",
         "TAO": "CRYPTO_HIGH_BETA",
         "SP500": "US_MACRO_BETA",
+        "NDX": "US_MACRO_BETA",
+        "VIX": "US_VOLATILITY",
         "XAU": "DEFENSIVE_HARD_ASSET",
         "BRENT": "ENERGY_COMPLEX",
         "WTI": "ENERGY_COMPLEX",
@@ -154,7 +161,7 @@ class TradingConfig:
     analysis_cycle_budget_enabled: bool = True
     analysis_max_symbols_per_cycle: int = 20
     analysis_priority_coins: List[str] = field(
-        default_factory=lambda: _unique_coins(_BASE_EXECUTION_COINS, _ASIA_CONTEXT_COINS)
+        default_factory=lambda: _unique_coins(_US_CONTEXT_COINS, _BASE_EXECUTION_COINS, _ASIA_CONTEXT_COINS)
     )
     analysis_signal_max_age_minutes: float = 20.0
     cycle_price_poll_max_trigger_symbols: int = 24
@@ -276,6 +283,19 @@ class TradingConfig:
     north_star_coin_loss_cooldown_window: int = 8
     north_star_coin_loss_cooldown_losses: int = 2
     north_star_pending_guard_enabled: bool = True
+
+    # ── US market anchor ──────────────────────────────────────
+    # S&P, Nasdaq, VIX, stock breadth, and catalysts form a regime filter for
+    # equity/index entries. Aligned risk-off shorts remain deliberately small
+    # and unlevered; this is permission to express a confirmed thesis, not a
+    # command to short every market drawdown.
+    us_market_anchor_enabled: bool = True
+    us_market_anchor_max_age_hours: float = 2.0
+    us_market_anchor_min_confidence: float = 0.55
+    us_market_anchor_block_countertrend: bool = True
+    us_market_anchor_aligned_short_size_multiplier: float = 0.50
+    us_market_anchor_countertrend_size_multiplier: float = 0.35
+    us_market_anchor_short_max_leverage: int = 1
 
     # ── Risk management ─────────────────────────────────
     # Wide TP/SL to let winning trades run on perps

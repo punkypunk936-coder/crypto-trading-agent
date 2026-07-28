@@ -21,6 +21,7 @@ from pathlib import Path
 import decision_dataset
 import asia_session
 import earnings_session
+import us_market_context
 from flask import Flask, render_template, jsonify, request, abort, send_file, Response
 import market_map as market_map_store
 import trade_dataset
@@ -286,6 +287,11 @@ def _load_snapshot_local() -> dict | None:
                 payload["xyz"] = {"title": "xyz", "summary": {}, "items": [], "segments": []}
         if "asia_session" not in payload:
             payload["asia_session"] = asia_session.build_asia_session(shaped_state)
+        if "us_market_context" not in payload:
+            payload["us_market_context"] = us_market_context.build_us_market_context(
+                shaped_state,
+                asia_context=payload.get("asia_session") or {},
+            )
         if "earnings_session" not in payload:
             payload["earnings_session"] = earnings_session.build_earnings_session(
                 shaped_state,

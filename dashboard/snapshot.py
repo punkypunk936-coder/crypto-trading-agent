@@ -12,6 +12,7 @@ from typing import Any, Iterable
 import daily_radar
 import asia_session
 import earnings_session
+import us_market_context
 from pnl_explanation import (
     build_pnl_attribution_summary,
     explain_closed_trade,
@@ -2503,6 +2504,10 @@ def build_dashboard_snapshot(
         dict(proactive_trader_report or {}),
     )
     asia_context = asia_session.build_asia_session(shaped_state)
+    us_context = us_market_context.build_us_market_context(
+        shaped_state,
+        asia_context=asia_context,
+    )
     earnings_context = earnings_session.build_earnings_session(
         shaped_state,
         radar,
@@ -2516,6 +2521,7 @@ def build_dashboard_snapshot(
         "control": normalize_control(control),
         "action_board": board,
         "daily_radar": radar,
+        "us_market_context": us_context,
         "asia_session": asia_context,
         "earnings_session": earnings_context,
         "xyz": xyz,
