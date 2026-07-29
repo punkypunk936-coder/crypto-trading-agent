@@ -3371,8 +3371,8 @@
   </div>
   <div class="decision-benchmarks" id="decision-benchmarks"></div>
   <details class="evidence-details" id="market-evidence-panel">
-    <summary>Full market evidence</summary>
-    <div id="us-market-body" class="radar-context-band" hidden></div>
+    <summary>US + Korea + Japan evidence</summary>
+    <div id="global-market-body" class="radar-context-band" hidden></div>
   </details>
 </section>
 
@@ -3441,7 +3441,7 @@
 <div class="workspace-divider">
   <div>
     <div class="section-kicker">Deep work</div>
-    <h2>Research, Review &amp; Tools</h2>
+    <h2>Research &amp; Review</h2>
   </div>
   <p>Open a workspace only when the decision above needs more evidence.</p>
 </div>
@@ -3454,24 +3454,10 @@
     </summary>
     <div class="radar-context-stack">
       <div id="durable-thesis-body" class="radar-context-band" hidden></div>
-      <div id="asia-session-body" class="radar-context-band" hidden></div>
       <div id="earnings-session-body" class="radar-context-band" hidden></div>
     </div>
     <div id="daily-radar-body">
       <div class="empty-state">The agent will surface today's focus list after the next cycle.</div>
-    </div>
-  </details>
-</div>
-
-<!-- xyz -->
-<div class="full-width">
-  <details class="workspace-section xyz-card" id="xyz-card">
-    <summary>
-      <div class="card-label">xyz</div>
-      <div class="workspace-meta" id="xyz-meta">Loading Trade.xyz universe...</div>
-    </summary>
-    <div id="xyz-body">
-      <div class="empty-state">Trade.xyz segments will appear after the next snapshot.</div>
     </div>
   </details>
 </div>
@@ -3514,34 +3500,6 @@
     </div>
     <div id="market-map-body">
       <div class="empty-state">Building live daily view...</div>
-    </div>
-  </details>
-</div>
-
-<div class="full-width">
-  <details class="workspace-section" id="tools-panel">
-    <summary><span>Utilities</span><span class="workspace-meta">Trade.xyz volume and operator tools</span></summary>
-    <div class="utility-grid">
-      <div class="utility-card">
-        <div class="utility-title">Trade.xyz Volume</div>
-        <div class="volume-shell">
-          <div class="volume-actions">
-            <input
-              id="tradexyz-wallet-input"
-              class="search-input"
-              type="text"
-              placeholder="0x..."
-              autocomplete="off"
-              spellcheck="false"
-            />
-            <button class="tool-btn" id="tradexyz-check-btn" onclick="lookupTradexyzVolume()">CHECK VOLUME</button>
-          </div>
-          <div id="tradexyz-status" class="volume-status">Press Ctrl+X from anywhere to check Trade.xyz wallet volume.</div>
-          <div id="tradexyz-result" class="search-result">
-            <div class="search-result-empty">No wallet checked yet.</div>
-          </div>
-        </div>
-      </div>
     </div>
   </details>
 </div>
@@ -4469,16 +4427,13 @@ let latestPlaybookDistillerReport = { summary: {}, assets: {} };
 let latestPolicyHealthReport = { summary: {}, findings: [], roadmap: [] };
 let latestProactiveTraderReport = { summary: {} };
 let latestDailyRadar = { summary: {}, top_assets: [] };
-let latestUsMarketContext = { active: false, benchmarks: [] };
-let latestAsiaSession = { active: false, benchmarks: [] };
+let latestGlobalMarketContext = { active: false, benchmarks: [], market_views: [] };
 let latestEarningsSession = { active: false, rows: [] };
-let latestXyz = { summary: {}, items: [], segments: [] };
 let latestPnlAttribution = {};
 let commandSearchOpen = false;
 let commandSearchIndex = 0;
 let commandSearchQuery = '';
 let commandSearchMatches = [];
-let tradexyzLookupBusy = false;
 let refreshRequest = null;
 let refreshTimer = null;
 let refreshFailureCount = 0;
@@ -4486,8 +4441,6 @@ let actionBoardBucket = 'coin';
 let marketMapBucket = 'coin';
 let actionBoardCategory = 'all';
 let marketMapCategory = 'all';
-let xyzSegment = 'all';
-let xyzExpanded = false;
 const REFRESH_BASE_MS = 15000;
 const REFRESH_STALE_MS = 25000;
 
@@ -4590,7 +4543,6 @@ function openPnlExplanation(kind, index) {
 }
 const REFRESH_MAX_MS = 60000;
 const REFRESH_TIMEOUT_MS = 8000;
-const XYZ_COLLAPSED_LIMIT = 8;
 const STATIC_GITHUB_PAGES_MODE = /\.github\.io$/i.test(window.location.hostname || '');
 const STATIC_STATE_FALLBACK_URL = 'https://raw.githubusercontent.com/punkypunk936-coder/crypto-trading-agent/dashboard-state-live/dashboard/dashboard_snapshot.json';
 
@@ -4900,12 +4852,6 @@ function setMarketMapCategory(category) {
 }
 
 document.addEventListener('click', (event) => {
-  const xyzButton = event.target.closest('.asset-tab[data-xyz-segment]');
-  if (xyzButton) {
-    event.preventDefault();
-    setXyzSegment(xyzButton.dataset.xyzSegment);
-    return;
-  }
   const button = event.target.closest('.asset-tab[data-bucket-scope][data-bucket-value]');
   if (button) {
     event.preventDefault();
@@ -4959,12 +4905,6 @@ document.addEventListener('click', (event) => {
 
 document.addEventListener('keydown', (event) => {
   const key = String(event.key || '').toLowerCase();
-  const tradexyzVolumeOpen = (event.ctrlKey || event.metaKey) && key === 'x' && !isEditableTarget(event.target);
-  if (tradexyzVolumeOpen) {
-    event.preventDefault();
-    openTradexyzVolumeSearch();
-    return;
-  }
   const commandFind = (event.ctrlKey || event.metaKey) && key === 'f';
   const commandOpen = commandFind || ((event.ctrlKey || event.metaKey) && key === 'k');
   const slashOpen = key === '/' && !event.ctrlKey && !event.metaKey && !event.altKey && !isEditableTarget(event.target);
@@ -5166,93 +5106,6 @@ function formatUsd(value) {
   return '$' + fmt(number);
 }
 
-function setTradexyzStatus(message, tone='info') {
-  const node = document.getElementById('tradexyz-status');
-  if (!node) return;
-  node.className = 'volume-status' + (tone === 'error' ? ' error' : tone === 'ok' ? ' ok' : '');
-  node.textContent = message;
-}
-
-function openTradexyzVolumeSearch(seed='') {
-  const panel = document.getElementById('tools-panel');
-  const input = document.getElementById('tradexyz-wallet-input');
-  if (panel) {
-    panel.open = true;
-    panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }
-  if (input) {
-    if (seed) input.value = String(seed || '').trim();
-    setTimeout(() => {
-      input.focus();
-      input.select();
-    }, 0);
-  }
-  setTradexyzStatus('Paste a wallet and press Enter. Shortcut: Ctrl+X.', 'info');
-}
-
-function renderTradexyzVolume(payload) {
-  const result = document.getElementById('tradexyz-result');
-  if (!result) return;
-  const summary = payload.summary || {};
-  const coverage = payload.coverage || {};
-  const identity = payload.identity || {};
-  const markets = Array.isArray(payload.markets) ? payload.markets : [];
-  const topMarkets = markets.slice(0, 10);
-  const requestBits = [
-    String(coverage.request_count || 0) + ' request' + (Number(coverage.request_count || 0) === 1 ? '' : 's'),
-  ];
-  if (coverage.split_count) requestBits.push(String(coverage.split_count) + ' split windows');
-  if (coverage.possible_truncation) requestBits.push('possible truncation');
-
-  let html = '<div class="search-title">' + esc(payload.wallet || '') + ' • Trade.xyz volume snapshot</div>'
-    + '<div class="search-summary">This rollup uses Hyperliquid fills from ' + esc(String(coverage.start_time || '--')) + ' to ' + esc(String(coverage.end_time || '--')) + ' and filters them to the live Trade.xyz market universe.</div>'
-    + '<div class="volume-kpis">'
-      + '<div class="token-detail"><span class="token-detail-label">Total volume</span><div class="token-detail-value">' + esc(formatUsd(summary.total_volume_usd || 0)) + '</div></div>'
-      + '<div class="token-detail"><span class="token-detail-label">Matched fills</span><div class="token-detail-value">' + esc(String(summary.fill_count || 0)) + '</div></div>'
-      + '<div class="token-detail"><span class="token-detail-label">Markets traded</span><div class="token-detail-value">' + esc(String(summary.market_count || 0)) + '</div></div>'
-      + '<div class="token-detail"><span class="token-detail-label">Buy / sell volume</span><div class="token-detail-value">' + esc(formatUsd(summary.buy_volume_usd || 0) + ' / ' + formatUsd(summary.sell_volume_usd || 0)) + '</div></div>'
-    + '</div>'
-    + '<div class="search-grid">'
-      + '<div class="token-detail"><span class="token-detail-label">First fill</span><div class="token-detail-value">' + esc(String(summary.first_fill_at || 'No fills found')) + '</div></div>'
-      + '<div class="token-detail"><span class="token-detail-label">Last fill</span><div class="token-detail-value">' + esc(String(summary.last_fill_at || '—')) + '</div></div>'
-      + '<div class="token-detail"><span class="token-detail-label">Tracked xyz markets</span><div class="token-detail-value">' + esc(String(summary.tracked_markets || 0)) + '</div></div>'
-      + '<div class="token-detail"><span class="token-detail-label">Scanner activity</span><div class="token-detail-value">' + esc(requestBits.join(' • ')) + '</div></div>'
-    + '</div>';
-
-  html += '<div class="search-grid" style="margin-top:8px;">'
-    + '<div class="token-detail"><span class="token-detail-label">Requested address</span><div class="token-detail-value">' + esc(String(identity.requested_address || payload.wallet || '—')) + '</div></div>'
-    + '<div class="token-detail"><span class="token-detail-label">Query scope</span><div class="token-detail-value">' + esc(humanizeKey(String(identity.query_scope || 'strict_address'))) + '</div></div>'
-    + '<div class="token-detail"><span class="token-detail-label">Hyperliquid role</span><div class="token-detail-value">' + esc(humanizeKey(String(identity.role || 'user'))) + '</div></div>'
-    + '<div class="token-detail"><span class="token-detail-label">Abstraction mode</span><div class="token-detail-value">' + esc(String(identity.abstraction_mode || 'default')) + '</div></div>'
-    + '</div>';
-
-  const identityNotes = Array.isArray(identity.notes) ? identity.notes.filter((item) => item) : [];
-  if (identityNotes.length) {
-    html += '<div class="search-summary"><strong>Identity notes:</strong> ' + esc(identityNotes.join(' ')) + '</div>';
-  }
-  if (Array.isArray(identity.linked_addresses) && identity.linked_addresses.length) {
-    html += '<div class="search-summary"><strong>Linked addresses:</strong> ' + esc(identity.linked_addresses.join(', ')) + '</div>';
-  }
-
-  if (topMarkets.length) {
-    html += '<div class="volume-table-wrap"><table><thead><tr><th>Market</th><th>Volume</th><th>Fills</th><th>Buy Volume</th><th>Sell Volume</th><th>Last Fill</th></tr></thead><tbody>'
-      + topMarkets.map((market) => '<tr>'
-        + '<td>' + esc(String(market.coin || '')) + '</td>'
-        + '<td>' + esc(formatUsd(market.volume_usd || 0)) + '</td>'
-        + '<td>' + esc(String(market.fills || 0)) + '</td>'
-        + '<td>' + esc(formatUsd(market.buy_volume_usd || 0)) + '</td>'
-        + '<td>' + esc(formatUsd(market.sell_volume_usd || 0)) + '</td>'
-        + '<td>' + esc(String(market.last_fill_at || '—')) + '</td>'
-        + '</tr>').join('')
-      + '</tbody></table></div>';
-  } else {
-    html += '<div class="search-result-empty" style="margin-top:12px;">No Trade.xyz fills were found for this wallet in the scanned history.</div>';
-  }
-
-  html += '<div class="volume-footer">Checked at ' + esc(String(payload.checked_at || '--')) + ' • DEX ' + esc(String(payload.dex || 'xyz').toUpperCase()) + '</div>';
-  result.innerHTML = html;
-}
-
 function radarSideLabel(item) {
   const side = String((item || {}).side || '').toLowerCase();
   if (side === 'bullish') return 'Bullish';
@@ -5310,12 +5163,13 @@ function renderDurableTheses(report) {
   }).join('') + '</div>';
 }
 
-function renderUsMarketContext(report) {
-  const body = document.getElementById('us-market-body');
+function renderGlobalMarketContext(report) {
+  const body = document.getElementById('global-market-body');
   if (!body) return;
   const safe = report || {};
-  const rows = Array.isArray(safe.benchmarks) ? safe.benchmarks.filter((row) => row && row.fresh) : [];
-  body.hidden = !safe.active || !rows.length;
+  const benchmarkRows = Array.isArray(safe.benchmarks) ? safe.benchmarks.filter((row) => row && row.fresh) : [];
+  const marketViews = Array.isArray(safe.market_views) ? safe.market_views.filter((row) => row && row.region) : [];
+  body.hidden = !safe.active;
   if (body.hidden) {
     body.innerHTML = '';
     return;
@@ -5323,15 +5177,33 @@ function renderUsMarketContext(report) {
   const regime = String(safe.regime || 'UNKNOWN');
   const regimeTone = regime === 'RISK_ON' ? biasClass('bullish') : regime === 'RISK_OFF' ? biasClass('bearish') : biasClass('neutral');
   const breadth = safe.breadth || {};
+  const crossMarket = safe.cross_market || {};
   const catalysts = Array.isArray(safe.catalysts) ? safe.catalysts.slice(0, 4) : [];
   const levelText = (value) => Number(value || 0) > 0 ? fmt(Number(value), Number(value) >= 1000 ? 0 : 2) : '--';
   body.innerHTML = '<div class="radar-context-head">'
-    + '<div class="radar-context-title">US market anchor</div>'
-    + '<div class="radar-context-meta"><span class="' + regimeTone + '">' + esc(regime.replace('_', ' ')) + '</span> • ' + esc(String(Math.round(Number(safe.confidence || 0) * 100))) + '% confidence • ' + esc(breadth.summary || '') + '</div>'
+    + '<div class="radar-context-title">Global equity anchor</div>'
+    + '<div class="radar-context-meta"><span class="' + regimeTone + '">' + esc(regime.replace('_', ' ')) + '</span> • ' + esc(String(crossMarket.state || 'UNCONFIRMED').replaceAll('_', ' ')) + ' cross-market • ' + esc(String(Math.round(Number(safe.confidence || 0) * 100))) + '% confidence</div>'
   + '</div>'
   + '<div class="market-anchor-headline">' + esc(shortText(safe.headline || '', 260)) + '</div>'
   + '<div class="market-anchor-copy">' + esc(shortText(safe.commentary || '', 420)) + '</div>'
-  + '<div class="market-benchmarks">' + rows.slice(0, 3).map((row) => {
+  + '<div class="market-benchmarks">' + marketViews.slice(0, 3).map((row) => {
+    const direction = String(row.direction || 'FLAT');
+    const status = String(row.status || 'NO EDGE');
+    const tone = status === 'CONFIRMING' || (row.region === 'US' && direction === 'LONG')
+      ? 'green'
+      : status === 'DIVERGING' || (row.region === 'US' && direction === 'SHORT')
+        ? 'red'
+        : 'muted';
+    const correlation = row.correlation == null ? '' : ((Number(row.correlation) >= 0 ? '+' : '') + Number(row.correlation).toFixed(2) + ' corr');
+    return '<div class="market-benchmark">'
+      + '<div class="market-benchmark-top"><span class="market-benchmark-name">' + esc(row.region) + '</span><span class="' + tone + '">' + esc(status) + '</span></div>'
+      + '<div class="market-benchmark-price">' + esc(direction) + (correlation ? ' • ' + esc(correlation) : ' • PRIMARY ANCHOR') + '</div>'
+      + '<div class="market-benchmark-levels"><span>' + esc(shortText(row.summary || '', 145)) + '</span></div>'
+    + '</div>';
+  }).join('') + '</div>'
+  + '<div class="context-copy"><strong>Execution effect:</strong> ' + esc(shortText(crossMarket.summary || '', 320)) + '</div>'
+  + (safe.semiconductor_readthrough ? '<div class="context-copy"><strong>Semiconductor handoff:</strong> ' + esc(shortText(safe.semiconductor_readthrough, 360)) + '</div>' : '')
+  + '<div class="market-benchmarks">' + benchmarkRows.slice(0, 3).map((row) => {
     const direction = String(row.direction || 'FLAT');
     const move = Number(row.move_pct || 0);
     const tone = row.symbol === 'VIXINDEX'
@@ -5343,37 +5215,13 @@ function renderUsMarketContext(report) {
       + '<div class="market-benchmark-levels"><span>Support ' + esc(levelText(row.support || row.breakdown)) + '</span><span>Resistance ' + esc(levelText(row.resistance || row.reclaim)) + '</span></div>'
     + '</div>';
   }).join('') + '</div>'
+  + '<div class="context-copy"><strong>Breadth:</strong> ' + esc(shortText(breadth.summary || '', 260)) + '</div>'
   + (catalysts.length ? '<div class="market-catalysts">' + catalysts.map((item) => '<span class="market-catalyst"><strong>' + esc(item.symbol || 'MARKET') + ':</strong> ' + esc(shortText(item.text || '', 150)) + '</span>').join('') + '</div>' : '')
   + '<div class="market-plan-grid">'
     + '<div class="market-plan"><strong>Buy:</strong> ' + esc(shortText(safe.buy_plan || '', 260)) + '</div>'
     + '<div class="market-plan"><strong>Sell:</strong> ' + esc(shortText(safe.sell_plan || '', 260)) + '</div>'
     + '<div class="market-plan"><strong>View breaks:</strong> ' + esc(shortText(safe.invalidation || '', 260)) + '</div>'
   + '</div>';
-}
-
-function renderAsiaSession(report) {
-  const body = document.getElementById('asia-session-body');
-  if (!body) return;
-  const safe = report || {};
-  const rows = Array.isArray(safe.benchmarks) ? safe.benchmarks.filter((row) => row && row.fresh) : [];
-  body.hidden = !safe.active || !rows.length;
-  if (body.hidden) {
-    body.innerHTML = '';
-    return;
-  }
-  const bias = String(safe.regional_bias || 'MIXED');
-  const biasTone = bias === 'RISK_ON' ? biasClass('bullish') : bias === 'RISK_OFF' ? biasClass('bearish') : biasClass('neutral');
-  body.innerHTML = '<div class="radar-context-head">'
-    + '<div class="radar-context-title">Asia lead-in</div>'
-    + '<div class="radar-context-meta"><span class="' + biasTone + '">' + esc(bias.replace('_', ' ')) + '</span></div>'
-  + '</div>'
-  + '<div class="asia-headline">' + esc(shortText(safe.headline || '', 220)) + '</div>'
-  + '<div class="asia-benchmarks">' + rows.slice(0, 4).map((row) => {
-    const tone = row.direction === 'LONG' ? 'green' : row.direction === 'SHORT' ? 'red' : 'muted';
-    const move = Number(row.move_pct || 0);
-    return '<div class="asia-benchmark"><div class="asia-benchmark-name">' + esc(row.label || row.symbol) + '</div><div class="asia-benchmark-read ' + tone + '">' + esc(row.direction || 'FLAT') + (move ? ' • ' + (move > 0 ? '+' : '') + move.toFixed(1) + '%' : '') + '</div></div>';
-  }).join('') + '</div>'
-  + '<div class="context-thesis-grid"><div class="context-copy"><strong>US read-through:</strong> ' + esc(shortText(safe.us_readthrough || '', 360)) + '</div><div class="context-copy"><strong>Invalidation:</strong> ' + esc(shortText(safe.invalidation || '', 250)) + '</div></div>';
 }
 
 function renderEarningsSession(report) {
@@ -5449,6 +5297,7 @@ function renderDecisionSurface(report, board, state) {
   const confidence = Math.round(Number(safe.confidence || 0) * 100);
   const breadth = safe.breadth || {};
   const policy = safe.execution_policy || {};
+  const crossMarket = safe.cross_market || {};
   const lead = actionBoard.lead || null;
   const regimeClass = regime === 'RISK_ON'
     ? biasClass('bullish')
@@ -5458,7 +5307,7 @@ function renderDecisionSurface(report, board, state) {
   regimeNode.className = regimeClass;
   regimeNode.textContent = safe.active ? regimeLabel : 'WAITING';
   confidenceNode.textContent = safe.active
-    ? confidence + '% confidence' + (breadth.summary ? ' • ' + breadth.summary : '')
+    ? confidence + '% confidence • ' + String(crossMarket.state || 'UNCONFIRMED').replaceAll('_', ' ') + ' cross-market'
     : 'Building context...';
   headlineNode.textContent = safe.headline || 'Waiting for the first complete market read.';
   commentaryNode.textContent = shortText(
@@ -5483,18 +5332,22 @@ function renderDecisionSurface(report, board, state) {
     ? shortText(policy.summary, 180)
     : 'No forced trade. Evidence must align.';
 
-  const rows = Array.isArray(safe.benchmarks) ? safe.benchmarks.filter((row) => row && row.fresh).slice(0, 3) : [];
-  const levelText = (value) => Number(value || 0) > 0 ? fmt(Number(value), Number(value) >= 1000 ? 0 : 2) : '--';
+  const rows = Array.isArray(safe.market_views) ? safe.market_views.filter((row) => row && row.region).slice(0, 3) : [];
   benchmarksNode.innerHTML = rows.map((row) => {
     const direction = String(row.direction || 'FLAT');
-    const move = Number(row.move_pct || 0);
-    const tone = row.symbol === 'VIXINDEX'
-      ? (direction === 'LONG' ? 'red' : direction === 'SHORT' ? 'green' : 'muted')
-      : (direction === 'LONG' ? 'green' : direction === 'SHORT' ? 'red' : 'muted');
+    const status = String(row.status || 'NO EDGE');
+    const tone = status === 'CONFIRMING' || (row.region === 'US' && direction === 'LONG')
+      ? 'green'
+      : status === 'DIVERGING' || (row.region === 'US' && direction === 'SHORT')
+        ? 'red'
+        : 'muted';
+    const relationship = row.correlation == null
+      ? 'PRIMARY'
+      : ((Number(row.correlation) >= 0 ? '+' : '') + Number(row.correlation).toFixed(2) + ' CORR');
     return '<div class="decision-benchmark">'
-      + '<div class="decision-benchmark-top"><span class="decision-benchmark-name">' + esc(row.label || row.symbol || '--') + '</span><span class="decision-benchmark-call ' + tone + '">' + esc(direction) + (move ? ' ' + (move > 0 ? '+' : '') + move.toFixed(1) + '%' : '') + '</span></div>'
-      + '<div class="decision-benchmark-price">' + esc(levelText(row.price)) + ' • ' + esc(row.structure || 'UNKNOWN') + '</div>'
-      + '<div class="decision-benchmark-levels"><span>S ' + esc(levelText(row.support || row.breakdown)) + '</span><span>R ' + esc(levelText(row.resistance || row.reclaim)) + '</span></div>'
+      + '<div class="decision-benchmark-top"><span class="decision-benchmark-name">' + esc(row.region || '--') + '</span><span class="decision-benchmark-call ' + tone + '">' + esc(status) + '</span></div>'
+      + '<div class="decision-benchmark-price">' + esc(direction) + ' • ' + esc(relationship) + '</div>'
+      + '<div class="decision-benchmark-levels"><span>' + esc(row.sample_size ? String(row.sample_size) + ' matched bars' : 'US regime anchor') + '</span></div>'
     + '</div>';
   }).join('');
 }
@@ -5569,134 +5422,6 @@ function renderPrioritySetups(board) {
   }).join('') + '</div>';
 }
 
-function xyzSegmentGroups(section) {
-  const safe = section || {};
-  const summary = safe.summary || {};
-  const items = Array.isArray(safe.items) ? safe.items : [];
-  const groups = {
-    all: {
-      key: 'all',
-      label: 'All',
-      count: Number(summary.count || items.length || 0),
-      htf_count: Number(summary.htf_long_count || 0),
-    },
-  };
-  (safe.segments || []).forEach((segment) => {
-    const key = String(segment.key || '').trim();
-    if (!key) return;
-    groups[key] = {
-      key,
-      label: String(segment.label || humanizeKey(key)),
-      count: Number(segment.count || 0),
-      htf_count: Number(segment.htf_count || 0),
-    };
-  });
-  return groups;
-}
-
-function renderXyzTabs(groups) {
-  const order = ['all'].concat((latestXyz.segments || []).map((segment) => String(segment.key || '')).filter(Boolean));
-  const seen = new Set();
-  Object.keys(groups || {}).forEach((key) => {
-    if (!order.includes(key)) order.push(key);
-  });
-  const tabs = order
-    .filter((key) => {
-      if (!groups[key] || Number(groups[key].count || 0) <= 0 || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .map((key) => {
-      const group = groups[key] || {};
-      const active = key === xyzSegment;
-      return '<button type="button" class="asset-tab' + (active ? ' active' : '') + '" data-xyz-segment="' + esc(key) + '">'
-        + esc(group.label || humanizeKey(key))
-        + '<span class="asset-tab-count">' + esc(String(group.count || 0)) + '</span>'
-      + '</button>';
-    });
-  return '<div class="xyz-filter">' + tabs.join('') + '</div>';
-}
-
-function xyzHoldClass(item) {
-  const label = String((item || {}).htf_label || '').toLowerCase();
-  if ((item || {}).htf_long_hold || label.includes('htf')) return 'xyz-hold xyz-hold-yes';
-  if (label.includes('starter')) return 'xyz-hold xyz-hold-starter';
-  return 'xyz-hold xyz-hold-no';
-}
-
-function xyzRowHtml(item) {
-  const safe = item || {};
-  const cats = Array.isArray(safe.category_labels) && safe.category_labels.length
-    ? safe.category_labels.slice(0, 3).join(' / ')
-    : '';
-  const htfText = String(safe.htf_label || 'No');
-  const holdNote = safe.htf_reason ? '<div class="xyz-hold-note">' + esc(shortText(safe.htf_reason, 74)) + '</div>' : '';
-  const segmentDetail = safe.segment_thesis
-    ? '<details class="xyz-row-detail"><summary>Segment</summary><div>' + esc(shortText(safe.segment_thesis, 118)) + '</div></details>'
-    : '';
-  return '<div class="xyz-row">'
-    + '<div class="xyz-name"><div class="xyz-symbol">' + esc(safe.coin || '--') + '</div><div class="xyz-display">' + esc(shortText(safe.name || safe.venue_symbol || '', 36)) + '</div></div>'
-    + '<div><div class="xyz-segment">' + esc(safe.segment || 'Other Stocks') + '</div><div class="xyz-cats">' + esc(cats) + '</div></div>'
-    + '<div class="xyz-thesis"><div class="xyz-thesis-main">' + esc(shortText(safe.name_thesis || 'Name thesis forming.', 118)) + '</div>' + segmentDetail + '</div>'
-    + '<div><span class="' + xyzHoldClass(safe) + '">' + esc(htfText) + '</span>' + holdNote + '</div>'
-  + '</div>';
-}
-
-function setXyzSegment(segment) {
-  xyzSegment = String(segment || 'all');
-  xyzExpanded = false;
-  renderXyzSection(latestXyz || {});
-}
-
-function toggleXyzExpanded() {
-  xyzExpanded = !xyzExpanded;
-  renderXyzSection(latestXyz || {});
-}
-
-function renderXyzSection(section) {
-  const meta = document.getElementById('xyz-meta');
-  const body = document.getElementById('xyz-body');
-  if (!meta || !body) return;
-  const safe = section || {};
-  const summary = safe.summary || {};
-  const items = Array.isArray(safe.items) ? safe.items.filter((item) => item && item.coin) : [];
-  const groups = xyzSegmentGroups(safe);
-  if (!items.length) {
-    meta.textContent = 'No Trade.xyz universe in this snapshot.';
-    body.innerHTML = '<div class="empty-state">Trade.xyz segments will appear after the next snapshot.</div>';
-    return;
-  }
-  if (!groups[xyzSegment] || Number(groups[xyzSegment].count || 0) <= 0) xyzSegment = 'all';
-  const filteredItems = xyzSegment === 'all'
-    ? items
-    : items.filter((item) => String(item.segment_key || '') === xyzSegment);
-  const totalSelected = filteredItems.length;
-  const visibleCount = xyzExpanded ? totalSelected : Math.min(totalSelected, XYZ_COLLAPSED_LIMIT);
-  const visibleItems = filteredItems.slice(0, visibleCount);
-  const hiddenCount = Math.max(0, totalSelected - visibleItems.length);
-  meta.textContent = [
-    String(summary.count || items.length) + ' tickers',
-    String(summary.htf_long_count || 0) + ' HTF long/hold',
-    String(summary.starter_count || 0) + ' starter-only',
-    String(summary.segment_count || Object.keys(groups).length - 1) + ' segments',
-    'showing ' + String(visibleItems.length) + '/' + String(totalSelected),
-  ].join(' • ');
-  const expandControl = hiddenCount > 0 || xyzExpanded
-    ? '<div class="xyz-topline">'
-      + '<div class="xyz-count-note">' + esc(String(visibleItems.length)) + ' visible' + (hiddenCount > 0 ? ' • ' + esc(String(hiddenCount)) + ' hidden' : '') + '</div>'
-      + '<button type="button" class="xyz-expand-btn" onclick="toggleXyzExpanded()">' + (xyzExpanded ? 'Collapse' : 'Show all ' + esc(String(totalSelected))) + '</button>'
-    + '</div>'
-    : '<div class="xyz-topline"><div class="xyz-count-note">' + esc(String(visibleItems.length)) + ' visible</div></div>';
-  body.innerHTML = '<div class="xyz-shell">'
-    + renderXyzTabs(groups)
-    + expandControl
-    + '<div class="xyz-table">'
-      + '<div class="xyz-row xyz-head"><div>Name</div><div>Segment</div><div>Thesis</div><div>High timeframe</div></div>'
-      + visibleItems.map(xyzRowHtml).join('')
-    + '</div>'
-  + '</div>';
-}
-
 function normalizeActionGroups(board) {
   const groups = emptyBucketGroups();
   const items = Array.isArray((board || {}).items) ? board.items.filter((item) => item && item.coin) : [];
@@ -5741,43 +5466,6 @@ function sortCoinsForBucket(coins) {
     const scoreB = Math.abs(Number(sigB.score || 50) - 50);
     return (tradableB - tradableA) || (scoreB - scoreA) || String(a).localeCompare(String(b));
   });
-}
-
-async function lookupTradexyzVolume() {
-  if (tradexyzLookupBusy) return;
-  const input = document.getElementById('tradexyz-wallet-input');
-  const button = document.getElementById('tradexyz-check-btn');
-  const result = document.getElementById('tradexyz-result');
-  const wallet = String((input && input.value) || '').trim();
-  if (!wallet) {
-    setTradexyzStatus('Paste a wallet address first.', 'error');
-    return;
-  }
-
-  tradexyzLookupBusy = true;
-  if (button) button.textContent = 'CHECKING...';
-  setTradexyzStatus('Checking Hyperliquid fill history and matching it against the live Trade.xyz universe...', 'info');
-  if (result) {
-    result.innerHTML = '<div class="search-result-empty">Working through Hyperliquid history now. Busy wallets can take a few extra seconds because the scanner splits crowded windows automatically.</div>';
-  }
-
-  try {
-    const response = await fetch('/api/tradexyz-volume?wallet=' + encodeURIComponent(wallet));
-    const payload = await response.json();
-    if (!response.ok || !payload.ok) {
-      throw new Error(payload.error || 'Trade.xyz volume lookup failed.');
-    }
-    renderTradexyzVolume(payload);
-    setTradexyzStatus('Volume loaded successfully.', 'ok');
-  } catch (error) {
-    setTradexyzStatus(error instanceof Error ? error.message : 'Trade.xyz volume lookup failed.', 'error');
-    if (result) {
-      result.innerHTML = '<div class="search-result-empty">The lookup did not complete. Check the wallet address and try again.</div>';
-    }
-  } finally {
-    tradexyzLookupBusy = false;
-    if (button) button.textContent = 'CHECK VOLUME';
-  }
 }
 
 function marketMapBiasMixText(coins, entries) {
@@ -6432,10 +6120,8 @@ async function refresh() {
     latestPolicyHealthReport = data.policy_health_report || ((s || {}).policy_health) || { summary: {}, findings: [], roadmap: [] };
     latestProactiveTraderReport = data.proactive_trader_report || { summary: {} };
     latestDailyRadar = data.daily_radar || ((s || {}).daily_radar) || { summary: {}, top_assets: [] };
-    latestUsMarketContext = data.us_market_context || ((s || {}).us_market_context) || { active: false, benchmarks: [] };
-    latestAsiaSession = data.asia_session || { active: false, benchmarks: [] };
+    latestGlobalMarketContext = data.global_market_context || ((s || {}).global_market_context) || data.us_market_context || ((s || {}).us_market_context) || { active: false, benchmarks: [], market_views: [] };
     latestEarningsSession = data.earnings_session || { active: false, rows: [] };
-    latestXyz = data.xyz || ((s || {}).xyz) || { summary: {}, items: [], segments: [] };
     latestPnlAttribution = data.pnl_attribution || {};
     const actionBoard = data.action_board || { items: [], lead: null };
     latestActionBoard = actionBoard;
@@ -6569,14 +6255,12 @@ async function refresh() {
         '</div>';
     }
 
-    renderDecisionSurface(latestUsMarketContext, actionBoard, s);
-    renderUsMarketContext(latestUsMarketContext);
+    renderDecisionSurface(latestGlobalMarketContext, actionBoard, s);
+    renderGlobalMarketContext(latestGlobalMarketContext);
     renderPrioritySetups(actionBoard);
     renderDurableTheses(latestDailyRadar);
-    renderAsiaSession(latestAsiaSession);
     renderEarningsSession(latestEarningsSession);
     renderDailyRadar(latestDailyRadar);
-    renderXyzSection(latestXyz);
     renderActionBoard(actionBoard);
     renderProactiveDesk(latestProactiveTraderReport);
     if (commandSearchOpen) renderCommandSearch();
@@ -6709,16 +6393,6 @@ function handleKill() {
     btn.disabled = false;
     killConfirm = false;
     setTimeout(() => { btn.textContent = 'KILL SWITCH'; btn.className = 'kill-btn'; }, 3000);
-  });
-}
-
-const tradexyzWalletInput = document.getElementById('tradexyz-wallet-input');
-if (tradexyzWalletInput) {
-  tradexyzWalletInput.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      lookupTradexyzVolume();
-    }
   });
 }
 

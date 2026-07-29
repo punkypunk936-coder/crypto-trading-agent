@@ -20,6 +20,7 @@ from pathlib import Path
 
 import decision_dataset
 import asia_session
+import global_market_context
 import earnings_session
 import us_market_context
 from flask import Flask, render_template, jsonify, request, abort, send_file, Response
@@ -295,6 +296,18 @@ def _load_snapshot_local() -> dict | None:
             )
         except Exception:
             payload.setdefault("us_market_context", {"active": False, "benchmarks": []})
+        try:
+            payload["global_market_context"] = global_market_context.build_global_market_context(
+                shaped_state,
+                market_map=payload.get("market_map") or {},
+                asia_context=payload.get("asia_session") or {},
+                us_context=payload.get("us_market_context") or {},
+            )
+        except Exception:
+            payload.setdefault(
+                "global_market_context",
+                payload.get("us_market_context") or {"active": False, "benchmarks": []},
+            )
         if "earnings_session" not in payload:
             payload["earnings_session"] = earnings_session.build_earnings_session(
                 shaped_state,

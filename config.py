@@ -66,7 +66,12 @@ def _unique_coins(*groups) -> List[str]:
 
 
 def _default_analysis_coins() -> List[str]:
-    return _unique_coins(_BASE_EXECUTION_COINS, _US_CONTEXT_COINS, TRADEXYZ_ASSET_METADATA.keys())
+    return _unique_coins(
+        _BASE_EXECUTION_COINS,
+        _US_CONTEXT_COINS,
+        _ASIA_CONTEXT_COINS,
+        TRADEXYZ_ASSET_METADATA.keys(),
+    )
 
 
 def _default_execution_coins() -> List[str]:

@@ -299,10 +299,6 @@ def build_us_market_context(
             directional_votes.append(vote)
     risk_score += breadth["net"] * 1.25
     asia_bias = _text((asia_context or {}).get("regional_bias")).upper()
-    if asia_bias == "RISK_ON":
-        risk_score += 0.35
-    elif asia_bias == "RISK_OFF":
-        risk_score -= 0.35
 
     if risk_score <= -1.1:
         regime = "RISK_OFF"
@@ -422,6 +418,12 @@ def assess_trade_alignment(
     regime = _text(safe.get("regime")).upper() or "UNKNOWN"
     confidence = _number(safe.get("confidence"))
     applies = instrument in {"equity", "index"} and side in {"LONG", "SHORT"}
+    policy = dict(safe.get("execution_policy") or {})
+    cross_market_state = _text(policy.get("cross_market_state")).upper() or "UNCONFIRMED"
+    cross_market_multiplier = max(
+        0.10,
+        min(1.0, _number(policy.get("cross_market_size_multiplier"), 1.0)),
+    )
     if not applies or not safe.get("active") or confidence < min_confidence:
         return {
             "active": False,
@@ -429,8 +431,10 @@ def assess_trade_alignment(
             "aligned": False,
             "supporting_driver": False,
             "size_multiplier": 1.0,
+            "cross_market_size_multiplier": cross_market_multiplier,
+            "cross_market_state": cross_market_state,
             "leverage_cap": 0,
-            "summary": "US market anchor is not active for this entry.",
+            "summary": "Global market anchor is not active for this entry.",
         }
 
     own_direction = _direction(signal)
@@ -452,7 +456,6 @@ def assess_trade_alignment(
         regime == "RISK_ON" and side == "SHORT" and not bearish_structure
     )
 
-    policy = dict(safe.get("execution_policy") or {})
     permitted = not (countertrend and block_countertrend and confidence >= 0.68)
     if regime == "RISK_OFF" and aligned:
         summary = "Risk-off alignment confirms a tactical short; keep it small, 1x, and invalidate on the index reclaim."
@@ -473,6 +476,13 @@ def assess_trade_alignment(
         size_multiplier = 0.65
         leverage_cap = 0
 
+    size_multiplier *= cross_market_multiplier
+    if cross_market_multiplier < 1.0:
+        summary = (
+            f"{summary} Cross-market state is {cross_market_state.lower()}, "
+            f"so qualified size is reduced to {cross_market_multiplier:.0%}."
+        )
+
     return {
         "active": True,
         "permitted": permitted,
@@ -482,6 +492,8 @@ def assess_trade_alignment(
         "regime": regime,
         "confidence": round(confidence, 4),
         "size_multiplier": round(max(0.10, min(1.0, size_multiplier)), 4),
+        "cross_market_size_multiplier": round(cross_market_multiplier, 4),
+        "cross_market_state": cross_market_state,
         "leverage_cap": leverage_cap,
         "summary": summary,
         "invalidation": _text(safe.get("invalidation")),

@@ -65,6 +65,7 @@ import decision_review_lab
 import execution_coach
 import feature_store
 import first_principles
+import global_market_context
 import llm_referee
 from logger import get_logger
 from data.market_data import completed_candle_frame, fetch_candles, get_current_price, get_price_diagnostics
@@ -1328,14 +1329,22 @@ class TradingAgent:
                 "enabled": False,
                 "active": False,
                 "regime": "UNKNOWN",
-                "headline": "US market anchor is disabled.",
+                "headline": "Global equity anchor is disabled.",
             }
             return dict(self._last_us_market_context)
         state = {"signals": dict(self._last_signals or {})}
         asia_context = asia_session.build_asia_session(state)
-        self._last_us_market_context = us_market_context.build_us_market_context(
+        us_context = us_market_context.build_us_market_context(
             state,
             asia_context=asia_context,
+            max_age_hours=float(
+                getattr(self.cfg.trading, "us_market_anchor_max_age_hours", 18.0) or 18.0
+            ),
+        )
+        self._last_us_market_context = global_market_context.build_global_market_context(
+            state,
+            asia_context=asia_context,
+            us_context=us_context,
             max_age_hours=float(
                 getattr(self.cfg.trading, "us_market_anchor_max_age_hours", 18.0) or 18.0
             ),
@@ -1374,7 +1383,7 @@ class TradingAgent:
                     profile.get("size_multiplier", 0.50),
                 )
                 or profile.get("size_multiplier", 0.50)
-            )
+            ) * float(profile.get("cross_market_size_multiplier", 1.0) or 1.0)
             profile["leverage_cap"] = max(
                 1,
                 int(getattr(self.cfg.trading, "us_market_anchor_short_max_leverage", 1) or 1),
@@ -1387,7 +1396,7 @@ class TradingAgent:
                     profile.get("size_multiplier", 0.35),
                 )
                 or profile.get("size_multiplier", 0.35)
-            )
+            ) * float(profile.get("cross_market_size_multiplier", 1.0) or 1.0)
         return profile
 
     def _signal_snapshot_is_fresh(self, snapshot: dict) -> bool:
@@ -4704,7 +4713,7 @@ class TradingAgent:
         self._last_signals[coin]["us_market_anchor"] = profile
         self._last_signals[coin]["us_market_anchor_summary"] = profile.get("summary", "")
         if not profile.get("permitted", True):
-            reason = str(profile.get("summary") or "US market anchor blocks a countertrend entry")
+            reason = str(profile.get("summary") or "Global market anchor blocks a countertrend entry")
             log.info(f"[{coin}] Market anchor blocks entry: {reason}")
             signal.action = "FLAT"
             signal.flat_reason = reason
@@ -4725,7 +4734,7 @@ class TradingAgent:
             order.leverage = leverage_cap
             order.margin_usd = float(getattr(order, "size_usd", 0.0) or 0.0) / leverage_cap
             note = str(getattr(order, "leverage_note", "") or "").strip()
-            order.leverage_note = f"{leverage_cap}x US market-anchor cap" + (f"; {note}" if note else "")
+            order.leverage_note = f"{leverage_cap}x global market-anchor cap" + (f"; {note}" if note else "")
 
         # The active north-star recovery guard has already reduced the order.
         # Avoid compounding two independent haircuts onto the same small trade.
@@ -4742,7 +4751,7 @@ class TradingAgent:
                 and str(profile.get("regime") or "").upper() == "RISK_OFF"
             )
             if trimmed < min_trade and not aligned_short:
-                reason = f"US market-anchor trim would fall below ${min_trade:.0f} minimum"
+                reason = f"Global market-anchor trim would fall below ${min_trade:.0f} minimum"
                 signal.action = "FLAT"
                 signal.flat_reason = reason
                 signal.reason = reason
@@ -7276,6 +7285,7 @@ class TradingAgent:
             "market_map_score_adjustment": sig.get("market_map_score_adjustment", 0.0),
             "market_map_notes": sig.get("market_map_notes", ""),
             "us_market_context": dict(self._last_us_market_context or {}),
+            "global_market_context": dict(self._last_us_market_context or {}),
             "us_market_anchor": dict(sig.get("us_market_anchor") or {}),
             "us_market_anchor_summary": sig.get("us_market_anchor_summary", ""),
             "narrative_summary": sig.get("narrative_summary", ""),
@@ -9524,6 +9534,7 @@ class TradingAgent:
             "pending_orders":pending_out,
             "signals":       getattr(self, "_last_signals", {}),
             "us_market_context": dict(self._last_us_market_context or {}),
+            "global_market_context": dict(self._last_us_market_context or {}),
             "sentiment":     sentiment,
             "daily_pnl_usd":     round(getattr(self.risk, "daily_pnl_usd", 0.0), 2),
             "daily_trades":      getattr(self.risk, "daily_trades", 0),
@@ -9626,7 +9637,7 @@ class TradingAgent:
 
         market_map_data = self._build_proactive_market_map()
         asia_context = asia_session.build_asia_session(state)
-        self._last_us_market_context = us_market_context.build_us_market_context(
+        us_context = us_market_context.build_us_market_context(
             state,
             market_map=market_map_data,
             asia_context=asia_context,
@@ -9634,7 +9645,17 @@ class TradingAgent:
                 getattr(self.cfg.trading, "us_market_anchor_max_age_hours", 2.0) or 2.0
             ),
         )
+        self._last_us_market_context = global_market_context.build_global_market_context(
+            state,
+            market_map=market_map_data,
+            asia_context=asia_context,
+            us_context=us_context,
+            max_age_hours=float(
+                getattr(self.cfg.trading, "us_market_anchor_max_age_hours", 2.0) or 2.0
+            ),
+        )
         state["us_market_context"] = dict(self._last_us_market_context)
+        state["global_market_context"] = dict(self._last_us_market_context)
         try:
             state_path.write_text(json.dumps(state, indent=2))
         except Exception as e:

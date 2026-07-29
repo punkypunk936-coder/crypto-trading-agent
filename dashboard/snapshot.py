@@ -11,6 +11,7 @@ from typing import Any, Iterable
 
 import daily_radar
 import asia_session
+import global_market_context
 import earnings_session
 import us_market_context
 from pnl_explanation import (
@@ -2509,6 +2510,12 @@ def build_dashboard_snapshot(
         market_map=normalized_market_map,
         asia_context=asia_context,
     )
+    global_context = global_market_context.build_global_market_context(
+        shaped_state,
+        market_map=normalized_market_map,
+        asia_context=asia_context,
+        us_context=us_context,
+    )
     earnings_context = earnings_session.build_earnings_session(
         shaped_state,
         radar,
@@ -2523,6 +2530,7 @@ def build_dashboard_snapshot(
         "action_board": board,
         "daily_radar": radar,
         "us_market_context": us_context,
+        "global_market_context": global_context,
         "asia_session": asia_context,
         "earnings_session": earnings_context,
         "xyz": xyz,

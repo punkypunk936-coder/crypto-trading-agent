@@ -39,6 +39,7 @@ import decision_review_lab as decision_review_lab_module
 import execution_coach as execution_coach_module
 import feature_store as feature_store_module
 import first_principles as first_principles_module
+import global_market_context as global_market_context_module
 import hosted_state_sync as hosted_state_sync_module
 import llm_referee as llm_referee_module
 import main as main_module
@@ -3496,6 +3497,7 @@ def test_dashboard_upgrades_legacy_prebuilt_snapshot_with_daily_radar() -> None:
             assert payload["state"]["cycle_number"] == 78
             assert payload["daily_radar"]["top_assets"][0]["coin"] == "GOOGL"
             assert "asia_session" in payload
+            assert "global_market_context" in payload
             assert "earnings_session" in payload
             assert payload["xyz"]["title"] == "xyz"
         finally:
@@ -3515,8 +3517,8 @@ def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> N
     assert "Priority Setups" in template
     assert "renderDecisionSurface" in template
     assert "renderPrioritySetups" in template
-    assert "Full market evidence" in template
-    assert "Research, Review &amp; Tools" in template
+    assert "US + Korea + Japan evidence" in template
+    assert "Research &amp; Review" in template
     assert "Realized P&amp;L" in template
     assert 'id="tradexyz-volume-shortcut-btn"' not in template
     assert "Desk Briefing" in template
@@ -3542,15 +3544,13 @@ def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> N
     assert "Starter Basket" in template
     assert "Starter Execution" in template
     assert "Forecast Calibration" in template
-    assert '<div class="card-label">xyz</div>' in template
-    assert "renderXyzSection" in template
-    assert "xyzSegmentGroups" in template
-    assert "toggleXyzExpanded" in template
-    assert "XYZ_COLLAPSED_LIMIT" in template
-    assert "xyz-row-detail" in template
+    assert '<div class="card-label">xyz</div>' not in template
+    assert "renderXyzSection" not in template
+    assert "xyzSegmentGroups" not in template
+    assert "toggleXyzExpanded" not in template
+    assert "XYZ_COLLAPSED_LIMIT" not in template
     assert "xyzGroupMap" not in template
-    assert "data-xyz-segment" in template
-    assert "High timeframe" in template
+    assert "data-xyz-segment" not in template
     assert "DEFAULT_ASSET_CATEGORY_LABELS" not in template
     assert "if (key === 'indices_macro')" not in template
     assert "STANCE SEARCH" in template
@@ -9350,10 +9350,132 @@ def test_us_market_context_builds_risk_off_anchor_and_trade_zones() -> None:
     assert alignment["leverage_cap"] == 1
 
 
+def test_global_market_context_correlates_us_korea_and_japan() -> None:
+    now = datetime(2026, 7, 28, 8, 0, tzinfo=timezone.utc)
+    fresh_ts = now.timestamp() - 60
+    moves = [1.0, -0.4, 0.8, -0.2, 1.2, -0.6, 0.5, 0.9, -0.3, 0.7, -0.5, 1.1, 0.4, -0.2, 0.6, 0.3]
+
+    def bars(start: float, multipliers: list[float]) -> list[dict]:
+        price = start
+        output = []
+        for index, move in enumerate(multipliers):
+            price *= 1.0 + move / 100.0
+            output.append({
+                "time": datetime.fromtimestamp(
+                    now.timestamp() - (len(multipliers) - index) * 3600,
+                    tz=timezone.utc,
+                ).isoformat(),
+                "close": round(price, 6),
+            })
+        return output
+
+    state = {
+        "signals": {
+            "SP500": {
+                "action": "LONG",
+                "instrument_type": "index",
+                "analysis_updated_ts": fresh_ts,
+                "price_action": {"bars": bars(7000.0, moves)},
+            },
+            "NDX": {
+                "action": "LONG",
+                "instrument_type": "index",
+                "analysis_updated_ts": fresh_ts,
+            },
+            "VIXINDEX": {
+                "action": "SHORT",
+                "instrument_type": "index",
+                "analysis_updated_ts": fresh_ts,
+            },
+            "KR200": {
+                "action": "LONG",
+                "analysis_updated_ts": fresh_ts,
+                "price_action": {"bars": bars(900.0, moves)},
+            },
+            "JP225": {
+                "action": "LONG",
+                "analysis_updated_ts": fresh_ts,
+                "price_action": {"bars": bars(60000.0, moves)},
+            },
+            "AMD": {
+                "action": "LONG",
+                "instrument_type": "equity",
+                "analysis_updated_ts": fresh_ts,
+            },
+        }
+    }
+    report = global_market_context_module.build_global_market_context(state, now=now)
+    assert report["regime"] == "RISK_ON"
+    assert report["cross_market"]["state"] == "CONFIRMED"
+    assert report["cross_market"]["size_multiplier"] == 1.0
+    assert len(report["market_views"]) == 3
+    assert all(row["status"] == "CONFIRMING" for row in report["correlations"])
+    assert all(row["correlation"] > 0.99 for row in report["correlations"])
+    assert report["confidence"] >= report["base_us_confidence"]
+
+
+def test_global_market_divergence_reduces_qualified_trade_size() -> None:
+    now = datetime(2026, 7, 28, 8, 0, tzinfo=timezone.utc)
+    fresh_ts = now.timestamp() - 60
+    moves = [1.0, -0.4, 0.8, -0.2, 1.2, -0.6, 0.5, 0.9, -0.3, 0.7, -0.5, 1.1, 0.4, -0.2, 0.6, 0.3]
+
+    def bars(start: float, multipliers: list[float]) -> list[dict]:
+        price = start
+        output = []
+        for index, move in enumerate(multipliers):
+            price *= 1.0 + move / 100.0
+            output.append({
+                "time": datetime.fromtimestamp(
+                    now.timestamp() - (len(multipliers) - index) * 3600,
+                    tz=timezone.utc,
+                ).isoformat(),
+                "close": round(price, 6),
+            })
+        return output
+
+    inverse_moves = [-move for move in moves]
+    state = {
+        "signals": {
+            "SP500": {
+                "action": "LONG",
+                "instrument_type": "index",
+                "analysis_updated_ts": fresh_ts,
+                "price_action": {"bars": bars(7000.0, moves)},
+            },
+            "NDX": {"action": "LONG", "instrument_type": "index", "analysis_updated_ts": fresh_ts},
+            "VIXINDEX": {"action": "SHORT", "instrument_type": "index", "analysis_updated_ts": fresh_ts},
+            "KR200": {
+                "action": "LONG",
+                "analysis_updated_ts": fresh_ts,
+                "price_action": {"bars": bars(900.0, inverse_moves)},
+            },
+            "JP225": {
+                "action": "LONG",
+                "analysis_updated_ts": fresh_ts,
+                "price_action": {"bars": bars(60000.0, inverse_moves)},
+            },
+        }
+    }
+    report = global_market_context_module.build_global_market_context(state, now=now)
+    assert report["cross_market"]["state"] == "DIVERGENT"
+    assert report["cross_market"]["size_multiplier"] == 0.60
+    alignment = us_market_context_module.assess_trade_alignment(
+        report,
+        direction="LONG",
+        instrument_type="equity",
+        signal={"action": "LONG", "market_regime": "UPTREND"},
+    )
+    assert alignment["cross_market_state"] == "DIVERGENT"
+    assert alignment["size_multiplier"] == 0.48
+    assert "reduced to 60%" in alignment["summary"]
+
+
 def test_us_market_context_symbols_use_safe_execution_universe() -> None:
     cfg = Config()
     assert "NDX" in cfg.trading.analysis_coins
     assert "VIXINDEX" in cfg.trading.analysis_coins
+    assert "KR200" in cfg.trading.analysis_coins
+    assert "JP225" in cfg.trading.analysis_coins
     assert "NDX" not in cfg.trading.coins
     assert "VIXINDEX" not in cfg.trading.coins
     assert "VIX" in cfg.trading.coins
@@ -9501,14 +9623,17 @@ def test_earnings_session_is_gated_and_tracks_post_report_decisions() -> None:
 
 def test_dashboard_radar_renders_context_without_vague_step_tiles() -> None:
     template = Path("dashboard/templates/dashboard.html").read_text()
-    assert "renderUsMarketContext" in template
+    assert "renderGlobalMarketContext" in template
     assert "renderDurableTheses" in template
-    assert "renderAsiaSession" in template
     assert "renderEarningsSession" in template
-    assert "us-market-body" in template
+    assert "global-market-body" in template
     assert "durable-thesis-body" in template
-    assert "asia-session-body" in template
     assert "earnings-session-body" in template
+    assert "renderAsiaSession" not in template
+    assert "asia-session-body" not in template
+    assert 'id="tools-panel"' not in template
+    assert 'id="xyz-card"' not in template
+    assert "tradexyz-wallet-input" not in template
     assert "radarStepsHtml" not in template
     assert "<strong>Thesis:</strong>" in template
     assert "<strong>Invalidation:</strong>" in template
@@ -9543,6 +9668,7 @@ def test_dashboard_snapshot_includes_daily_radar() -> None:
     assert snapshot["daily_radar"]["summary"]["focus_count"] >= 1
     assert snapshot["daily_radar"]["top_assets"][0]["coin"] == "META"
     assert "us_market_context" in snapshot
+    assert "global_market_context" in snapshot
     assert "asia_session" in snapshot
     assert "earnings_session" in snapshot
 
@@ -10430,6 +10556,10 @@ def run_all() -> None:
     print("PASS Asia-to-US semiconductor read-through")
     test_us_market_context_builds_risk_off_anchor_and_trade_zones()
     print("PASS US market risk-off anchor")
+    test_global_market_context_correlates_us_korea_and_japan()
+    print("PASS global US-Korea-Japan correlation anchor")
+    test_global_market_divergence_reduces_qualified_trade_size()
+    print("PASS global market divergence size reduction")
     test_us_market_context_symbols_use_safe_execution_universe()
     print("PASS US market context execution universe")
     test_us_market_context_lowers_confidence_when_breadth_disagrees()
