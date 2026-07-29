@@ -1,9 +1,9 @@
 {
   "classifications": {
     "BAD_TRADE": 2,
-    "CORRECT_PASS": 1170,
+    "CORRECT_PASS": 1403,
     "GOOD_TRADE": 2,
-    "MISSED_WIN": 3436
+    "MISSED_WIN": 3820
   },
   "daily_top_mover_replay": {
     "lessons": [
@@ -58,13 +58,13 @@
       {
         "coin": "AMD",
         "direction": "SHORT",
-        "end_at": "2026-07-29 12:36:57",
-        "end_price": 452.94,
-        "end_ts": 1785308817.332244,
-        "move_pct": -4.805,
-        "start_at": "2026-07-28 12:37:22",
+        "end_at": "2026-07-29 12:52:05",
+        "end_price": 454.0,
+        "end_ts": 1785309725.589632,
+        "move_pct": -4.582,
+        "start_at": "2026-07-28 12:53:27",
         "start_price": 475.8,
-        "start_ts": 1785222442.79218
+        "start_ts": 1785223407.636211
       },
       {
         "coin": "ONDO",
@@ -124,13 +124,13 @@
       {
         "coin": "TAO",
         "direction": "LONG",
-        "end_at": "2026-07-29 12:30:19",
-        "end_price": 193.53,
-        "end_ts": 1785308419.523744,
-        "move_pct": 2.925,
-        "start_at": "2026-07-28 12:37:16",
-        "start_price": 188.03,
-        "start_ts": 1785222436.1943731
+        "end_at": "2026-07-29 12:50:24",
+        "end_price": 193.2,
+        "end_ts": 1785309624.656906,
+        "move_pct": 2.875,
+        "start_at": "2026-07-28 12:53:07",
+        "start_price": 187.8,
+        "start_ts": 1785223387.194975
       },
       {
         "coin": "MRVL",
@@ -146,12 +146,12 @@
     ]
   },
   "data_dir": "/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime",
-  "decision_rows": 5971,
-  "episodes": 5530,
-  "generated_at": 1785308920,
+  "decision_rows": 5996,
+  "episodes": 5555,
+  "generated_at": 1785309794,
   "horizon_minutes": 720,
   "interval": "5m",
-  "labeled_episodes": 4610,
+  "labeled_episodes": 5227,
   "recent_missed_moves": [
     {
       "action": "LONG",
@@ -182,6 +182,20 @@
       "ts": 1785307293.5028071
     },
     {
+      "action": "LONG",
+      "breakout": "confirmed_bullish_breakout",
+      "coin": "BABA",
+      "interaction": "at_support",
+      "probability": 0.89,
+      "recorded_at": "2026-07-29 12:08:25",
+      "regime": "trend",
+      "risk_reward_ratio": 2.0,
+      "score": 100.0,
+      "stage": "patient_execution_block",
+      "summary": "Long thesis: SEC filing flow + options implied move + analyst revision + analyst conviction",
+      "ts": 1785307105.6357372
+    },
+    {
       "action": "SHORT",
       "breakout": "confirmed_bearish_breakdown",
       "coin": "TAO",
@@ -194,6 +208,20 @@
       "stage": "first_principles_guard_block",
       "summary": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 45% WR, $-72.20.",
       "ts": 1785307067.44108
+    },
+    {
+      "action": "LONG",
+      "breakout": "confirmed_bullish_breakout",
+      "coin": "BABA",
+      "interaction": "at_support",
+      "probability": 0.89,
+      "recorded_at": "2026-07-29 12:05:01",
+      "regime": "trend",
+      "risk_reward_ratio": 2.0,
+      "score": 100.0,
+      "stage": "patient_execution_block",
+      "summary": "Long thesis: SEC filing flow + options implied move + analyst revision + analyst conviction",
+      "ts": 1785306901.4526012
     },
     {
       "action": "SHORT",
@@ -264,55 +292,27 @@
       "stage": "mtf_block",
       "summary": "Thesis medium: Scalp long: breakdown/breakout is confirmed, recent candles confirm, book pressure is long.",
       "ts": 1785306241.726946
-    },
-    {
-      "action": "LONG",
-      "breakout": "confirmed_bullish_breakout",
-      "coin": "HIMS",
-      "interaction": "at_resistance",
-      "probability": 0.9244,
-      "recorded_at": "2026-07-29 11:53:56",
-      "regime": "trend",
-      "risk_reward_ratio": 3.01,
-      "score": 98.29,
-      "stage": "mtf_block",
-      "summary": "Thesis high: Pre-event starter long allowed: catalyst 4.42, news 61, p 95%, score 58.2 vs 65 trigger. Begin 44% size before full confirmation. Thesis: platform anchor + capital commitment + SEC filing flow + options implied move + analyst revision + analyst conviction.",
-      "ts": 1785306236.869997
-    },
-    {
-      "action": "LONG",
-      "breakout": "probing_bearish_breakdown",
-      "coin": "GOOGL",
-      "interaction": "at_resistance",
-      "probability": 0.7883,
-      "recorded_at": "2026-07-29 11:53:50",
-      "regime": "trend",
-      "risk_reward_ratio": 2.47,
-      "score": 96.0,
-      "stage": "win_rate_context_guard_block",
-      "summary": "win-rate recovery blocks LONG: needs cleaner odds/expected-R before adding risk",
-      "ts": 1785306230.443406
     }
   ],
   "summary": {
     "bad_trade_count": 2,
-    "correct_pass_count": 1170,
+    "correct_pass_count": 1403,
     "good_trade_count": 2,
-    "missed_win_count": 3436
+    "missed_win_count": 3820
   },
   "target_r": 0.25,
   "top_blockers": [
     {
       "blocker": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 43% WR, $-74.43.",
-      "misses": 733
+      "misses": 753
     },
     {
       "blocker": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 44% WR, $-72.70.",
-      "misses": 356
+      "misses": 372
     },
     {
       "blocker": "win-rate recovery blocks LONG: needs fundamentals, attention, and flow to line up",
-      "misses": 322
+      "misses": 327
     },
     {
       "blocker": "Long thesis: earnings event + pre-event setup + options implied move + analyst revision",
@@ -320,7 +320,11 @@
     },
     {
       "blocker": "price moved too far since the conviction snapshot",
-      "misses": 159
+      "misses": 164
+    },
+    {
+      "blocker": "win-rate recovery blocks SHORT: needs fundamentals, attention, and flow to line up",
+      "misses": 126
     },
     {
       "blocker": "Long thesis: earnings event + pre-event setup + SEC filing flow + options implied move",
@@ -328,11 +332,7 @@
     },
     {
       "blocker": "Thesis medium: Scalp long: breakdown/breakout is confirmed, book pressure is long, daily map permits the long.",
-      "misses": 122
-    },
-    {
-      "blocker": "win-rate recovery blocks SHORT: needs fundamentals, attention, and flow to line up",
-      "misses": 119
+      "misses": 125
     }
   ],
   "top_missed_assets": [
@@ -342,7 +342,7 @@
     },
     {
       "coin": "TAO",
-      "misses": 404
+      "misses": 405
     },
     {
       "coin": "BTC",
@@ -376,7 +376,7 @@
     },
     {
       "family": "TAO:SHORT",
-      "misses": 404
+      "misses": 405
     },
     {
       "family": "AAPL:LONG",
@@ -405,36 +405,36 @@
   ],
   "top_missed_stages": [
     {
-      "misses": 1202,
+      "misses": 1246,
       "stage": "first_principles_guard_block"
     },
     {
-      "misses": 644,
+      "misses": 787,
       "stage": "patient_execution_block"
     },
     {
-      "misses": 510,
+      "misses": 592,
       "stage": "mtf_block"
     },
     {
-      "misses": 448,
+      "misses": 471,
       "stage": "win_rate_context_guard_block"
     },
     {
-      "misses": 234,
+      "misses": 243,
       "stage": "win_rate_guard_block"
     },
     {
-      "misses": 160,
+      "misses": 165,
       "stage": "data_reliability_block"
     },
     {
-      "misses": 86,
+      "misses": 95,
       "stage": "guardrails_flat"
     },
     {
-      "misses": 56,
-      "stage": "risk_rejected"
+      "misses": 66,
+      "stage": "major_catalyst_watch"
     }
   ]
 }
