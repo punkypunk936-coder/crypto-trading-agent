@@ -424,7 +424,16 @@ def assess_trade_alignment(
         0.10,
         min(1.0, _number(policy.get("cross_market_size_multiplier"), 1.0)),
     )
-    if not applies or not safe.get("active") or confidence < min_confidence:
+    cross_market_direction = _text(
+        policy.get("cross_market_direction")
+        or dict(safe.get("cross_market") or {}).get("tactical_bias")
+    ).upper()
+    early_prior_active = (
+        cross_market_state == "ASIA_LEADS"
+        and cross_market_direction in {"LONG", "SHORT"}
+        and confidence >= max(0.45, min_confidence - 0.05)
+    )
+    if not applies or not safe.get("active") or (confidence < min_confidence and not early_prior_active):
         return {
             "active": False,
             "permitted": True,
@@ -449,25 +458,44 @@ def assess_trade_alignment(
     bullish_structure = own_direction == "LONG" or map_bias == "BULLISH" or any(
         token in structure for token in ("UPTREND", "BULLISH", "RECLAIM")
     )
-    aligned = (regime == "RISK_OFF" and side == "SHORT" and bearish_structure) or (
+    regime_aligned = (regime == "RISK_OFF" and side == "SHORT" and bearish_structure) or (
         regime == "RISK_ON" and side == "LONG" and bullish_structure
     )
-    countertrend = (regime == "RISK_OFF" and side == "LONG" and not bullish_structure) or (
+    early_prior_aligned = (
+        early_prior_active
+        and side == cross_market_direction
+        and ((side == "LONG" and bullish_structure) or (side == "SHORT" and bearish_structure))
+    )
+    aligned = regime_aligned or early_prior_aligned
+    regime_countertrend = (regime == "RISK_OFF" and side == "LONG" and not bullish_structure) or (
         regime == "RISK_ON" and side == "SHORT" and not bearish_structure
     )
+    early_prior_countertrend = (
+        early_prior_active
+        and side != cross_market_direction
+        and not ((side == "LONG" and bullish_structure) or (side == "SHORT" and bearish_structure))
+    )
+    countertrend = regime_countertrend or early_prior_countertrend
 
-    permitted = not (countertrend and block_countertrend and confidence >= 0.68)
-    if regime == "RISK_OFF" and aligned:
+    permitted = not (regime_countertrend and block_countertrend and confidence >= 0.68)
+    if regime == "RISK_OFF" and regime_aligned:
         summary = "Risk-off alignment confirms a tactical short; keep it small, 1x, and invalidate on the index reclaim."
         size_multiplier = _number(policy.get("aligned_short_size_multiplier"), 0.50)
         leverage_cap = max(1, int(_number(policy.get("max_aligned_short_leverage"), 1)))
-    elif aligned:
+    elif regime_aligned:
         summary = "Risk-on alignment supports the long, but the asset's own thesis still controls risk."
         size_multiplier = 0.80
         leverage_cap = 0
+    elif early_prior_aligned:
+        summary = (
+            f"Korea and Japan provide an early {side.lower()} prior while the US tape is unresolved. "
+            "The stock's own structure confirms, so use reduced size and thesis-based invalidation."
+        )
+        size_multiplier = 0.65
+        leverage_cap = 1 if side == "SHORT" else 0
     elif countertrend:
         summary = (
-            f"{regime.replace('_', ' ').title()} conflicts with this {side.lower()} and the asset has not confirmed a reversal."
+            f"The combined market tape conflicts with this {side.lower()} and the asset has not confirmed a reversal."
         )
         size_multiplier = _number(policy.get("countertrend_size_multiplier"), 0.35)
         leverage_cap = 1
@@ -494,6 +522,7 @@ def assess_trade_alignment(
         "size_multiplier": round(max(0.10, min(1.0, size_multiplier)), 4),
         "cross_market_size_multiplier": round(cross_market_multiplier, 4),
         "cross_market_state": cross_market_state,
+        "cross_market_direction": cross_market_direction,
         "leverage_cap": leverage_cap,
         "summary": summary,
         "invalidation": _text(safe.get("invalidation")),

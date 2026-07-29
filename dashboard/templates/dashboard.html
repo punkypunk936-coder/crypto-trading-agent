@@ -1475,51 +1475,6 @@
     font-size: 12px;
     line-height: 1.5;
   }
-  .volume-shell {
-    display: grid;
-    gap: 12px;
-  }
-  .volume-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    align-items: center;
-  }
-  .volume-status {
-    border: 1px solid rgba(255,255,255,0.06);
-    background: rgba(255,255,255,0.025);
-    border-radius: 12px;
-    padding: 12px 14px;
-    font-size: 12px;
-    line-height: 1.5;
-    color: var(--text-secondary);
-  }
-  .volume-status.error {
-    color: #ffb8c2;
-    border-color: rgba(255,77,106,0.24);
-    background: rgba(255,77,106,0.08);
-  }
-  .volume-status.ok {
-    color: #bfead6;
-    border-color: rgba(0,230,138,0.2);
-    background: rgba(0,230,138,0.07);
-  }
-  .volume-kpis {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 8px;
-  }
-  .volume-table-wrap {
-    overflow-x: auto;
-    border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 12px;
-    background: rgba(255,255,255,0.02);
-  }
-  .volume-footer {
-    color: var(--muted);
-    font-size: 11px;
-    line-height: 1.5;
-  }
   .review-summary-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -2288,7 +2243,7 @@
     font: 650 12px/1.4 var(--mono);
     overflow-wrap: anywhere;
   }
-  .price-source-line {
+  .price-integrity-warning {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -2298,18 +2253,15 @@
     border-radius: var(--radius-sm);
     border: 1px solid rgba(255,255,255,0.05);
     background: rgba(255,255,255,0.025);
-    color: var(--muted);
+    color: var(--yellow);
     font-size: 11px;
     line-height: 1.35;
-  }
-  .price-source-line strong {
-    color: var(--text-secondary);
-    font-weight: 650;
-  }
-  .price-source-warn {
-    color: var(--yellow);
     background: rgba(255,184,77,0.08);
     border-color: rgba(255,184,77,0.22);
+  }
+  .price-integrity-warning strong {
+    color: var(--text);
+    font-weight: 650;
   }
 
   .pos-direction {
@@ -2813,6 +2765,49 @@
     line-height: 1.5;
   }
   .decision-playbook-primary strong { color: var(--green); }
+  .decision-crossbar {
+    display: grid;
+    grid-template-columns: 160px minmax(0, 1fr) 180px;
+    align-items: center;
+    gap: 22px;
+    margin-top: 20px;
+    padding: 14px 0;
+    border-top: 1px solid rgba(235, 237, 229, 0.1);
+    border-bottom: 1px solid rgba(235, 237, 229, 0.1);
+  }
+  .decision-crossbar-label,
+  .decision-crossbar-execution span {
+    display: block;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .decision-crossbar-call {
+    display: block;
+    margin-top: 4px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 16px;
+    font-weight: 800;
+  }
+  .decision-crossbar-reason {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .decision-crossbar-execution {
+    text-align: right;
+  }
+  .decision-crossbar-execution strong {
+    display: block;
+    margin-top: 4px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+  }
   .decision-benchmarks {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2838,6 +2833,15 @@
     font-size: 11px;
     font-weight: 700;
   }
+  .decision-benchmark-role {
+    display: block;
+    margin-top: 2px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 8px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
   .decision-benchmark-call {
     font-family: var(--mono);
     font-size: 10px;
@@ -2855,6 +2859,12 @@
     color: var(--muted);
     font-family: var(--mono);
     font-size: 9px;
+  }
+  .decision-benchmark-summary {
+    margin-top: 7px;
+    color: var(--text-secondary);
+    font-size: 10px;
+    line-height: 1.45;
   }
   .evidence-details {
     margin-top: 14px;
@@ -3110,6 +3120,13 @@
       border-left: 0;
     }
     .decision-playbook-row { padding-left: 0; }
+    .decision-crossbar {
+      grid-template-columns: 140px minmax(0, 1fr);
+    }
+    .decision-crossbar-execution {
+      grid-column: 2;
+      text-align: left;
+    }
     .account-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .account-metric:nth-child(2) { border-right: 0; }
     .account-metric:nth-child(-n+2) { border-bottom: 1px solid rgba(235, 237, 229, 0.07); }
@@ -3261,6 +3278,14 @@
       border-bottom: 1px solid rgba(235, 237, 229, 0.07);
     }
     .decision-benchmark:last-child { border-bottom: 0; }
+    .decision-crossbar {
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+    .decision-crossbar-execution {
+      grid-column: auto;
+      text-align: left;
+    }
     .account-strip { grid-template-columns: 1fr 1fr; }
     .account-metric { padding: 14px 10px; }
     .account-metric:nth-child(2n) { border-right: 0; }
@@ -3341,7 +3366,7 @@
 <section class="decision-cockpit" id="decision-cockpit">
   <div class="decision-cockpit-top">
     <div>
-      <div class="section-kicker">Market decision</div>
+      <div class="section-kicker">Global trade posture</div>
       <div class="decision-regime-line">
         <span id="decision-regime" class="badge badge-offline">WAITING</span>
         <span id="decision-confidence" class="decision-confidence">Building context...</span>
@@ -3369,9 +3394,20 @@
       </div>
     </div>
   </div>
+  <div class="decision-crossbar" aria-label="Combined US, Korea, and Japan market call">
+    <div>
+      <span class="decision-crossbar-label">Combined call</span>
+      <strong class="decision-crossbar-call" id="decision-global-call">WAIT</strong>
+    </div>
+    <p class="decision-crossbar-reason" id="decision-global-reason">Waiting for the US, Korea, and Japan tapes to resolve.</p>
+    <div class="decision-crossbar-execution">
+      <span>Qualified risk</span>
+      <strong id="decision-global-size">NO BROAD BET</strong>
+    </div>
+  </div>
   <div class="decision-benchmarks" id="decision-benchmarks"></div>
   <details class="evidence-details" id="market-evidence-panel">
-    <summary>US + Korea + Japan evidence</summary>
+    <summary>Why this market call</summary>
     <div id="global-market-body" class="radar-context-band" hidden></div>
   </details>
 </section>
@@ -3584,29 +3620,19 @@ const shortText = (v, max=120) => {
   const text = String(v == null ? '' : v).trim();
   return text.length > max ? text.slice(0, max - 1) + '…' : text;
 };
-const priceSourceParts = (item) => {
-  const data = item || {};
-  const source = String(data.price_source_label || data.price_source || '').trim();
-  const reference = Number(data.reference_price || 0);
-  const deviationRaw = data.price_deviation_pct;
-  const deviation = deviationRaw == null ? null : Number(deviationRaw);
-  const parts = [];
-  if (source) parts.push(source);
-  if (reference > 0) parts.push('Ref ' + formatUsd(reference));
-  if (Number.isFinite(deviation)) parts.push('Δ ' + fmtP(deviation));
-  return parts;
-};
-const priceSourceHtml = (item) => {
-  const parts = priceSourceParts(item);
-  const status = String((item || {}).price_status || '').toUpperCase();
-  const warning = String((item || {}).price_warning || '').trim();
-  if (!parts.length && !warning) return '';
-  const clsName = (status === 'CHECK' || status === 'REFERENCE_MISSING')
-    ? 'price-source-line price-source-warn'
-    : 'price-source-line';
-  const text = parts.length ? parts.join(' • ') : 'Reference check unavailable';
-  return '<div class="' + clsName + '"><strong>Price source:</strong> ' + esc(text)
-    + (warning ? ' • ' + esc(shortText(warning, 120)) : '')
+const priceIntegrityWarningHtml = (item) => {
+  const safe = item || {};
+  const status = String(safe.price_status || '').toUpperCase();
+  const warning = String(safe.price_warning || '').trim();
+  if (!['CHECK', 'REFERENCE_MISSING'].includes(status) && !warning) return '';
+  const deviation = Number(safe.price_deviation_pct);
+  const detail = warning || (
+    Number.isFinite(deviation)
+      ? 'Live and reference prices differ by ' + fmtP(deviation) + '.'
+      : 'The independent price check is unavailable.'
+  );
+  return '<div class="price-integrity-warning"><strong>Price check:</strong> '
+    + esc(shortText(detail, 140))
     + '</div>';
 };
 const positionChartHtml = (position, expanded=false) => {
@@ -5026,7 +5052,7 @@ function commandDetailHtml(item) {
       + commandDetailLine(status.startsWith('OPEN_') ? 'Holding because' : 'Why', simpleThesisText(safe, 96))
       + commandDetailLine('Mode', holdingText)
     + '</div>'
-    + priceSourceHtml(safe);
+    + priceIntegrityWarningHtml(safe);
 }
 
 function renderCommandSearch() {
@@ -5168,7 +5194,6 @@ function renderGlobalMarketContext(report) {
   if (!body) return;
   const safe = report || {};
   const benchmarkRows = Array.isArray(safe.benchmarks) ? safe.benchmarks.filter((row) => row && row.fresh) : [];
-  const marketViews = Array.isArray(safe.market_views) ? safe.market_views.filter((row) => row && row.region) : [];
   body.hidden = !safe.active;
   if (body.hidden) {
     body.innerHTML = '';
@@ -5178,30 +5203,15 @@ function renderGlobalMarketContext(report) {
   const regimeTone = regime === 'RISK_ON' ? biasClass('bullish') : regime === 'RISK_OFF' ? biasClass('bearish') : biasClass('neutral');
   const breadth = safe.breadth || {};
   const crossMarket = safe.cross_market || {};
+  const tacticalBias = String(crossMarket.display_bias || crossMarket.tactical_bias || 'SELECTIVE').replaceAll('_', ' ');
   const catalysts = Array.isArray(safe.catalysts) ? safe.catalysts.slice(0, 4) : [];
   const levelText = (value) => Number(value || 0) > 0 ? fmt(Number(value), Number(value) >= 1000 ? 0 : 2) : '--';
   body.innerHTML = '<div class="radar-context-head">'
-    + '<div class="radar-context-title">Global equity anchor</div>'
-    + '<div class="radar-context-meta"><span class="' + regimeTone + '">' + esc(regime.replace('_', ' ')) + '</span> • ' + esc(String(crossMarket.state || 'UNCONFIRMED').replaceAll('_', ' ')) + ' cross-market • ' + esc(String(Math.round(Number(safe.confidence || 0) * 100))) + '% confidence</div>'
+    + '<div class="radar-context-title">Cross-market evidence</div>'
+    + '<div class="radar-context-meta"><span class="' + regimeTone + '">' + esc(tacticalBias) + ' BIAS</span> • US ' + esc(regime.replace('_', ' ')) + ' • ' + esc(String(Math.round(Number(safe.confidence || 0) * 100))) + '% confidence</div>'
   + '</div>'
-  + '<div class="market-anchor-headline">' + esc(shortText(safe.headline || '', 260)) + '</div>'
   + '<div class="market-anchor-copy">' + esc(shortText(safe.commentary || '', 420)) + '</div>'
-  + '<div class="market-benchmarks">' + marketViews.slice(0, 3).map((row) => {
-    const direction = String(row.direction || 'FLAT');
-    const status = String(row.status || 'NO EDGE');
-    const tone = status === 'CONFIRMING' || (row.region === 'US' && direction === 'LONG')
-      ? 'green'
-      : status === 'DIVERGING' || (row.region === 'US' && direction === 'SHORT')
-        ? 'red'
-        : 'muted';
-    const correlation = row.correlation == null ? '' : ((Number(row.correlation) >= 0 ? '+' : '') + Number(row.correlation).toFixed(2) + ' corr');
-    return '<div class="market-benchmark">'
-      + '<div class="market-benchmark-top"><span class="market-benchmark-name">' + esc(row.region) + '</span><span class="' + tone + '">' + esc(status) + '</span></div>'
-      + '<div class="market-benchmark-price">' + esc(direction) + (correlation ? ' • ' + esc(correlation) : ' • PRIMARY ANCHOR') + '</div>'
-      + '<div class="market-benchmark-levels"><span>' + esc(shortText(row.summary || '', 145)) + '</span></div>'
-    + '</div>';
-  }).join('') + '</div>'
-  + '<div class="context-copy"><strong>Execution effect:</strong> ' + esc(shortText(crossMarket.summary || '', 320)) + '</div>'
+  + '<div class="context-copy"><strong>Execution effect:</strong> ' + esc(shortText(crossMarket.execution || crossMarket.summary || '', 360)) + '</div>'
   + (safe.semiconductor_readthrough ? '<div class="context-copy"><strong>Semiconductor handoff:</strong> ' + esc(shortText(safe.semiconductor_readthrough, 360)) + '</div>' : '')
   + '<div class="market-benchmarks">' + benchmarkRows.slice(0, 3).map((row) => {
     const direction = String(row.direction || 'FLAT');
@@ -5290,24 +5300,32 @@ function renderDecisionSurface(report, board, state) {
   const invalidationNode = document.getElementById('decision-invalidation');
   const healthNode = document.getElementById('decision-health');
   const benchmarksNode = document.getElementById('decision-benchmarks');
-  if (!regimeNode || !confidenceNode || !headlineNode || !commentaryNode || !nowNode || !triggerNode || !invalidationNode || !healthNode || !benchmarksNode) return;
+  const globalCallNode = document.getElementById('decision-global-call');
+  const globalReasonNode = document.getElementById('decision-global-reason');
+  const globalSizeNode = document.getElementById('decision-global-size');
+  if (!regimeNode || !confidenceNode || !headlineNode || !commentaryNode || !nowNode || !triggerNode || !invalidationNode || !healthNode || !benchmarksNode || !globalCallNode || !globalReasonNode || !globalSizeNode) return;
 
   const regime = String(safe.regime || 'UNKNOWN');
-  const regimeLabel = regime.replaceAll('_', ' ');
   const confidence = Math.round(Number(safe.confidence || 0) * 100);
   const breadth = safe.breadth || {};
   const policy = safe.execution_policy || {};
   const crossMarket = safe.cross_market || {};
-  const lead = actionBoard.lead || null;
-  const regimeClass = regime === 'RISK_ON'
+  const tacticalBias = String(crossMarket.tactical_bias || policy.preferred_direction || 'SELECTIVE').toUpperCase();
+  const displayBias = String(crossMarket.display_bias || tacticalBias || 'SELECTIVE').toUpperCase();
+  const crossState = String(crossMarket.state || 'UNCONFIRMED').toUpperCase();
+  const sizeMultiplier = Math.max(0, Math.min(1, Number(crossMarket.size_multiplier == null ? 1 : crossMarket.size_multiplier)));
+  const lead = coherentActionBoardLead(actionBoard);
+  const regimeClass = tacticalBias === 'LONG'
     ? biasClass('bullish')
-    : regime === 'RISK_OFF'
+    : tacticalBias === 'SHORT'
       ? biasClass('bearish')
       : biasClass('neutral');
   regimeNode.className = regimeClass;
-  regimeNode.textContent = safe.active ? regimeLabel : 'WAITING';
+  regimeNode.textContent = safe.active
+    ? (displayBias === 'SELECTIVE' ? 'SELECTIVE' : displayBias + ' BIAS')
+    : 'WAITING';
   confidenceNode.textContent = safe.active
-    ? confidence + '% confidence • ' + String(crossMarket.state || 'UNCONFIRMED').replaceAll('_', ' ') + ' cross-market'
+    ? 'US ' + regime.replaceAll('_', ' ') + ' • ' + crossState.replaceAll('_', ' ') + ' • ' + confidence + '% confidence'
     : 'Building context...';
   headlineNode.textContent = safe.headline || 'Waiting for the first complete market read.';
   commentaryNode.textContent = shortText(
@@ -5317,10 +5335,12 @@ function renderDecisionSurface(report, board, state) {
 
   if (positions.length) {
     nowNode.textContent = 'Manage ' + positions.length + ' open position' + (positions.length === 1 ? '' : 's') + '. Add risk only when a fresh setup confirms.';
-  } else if (regime === 'RISK_OFF') {
-    nowNode.textContent = 'Stay defensive. Short only confirmed breakdowns; do not chase extended red candles.';
-  } else if (regime === 'RISK_ON') {
-    nowNode.textContent = 'Favor supported longs. Buy pullbacks or clean breakouts, not stretched candles.';
+  } else if (tacticalBias === 'SHORT') {
+    nowNode.textContent = displayBias === 'DEFENSIVE'
+      ? 'Keep a defensive tilt. Short only confirmed stock breakdowns at reduced size and at most 1x.'
+      : 'Favor confirmed stock breakdowns at reduced size and at most 1x. Stay flat without asset-level confirmation.';
+  } else if (tacticalBias === 'LONG') {
+    nowNode.textContent = 'Favor supported longs on held pullbacks or clean reclaims. Do not chase stretched candles.';
   } else {
     nowNode.textContent = 'Stay selective. Mixed index structure offers no broad directional edge.';
   }
@@ -5328,26 +5348,54 @@ function renderDecisionSurface(report, board, state) {
     ? lead.coin + ': ' + simpleNextText(lead, 150)
     : shortText(regime === 'RISK_OFF' ? safe.sell_plan : safe.buy_plan, 165) || 'A clean asset-level setup confirms.';
   invalidationNode.textContent = shortText(safe.invalidation || 'The market regime and individual thesis must invalidate together.', 180);
-  healthNode.textContent = policy.summary
-    ? shortText(policy.summary, 180)
+  healthNode.textContent = crossMarket.execution
+    ? shortText(crossMarket.execution, 180)
     : 'No forced trade. Evidence must align.';
+  globalCallNode.textContent = safe.active
+    ? (displayBias === 'SELECTIVE' ? 'SELECTIVE / WAIT' : displayBias + ' BIAS')
+    : 'WAIT';
+  globalCallNode.className = 'decision-crossbar-call ' + (
+    tacticalBias === 'LONG' ? 'green' : tacticalBias === 'SHORT' ? 'red' : 'muted'
+  );
+  globalReasonNode.textContent = shortText(
+    crossMarket.summary || 'The US, Korea, and Japan tapes have not produced a reliable combined edge.',
+    270
+  );
+  globalSizeNode.textContent = tacticalBias === 'SELECTIVE'
+    ? 'NO BROAD BET'
+    : Math.round(sizeMultiplier * 100) + '% MAX SIZE' + (tacticalBias === 'SHORT' ? ' • 1X' : '');
 
   const rows = Array.isArray(safe.market_views) ? safe.market_views.filter((row) => row && row.region).slice(0, 3) : [];
   benchmarksNode.innerHTML = rows.map((row) => {
     const direction = String(row.direction || 'FLAT');
     const status = String(row.status || 'NO EDGE');
-    const tone = status === 'CONFIRMING' || (row.region === 'US' && direction === 'LONG')
+    const impliedDirection = String(row.implied_us_direction || direction || 'FLAT');
+    const tone = status === 'CONFIRMING' || status === 'LEADING' && impliedDirection === 'LONG' || (row.region === 'US' && direction === 'LONG')
       ? 'green'
-      : status === 'DIVERGING' || (row.region === 'US' && direction === 'SHORT')
+      : status === 'DIVERGING' || status === 'LEADING' && impliedDirection === 'SHORT' || (row.region === 'US' && direction === 'SHORT')
         ? 'red'
         : 'muted';
+    const statusLabel = row.region === 'US'
+      ? 'ANCHOR'
+      : status === 'CONFIRMING'
+        ? 'CONFIRMS'
+        : status === 'DIVERGING'
+          ? 'CONTRADICTS'
+          : status === 'LEADING'
+            ? 'EARLY WARNING'
+            : status;
     const relationship = row.correlation == null
-      ? 'PRIMARY'
-      : ((Number(row.correlation) >= 0 ? '+' : '') + Number(row.correlation).toFixed(2) + ' CORR');
+      ? 'PRIMARY US TAPE'
+      : 'US LINK ' + (Number(row.correlation) >= 0 ? '+' : '') + Number(row.correlation).toFixed(2)
+        + ' • ' + String(row.relationship || 'WEAK').replaceAll('_', ' ');
+    const call = row.region === 'US'
+      ? direction
+      : 'LOCAL ' + direction + ' • IMPLIES ' + impliedDirection;
     return '<div class="decision-benchmark">'
-      + '<div class="decision-benchmark-top"><span class="decision-benchmark-name">' + esc(row.region || '--') + '</span><span class="decision-benchmark-call ' + tone + '">' + esc(status) + '</span></div>'
-      + '<div class="decision-benchmark-price">' + esc(direction) + ' • ' + esc(relationship) + '</div>'
-      + '<div class="decision-benchmark-levels"><span>' + esc(row.sample_size ? String(row.sample_size) + ' matched bars' : 'US regime anchor') + '</span></div>'
+      + '<div class="decision-benchmark-top"><span><span class="decision-benchmark-name">' + esc(row.region || '--') + '</span><span class="decision-benchmark-role">' + esc(row.role || (row.region === 'US' ? 'PRIMARY ANCHOR' : 'ASIA LEAD')) + '</span></span><span class="decision-benchmark-call ' + tone + '">' + esc(statusLabel) + '</span></div>'
+      + '<div class="decision-benchmark-price">' + esc(call) + '</div>'
+      + '<div class="decision-benchmark-levels"><span>' + esc(relationship) + (row.sample_quality ? ' • ' + esc(String(row.sample_quality)) + ' SAMPLE' : '') + '</span></div>'
+      + '<div class="decision-benchmark-summary">' + esc(shortText(row.summary || '', 145)) + '</div>'
     + '</div>';
   }).join('');
 }
@@ -5367,9 +5415,20 @@ function prioritySetupDirection(item) {
 function prioritySetupIsCoherent(item) {
   const direction = prioritySetupDirection(item);
   const invalidation = simpleInvalidationText(item, 140).toLowerCase();
+  const next = simpleNextText(item, 140).toLowerCase();
   if (direction === 'LONG' && (invalidation.includes('invalid above') || invalidation.includes('wrong above'))) return false;
   if (direction === 'SHORT' && (invalidation.includes('invalid below') || invalidation.includes('wrong below'))) return false;
+  if (direction === 'LONG' && (next.includes('short if') || next.includes('sell if'))) return false;
+  if (direction === 'SHORT' && (next.includes('buy if') || next.includes('long if'))) return false;
   return true;
+}
+
+function coherentActionBoardLead(board) {
+  const safe = board || {};
+  const items = Array.isArray(safe.items) ? safe.items.filter((item) => item && item.coin && prioritySetupIsCoherent(item)) : [];
+  if (safe.lead && prioritySetupIsCoherent(safe.lead)) return safe.lead;
+  const ranked = sortCallItems(items);
+  return ranked.find((item) => item.tradable) || ranked[0] || null;
 }
 
 function priorityDirectionChipHtml(item) {
@@ -5392,7 +5451,7 @@ function renderPrioritySetups(board) {
     if (!item || !item.coin || selected.some((entry) => entry.coin === item.coin)) return;
     selected.push(item);
   };
-  if (prioritySetupIsCoherent(safe.lead)) addUnique(safe.lead);
+  addUnique(coherentActionBoardLead(safe));
   ranked.filter((item) => item.tradable).forEach(addUnique);
   ranked.forEach(addUnique);
   const visible = selected.slice(0, 3);
@@ -5787,7 +5846,7 @@ function renderActionBoard(board) {
   const body = document.getElementById('signals-body');
   const allItems = Array.isArray((board || {}).items) ? board.items.filter((item) => item) : [];
   const groups = normalizeActionGroups(board);
-  const lead = (board || {}).lead || null;
+  const lead = coherentActionBoardLead(board);
   if (!allItems.length) {
     meta.textContent = 'No tracked setup yet.';
     body.innerHTML = '<div class="empty-state">Waiting for the first clean setup...</div>';
@@ -5795,14 +5854,15 @@ function renderActionBoard(board) {
   }
   actionBoardBucket = chooseBucket(actionBoardBucket, groups);
   const selected = groups[actionBoardBucket] || groups.coin;
-  const tradableItems = selected.tradable_items || [];
+  const selectedItems = Array.isArray(selected.items) ? selected.items.filter(prioritySetupIsCoherent) : [];
+  const tradableItems = Array.isArray(selected.tradable_items) ? selected.tradable_items.filter(prioritySetupIsCoherent) : [];
   const categoryResolver = (item) => itemAssetCategories(item);
-  const categoryGroups = groupAssetItemsByCategory(selected.items || [], categoryResolver);
+  const categoryGroups = groupAssetItemsByCategory(selectedItems, categoryResolver);
   actionBoardCategory = chooseAssetCategory(actionBoardCategory, categoryGroups, actionBoardBucket);
   const visibleTradableItems = actionBoardBucket === 'equity' && actionBoardCategory !== 'all'
     ? tradableItems.filter((item) => normalizeAssetCategories(categoryResolver(item)).includes(actionBoardCategory))
     : tradableItems;
-  const visibleLead = visibleTradableItems[0] || tradableItems[0] || ((selected.items || [])[0]) || lead;
+  const visibleLead = visibleTradableItems[0] || tradableItems[0] || selectedItems[0] || lead;
   const tradableCount = Number(visibleTradableItems.length || 0);
   const activeTradableCount = visibleTradableItems.filter((item) => ['OPEN_LONG', 'OPEN_SHORT', 'READY_LONG', 'READY_SHORT'].includes(String((item || {}).status || '').toUpperCase())).length;
   const pendingCount = visibleTradableItems.filter((item) => String((item || {}).status || '').toUpperCase() === 'PENDING_ENTRY').length;
@@ -5863,7 +5923,7 @@ function renderActionBoard(board) {
             + '<div class="token-detail"><span class="token-detail-label">Invalid if</span><div class="token-detail-value">' + esc(simpleInvalidationText(item, 92)) + '</div></div>'
             + '<div class="token-detail"><span class="token-detail-label">Why</span><div class="token-detail-value">' + esc(simpleThesisText(item, 96)) + '</div></div>'
           + '</div>'
-          + priceSourceHtml(item)
+          + priceIntegrityWarningHtml(item)
         + '</div>'
       + '</details>';
     }).join('')
@@ -6125,6 +6185,7 @@ async function refresh() {
     latestPnlAttribution = data.pnl_attribution || {};
     const actionBoard = data.action_board || { items: [], lead: null };
     latestActionBoard = actionBoard;
+    const coherentLead = coherentActionBoardLead(actionBoard);
 
     // Header
     let updateText = 'Updated: ' + data.server_time;
@@ -6188,9 +6249,9 @@ async function refresh() {
     document.getElementById('win-rate').textContent = 'Across all closed trades';
     document.getElementById('trade-count').textContent = (st.win_rate || 0) + '%';
     document.getElementById('wins-losses').textContent = 'Closed: ' + closedN + ' • Wins: ' + (st.wins||0) + ' • Losses: ' + (st.losses||0) + ' • Flat: ' + (st.flats||0);
-    if (actionBoard.lead) {
-      document.getElementById('cycle').textContent = actionBoard.lead.coin + ' • ' + setupStanceText(actionBoard.lead, 'title');
-      document.getElementById('sentiment').textContent = leadSummaryText(actionBoard.lead, 210);
+    if (coherentLead) {
+      document.getElementById('cycle').textContent = coherentLead.coin + ' • ' + setupStanceText(coherentLead, 'title');
+      document.getElementById('sentiment').textContent = leadSummaryText(coherentLead, 210);
     } else {
       document.getElementById('cycle').textContent = openN ? 'Managing trades' : 'No setup';
       document.getElementById('sentiment').textContent = openN ? 'The agent is managing open exposure.' : 'Waiting for the next clean setup.';
@@ -6236,7 +6297,7 @@ async function refresh() {
             + '<div class="position-logic"><strong>Opened because:</strong> ' + esc(p.entry_logic_short || plainTradeReason(p.entry_logic || 'No opening logic recorded.', 'open', 110)) + '</div>'
             + '<div class="position-logic"><strong>Holding because:</strong> ' + esc(p.current_logic_short || plainTradeReason(p.current_logic || 'Holding while the thesis stays valid.', 'hold', 110)) + '</div>'
           + '</div>'
-          + priceSourceHtml(p)
+          + priceIntegrityWarningHtml(p)
           + positionChartHtml(p, expandedPositionCharts.has(String(p.coin || '')))
         + '</section>';
       }).join('');
@@ -6244,8 +6305,8 @@ async function refresh() {
       countBadge.textContent = '0';
       countBadge.className = 'open-count open-count-flat';
       openCard.className = 'card';
-      const leadEmpty = actionBoard.lead
-        ? '<div style="margin-top:8px;"><strong>Best setup:</strong> ' + esc(actionBoard.lead.coin + ' • ' + setupStanceText(actionBoard.lead, 'title')) + ' — ' + esc(leadSummaryText(actionBoard.lead, 170)) + '</div>'
+      const leadEmpty = coherentLead
+        ? '<div style="margin-top:8px;"><strong>Best setup:</strong> ' + esc(coherentLead.coin + ' • ' + setupStanceText(coherentLead, 'title')) + ' — ' + esc(leadSummaryText(coherentLead, 170)) + '</div>'
         : '<div style="margin-top:8px;">The agent is flat and waiting for a clean, high-conviction setup.</div>';
       openBody.innerHTML =
         '<div class="empty-state">' +
@@ -6331,9 +6392,17 @@ async function refresh() {
 function scheduleRefresh(delayMs = REFRESH_BASE_MS) {
   if (refreshTimer) clearTimeout(refreshTimer);
   refreshTimer = setTimeout(() => {
+    if (document.hidden) {
+      scheduleRefresh(REFRESH_MAX_MS);
+      return;
+    }
     refresh();
   }, Math.max(1000, Number(delayMs || REFRESH_BASE_MS)));
 }
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) refresh();
+});
 
 let killConfirm = false;
 function handleKill() {

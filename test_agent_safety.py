@@ -3254,7 +3254,9 @@ def test_dashboard_state_prefers_canonical_snapshot() -> None:
             dashboard_module.SNAPSHOT.write_text(json.dumps(snapshot))
 
             client = dashboard_module.app.test_client()
-            payload = client.get("/api/state").get_json()
+            response = client.get("/api/state")
+            payload = response.get_json()
+            assert response.headers["Cache-Control"] == "no-cache, max-age=0, must-revalidate"
             assert payload["state"]["cycle_number"] == 99
             assert payload["stats"]["total"] == 1
             assert payload["trades"][0]["coin"] == "ETH"
@@ -3327,6 +3329,10 @@ def test_dashboard_refreshes_snapshot_when_state_changes() -> None:
             }))
             dashboard_module.LOG.write_text("coin,exit_price,pnl_usd\n")
             os.utime(dashboard_module.STATE, None)
+            assert dashboard_module._snapshot_needs_refresh(snapshot) is False
+            settled_mtime = time.time() - dashboard_module.SNAPSHOT_REFRESH_GRACE_SECONDS - 1
+            os.utime(dashboard_module.STATE, (settled_mtime, settled_mtime))
+            os.utime(dashboard_module.LOG, (settled_mtime, settled_mtime))
             refresh_calls = {"count": 0}
             dashboard_module._queue_local_snapshot_refresh = lambda server_timestamp=None, force=False: refresh_calls.__setitem__("count", refresh_calls["count"] + 1) or True
 
@@ -3513,11 +3519,14 @@ def test_hosted_dashboard_bundle_matches_local_template() -> None:
 
 def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> None:
     template = Path("dashboard/templates/dashboard.html").read_text()
-    assert "Market decision" in template
+    assert "Global trade posture" in template
     assert "Priority Setups" in template
     assert "renderDecisionSurface" in template
     assert "renderPrioritySetups" in template
-    assert "US + Korea + Japan evidence" in template
+    assert "Combined call" in template
+    assert "Why this market call" in template
+    assert "priceSourceHtml" not in template
+    assert "Price source:" not in template
     assert "Research &amp; Review" in template
     assert "Realized P&amp;L" in template
     assert 'id="tradexyz-volume-shortcut-btn"' not in template
@@ -3558,7 +3567,8 @@ def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> N
     assert "<strong>Lead:</strong>" in template
     assert "friction-stack" in template
     assert "catalyst-rail" in template
-    assert "leadSummaryText(actionBoard.lead" in template
+    assert "coherentActionBoardLead" in template
+    assert "leadSummaryText(coherentLead" in template
     assert "AbortController" in template
     assert "scheduleRefresh(" in template
     assert "setInterval(refresh, 10000);" not in template
@@ -9470,6 +9480,81 @@ def test_global_market_divergence_reduces_qualified_trade_size() -> None:
     assert "reduced to 60%" in alignment["summary"]
 
 
+def test_aligned_asia_lead_creates_reduced_size_prior_when_us_is_flat() -> None:
+    now = datetime(2026, 7, 29, 8, 0, tzinfo=timezone.utc)
+    moves = [0.8, -0.3, 0.6, -0.2, 0.9, -0.4, 0.5, 0.7, -0.2, 0.6, -0.4, 0.8, 0.3]
+
+    def bars(start: float) -> list[dict]:
+        price = start
+        output = []
+        for index, move in enumerate(moves):
+            price *= 1.0 + move / 100.0
+            output.append({
+                "time": datetime.fromtimestamp(
+                    now.timestamp() - (len(moves) - index) * 3600,
+                    tz=timezone.utc,
+                ).isoformat(),
+                "close": round(price, 6),
+            })
+        return output
+
+    state = {
+        "signals": {
+            "SP500": {"price_action": {"bars": bars(7000.0)}},
+            "KR200": {"price_action": {"bars": bars(900.0)}},
+            "JP225": {"price_action": {"bars": bars(60000.0)}},
+        }
+    }
+    us_context = {
+        "active": True,
+        "regime": "RANGE",
+        "confidence": 0.52,
+        "headline": "US indices are unresolved.",
+        "commentary": "The US tape has no clean directional edge.",
+        "invalidation": "The range resolves when the US benchmarks align.",
+        "benchmarks": [
+            {"symbol": "SP500", "fresh": True, "direction": "FLAT"},
+            {"symbol": "NDX", "fresh": True, "direction": "FLAT"},
+        ],
+        "execution_policy": {
+            "preferred_direction": "SELECTIVE",
+            "countertrend_size_multiplier": 0.35,
+        },
+    }
+    asia_context = {
+        "benchmarks": [
+            {"symbol": "KR200", "region": "Korea", "fresh": True, "direction": "SHORT"},
+            {"symbol": "JP225", "region": "Japan", "fresh": True, "direction": "SHORT"},
+        ],
+        "us_readthrough": "Asian semiconductors are defensive.",
+    }
+    report = global_market_context_module.build_global_market_context(
+        state,
+        us_context=us_context,
+        asia_context=asia_context,
+        now=now,
+    )
+    assert report["cross_market"]["state"] == "ASIA_LEADS"
+    assert report["cross_market"]["tactical_bias"] == "SHORT"
+    assert report["cross_market"]["size_multiplier"] == 0.75
+    assert report["execution_policy"]["allow_tactical_short"] is True
+    assert all(row["status"] == "LEADING" for row in report["correlations"])
+    assert report["cross_market"]["display_bias"] == "DEFENSIVE"
+    assert "defensive bias" in report["headline"]
+
+    alignment = us_market_context_module.assess_trade_alignment(
+        report,
+        direction="SHORT",
+        instrument_type="equity",
+        signal={"action": "SHORT", "market_regime": "DOWNTREND"},
+    )
+    assert alignment["active"] is True
+    assert alignment["aligned"] is True
+    assert alignment["leverage_cap"] == 1
+    assert alignment["size_multiplier"] == 0.4875
+    assert "early short prior" in alignment["summary"]
+
+
 def test_us_market_context_symbols_use_safe_execution_universe() -> None:
     cfg = Config()
     assert "NDX" in cfg.trading.analysis_coins
@@ -10560,6 +10645,8 @@ def run_all() -> None:
     print("PASS global US-Korea-Japan correlation anchor")
     test_global_market_divergence_reduces_qualified_trade_size()
     print("PASS global market divergence size reduction")
+    test_aligned_asia_lead_creates_reduced_size_prior_when_us_is_flat()
+    print("PASS aligned Asia lead execution prior")
     test_us_market_context_symbols_use_safe_execution_universe()
     print("PASS US market context execution universe")
     test_us_market_context_lowers_confidence_when_breadth_disagrees()

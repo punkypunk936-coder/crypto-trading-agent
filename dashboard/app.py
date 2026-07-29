@@ -73,6 +73,10 @@ PLAYBOOK_DISTILLER_REPORT = PLAYBOOK_DISTILLER_REPORT_JSON
 POLICY_HEALTH_REPORT = POLICY_HEALTH_REPORT_JSON
 PROACTIVE_TRADER_REPORT = PROACTIVE_TRADER_REPORT_JSON
 HOSTED_INDEX = CODE_ROOT / "netlify-dashboard" / "public" / "index.html"
+SNAPSHOT_REFRESH_GRACE_SECONDS = max(
+    0.0,
+    float(os.environ.get("DASHBOARD_SNAPSHOT_REFRESH_GRACE_SECONDS", "20") or 20),
+)
 
 # Secret token for push endpoint (set DASHBOARD_TOKEN env var for security)
 PUSH_TOKEN = os.environ.get("DASHBOARD_TOKEN", "")
@@ -362,12 +366,19 @@ def _snapshot_needs_refresh(snapshot: dict | None = None) -> bool:
         snapshot_mtime = SNAPSHOT.stat().st_mtime
     except Exception:
         return True
+    newer_source_mtimes = []
     for path in (STATE, LOG, CONTROL, MARKET_MAP, REVIEWS, DECISION_REVIEW, CHALLENGER_REPORT, MISSED_MOVE_REPORT, ASSET_DOSSIERS, LLM_REFEREE_REPORT, PLAYBOOK_DISTILLER_REPORT, POLICY_HEALTH_REPORT, PROACTIVE_TRADER_REPORT):
         try:
-            if path.exists() and path.stat().st_mtime > snapshot_mtime:
-                return True
+            source_mtime = path.stat().st_mtime if path.exists() else 0.0
+            if source_mtime > snapshot_mtime:
+                newer_source_mtimes.append(source_mtime)
         except Exception:
             continue
+    if newer_source_mtimes:
+        newest_source_age = max(0.0, time.time() - max(newer_source_mtimes))
+        if newest_source_age >= SNAPSHOT_REFRESH_GRACE_SECONDS:
+            return True
+        return False
     # A refresh worker and the agent can finish in the opposite order. File
     # mtimes alone cannot detect an older snapshot written after newer state.
     if isinstance(snapshot, dict) and STATE.exists():
@@ -516,10 +527,26 @@ def api_state():
     if snapshot is not None:
         if needs_refresh:
             _queue_local_snapshot_refresh()
+        if SNAPSHOT.exists():
+            response = send_file(
+                SNAPSHOT,
+                mimetype="application/json",
+                conditional=True,
+                max_age=0,
+            )
+            response.headers["Cache-Control"] = "no-cache, max-age=0, must-revalidate"
+            return response
         return jsonify(snapshot)
     snapshot = _build_local_snapshot()
     _save_snapshot_local(snapshot)
-    return jsonify(snapshot)
+    response = send_file(
+        SNAPSHOT,
+        mimetype="application/json",
+        conditional=True,
+        max_age=0,
+    )
+    response.headers["Cache-Control"] = "no-cache, max-age=0, must-revalidate"
+    return response
 
 
 @app.route("/api/tradexyz-volume")

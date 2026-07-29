@@ -173,10 +173,18 @@ def _best_correlation(signals: dict, region: str) -> dict:
             "value": None,
             "sample_size": 0,
         }
+
+    quality_rank = {
+        "INSUFFICIENT": 0,
+        "LOW": 1,
+        "MEDIUM": 2,
+        "HIGH": 3,
+    }
     return max(
         candidates,
         key=lambda row: (
-            row["sample_size"] >= 12,
+            quality_rank[_sample_quality(row["sample_size"])],
+            abs(row["value"]) if row["value"] is not None else -1.0,
             row["sample_size"],
             row["us_symbol"] == "SP500",
             row["regional_symbol"] == REGION_REFERENCES[region][0],
@@ -207,6 +215,8 @@ def _region_read(
         and implied_us_direction in {"LONG", "SHORT"}
     ):
         status = "CONFIRMING" if implied_us_direction == us_direction else "DIVERGING"
+    elif meaningful and implied_us_direction in {"LONG", "SHORT"}:
+        status = "LEADING"
     elif value is not None and regional_direction in {"LONG", "SHORT"}:
         status = "WATCH"
     else:
@@ -225,10 +235,16 @@ def _region_read(
             f"{relationship.lower()} relationship ({formatted}, {correlation['sample_size']} observations). "
             "Treat conviction as lower until the tapes reconnect."
         )
+    elif status == "LEADING":
+        summary = (
+            f"{region} is an early {implied_us_direction.lower()} warning while the US tape is unresolved. "
+            f"Its {relationship.lower()} US relationship is {formatted} across "
+            f"{correlation['sample_size']} matched observations."
+        )
     elif status == "WATCH":
         summary = (
-            f"{region} is moving {regional_direction.lower()}, but its {formatted} relationship with the US "
-            "is too weak to change the trade plan."
+            f"{region} is moving {regional_direction.lower()}, but its {relationship.lower()} US relationship "
+            f"({formatted}, {correlation['sample_size']} observations) is not reliable enough to change the plan."
         )
     else:
         summary = f"{region} has no reliable matched-bar correlation edge yet."
@@ -284,20 +300,39 @@ def build_global_market_context(
     ]
     confirmations = sum(row["status"] == "CONFIRMING" for row in correlations)
     divergences = sum(row["status"] == "DIVERGING" for row in correlations)
-    if confirmations == len(correlations):
-        cross_state = "CONFIRMED"
-    elif confirmations and not divergences:
-        cross_state = "SUPPORTED"
-    elif confirmations and divergences:
+    leading_rows = [row for row in correlations if row["status"] == "LEADING"]
+    leading_directions = {
+        row["implied_us_direction"]
+        for row in leading_rows
+        if row["implied_us_direction"] in {"LONG", "SHORT"}
+    }
+    lead_direction = next(iter(leading_directions)) if len(leading_directions) == 1 else "FLAT"
+    us_direction = _current_us_direction(us)
+    if us_direction in {"LONG", "SHORT"}:
+        if confirmations == len(correlations):
+            cross_state = "CONFIRMED"
+        elif confirmations and not divergences:
+            cross_state = "SUPPORTED"
+        elif confirmations and divergences:
+            cross_state = "MIXED"
+        elif divergences:
+            cross_state = "DIVERGENT"
+        else:
+            cross_state = "UNCONFIRMED"
+    elif len(leading_rows) == len(correlations) and lead_direction in {"LONG", "SHORT"}:
+        cross_state = "ASIA_LEADS"
+    elif leading_rows and lead_direction in {"LONG", "SHORT"}:
+        cross_state = "EARLY_SIGNAL"
+    elif len(leading_directions) > 1:
         cross_state = "MIXED"
-    elif divergences:
-        cross_state = "DIVERGENT"
     else:
         cross_state = "UNCONFIRMED"
 
     confidence_shift = {
         "CONFIRMED": 0.08,
         "SUPPORTED": 0.04,
+        "ASIA_LEADS": 0.03,
+        "EARLY_SIGNAL": 0.0,
         "MIXED": -0.08,
         "DIVERGENT": -0.15,
         "UNCONFIRMED": 0.0,
@@ -307,12 +342,31 @@ def build_global_market_context(
     size_multiplier = {
         "CONFIRMED": 1.0,
         "SUPPORTED": 1.0,
+        "ASIA_LEADS": 0.75,
+        "EARLY_SIGNAL": 0.85,
         "MIXED": 0.75,
         "DIVERGENT": 0.60,
         "UNCONFIRMED": 1.0,
     }[cross_state]
-    us_direction = _current_us_direction(us)
-    direction_text = us_direction.lower() if us_direction in {"LONG", "SHORT"} else "selective"
+    tactical_bias = us_direction if us_direction in {"LONG", "SHORT"} else lead_direction
+    if tactical_bias not in {"LONG", "SHORT"}:
+        tactical_bias = "SELECTIVE"
+    direction_text = tactical_bias.lower()
+    breadth = dict(us.get("breadth") or {})
+    breadth_net = _number(breadth.get("net"))
+    breadth_conflicts = (
+        tactical_bias == "SHORT" and breadth_net >= 0.25
+    ) or (
+        tactical_bias == "LONG" and breadth_net <= -0.25
+    )
+    if cross_state in {"ASIA_LEADS", "EARLY_SIGNAL"} and tactical_bias == "SHORT":
+        display_bias = "DEFENSIVE"
+    elif cross_state in {"ASIA_LEADS", "EARLY_SIGNAL"} and tactical_bias == "LONG":
+        display_bias = "EARLY LONG"
+    elif tactical_bias in {"LONG", "SHORT"}:
+        display_bias = tactical_bias
+    else:
+        display_bias = "SELECTIVE"
 
     if cross_state == "CONFIRMED":
         cross_summary = (
@@ -324,8 +378,18 @@ def build_global_market_context(
             f"One Asian market confirms the US {direction_text} read and none contradict it. "
             "Keep normal qualified size."
         )
+    elif cross_state == "ASIA_LEADS":
+        cross_summary = (
+            f"Korea and Japan both point {direction_text} before the US tape confirms. "
+            "Treat this as an early warning: require stock-level confirmation and cap qualified size at 75%."
+        )
+    elif cross_state == "EARLY_SIGNAL":
+        cross_summary = (
+            f"One Asian market points {direction_text} while the US tape is unresolved. "
+            "Keep size at 85% and wait for either the second market or US price action to confirm."
+        )
     elif cross_state == "MIXED":
-        cross_summary = f"Korea and Japan split on the US {direction_text} read. Reduce qualified stock size to 75%."
+        cross_summary = "Korea and Japan do not agree on the US handoff. Reduce qualified stock size to 75%."
     elif cross_state == "DIVERGENT":
         cross_summary = (
             f"Asian read-through contradicts the US {direction_text} read. "
@@ -336,33 +400,71 @@ def build_global_market_context(
 
     regime = _text(us.get("regime")).upper() or "UNKNOWN"
     region_clause = "; ".join(
-        f"{row['region']} {row['status'].lower()}"
+        f"{row['region']} {row['status'].lower()} ({row['relationship'].lower()})"
         for row in correlations
     )
-    if regime == "RANGE" and us_direction in {"LONG", "SHORT"}:
+    if cross_state in {"ASIA_LEADS", "EARLY_SIGNAL"}:
+        lead_label = "aligned Asia lead" if cross_state == "ASIA_LEADS" else "early Asia"
         headline = (
-            f"Global equity anchor: US range with a {direction_text} tilt, "
+            f"World tape: {display_bias.lower()} bias. The US is unresolved; "
+            f"Korea and Japan provide an {lead_label} signal."
+        )
+    elif regime == "RANGE" and us_direction in {"LONG", "SHORT"}:
+        headline = (
+            f"World tape: US range with a {direction_text} tilt, "
             f"{cross_state.lower()} by Korea and Japan."
         )
     else:
         headline = (
-            f"Global equity anchor: {regime.replace('_', ' ').lower()} in the US, "
+            f"World tape: {regime.replace('_', ' ').lower()} in the US, "
             f"{cross_state.lower()} by Korea and Japan."
         )
+    conflict_clause = ""
+    if breadth_conflicts:
+        conflict_clause = (
+            f" US breadth currently leans against the {direction_text} Asia warning, "
+            "so this is a defensive tilt rather than an outright directional call."
+        )
     commentary = (
-        f"{_text(us.get('commentary'))} Cross-market check: {region_clause}. "
+        f"{_text(us.get('commentary'))}{conflict_clause} Cross-market check: {region_clause}. "
         "Correlation is a risk filter, not proof of causation or an entry signal."
     )
     policy = dict(us.get("execution_policy") or {})
     policy.update({
+        "preferred_direction": tactical_bias,
+        "allow_tactical_short": bool(
+            tactical_bias == "SHORT"
+            and cross_state in {"CONFIRMED", "SUPPORTED", "ASIA_LEADS"}
+        ),
         "cross_market_state": cross_state,
+        "cross_market_direction": tactical_bias,
         "cross_market_size_multiplier": size_multiplier,
         "cross_market_summary": cross_summary,
         "summary": f"{_text(policy.get('summary'))} {cross_summary}".strip(),
     })
 
+    if tactical_bias == "SHORT" and cross_state in {"ASIA_LEADS", "EARLY_SIGNAL"}:
+        execution = (
+            f"Keep a defensive tilt and use fresh stock-level breakdown shorts only at "
+            f"{size_multiplier:.0%} of normal qualified size. Use at most 1x leverage; "
+            "do not fight a stock whose own structure remains bullish."
+        )
+    elif tactical_bias == "SHORT":
+        execution = (
+            f"Favor fresh stock-level breakdown shorts at {size_multiplier:.0%} of normal qualified size. "
+            "Use at most 1x leverage and stay flat when the stock itself does not confirm."
+        )
+    elif tactical_bias == "LONG":
+        execution = (
+            f"Favor supported stock-level longs at {size_multiplier:.0%} of normal qualified size. "
+            "Enter on a reclaim or held pullback, not on an extended candle."
+        )
+    else:
+        execution = "No broad directional edge. Trade only the clearest asset-specific thesis and keep exposure selective."
+
     us_view = {
         "region": "US",
+        "role": "PRIMARY ANCHOR",
         "direction": us_direction,
         "status": "ANCHOR",
         "correlation": None,
@@ -371,6 +473,8 @@ def build_global_market_context(
         "sample_quality": "PRIMARY",
         "summary": _text(us.get("headline")),
     }
+    for row in correlations:
+        row["role"] = "ASIA LEAD"
     result = dict(us)
     result.update({
         "updated_at": now_dt.isoformat(),
@@ -384,10 +488,15 @@ def build_global_market_context(
             "state": cross_state,
             "confirmations": confirmations,
             "divergences": divergences,
+            "leads": len(leading_rows),
             "confidence_shift": confidence_shift,
             "size_multiplier": size_multiplier,
             "us_direction": us_direction,
+            "tactical_bias": tactical_bias,
+            "display_bias": display_bias,
+            "breadth_conflicts": breadth_conflicts,
             "summary": cross_summary,
+            "execution": execution,
         },
         "asia_session": asia,
         "semiconductor_readthrough": _text(asia.get("us_readthrough")),
