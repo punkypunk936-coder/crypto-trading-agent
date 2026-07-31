@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime
+import time
 from typing import Any, Iterable
 
 import daily_radar
@@ -1613,6 +1614,7 @@ def action_board(
         "RISK_BLOCKED": 3,
         "COOLDOWN": 3,
         "ARMED": 3,
+        "STALE_REVIEW": 3,
         "NO_SETUP": 3,
     }
     configured_tradeable = {
@@ -1688,6 +1690,35 @@ def action_board(
         score = _safe_float(sig.get("score") or 50.0)
         conviction_score = _safe_float(sig.get("thesis_conviction_score") or score)
         action = str(sig.get("action") or "FLAT").upper()
+        analysis_updated_ts = _safe_float(sig.get("analysis_updated_ts"))
+        analysis_age_seconds = max(0.0, time.time() - analysis_updated_ts) if analysis_updated_ts else 0.0
+        analysis_max_age_minutes = max(
+            1.0,
+            _safe_float(config.get("analysis_signal_max_age_minutes")) or 20.0,
+        )
+        analysis_fresh = bool(
+            pos
+            or (
+                analysis_updated_ts > 0
+                and analysis_age_seconds <= analysis_max_age_minutes * 60.0
+            )
+        )
+        trigger_watch = dict(sig.get("trigger_watch") or {})
+        trigger_watch_state = str(
+            sig.get("trigger_watch_state") or trigger_watch.get("state") or ""
+        ).upper()
+        trigger_watch_blocker = str(
+            sig.get("trigger_watch_execution_blocker")
+            or trigger_watch.get("execution_blocker")
+            or ""
+        ).strip()
+        patient_execution = dict(sig.get("patient_execution") or {})
+        patient_execution_blocked = bool(
+            patient_execution.get("enabled", True)
+            and patient_execution
+            and not patient_execution.get("permitted", False)
+        )
+        patient_execution_blocker = str(patient_execution.get("summary") or "").strip()
         live_anchor = _safe_float(sig.get("live_price") or sig.get("price"))
         reclaim_confirmed = bool(sig.get("market_map_reclaim_confirmed"))
         live_reclaim = bool(sig.get("market_map_live_reclaim"))
@@ -1884,6 +1915,30 @@ def action_board(
             trigger = "Wait for structure and order-flow to agree."
             execution_note = "No trade is allowed right now because the thesis is still incomplete."
 
+        if not pos and not analysis_fresh:
+            age_minutes = int(round(analysis_age_seconds / 60.0)) if analysis_updated_ts else 0
+            status = "STALE_REVIEW"
+            label = "Refresh required"
+            headline = (
+                f"This thesis is {age_minutes} minutes old and is not executable."
+                if age_minutes else "This thesis has no trustworthy freshness timestamp."
+            )
+            entry_status = "Fresh analysis required before any order can be sent."
+            trigger = "Previous levels are historical, not live instructions."
+            execution_note = trigger_watch_blocker or (
+                "The symbol has been promoted into the next analysis batch; the dashboard will not present its old trigger as ready."
+            )
+        elif not pos and patient_execution_blocked:
+            status = "EXECUTION_BLOCKED"
+            label = "Bullish, entry blocked" if action == "LONG" else "Bearish, entry blocked"
+            headline = patient_execution_blocker or "The thesis is live, but patient-entry selection did not clear."
+            execution_note = headline
+        elif not pos and trigger_watch_state in {"BLOCKED", "MISSED"} and trigger_watch_blocker:
+            status = "EXECUTION_BLOCKED"
+            label = "Trigger missed" if trigger_watch_state == "MISSED" else "Execution blocked"
+            headline = trigger_watch_blocker
+            execution_note = trigger_watch_blocker
+
         coach_verdict = str(sig.get("execution_coach_verdict") or "").upper()
         coach_summary = str(sig.get("execution_coach_summary") or "").strip()
         if coach_summary and status in {"READY_LONG", "READY_SHORT", "PASSIVE_ENTRY", "EXECUTION_BLOCKED"}:
@@ -2029,6 +2084,14 @@ def action_board(
                 "price_deviation_pct": sig.get("price_deviation_pct"),
                 "price_status": str(sig.get("price_status") or ""),
                 "price_warning": str(sig.get("price_warning") or ""),
+                "analysis_updated_ts": analysis_updated_ts,
+                "analysis_age_seconds": round(analysis_age_seconds, 1),
+                "analysis_age_minutes": round(analysis_age_seconds / 60.0, 1),
+                "analysis_fresh": analysis_fresh,
+                "trigger_watch_state": trigger_watch_state,
+                "trigger_watch_blocker": trigger_watch_blocker,
+                "patient_execution_blocked": patient_execution_blocked,
+                "patient_execution_blocker": patient_execution_blocker,
                 "status": status,
                 "label": label,
                 "headline": headline,

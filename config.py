@@ -171,6 +171,7 @@ class TradingConfig:
     analysis_priority_coins: List[str] = field(
         default_factory=lambda: _unique_coins(_US_CONTEXT_COINS, _BASE_EXECUTION_COINS, _ASIA_CONTEXT_COINS)
     )
+    analysis_active_signal_slots: int = 6
     analysis_signal_max_age_minutes: float = 20.0
     cycle_price_poll_max_trigger_symbols: int = 24
     checkpoint_recovery_max_age_seconds: float = 86400.0
@@ -509,6 +510,11 @@ class TradingConfig:
     trigger_watch_rearm_minutes: float = 30.0
     trigger_watch_block_unverified_price: bool = True
     trigger_watch_allow_map_only: bool = False
+    trigger_watch_neutral_map_high_conviction_enabled: bool = True
+    trigger_watch_neutral_map_min_probability: float = 0.68
+    trigger_watch_neutral_map_min_expected_r: float = 0.75
+    trigger_watch_neutral_map_min_sequence_score: float = 75.0
+    trigger_watch_neutral_map_size_multiplier: float = 0.30
 
     # ── Timing ──────────────────────────────────────────
     check_interval_seconds: int  = 120    # Run cycle every 2 minutes

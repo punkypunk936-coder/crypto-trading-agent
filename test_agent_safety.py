@@ -57,6 +57,7 @@ import proactive_intelligence as proactive_intelligence_module
 import promotion_gate as promotion_gate_module
 from data import market_data as market_data_module
 from indicators import equity_event_feeds as equity_event_feeds_module
+from indicators import mtf as mtf_module
 from indicators import news as news_module
 from indicators import orderbook_levels as orderbook_levels_module
 from indicators import social_attention as social_attention_module
@@ -6305,6 +6306,24 @@ def test_mtf_fail_closed_blocks_when_confirmation_is_unavailable() -> None:
     assert agent._last_signals["BTC"]["mtf_bias"] == "UNAVAILABLE"
 
 
+def test_mtf_disagreement_penalizes_without_hard_blocking() -> None:
+    one_hour = SimpleNamespace(bias="BULLISH", strength=88.0)
+    four_hour = SimpleNamespace(bias="BULLISH", strength=75.0)
+    twelve_hour = SimpleNamespace(bias="BEARISH", strength=88.0)
+    transitioning = mtf_module._combine("AMZN", one_hour, four_hour, twelve_hour)
+    assert transitioning.allow_long is True
+    assert transitioning.combined_bias == "BULLISH"
+    assert transitioning.score_adjustment == -3.0
+
+    aligned_bearish = mtf_module._combine(
+        "AMZN",
+        SimpleNamespace(bias="NEUTRAL", strength=50.0),
+        SimpleNamespace(bias="BEARISH", strength=75.0),
+        twelve_hour,
+    )
+    assert aligned_bearish.allow_long is False
+
+
 def test_execution_quality_gate_blocks_thin_unstable_orderbooks() -> None:
     agent = object.__new__(TradingAgent)
     agent.cfg = build_config()
@@ -9280,6 +9299,35 @@ def test_asia_session_builds_regional_us_semiconductor_readthrough() -> None:
     assert "reverse lower" in report["invalidation"]
 
 
+def test_asia_session_uses_realized_index_move_over_lagging_bearish_map() -> None:
+    now = datetime(2026, 7, 31, 4, 0, tzinfo=timezone.utc)
+    report = asia_session_module.build_asia_session(
+        {
+            "signals": {
+                "KR200": {
+                    "action": "SHORT",
+                    "market_map_bias": "BEARISH",
+                    "market_map_summary": "daily map still bearish",
+                    "recent_move_pct": 13.71,
+                    "analysis_updated_ts": now.timestamp() - 60,
+                },
+                "JP225": {
+                    "action": "SHORT",
+                    "market_map_bias": "BEARISH",
+                    "recent_move_pct": 3.60,
+                    "analysis_updated_ts": now.timestamp() - 60,
+                },
+            }
+        },
+        now=now,
+    )
+    korea = next(row for row in report["benchmarks"] if row["symbol"] == "KR200")
+    assert korea["direction"] == "LONG"
+    assert korea["direction_source"] == "realized_move"
+    assert "Session move leads: +13.7%" in korea["why"]
+    assert report["regional_bias"] == "RISK_ON"
+
+
 def test_us_market_context_builds_risk_off_anchor_and_trade_zones() -> None:
     now = datetime(2026, 7, 28, 8, 0, tzinfo=timezone.utc)
     fresh_ts = now.timestamp() - 300
@@ -9758,6 +9806,77 @@ def test_dashboard_snapshot_includes_daily_radar() -> None:
     assert "earnings_session" in snapshot
 
 
+def test_dashboard_marks_old_trade_calls_as_refresh_required() -> None:
+    snapshot = build_dashboard_snapshot(
+        {
+            "signals": {
+                "AMZN": {
+                    "action": "LONG",
+                    "score": 80.0,
+                    "confidence": "HIGH",
+                    "execution_mode": "tradable",
+                    "instrument_type": "equity",
+                    "live_price": 250.0,
+                    "displayed_long_trigger": 240.0,
+                    "analysis_updated_ts": time.time() - 3600.0,
+                }
+            },
+            "positions": [],
+            "config": {
+                "coins": ["AMZN"],
+                "analysis_coins": ["AMZN"],
+                "analysis_signal_max_age_minutes": 20.0,
+            },
+            "cycle_number": 1,
+        },
+        [],
+        market_map={"coins": {"AMZN": {"bias": "BULLISH", "resistances": [240.0]}}},
+    )
+    lead = snapshot["action_board"]["lead"]
+    assert lead["status"] == "STALE_REVIEW"
+    assert lead["label"] == "Refresh required"
+    assert lead["analysis_fresh"] is False
+    assert "historical" in lead["trigger"]
+
+
+def test_dashboard_surfaces_patient_execution_blocker_over_ready_call() -> None:
+    snapshot = build_dashboard_snapshot(
+        {
+            "signals": {
+                "AMZN": {
+                    "action": "LONG",
+                    "score": 100.0,
+                    "confidence": "HIGH",
+                    "execution_mode": "tradable",
+                    "instrument_type": "equity",
+                    "live_price": 259.86,
+                    "displayed_long_trigger": 260.40,
+                    "analysis_updated_ts": time.time(),
+                    "patient_execution": {
+                        "enabled": True,
+                        "permitted": False,
+                        "summary": "thesis has 1.25 conflict points (max 1.00)",
+                    },
+                }
+            },
+            "positions": [],
+            "config": {
+                "coins": ["AMZN"],
+                "analysis_coins": ["AMZN"],
+                "analysis_signal_max_age_minutes": 20.0,
+            },
+            "cycle_number": 1,
+        },
+        [],
+        market_map={"coins": {"AMZN": {"bias": "BULLISH", "resistances": [260.40]}}},
+    )
+    lead = snapshot["action_board"]["lead"]
+    assert lead["status"] == "EXECUTION_BLOCKED"
+    assert lead["label"] == "Bullish, entry blocked"
+    assert lead["patient_execution_blocked"] is True
+    assert "1.25 conflict points" in lead["next_setup_reason"]
+
+
 def test_first_principles_guard_blocks_marginal_price_only_entry() -> None:
     cfg = build_config()
     cfg.trading.first_principles_guard_enabled = True
@@ -10132,6 +10251,70 @@ def test_analysis_budget_prioritizes_core_and_rotates_the_rest() -> None:
     assert set(first[2:]) != set(second[2:]), "non-priority symbols should rotate between cycles"
 
 
+def test_analysis_budget_reserves_slots_for_ranked_active_theses() -> None:
+    cfg = build_config()
+    cfg.trading.analysis_cycle_budget_enabled = True
+    cfg.trading.analysis_max_symbols_per_cycle = 4
+    cfg.trading.analysis_active_signal_slots = 2
+    cfg.trading.analysis_priority_coins = ["BTC", "ETH", "SOL"]
+    cfg.trading.analysis_coins = ["BTC", "ETH", "SOL", "AMZN", "AAPL", "GOOGL"]
+    agent = TradingAgent(cfg, [])
+    agent._tradable_coin_set.update({"AMZN", "AAPL"})
+    now_ts = time.time()
+    agent._last_signals = {
+        "AMZN": {
+            "action": "LONG",
+            "score": 80.0,
+            "conviction_entry_active": True,
+            "first_principles_decision": "PRESS",
+            "expectancy_probability": 0.81,
+            "expectancy_expected_r": 2.0,
+            "first_principles_sequence_score": 88.0,
+            "analysis_updated_ts": now_ts,
+        },
+        "AAPL": {
+            "action": "LONG",
+            "score": 70.0,
+            "conviction_entry_active": True,
+            "expectancy_probability": 0.70,
+            "expectancy_expected_r": 1.0,
+            "first_principles_sequence_score": 76.0,
+            "analysis_updated_ts": now_ts,
+        },
+    }
+    batch = agent._analysis_batch_for_cycle()
+    assert batch[:2] == ["BTC", "ETH"]
+    assert batch[2:] == ["AMZN", "AAPL"]
+
+
+def test_neutral_map_trigger_requires_high_conviction_and_sizes_down() -> None:
+    cfg = build_config()
+    agent = TradingAgent(cfg, [])
+    profile = agent._neutral_map_trigger_profile(
+        "AMZN",
+        {
+            "action": "LONG",
+            "conviction_entry_active": True,
+            "first_principles_decision": "PRESS",
+            "expectancy_probability": 0.81,
+            "expectancy_expected_r": 2.0,
+            "first_principles_sequence_score": 88.0,
+        },
+    )
+    assert profile["permitted"] is True
+    weak = agent._neutral_map_trigger_profile(
+        "AMZN",
+        {
+            "action": "LONG",
+            "conviction_entry_active": True,
+            "expectancy_probability": 0.55,
+            "expectancy_expected_r": 0.1,
+            "first_principles_sequence_score": 50.0,
+        },
+    )
+    assert weak["permitted"] is False
+
+
 def test_cycle_price_poll_is_bounded_to_live_risk_and_trigger_candidates() -> None:
     cfg = build_config()
     cfg.trading.cycle_price_poll_max_trigger_symbols = 3
@@ -10269,6 +10452,10 @@ def run_all() -> None:
     print("PASS shared Hyperliquid allMids cache")
     test_analysis_budget_prioritizes_core_and_rotates_the_rest()
     print("PASS bounded rotating analysis budget")
+    test_analysis_budget_reserves_slots_for_ranked_active_theses()
+    print("PASS active-thesis analysis reservation")
+    test_neutral_map_trigger_requires_high_conviction_and_sizes_down()
+    print("PASS high-conviction neutral-map starter")
     test_cycle_price_poll_is_bounded_to_live_risk_and_trigger_candidates()
     print("PASS bounded cycle price poll")
     test_patient_execution_keeps_scalp_call_visible_but_unfunded()
@@ -10533,6 +10720,8 @@ def run_all() -> None:
     print("PASS directional RL guardrails")
     test_mtf_fail_closed_blocks_when_confirmation_is_unavailable()
     print("PASS fail-closed MTF safety")
+    test_mtf_disagreement_penalizes_without_hard_blocking()
+    print("PASS transitioning MTF soft penalty")
     test_execution_quality_gate_blocks_thin_unstable_orderbooks()
     print("PASS execution-quality gate")
     test_execution_quality_can_fall_back_to_passive_rescue_limit()
@@ -10639,6 +10828,8 @@ def run_all() -> None:
     print("PASS daily radar durable semiconductor thesis")
     test_asia_session_builds_regional_us_semiconductor_readthrough()
     print("PASS Asia-to-US semiconductor read-through")
+    test_asia_session_uses_realized_index_move_over_lagging_bearish_map()
+    print("PASS Asia realized-move direction")
     test_us_market_context_builds_risk_off_anchor_and_trade_zones()
     print("PASS US market risk-off anchor")
     test_global_market_context_correlates_us_korea_and_japan()
@@ -10659,6 +10850,10 @@ def run_all() -> None:
     print("PASS dashboard contextual radar rendering")
     test_dashboard_snapshot_includes_daily_radar()
     print("PASS dashboard daily radar snapshot")
+    test_dashboard_marks_old_trade_calls_as_refresh_required()
+    print("PASS dashboard stale-call transparency")
+    test_dashboard_surfaces_patient_execution_blocker_over_ready_call()
+    print("PASS dashboard patient-entry blocker")
     test_first_principles_guard_blocks_marginal_price_only_entry()
     print("PASS first-principles marginal block")
     test_first_principles_guard_allows_marginal_event_attention_starter()

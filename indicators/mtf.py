@@ -180,31 +180,30 @@ def _combine(coin: str, b1h, b4h, b12h) -> MTFAnalysis:
     score_adj   = 0.0
     parts       = []
 
-    # 12H macro bias — strongest filter
+    # 12H macro bias is a penalty on its own. It becomes a hard entry filter
+    # only when 4H agrees; disagreement means the faster tape is transitioning.
     if b12h:
         parts.append(f"12H={b12h.bias}({b12h.strength:.0f})")
         if b12h.bias == "BEARISH":
-            allow_long  = False
             score_adj  -= 8
-            parts.append("12H macro bearish: blocking LONGs")
+            parts.append("12H macro bearish: penalizing LONGs")
         elif b12h.bias == "BULLISH":
-            allow_short = False
             score_adj  += 8
-            parts.append("12H macro bullish: blocking SHORTs")
+            parts.append("12H macro bullish: penalizing SHORTs")
 
     # 4H medium bias — secondary filter
     if b4h:
         parts.append(f"4H={b4h.bias}({b4h.strength:.0f})")
         if b4h.bias == "BEARISH":
-            if allow_long:   # only block if 12H didn't already
-                score_adj -= 5
+            score_adj -= 5
             if b12h and b12h.bias == "BEARISH":
                 allow_long = False   # double bearish → hard block
+                parts.append("12H + 4H bearish: blocking LONGs")
         elif b4h.bias == "BULLISH":
-            if allow_short:
-                score_adj += 5
+            score_adj += 5
             if b12h and b12h.bias == "BULLISH":
                 allow_short = False  # double bullish → hard block
+                parts.append("12H + 4H bullish: blocking SHORTs")
 
     # 1H
     if b1h:

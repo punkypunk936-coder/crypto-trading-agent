@@ -15,6 +15,7 @@ BENCHMARKS = (
 )
 ASIA_SEMIS = ("SKHX", "SMSN", "KIOXIA", "CXMT", "TSM", "DRAM")
 US_SEMI_READTHROUGH = ("MU", "SNDK", "AMD", "NVDA", "MRVL")
+BENCHMARK_MOVE_THRESHOLD_PCT = 0.5
 
 
 def _number(value: Any, default: float = 0.0) -> float:
@@ -51,9 +52,18 @@ def _direction(signal: dict) -> str:
     return "LONG" if score >= 57.0 else "SHORT" if score <= 43.0 else "FLAT"
 
 
+def _benchmark_direction(signal: dict, move_pct: float) -> tuple[str, str]:
+    """Use the live session move for index direction; slower models remain context."""
+    if move_pct >= BENCHMARK_MOVE_THRESHOLD_PCT:
+        return "LONG", "realized_move"
+    if move_pct <= -BENCHMARK_MOVE_THRESHOLD_PCT:
+        return "SHORT", "realized_move"
+    return _direction(signal), "model"
+
+
 def _benchmark_row(symbol: str, label: str, region: str, signal: dict, *, now_ts: float) -> dict:
-    direction = _direction(signal)
     move = _number(signal.get("recent_move_pct") or signal.get("move_pct_24h"))
+    direction, direction_source = _benchmark_direction(signal, move)
     price = _number(signal.get("live_price") or signal.get("price"))
     map_summary = _text(signal.get("market_map_summary") or signal.get("price_action_summary"))
     event_summary = _text(
@@ -64,9 +74,10 @@ def _benchmark_row(symbol: str, label: str, region: str, signal: dict, *, now_ts
     bias = "bullish" if direction == "LONG" else "bearish" if direction == "SHORT" else "mixed"
     why_parts = []
     if move:
-        why_parts.append(f"{move:+.1f}% over the latest 24h window")
+        why_parts.append(f"Session move leads: {move:+.1f}% over the latest 24h window")
     if map_summary:
-        why_parts.append(map_summary)
+        prefix = "Lagging model context" if direction_source == "realized_move" else "Model context"
+        why_parts.append(f"{prefix}: {map_summary}")
     if event_summary:
         why_parts.append(event_summary)
     return {
@@ -74,6 +85,7 @@ def _benchmark_row(symbol: str, label: str, region: str, signal: dict, *, now_ts
         "label": label,
         "region": region,
         "direction": direction,
+        "direction_source": direction_source,
         "bias": bias,
         "move_pct": round(move, 2),
         "price": round(price, 4),

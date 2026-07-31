@@ -1301,15 +1301,47 @@ class TradingAgent:
         if len(coins) <= budget:
             return coins
 
-        urgent = list(self.risk.positions)
-        urgent.extend(list(self.order_mgr.pending_orders))
-        urgent.extend(list(self.order_mgr.reentry_watches))
-        urgent.extend(list(getattr(self.cfg.trading, "analysis_priority_coins", []) or []))
-
         selected: List[str] = []
-        for coin in urgent:
+        live_risk = list(self.risk.positions)
+        live_risk.extend(list(self.order_mgr.pending_orders))
+        live_risk.extend(list(self.order_mgr.reentry_watches))
+        for coin in live_risk:
             coin_upper = str(coin or "").upper()
             if coin_upper in coins and coin_upper not in selected:
+                selected.append(coin_upper)
+            if len(selected) >= budget:
+                return selected
+
+        priority_coins = [
+            str(coin or "").upper()
+            for coin in (getattr(self.cfg.trading, "analysis_priority_coins", []) or [])
+            if str(coin or "").upper() in coins
+        ]
+        active_candidates = [
+            coin
+            for coin in self._trigger_watch_candidates_from_signals(self._last_signals)
+            if coin not in selected and coin not in priority_coins
+        ]
+        active_reserve = min(
+            len(active_candidates),
+            max(0, int(getattr(self.cfg.trading, "analysis_active_signal_slots", 6) or 6)),
+            max(0, budget - len(selected)),
+        )
+        priority_limit = max(len(selected), budget - active_reserve)
+        for coin_upper in priority_coins:
+            if len(selected) >= priority_limit:
+                break
+            if coin_upper not in selected:
+                selected.append(coin_upper)
+
+        for coin_upper in active_candidates[:active_reserve]:
+            if coin_upper in coins and coin_upper not in selected:
+                selected.append(coin_upper)
+            if len(selected) >= budget:
+                return selected
+
+        for coin_upper in priority_coins:
+            if coin_upper not in selected:
                 selected.append(coin_upper)
             if len(selected) >= budget:
                 return selected
@@ -1666,18 +1698,109 @@ class TradingAgent:
 
     def _trigger_watch_candidates_from_signals(self, signals: dict) -> list[str]:
         max_candidates = int(getattr(self.cfg.trading, "trigger_watch_max_candidates", 25) or 25)
-        out: list[str] = []
+        ranked: list[tuple[tuple[float, ...], str]] = []
         for coin, snapshot in (signals or {}).items():
             coin_upper = str(coin or "").upper().strip()
             if not coin_upper or coin_upper not in self._tradable_coin_set:
                 continue
             if self.risk.has_position(coin_upper) or self.order_mgr.has_pending(coin_upper):
                 continue
-            if self._snapshot_is_bullish_call(dict(snapshot or {})):
-                out.append(coin_upper)
-            if len(out) >= max_candidates:
-                break
-        return out
+            snap = dict(snapshot or {})
+            if not self._snapshot_is_bullish_call(snap):
+                continue
+            expectancy = dict(snap.get("expectancy") or {})
+            first_principles = dict(snap.get("first_principles") or {})
+            rank = (
+                1.0 if bool(snap.get("conviction_entry_active")) else 0.0,
+                1.0 if str(snap.get("first_principles_decision") or first_principles.get("decision") or "").upper() == "PRESS" else 0.0,
+                float(expectancy.get("probability", snap.get("expectancy_probability", 0.0)) or 0.0),
+                float(expectancy.get("expected_r", snap.get("expectancy_expected_r", 0.0)) or 0.0),
+                float(first_principles.get("sequence_score", snap.get("first_principles_sequence_score", 0.0)) or 0.0),
+                float(snap.get("score", 0.0) or 0.0),
+                float(snap.get("analysis_updated_ts", 0.0) or 0.0),
+            )
+            ranked.append((rank, coin_upper))
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        return [coin for _rank, coin in ranked[:max_candidates]]
+
+    def _neutral_map_trigger_profile(self, coin: str, snapshot: dict) -> dict:
+        snap = dict(snapshot or {})
+        profile = {"permitted": False, "summary": "neutral map requires a fresh bullish reclaim"}
+        if not getattr(self.cfg.trading, "trigger_watch_neutral_map_high_conviction_enabled", True):
+            return profile
+        expectancy = dict(snap.get("expectancy") or {})
+        first_principles = dict(snap.get("first_principles") or {})
+        probability = float(expectancy.get("probability", snap.get("expectancy_probability", 0.0)) or 0.0)
+        expected_r = float(expectancy.get("expected_r", snap.get("expectancy_expected_r", 0.0)) or 0.0)
+        sequence_score = float(
+            first_principles.get("sequence_score", snap.get("first_principles_sequence_score", 0.0)) or 0.0
+        )
+        decision = str(
+            snap.get("first_principles_decision") or first_principles.get("decision") or ""
+        ).upper()
+        core_names = {
+            str(value or "").upper()
+            for value in (getattr(self.cfg.trading, "core_long_thesis_coins", []) or [])
+        }
+        conviction_active = bool(
+            snap.get("conviction_entry_active")
+            or dict(snap.get("conviction_entry") or {}).get("active")
+        )
+        blockers = []
+        if not conviction_active:
+            blockers.append("conviction entry is inactive")
+        if decision != "PRESS" and coin not in core_names:
+            blockers.append("first-principles decision is not PRESS")
+        if probability < float(getattr(self.cfg.trading, "trigger_watch_neutral_map_min_probability", 0.68) or 0.68):
+            blockers.append(f"probability is only {probability:.0%}")
+        if expected_r < float(getattr(self.cfg.trading, "trigger_watch_neutral_map_min_expected_r", 0.75) or 0.75):
+            blockers.append(f"expected value is only {expected_r:+.2f}R")
+        if sequence_score < float(
+            getattr(self.cfg.trading, "trigger_watch_neutral_map_min_sequence_score", 75.0) or 75.0
+        ):
+            blockers.append(f"sequence score is only {sequence_score:.0f}")
+        profile.update({
+            "permitted": not blockers,
+            "summary": (
+                "high-conviction thesis permits a reduced-size starter through a neutral map"
+                if not blockers else "; ".join(blockers)
+            ),
+            "probability": probability,
+            "expected_r": expected_r,
+            "sequence_score": sequence_score,
+        })
+        return profile
+
+    def _record_trigger_watch_state(
+        self,
+        coin: str,
+        *,
+        state: str,
+        reason: str,
+        live_price: float = 0.0,
+        trigger_price: float = 0.0,
+        map_bias: str = "",
+    ) -> None:
+        snapshot = self._last_signals.get(coin)
+        if not isinstance(snapshot, dict):
+            return
+        observed_ts = time.time()
+        observation = dict(snapshot.get("trigger_watch") or {})
+        observation.update({
+            "state": str(state or "").upper(),
+            "execution_blocker": str(reason or ""),
+            "observed_price": round(float(live_price or 0.0), 8),
+            "trigger_price": round(float(trigger_price or 0.0), 8),
+            "map_bias": str(map_bias or "").upper(),
+            "observed_ts": observed_ts,
+        })
+        snapshot.update({
+            "trigger_watch": observation,
+            "trigger_watch_state": observation["state"],
+            "trigger_watch_execution_blocker": observation["execution_blocker"],
+            "trigger_watch_observed_price": observation["observed_price"],
+            "trigger_watch_observed_ts": observed_ts,
+        })
 
     def _trigger_watch_trade_plan(
         self,
@@ -1937,6 +2060,11 @@ class TradingAgent:
 
             previous_snapshot = dict(signal_context.get(coin) or {})
             if not self._signal_snapshot_is_fresh(previous_snapshot):
+                self._record_trigger_watch_state(
+                    coin,
+                    state="EXPIRED",
+                    reason="Analysis is stale; a fresh full pass is required before execution.",
+                )
                 continue
             if not allow_map_only and not self._snapshot_is_bullish_call(previous_snapshot):
                 continue
@@ -1956,13 +2084,12 @@ class TradingAgent:
                 continue
             if not map_signal or not getattr(map_signal, "valid", False):
                 self._trigger_watch_last_prices[coin] = live_price
-                continue
-            if str(getattr(map_signal, "bias", "NEUTRAL") or "NEUTRAL").upper() != "BULLISH":
-                self._trigger_watch_last_prices[coin] = live_price
-                continue
-            min_conf = str(getattr(self.cfg.trading, "trigger_watch_min_confidence", "MEDIUM") or "MEDIUM").upper()
-            if self._label_rank(str(getattr(map_signal, "confidence", "LOW") or "LOW").upper()) < self._label_rank(min_conf):
-                self._trigger_watch_last_prices[coin] = live_price
+                self._record_trigger_watch_state(
+                    coin,
+                    state="BLOCKED",
+                    reason="Fresh market-map validation is unavailable.",
+                    live_price=live_price,
+                )
                 continue
 
             displayed_trigger = self._displayed_long_trigger_from_snapshot(
@@ -1983,12 +2110,69 @@ class TradingAgent:
             hit_levels = sorted({round(level, 10) for level in candidate_levels if level > 0 and live_price >= level})
             if not hit_levels:
                 self._trigger_watch_last_prices[coin] = live_price
+                next_trigger = min(candidate_levels) if candidate_levels else 0.0
+                self._record_trigger_watch_state(
+                    coin,
+                    state="WAITING",
+                    reason="Live price has not crossed the active long trigger.",
+                    live_price=live_price,
+                    trigger_price=next_trigger,
+                    map_bias=str(getattr(map_signal, "bias", "NEUTRAL") or "NEUTRAL"),
+                )
                 continue
             trigger_price = (
                 displayed_trigger
                 if displayed_trigger > 0 and live_price >= displayed_trigger
                 else max(hit_levels)
             )
+            map_bias = str(getattr(map_signal, "bias", "NEUTRAL") or "NEUTRAL").upper()
+            neutral_profile = (
+                self._neutral_map_trigger_profile(coin, previous_snapshot)
+                if map_bias == "NEUTRAL" else {"permitted": False, "summary": ""}
+            )
+            neutral_map_override = bool(map_bias == "NEUTRAL" and neutral_profile.get("permitted"))
+            if map_bias == "BEARISH" or (map_bias == "NEUTRAL" and not neutral_map_override):
+                self._trigger_watch_last_prices[coin] = live_price
+                self._record_trigger_watch_state(
+                    coin,
+                    state="BLOCKED",
+                    reason=(
+                        "Fresh market map is bearish; the long trigger is not executable."
+                        if map_bias == "BEARISH"
+                        else f"Long trigger crossed, but neutral-map starter did not qualify: {neutral_profile.get('summary', '')}"
+                    ),
+                    live_price=live_price,
+                    trigger_price=trigger_price,
+                    map_bias=map_bias,
+                )
+                continue
+            if map_bias not in {"BULLISH", "NEUTRAL"}:
+                self._trigger_watch_last_prices[coin] = live_price
+                self._record_trigger_watch_state(
+                    coin,
+                    state="BLOCKED",
+                    reason=f"Fresh market-map direction is {map_bias or 'unknown'}.",
+                    live_price=live_price,
+                    trigger_price=trigger_price,
+                    map_bias=map_bias,
+                )
+                continue
+            min_conf = str(getattr(self.cfg.trading, "trigger_watch_min_confidence", "MEDIUM") or "MEDIUM").upper()
+            if (
+                map_bias == "BULLISH"
+                and self._label_rank(str(getattr(map_signal, "confidence", "LOW") or "LOW").upper())
+                < self._label_rank(min_conf)
+            ):
+                self._trigger_watch_last_prices[coin] = live_price
+                self._record_trigger_watch_state(
+                    coin,
+                    state="BLOCKED",
+                    reason="Bullish map confidence is below the trigger-watch minimum.",
+                    live_price=live_price,
+                    trigger_price=trigger_price,
+                    map_bias=map_bias,
+                )
+                continue
             last_price = float(self._trigger_watch_last_prices.get(coin) or 0.0)
             self._trigger_watch_last_prices[coin] = live_price
             trigger_key = f"{coin}:LONG:{trigger_price:.6f}"
@@ -2016,6 +2200,17 @@ class TradingAgent:
                     f"[{coin}] Trigger-watch saw bullish trigger ${trigger_price:,.2f}, "
                     f"but live is already {trigger_chase_pct:.2f}% above it; not chasing."
                 )
+                self._record_trigger_watch_state(
+                    coin,
+                    state="MISSED",
+                    reason=(
+                        f"Trigger crossed, but price was already {trigger_chase_pct:.2f}% above it; "
+                        "the agent declined to chase."
+                    ),
+                    live_price=live_price,
+                    trigger_price=trigger_price,
+                    map_bias=map_bias,
+                )
                 continue
 
             price_diagnostics = get_price_diagnostics(
@@ -2028,6 +2223,14 @@ class TradingAgent:
                 and str(price_diagnostics.get("price_status") or "OK").upper() == "CHECK"
             ):
                 log.info(f"[{coin}] Trigger-watch blocked by price check: {price_diagnostics.get('price_warning', '')}")
+                self._record_trigger_watch_state(
+                    coin,
+                    state="BLOCKED",
+                    reason=f"Price verification failed: {price_diagnostics.get('price_warning', '')}",
+                    live_price=live_price,
+                    trigger_price=trigger_price,
+                    map_bias=map_bias,
+                )
                 continue
 
             trade_plan = self._trigger_watch_trade_plan(
@@ -2045,6 +2248,11 @@ class TradingAgent:
             trigger_total = int(trigger_stats.get("total", 0) or 0)
             trigger_wr = float(trigger_stats.get("win_rate", 50.0) or 50.0)
             sizing_multiplier = float(getattr(self.cfg.trading, "trigger_watch_size_multiplier", 0.45) or 0.45)
+            if neutral_map_override:
+                sizing_multiplier = min(
+                    sizing_multiplier,
+                    float(getattr(self.cfg.trading, "trigger_watch_neutral_map_size_multiplier", 0.30) or 0.30),
+                )
             if momentum_aligned:
                 sizing_multiplier = max(
                     sizing_multiplier,
@@ -2075,6 +2283,10 @@ class TradingAgent:
             snapshot["trigger_watch"]["learned_win_rate"] = trigger_wr
             snapshot["trigger_watch"]["displayed_trigger_source"] = bool(displayed_trigger > 0)
             snapshot["trigger_watch"]["momentum_expansion_sized"] = bool(momentum_aligned)
+            snapshot["trigger_watch"]["neutral_map_override"] = neutral_map_override
+            snapshot["trigger_watch"]["neutral_map_override_reason"] = (
+                neutral_profile.get("summary", "") if neutral_map_override else ""
+            )
             snapshot["rl_win_rate"] = rl_stats.get("win_rate")
             snapshot["rl_long_wr"] = rl_stats.get("long_wr")
             snapshot["rl_pattern_boost"] = rl_pattern_boost
@@ -7680,6 +7892,7 @@ class TradingAgent:
                 "core_long_thesis_coins": list(getattr(self.cfg.trading, "core_long_thesis_coins", []) or []),
                 "semiconductor_structural_hold_enabled": getattr(self.cfg.trading, "semiconductor_structural_hold_enabled", True),
                 "semiconductor_break_confirmation_cycles": getattr(self.cfg.trading, "semiconductor_break_confirmation_cycles", 4),
+                "analysis_signal_max_age_minutes": getattr(self.cfg.trading, "analysis_signal_max_age_minutes", 20.0),
             },
         }
 
@@ -9568,6 +9781,7 @@ class TradingAgent:
                 "semiconductor_structural_hold_enabled": getattr(self.cfg.trading, "semiconductor_structural_hold_enabled", True),
                 "semiconductor_break_confirmation_cycles": getattr(self.cfg.trading, "semiconductor_break_confirmation_cycles", 4),
                 "check_interval_seconds": self.cfg.trading.check_interval_seconds,
+                "analysis_signal_max_age_minutes": getattr(self.cfg.trading, "analysis_signal_max_age_minutes", 20.0),
                 "adaptive_leverage_enabled": getattr(self.cfg.trading, "adaptive_leverage_enabled", False),
                 "min_leverage":           getattr(self.cfg.trading, "min_leverage", 1),
                 "base_leverage":          getattr(self.cfg.trading, "base_leverage", self.cfg.trading.leverage),
