@@ -71,6 +71,7 @@ from logger import get_logger
 from data.market_data import completed_candle_frame, fetch_candles, get_current_price, get_price_diagnostics
 import hosted_state_sync
 import market_map
+import micro_desk
 import missed_move_lab
 import performance_intelligence
 from pnl_explanation import explain_closed_trade, explain_open_position
@@ -193,6 +194,7 @@ class TradingAgent:
         }
         self._memory = trade_memory          # reinforcement learning module
         self._analog_engine = analog_engine.HistoricalAnalogEngine(cfg.trading)
+        self._micro_desk = micro_desk.MicroDesk(cfg.trading, data_dir=DATA_DIR)
         self._llm_referee = llm_referee.LLMReferee(cfg.trading)
         self._last_learning_report_refresh_ts = 0.0
 
@@ -2393,19 +2395,67 @@ class TradingAgent:
                 self._last_signals[coin]["margin_usd"] = getattr(order, "margin_usd", 0.0)
                 self._last_signals[coin]["order_notional_usd"] = getattr(order, "size_usd", 0.0)
 
+            execution_quality = self._assess_execution_quality(coin, "LONG", order, orderbook_signal)
+            self._last_signals[coin]["execution_quality"] = execution_quality
+            self._last_signals[coin]["execution_quality_score"] = execution_quality.get("score", 0.0)
+            self._last_signals[coin]["execution_quality_summary"] = execution_quality.get("summary", "")
+            if not self._apply_micro_desk_to_order(
+                coin,
+                signal,
+                order,
+                portfolio_usd=portfolio_usd,
+                execution_quality=execution_quality,
+                orderbook_signal=orderbook_signal,
+                stage="trigger_watch_micro_desk_block",
+            ):
+                continue
+
             self._trigger_watch_attempt_ts[trigger_key] = now
             log.info(
                 f"[{coin}] 🚀 Trigger-watch LONG firing now: live ${live_price:,.2f} "
                 f"crossed ${trigger_price:,.2f} ({trigger_chase_pct:.2f}% chase)"
             )
-            did_execute = self._execute_order(coin, signal, order)
+            micro_plan = dict(getattr(signal, "execution_plan", {}) or {})
+            if str(micro_plan.get("mode") or "").lower() in {"limit", "maker_limit"}:
+                limit_price = float(micro_plan.get("limit_price") or micro_plan.get("entry_price") or 0.0)
+                limit_result = self._place_limit_order(
+                    coin,
+                    "LONG",
+                    limit_price,
+                    order.size_usd,
+                    order.stop_loss,
+                    order.take_profit,
+                    signal.score,
+                    reason="trigger_watch_micro_desk",
+                    entry_context=self._build_entry_context(coin, signal, order, entry_type="trigger_watch_limit"),
+                    trade_plan=dict(getattr(signal, "trade_plan", {}) or {}),
+                    maker_only=True,
+                    leverage=self._order_leverage(order),
+                    margin_usd=float(getattr(order, "margin_usd", 0.0) or 0.0),
+                )
+                did_execute = bool(limit_result.get("filled"))
+                execution_accepted = bool(limit_result.get("success"))
+                pending_limit = bool(limit_result.get("pending"))
+            else:
+                did_execute = self._execute_order(coin, signal, order)
+                execution_accepted = bool(did_execute)
+                pending_limit = False
             self._record_decision_snapshot(
                 coin,
                 portfolio_usd=portfolio_usd,
-                stage="trigger_watch_market_entry" if did_execute else "trigger_watch_market_failed",
+                stage=(
+                    "trigger_watch_passive_entry"
+                    if did_execute and micro_plan.get("mode") in {"limit", "maker_limit"}
+                    else "trigger_watch_passive_pending"
+                    if pending_limit
+                    else "trigger_watch_market_entry"
+                    if did_execute
+                    else "trigger_watch_execution_failed"
+                ),
                 signal=signal,
                 executed=bool(did_execute),
-                blocked=not bool(did_execute),
+                blocked=not execution_accepted,
+                pending_limit=pending_limit,
             )
             if did_execute:
                 self._record_precision_entry(coin, signal, mode="trigger_watch_market")
@@ -2889,6 +2939,15 @@ class TradingAgent:
             "execution_coach_stretch_bps": 0.0,
             "estimated_slippage_bps": 0.0,
             "execution_persistence_cycles": 0,
+            "micro_desk": {},
+            "micro_desk_verdict": "",
+            "micro_desk_summary": "",
+            "micro_desk_raw_probability": 0.50,
+            "micro_desk_calibrated_probability": 0.50,
+            "micro_desk_net_edge_bps": 0.0,
+            "micro_desk_all_in_cost_bps": 0.0,
+            "micro_desk_size_multiplier": 1.0,
+            "micro_desk_passive_required": False,
             "execution_mode":  "tradable" if coin in self._tradable_coin_set else "observation_only",
             "decision_stage": "analysis",
             "streak_confirmation_remaining": 0,
@@ -3830,6 +3889,16 @@ class TradingAgent:
         self._last_signals[coin]["execution_quality_summary"] = execution_quality.get("summary", "")
         self._last_signals[coin]["estimated_slippage_bps"] = execution_quality.get("estimated_slippage_bps", 0.0)
         self._last_signals[coin]["execution_persistence_cycles"] = execution_quality.get("persistence_cycles", 0)
+        if not self._apply_micro_desk_to_order(
+            coin,
+            signal,
+            order,
+            portfolio_usd=portfolio_usd,
+            execution_quality=execution_quality,
+            orderbook_signal=orderbook_signal,
+            current_position=current_pos,
+        ):
+            return
         coached_execution = execution_coach.decide_execution(
             self.cfg.trading,
             coin=coin,
@@ -4369,6 +4438,164 @@ class TradingAgent:
                 feature_store.append_decision_feature_row(record)
         except Exception as exc:
             log.debug(f"[{coin}] Decision dataset append skipped: {exc}")
+
+    def _apply_micro_desk_to_order(
+        self,
+        coin: str,
+        signal,
+        order,
+        *,
+        portfolio_usd: float,
+        execution_quality: dict | None = None,
+        orderbook_signal=None,
+        current_position=None,
+        stage: str = "micro_desk_block",
+    ) -> bool:
+        snapshot = dict(self._last_signals.get(coin, {}) or {})
+        assessment = self._micro_desk.assess(
+            coin=coin,
+            direction=getattr(signal, "action", snapshot.get("action", "FLAT")),
+            signal_snapshot=snapshot,
+            order=order,
+            portfolio_usd=float(portfolio_usd or 0.0),
+            open_positions=list(self.risk.positions.values()),
+            execution_quality=execution_quality or {},
+        )
+        snapshot["micro_desk"] = assessment
+        snapshot["micro_desk_verdict"] = assessment.get("verdict", "")
+        snapshot["micro_desk_summary"] = assessment.get("summary", "")
+        snapshot["micro_desk_raw_probability"] = assessment.get("raw_probability", 0.50)
+        snapshot["micro_desk_calibrated_probability"] = assessment.get("calibrated_probability", 0.50)
+        snapshot["micro_desk_net_edge_bps"] = assessment.get("net_edge_bps", 0.0)
+        snapshot["micro_desk_all_in_cost_bps"] = assessment.get("all_in_cost_bps", 0.0)
+        snapshot["micro_desk_size_multiplier"] = assessment.get("size_multiplier", 1.0)
+        snapshot["micro_desk_passive_required"] = assessment.get("passive_required", False)
+
+        expectancy = dict(getattr(signal, "expectancy", {}) or snapshot.get("expectancy", {}) or {})
+        expectancy["raw_probability"] = assessment.get("raw_probability", expectancy.get("probability", 0.50))
+        expectancy["probability"] = assessment.get("calibrated_probability", expectancy.get("probability", 0.50))
+        expectancy["calibration"] = {
+            key: assessment.get(key)
+            for key in (
+                "bucket",
+                "bucket_samples",
+                "family",
+                "family_samples",
+                "instrument_family",
+                "instrument_samples",
+                "global_samples",
+                "global_win_rate",
+                "probability_haircut",
+            )
+        }
+        signal.expectancy = expectancy
+        snapshot["expectancy"] = expectancy
+        snapshot["expectancy_probability"] = expectancy.get("probability", 0.50)
+        self._last_signals[coin] = snapshot
+
+        if not assessment.get("permitted", True):
+            reason = str(assessment.get("summary") or "micro desk found no edge after cost").strip()
+            log.info(f"[{coin}] Micro desk blocks funding: {reason}")
+            signal.action = "FLAT"
+            signal.flat_reason = reason
+            signal.reason = reason
+            self._sync_signal_snapshot(coin, signal)
+            self._record_decision_snapshot(
+                coin,
+                portfolio_usd=portfolio_usd,
+                stage=stage,
+                signal=signal,
+                current_position=current_position,
+                blocked=True,
+            )
+            return False
+
+        multiplier = max(0.0, min(1.0, float(assessment.get("size_multiplier", 1.0) or 1.0)))
+        original_size = float(getattr(order, "size_usd", 0.0) or 0.0)
+        trimmed_size = original_size * multiplier
+        min_trade = float(getattr(self.cfg.trading, "min_trade_usd", 0.0) or 0.0)
+        if original_size > 0 and trimmed_size < min_trade:
+            reason = (
+                f"micro desk risk budget trims ${original_size:.0f} to ${trimmed_size:.0f}, "
+                f"below the ${min_trade:.0f} minimum"
+            )
+            assessment["permitted"] = False
+            assessment["verdict"] = "BLOCK"
+            assessment["summary"] = reason
+            assessment.setdefault("blockers", []).append(reason)
+            snapshot["micro_desk"] = assessment
+            snapshot["micro_desk_verdict"] = "BLOCK"
+            snapshot["micro_desk_summary"] = reason
+            self._last_signals[coin] = snapshot
+            signal.action = "FLAT"
+            signal.flat_reason = reason
+            signal.reason = reason
+            self._sync_signal_snapshot(coin, signal)
+            self._record_decision_snapshot(
+                coin,
+                portfolio_usd=portfolio_usd,
+                stage=stage,
+                signal=signal,
+                current_position=current_position,
+                blocked=True,
+            )
+            return False
+        if multiplier < 0.999:
+            order.size_usd = trimmed_size
+            order.size_coin = trimmed_size / max(float(getattr(order, "price", 0.0) or 0.0), 1e-9)
+            order.margin_usd = trimmed_size / max(self._order_leverage(order), 1)
+            snapshot["order_notional_usd"] = round(trimmed_size, 2)
+            snapshot["margin_usd"] = round(float(order.margin_usd or 0.0), 2)
+
+        if assessment.get("passive_required", False):
+            direction = str(getattr(signal, "action", "") or "").upper()
+            passive_price = float((execution_quality or {}).get("passive_limit_price", 0.0) or 0.0)
+            if passive_price <= 0 and orderbook_signal is not None:
+                passive_price = float(
+                    getattr(orderbook_signal, "best_bid" if direction == "LONG" else "best_ask", 0.0) or 0.0
+                )
+            if passive_price <= 0:
+                passive_price = float(
+                    snapshot.get("orderbook_best_bid" if direction == "LONG" else "orderbook_best_ask", 0.0) or 0.0
+                )
+            if passive_price <= 0:
+                reason = "micro desk requires passive execution, but no firm maker quote is available"
+                assessment["permitted"] = False
+                assessment["verdict"] = "BLOCK"
+                assessment["summary"] = reason
+                assessment.setdefault("blockers", []).append(reason)
+                snapshot["micro_desk"] = assessment
+                snapshot["micro_desk_verdict"] = "BLOCK"
+                snapshot["micro_desk_summary"] = reason
+                self._last_signals[coin] = snapshot
+                signal.action = "FLAT"
+                signal.flat_reason = reason
+                signal.reason = reason
+                self._sync_signal_snapshot(coin, signal)
+                self._record_decision_snapshot(
+                    coin,
+                    portfolio_usd=portfolio_usd,
+                    stage=stage,
+                    signal=signal,
+                    current_position=current_position,
+                    blocked=True,
+                )
+                return False
+            passive_reason = (
+                f"Micro desk requires maker execution: {assessment.get('summary', '')}"
+            ).strip()
+            signal.execution_plan = {
+                "mode": "maker_limit",
+                "entry_price": round(passive_price, 6),
+                "limit_price": round(passive_price, 6),
+                "max_wait_cycles": int(getattr(self.cfg.trading, "execution_limit_timeout_cycles", 6) or 6),
+                "reason": passive_reason,
+            }
+            snapshot["execution_plan"] = dict(signal.execution_plan)
+
+        self._last_signals[coin] = snapshot
+        self._sync_signal_snapshot(coin, signal)
+        return True
 
     def _assess_execution_quality(self, coin: str, direction: str, order, orderbook_signal) -> dict:
         direction = direction.upper()
@@ -7332,6 +7559,7 @@ class TradingAgent:
             "thesis": dict(entry_ctx.get("thesis", {}) or last_sig.get("thesis", {}) or {}),
             "trade_plan": dict(entry_ctx.get("trade_plan", {}) or {}),
             "execution_quality": dict(entry_ctx.get("execution_quality", {}) or {}),
+            "micro_desk": dict(entry_ctx.get("micro_desk", {}) or {}),
             "entry_context": dict(entry_ctx or {}),
             "exit_context": {
                 "signal_action": last_sig.get("action", "FLAT"),
@@ -7552,6 +7780,15 @@ class TradingAgent:
             "execution_coach_stretch_bps": sig.get("execution_coach_stretch_bps", 0.0),
             "estimated_slippage_bps": sig.get("estimated_slippage_bps", 0.0),
             "execution_persistence_cycles": sig.get("execution_persistence_cycles", 0),
+            "micro_desk": dict(sig.get("micro_desk") or {}),
+            "micro_desk_verdict": sig.get("micro_desk_verdict", ""),
+            "micro_desk_summary": sig.get("micro_desk_summary", ""),
+            "micro_desk_raw_probability": sig.get("micro_desk_raw_probability", 0.50),
+            "micro_desk_calibrated_probability": sig.get("micro_desk_calibrated_probability", 0.50),
+            "micro_desk_net_edge_bps": sig.get("micro_desk_net_edge_bps", 0.0),
+            "micro_desk_all_in_cost_bps": sig.get("micro_desk_all_in_cost_bps", 0.0),
+            "micro_desk_size_multiplier": sig.get("micro_desk_size_multiplier", 1.0),
+            "micro_desk_passive_required": sig.get("micro_desk_passive_required", False),
             "leverage": getattr(order, "leverage", self.cfg.trading.leverage),
             "margin_usd": getattr(order, "margin_usd", 0.0),
             "leverage_note": getattr(order, "leverage_note", ""),
@@ -8327,6 +8564,23 @@ class TradingAgent:
                     "north_star_guard": guard,
                 })
                 continue
+            execution_quality = dict(snapshot.get("execution_quality") or {})
+            if not self._apply_micro_desk_to_order(
+                coin,
+                signal,
+                order,
+                portfolio_usd=portfolio_usd,
+                execution_quality=execution_quality,
+                stage="proactive_starter_micro_desk_block",
+            ):
+                desk = dict(self._last_signals.get(coin, {}).get("micro_desk") or {})
+                execution["skipped"].append({
+                    "coin": coin,
+                    "direction": direction,
+                    "reason": desk.get("summary", "micro desk blocked proactive starter"),
+                    "micro_desk": desk,
+                })
+                continue
             final_size = float(order.size_usd or final_size)
             order.margin_usd = final_size / max(self._order_leverage(order), 1)
             execution["summary"]["attempted_count"] += 1
@@ -8346,14 +8600,45 @@ class TradingAgent:
                 f"${final_size:.2f} notional / ${getattr(order, 'margin_usd', 0.0):.2f} margin "
                 f"@ {getattr(order, 'leverage', self.cfg.trading.leverage)}x via starter basket | {guard.get('summary', '')}"
             )
-            executed = self._execute_order(coin, signal, order)
+            micro_plan = dict(getattr(signal, "execution_plan", {}) or {})
+            if str(micro_plan.get("mode") or "").lower() in {"limit", "maker_limit"}:
+                limit_price = float(micro_plan.get("limit_price") or micro_plan.get("entry_price") or 0.0)
+                limit_result = self._place_limit_order(
+                    coin,
+                    direction,
+                    limit_price,
+                    order.size_usd,
+                    order.stop_loss,
+                    order.take_profit,
+                    signal.score,
+                    reason="proactive_starter_micro_desk",
+                    entry_context=self._build_entry_context(coin, signal, order, entry_type="proactive_starter_limit"),
+                    trade_plan=dict(getattr(signal, "trade_plan", {}) or {}),
+                    maker_only=True,
+                    leverage=self._order_leverage(order),
+                    margin_usd=float(getattr(order, "margin_usd", 0.0) or 0.0),
+                )
+                executed = bool(limit_result.get("filled"))
+                pending_limit = bool(limit_result.get("pending"))
+                execution_accepted = bool(limit_result.get("success"))
+            else:
+                executed = self._execute_order(coin, signal, order)
+                pending_limit = False
+                execution_accepted = bool(executed)
             self._record_decision_snapshot(
                 coin,
                 portfolio_usd=portfolio_usd,
-                stage="proactive_starter_opened" if executed else "proactive_starter_failed",
+                stage=(
+                    "proactive_starter_opened"
+                    if executed
+                    else "proactive_starter_passive_pending"
+                    if pending_limit
+                    else "proactive_starter_failed"
+                ),
                 signal=signal,
                 executed=bool(executed),
-                blocked=not bool(executed),
+                blocked=not execution_accepted,
+                pending_limit=pending_limit,
             )
             if executed:
                 opened = {
@@ -8368,6 +8653,8 @@ class TradingAgent:
                 execution["opened"].append(opened)
                 execution["summary"]["opened_count"] += 1
                 execution["summary"]["opened_usd"] = round(float(execution["summary"]["opened_usd"]) + final_size, 2)
+            elif pending_limit:
+                execution["skipped"].append({"coin": coin, "direction": direction, "reason": "passive maker order is resting"})
             else:
                 execution["skipped"].append({"coin": coin, "direction": direction, "reason": "market execution failed"})
 
@@ -9755,6 +10042,7 @@ class TradingAgent:
             "circuit_health": circuit_breaker_registry.health_check(),
             "loss_circuit_breaker": self.risk.circuit_breaker_status(),
             "north_star": self._north_star_scorecard(),
+            "micro_desk": self._micro_desk.summary(),
             "listing_sync": getattr(self, "_last_listing_sync_report", {}),
             "analysis_cycle": {
                 "budget_enabled": bool(

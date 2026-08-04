@@ -5054,6 +5054,7 @@ function commandDetailHtml(item) {
       + commandDetailLine('Level', simpleNextText(safe, 96))
       + commandDetailLine('Invalid if', simpleInvalidationText(safe, 96))
       + commandDetailLine(status.startsWith('OPEN_') ? 'Holding because' : 'Why', simpleThesisText(safe, 96))
+      + (safe.micro_desk_verdict ? commandDetailLine('Desk', String(safe.micro_desk_verdict) + ' • ' + shortText(safe.micro_desk_summary || '', 96)) : '')
       + commandDetailLine('Mode', holdingText)
     + '</div>'
     + priceIntegrityWarningHtml(safe);
@@ -5737,10 +5738,12 @@ function renderMarketMapSummary(summary, marketMap) {
 
 function renderLearningSummary(summary, trades) {
   const meta = document.getElementById('review-meta');
+  const microDesk = ((latestState || {}).micro_desk || {});
   const missedCount = Number((((latestMissedMoveReport || {}).summary || {}).missed_win_count) || 0);
   const dossierCount = Number((latestAssetDossiers || {}).count || 0);
   const distilledFamilies = Number((((latestPlaybookDistillerReport || {}).summary || {}).working_family_count) || 0);
   meta.textContent = 'Lessons ' + (summary.count || 0)
+    + ' • calibrated ' + Number(microDesk.calibration_samples || 0)
     + ' • missed winners ' + missedCount
     + ' • dossiers ' + dossierCount
     + ' • playbooks ' + distilledFamilies;
@@ -5766,11 +5769,23 @@ function renderLearningSummary(summary, trades) {
   const policyLine = policyFindings.length
     ? policyFindings.map((item) => String(item.priority || '') + ' ' + String(item.area || '') + ': ' + String(item.title || '')).join(' • ')
     : (policySummary.headline || 'No policy-health gaps detected yet.');
+  const deskDecisions = Array.isArray(microDesk.latest_decisions) ? microDesk.latest_decisions.slice(0, 4) : [];
+  const deskVerdicts = microDesk.verdict_counts || {};
+  const deskDecisionLine = deskDecisions.length
+    ? deskDecisions.map((item) => String(item.coin || '') + ' ' + String(item.verdict || '') + ' ' + Number(item.net_edge_bps || 0).toFixed(1) + 'bps').join(' • ')
+    : 'No candidate has reached final admission since the desk restarted.';
   let html = '<div class="review-stack"><div class="review-summary-grid">'
     + '<div class="review-summary-box"><div class="card-label">Closed Trades</div><div class="review-count">' + esc(String(summary.count || 0)) + '</div><div class="review-count-sub">recent lessons absorbed</div></div>'
     + '<div class="review-summary-box"><div class="card-label">Winning Lessons</div><div class="review-count green">' + esc(String(summary.wins || 0)) + '</div><div class="review-count-sub">setups that paid</div></div>'
     + '<div class="review-summary-box"><div class="card-label">Losing Lessons</div><div class="review-count red">' + esc(String(summary.losses || 0)) + '</div><div class="review-count-sub">mistakes now tracked</div></div>'
     + '<div class="review-summary-box"><div class="card-label">Edge Read</div><div class="review-notes">' + esc(shortText(perfSummary.top_lesson || 'Not enough closed trades to isolate the edge yet.', 130)) + '</div></div>'
+    + '</div>';
+
+  html += '<div class="review-summary-grid">'
+    + '<div class="review-summary-box"><div class="card-label">Micro Desk</div><div class="review-notes">' + esc(shortText(microDesk.headline || 'Waiting for calibrated history.', 170)) + '</div></div>'
+    + '<div class="review-summary-box"><div class="card-label">Admission</div><div class="review-notes">Approve ' + esc(String(deskVerdicts.APPROVE || 0)) + ' • Passive ' + esc(String(deskVerdicts.PASSIVE_ONLY || 0)) + ' • Block ' + esc(String(deskVerdicts.BLOCK || 0)) + '</div></div>'
+    + '<div class="review-summary-box"><div class="card-label">Latest Edge Read</div><div class="review-notes">' + esc(shortText(deskDecisionLine, 180)) + '</div></div>'
+    + '<div class="review-summary-box"><div class="card-label">Order Rule</div><div class="review-notes">' + esc(microDesk.principle || 'Fund only positive edge after costs and uncertainty.') + '</div></div>'
     + '</div>';
 
   html += '<div class="review-summary-grid">'
@@ -5926,6 +5941,7 @@ function renderActionBoard(board) {
             + '<div class="token-detail"><span class="token-detail-label">Next</span><div class="token-detail-value">' + esc(simpleNextText(item, 96)) + '</div></div>'
             + '<div class="token-detail"><span class="token-detail-label">Invalid if</span><div class="token-detail-value">' + esc(simpleInvalidationText(item, 92)) + '</div></div>'
             + '<div class="token-detail"><span class="token-detail-label">Why</span><div class="token-detail-value">' + esc(simpleThesisText(item, 96)) + '</div></div>'
+            + (item.micro_desk_verdict ? '<div class="token-detail"><span class="token-detail-label">Desk</span><div class="token-detail-value">' + esc(String(item.micro_desk_verdict) + ' • ' + shortText(item.micro_desk_summary || '', 110)) + '</div></div>' : '')
           + '</div>'
           + priceIntegrityWarningHtml(item)
         + '</div>'

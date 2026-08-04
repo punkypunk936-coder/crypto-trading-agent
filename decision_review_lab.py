@@ -117,6 +117,45 @@ def _classify(row: dict) -> str:
     return "MISSED_WIN" if int(row.get("outcome", 0)) else "CORRECT_PASS"
 
 
+def _stage_scorecards(rows: list[dict]) -> list[dict]:
+    buckets: dict[str, list[dict]] = defaultdict(list)
+    for row in rows:
+        buckets[_safe_str(row.get("stage"), "unknown")].append(row)
+
+    scorecards: list[dict] = []
+    for stage, items in buckets.items():
+        counts = Counter(_safe_str(item.get("classification"), "UNKNOWN") for item in items)
+        pass_count = counts["MISSED_WIN"] + counts["CORRECT_PASS"]
+        false_negative_rate = counts["MISSED_WIN"] / max(1, pass_count)
+        executed_count = counts["GOOD_TRADE"] + counts["BAD_TRADE"]
+        execution_win_rate = counts["GOOD_TRADE"] / max(1, executed_count)
+        if pass_count >= 25 and false_negative_rate >= 0.60:
+            recommendation = "DEMOTE_TO_SHADOW"
+            note = "This stage blocked more later winners than losers; do not let it remain an unmeasured hard veto."
+        elif pass_count >= 25 and false_negative_rate <= 0.30:
+            recommendation = "KEEP"
+            note = "This stage is rejecting mostly losing opportunities."
+        else:
+            recommendation = "COLLECT_MORE"
+            note = "Not enough decisive counterfactual evidence yet."
+        scorecards.append({
+            "stage": stage,
+            "samples": len(items),
+            "pass_samples": pass_count,
+            "missed_wins": counts["MISSED_WIN"],
+            "correct_passes": counts["CORRECT_PASS"],
+            "false_negative_rate": round(false_negative_rate, 4),
+            "executed_samples": executed_count,
+            "execution_win_rate": round(execution_win_rate, 4),
+            "recommendation": recommendation,
+            "note": note,
+        })
+    return sorted(
+        scorecards,
+        key=lambda item: (-int(item["pass_samples"]), -float(item["false_negative_rate"]), item["stage"]),
+    )
+
+
 def build_report(
     *,
     data_dir: Path,
@@ -163,6 +202,7 @@ def build_report(
             {"family": family, "misses": misses}
             for family, misses in sorted(missed_by_family.items(), key=lambda item: (-item[1], item[0]))[:8]
         ],
+        "stage_scorecards": _stage_scorecards(labeled),
     }
     return report
 

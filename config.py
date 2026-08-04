@@ -823,6 +823,28 @@ class TradingConfig:
     execution_coach_min_breakout_expectancy_score: float = 66.0
     execution_coach_reprice_passive_orders: bool = True
 
+    # ── Micro desk: one economic admission decision ─────────────────────────
+    # Raw strategy probabilities are calibrated against clean closed trades.
+    # Orders must then clear fees, slippage, uncertainty, and inventory cost.
+    # This layer can only block, shrink, or require passive execution.
+    micro_desk_enabled: bool = True
+    micro_desk_history_limit: int = 1600
+    micro_desk_refresh_seconds: float = 300.0
+    micro_desk_min_calibration_samples: int = 40
+    micro_desk_max_calibrated_probability: float = 0.78
+    micro_desk_max_price_scale_ratio: float = 20.0
+    micro_desk_max_price_drift_bps: float = 30.0
+    micro_desk_maker_fee_bps: float = 1.5
+    micro_desk_taker_fee_bps: float = 4.5
+    micro_desk_cost_buffer_bps: float = 4.0
+    micro_desk_uncertainty_charge: float = 0.12
+    micro_desk_min_net_edge_bps: float = 6.0
+    micro_desk_aggressive_min_edge_bps: float = 35.0
+    micro_desk_full_size_edge_bps: float = 60.0
+    micro_desk_full_size_kelly: float = 0.20
+    micro_desk_passive_haircut_threshold: float = 0.12
+    micro_desk_max_directional_exposure_pct: float = 0.35
+
     # ── Missed-trade review / champion-challenger scaffolding ──────────────
     decision_review_enabled: bool = True
     decision_review_target_r: float = 0.25

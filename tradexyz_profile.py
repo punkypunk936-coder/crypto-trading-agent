@@ -264,6 +264,13 @@ def segment_rank(segment: str) -> int:
 def _name_thesis(coin: str, display_name: str, segment: str, item: dict | None, sig: dict | None) -> str:
     item = dict(item or {})
     sig = dict(sig or {})
+    override = NAME_THESES.get(normalize_symbol(coin))
+    if (
+        override
+        and not sig
+        and str(item.get("status") or "").upper() in {"STALE", "STALE_REVIEW", "REFRESH_REQUIRED"}
+    ):
+        return override
     driver = _first_nonempty_text(
         item.get("fundamental_driver"),
         item.get("first_principles_why_now"),
@@ -278,7 +285,6 @@ def _name_thesis(coin: str, display_name: str, segment: str, item: dict | None, 
     }
     if driver and driver.strip().lower() not in generic_drivers:
         return _clip_text(driver, 118)
-    override = NAME_THESES.get(normalize_symbol(coin))
     if override:
         return override
     return _clip_text(

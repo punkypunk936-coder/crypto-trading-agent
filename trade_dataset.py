@@ -9,6 +9,7 @@ quality, and outcome geometry without scraping strings back out of the dashboard
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import time
 from datetime import datetime, timezone
@@ -49,6 +50,75 @@ def _safe_str(value: Any, default: str = "") -> str:
 
 def _dataset_path(data_dir: Path | None = None) -> Path:
     return (Path(data_dir).expanduser() if data_dir else TRADE_DATASET_JSONL.parent) / TRADE_DATASET_JSONL.name
+
+
+def trade_record_key(record: dict) -> str:
+    """Return a stable identity even when legacy numeric trade IDs are reused."""
+    existing = _safe_str((record or {}).get("trade_key"))
+    if existing:
+        return existing
+    payload = "|".join([
+        _safe_str((record or {}).get("trade_id"), "0"),
+        _safe_str((record or {}).get("coin")).upper(),
+        _safe_str((record or {}).get("direction")).upper(),
+        f"{_safe_float((record or {}).get('opened_at_ts')):.3f}",
+        f"{_safe_float((record or {}).get('closed_at_ts')):.3f}",
+        f"{_safe_float((record or {}).get('entry_price')):.8f}",
+    ])
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:24]
+
+
+def _record_richness(record: dict) -> tuple[int, int, int]:
+    context = record.get("entry_context") or {}
+    return (
+        0 if record.get("backfilled_from_csv") else 1,
+        int(bool((context or {}).get("expectancy"))),
+        len(json.dumps(record, default=_json_default)),
+    )
+
+
+def deduplicate_closed_trades(rows: Iterable[dict]) -> list[dict]:
+    """Remove CSV/rich-row duplicates without trusting the reused trade_id."""
+    selected: list[dict] = []
+    groups: dict[tuple[str, str], list[int]] = {}
+    ordered = sorted(
+        (dict(raw) for raw in (rows or []) if isinstance(raw, dict)),
+        key=_record_richness,
+        reverse=True,
+    )
+    for record in ordered:
+        record.setdefault("trade_key", trade_record_key(record))
+        group = (
+            _safe_str(record.get("coin")).upper(),
+            _safe_str(record.get("direction")).upper(),
+        )
+        opened = _safe_float(record.get("opened_at_ts"))
+        closed = _safe_float(record.get("closed_at_ts"))
+        entry = _safe_float(record.get("entry_price"))
+        duplicate_index = None
+        for index in groups.get(group, []):
+            current = selected[index]
+            current_entry = _safe_float(current.get("entry_price"))
+            entry_tolerance = max(1e-4, abs(current_entry) * 1e-6)
+            if (
+                abs(opened - _safe_float(current.get("opened_at_ts"))) <= 90.0
+                and abs(closed - _safe_float(current.get("closed_at_ts"))) <= 90.0
+                and abs(entry - current_entry) <= entry_tolerance
+            ):
+                duplicate_index = index
+                break
+        if duplicate_index is None:
+            groups.setdefault(group, []).append(len(selected))
+            selected.append(record)
+        elif _record_richness(record) > _record_richness(selected[duplicate_index]):
+            selected[duplicate_index] = record
+    return sorted(
+        selected,
+        key=lambda row: (
+            _safe_float(row.get("closed_at_ts") or row.get("recorded_at_ts")),
+            _safe_float(row.get("opened_at_ts")),
+        ),
+    )
 
 
 def _csv_path(data_dir: Path | None = None) -> Path:
@@ -114,6 +184,7 @@ def append_closed_trade(record: dict, *, data_dir: Path | None = None) -> None:
 
     payload = dict(record)
     payload.setdefault("recorded_at_ts", time.time())
+    payload.setdefault("trade_key", trade_record_key(payload))
     dataset_path = _dataset_path(data_dir)
     dataset_path.parent.mkdir(parents=True, exist_ok=True)
     with dataset_path.open("a", encoding="utf-8") as f:
@@ -185,7 +256,7 @@ def _normalize_csv_trade_row(row: dict) -> dict:
     if hold_minutes <= 0 and opened_at_ts and closed_at_ts and closed_at_ts >= opened_at_ts:
         hold_minutes = round((closed_at_ts - opened_at_ts) / 60.0, 4)
 
-    return {
+    normalized = {
         "trade_id": _safe_int(row.get("trade_id"), 0),
         "coin": _safe_str(row.get("coin")).upper(),
         "direction": _safe_str(row.get("direction")).upper(),
@@ -216,6 +287,8 @@ def _normalize_csv_trade_row(row: dict) -> dict:
         },
         "backfilled_from_csv": True,
     }
+    normalized["trade_key"] = trade_record_key(normalized)
+    return normalized
 
 
 def load_csv_closed_trades(limit: int | None = None, *, data_dir: Path | None = None) -> list[dict]:
@@ -283,12 +356,14 @@ def load_closed_trades(
     *,
     data_dir: Path | None = None,
     backfill_from_csv: bool = True,
+    deduplicate: bool = True,
 ) -> list[dict]:
     target_dir = resolve_history_data_dir(data_dir)
     dataset_path = _dataset_path(target_dir)
-    rows = _load_jsonl_rows(dataset_path, limit=limit)
+    source_limit = (limit * 3) if (limit is not None and deduplicate) else limit
+    rows = _load_jsonl_rows(dataset_path, limit=source_limit)
 
-    csv_rows = load_csv_closed_trades(limit=limit, data_dir=target_dir) if backfill_from_csv else []
+    csv_rows = load_csv_closed_trades(limit=source_limit, data_dir=target_dir) if backfill_from_csv else []
     if backfill_from_csv and limit is None and csv_rows and len(rows) < len(csv_rows):
         try:
             ensure_backfilled_from_csv(data_dir=target_dir)
@@ -298,6 +373,9 @@ def load_closed_trades(
 
     if not rows and csv_rows:
         rows = list(csv_rows)
+
+    if deduplicate:
+        rows = deduplicate_closed_trades(rows)
 
     if limit is None:
         return rows

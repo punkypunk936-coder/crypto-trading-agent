@@ -1545,6 +1545,19 @@ def _setup_probability(
         probability_source = "calibrated"
         reasons = [str(calibration_result.get("history_note") or "")] + reasons
 
+    desk = dict(sig.get("micro_desk") or {})
+    desk_probability = _safe_float(desk.get("calibrated_probability"))
+    if 0.0 < desk_probability <= 1.0 and str(desk.get("verdict") or ""):
+        probability = desk_probability
+        probability_source = "micro_desk_calibrated"
+        empirical_rate = _safe_float(desk.get("global_win_rate"))
+        empirical_samples = int(desk.get("global_samples") or 0)
+        reasons = [
+            f"micro desk: {int(round(_safe_float(desk.get('raw_probability')) * 100.0))}% raw, "
+            f"{int(round(desk_probability * 100.0))}% calibrated",
+            f"edge {_safe_float(desk.get('net_edge_bps')):+.1f}bps after cost",
+        ]
+
     probability = _clamp(probability, 0.05, 0.95)
     probability_pct = int(round(probability * 100.0))
     if probability_pct >= 65:
@@ -2152,6 +2165,11 @@ def action_board(
                 "social_attention_summary": str(sig.get("social_attention_summary") or ""),
                 "execution_coach_verdict": coach_verdict,
                 "execution_coach_summary": coach_summary,
+                "micro_desk": dict(sig.get("micro_desk") or {}),
+                "micro_desk_verdict": str(sig.get("micro_desk_verdict") or ""),
+                "micro_desk_summary": str(sig.get("micro_desk_summary") or ""),
+                "micro_desk_net_edge_bps": _safe_float(sig.get("micro_desk_net_edge_bps")),
+                "micro_desk_all_in_cost_bps": _safe_float(sig.get("micro_desk_all_in_cost_bps")),
                 **probability,
             }
         )

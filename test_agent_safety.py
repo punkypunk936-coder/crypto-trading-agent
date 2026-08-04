@@ -4179,6 +4179,7 @@ def test_proactive_starter_execution_opens_capped_event_orders() -> None:
     cfg.trading.proactive_starter_execution_min_score = 58.0
     cfg.trading.proactive_starter_execution_cooldown_minutes = 0.0
     cfg.trading.patient_execution_enabled = False
+    cfg.trading.micro_desk_enabled = False
     cfg.trading.decision_dataset_enabled = False
     cfg.trading.feature_store_enabled = False
 
