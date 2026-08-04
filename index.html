@@ -6031,7 +6031,7 @@ async function postJson(path, payload) {
 async function fetchDashboardState(signal) {
   const sources = ['/api/state'];
   if (STATIC_GITHUB_PAGES_MODE) {
-    sources.push(STATIC_STATE_FALLBACK_URL + '?ts=' + Date.now());
+    sources.push(STATIC_STATE_FALLBACK_URL + '?ts=' + Date.now() + '-' + Math.random().toString(36).slice(2));
   }
   let lastError = null;
   for (const source of sources) {
