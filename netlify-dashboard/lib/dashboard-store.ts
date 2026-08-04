@@ -16,7 +16,7 @@ export const PLAYBOOK_DISTILLER_PATH = "dashboard/playbook_distiller_report.json
 export const POLICY_HEALTH_REPORT_PATH = "dashboard/policy_health_report.json";
 export const FALLBACK_REPO_OWNER = "punkypunk936-coder";
 export const FALLBACK_REPO_NAME = "crypto-trading-agent";
-export const FALLBACK_REPO_TAG = "dashboard-state-live";
+export const FALLBACK_REPO_TAG = "codex/dashboard-state";
 export const NETLIFY_FALLBACK_API_BASE = "https://punky-crypto-agent-dash.netlify.app/api";
 
 const DEFAULT_STATE = {

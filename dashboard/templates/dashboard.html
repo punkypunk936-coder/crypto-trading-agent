@@ -3336,7 +3336,7 @@
   </div>
   <div class="header-right">
     <button class="command-search-btn" id="command-search-btn" type="button" onclick="openCommandSearch()">STANCE SEARCH</button>
-    <a href="/share" target="_blank" style="padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;font-family:var(--mono);letter-spacing:0.5px;background:var(--blue-dim);color:var(--blue);border:1px solid rgba(91,140,255,0.3);text-decoration:none;transition:all 0.2s ease;">Share P&amp;L</a>
+    <a href="/share" id="share-link" target="_blank" style="padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;font-family:var(--mono);letter-spacing:0.5px;background:var(--blue-dim);color:var(--blue);border:1px solid rgba(91,140,255,0.3);text-decoration:none;transition:all 0.2s ease;">Share P&amp;L</a>
     <button class="kill-btn" id="kill-btn" onclick="handleKill()">KILL SWITCH</button>
     <span id="mode-badge" class="badge badge-offline">OFFLINE</span>
     <span id="last-update"></span>
@@ -4570,7 +4570,11 @@ function openPnlExplanation(kind, index) {
 const REFRESH_MAX_MS = 60000;
 const REFRESH_TIMEOUT_MS = 8000;
 const STATIC_GITHUB_PAGES_MODE = /\.github\.io$/i.test(window.location.hostname || '');
-const STATIC_STATE_FALLBACK_URL = 'https://raw.githubusercontent.com/punkypunk936-coder/crypto-trading-agent/dashboard-state-live/dashboard/dashboard_snapshot.json';
+const STATIC_STATE_FALLBACK_URL = 'https://raw.githubusercontent.com/punkypunk936-coder/crypto-trading-agent/codex/dashboard-state/dashboard/dashboard_snapshot.json';
+
+if (STATIC_GITHUB_PAGES_MODE) {
+  document.getElementById('share-link').href = './share.html';
+}
 
 function toggleTrades() {
   const wrap = document.getElementById('trades-wrap');

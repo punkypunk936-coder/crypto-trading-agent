@@ -385,10 +385,16 @@
 <script>
 const fmt  = (n, dec=2) => n == null ? '--' : Number(n).toLocaleString('en-US', {minimumFractionDigits:dec, maximumFractionDigits:dec});
 const fmtD = (n) => n == null ? '--' : (n >= 0 ? '+$' : '-$') + fmt(Math.abs(n));
+const STATIC_GITHUB_PAGES_MODE = /\.github\.io$/i.test(window.location.hostname || '');
+const STATIC_STATE_URL = 'https://raw.githubusercontent.com/punkypunk936-coder/crypto-trading-agent/codex/dashboard-state/dashboard/dashboard_snapshot.json';
 
 async function loadCard() {
   try {
-    const res  = await fetch('/api/state');
+    const stateUrl = STATIC_GITHUB_PAGES_MODE
+      ? STATIC_STATE_URL + '?ts=' + Date.now()
+      : '/api/state';
+    const res  = await fetch(stateUrl, { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     const s    = data.state;
     const st   = data.stats;
@@ -452,7 +458,9 @@ async function loadCard() {
 }
 
 function copyShareLink() {
-  const url = window.location.origin + '/share';
+  const url = STATIC_GITHUB_PAGES_MODE
+    ? window.location.href.split(/[?#]/)[0]
+    : window.location.origin + '/share';
   navigator.clipboard.writeText(url).then(() => {
     const hint = document.getElementById('share-hint');
     hint.textContent = '✅ Link copied! Anyone with this URL can see your live P&L card';
