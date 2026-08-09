@@ -1,14 +1,10 @@
 {
   "status": "running",
-  "mode": "dry_run",
-  "leverage": 2,
-  "adaptive_leverage_enabled": true,
   "last_cycle": "2026-08-09 10:51:59",
   "cycle_number": 14214,
   "portfolio_usd": 7463.42,
   "available_usd": 4851.22,
   "positions": [],
-  "pending_orders": [],
   "signals": {
     "SP500": {
       "analysis_updated_ts": 1786252915.3969312,
@@ -5827,6 +5823,72 @@
       "data_reliability_price_gap_pct": 0.0513
     }
   },
+  "pending_orders": [],
+  "sentiment": {
+    "raw_score": 31,
+    "label": "Fear",
+    "signal_score": 63.1375,
+    "fng_contrarian_score": 69.0,
+    "structural_score": 52.25,
+    "market_mode": "BALANCED",
+    "directional_bias": "NEUTRAL",
+    "risk_off": false,
+    "major_breakdown_count": 1,
+    "major_reclaim_count": 1,
+    "majors": {
+      "BTC": {
+        "coin": "BTC",
+        "valid": true,
+        "score": 36.25,
+        "state": "WEAK",
+        "close": 64757.0,
+        "return_24h_pct": -0.334,
+        "return_72h_pct": 0.083,
+        "return_7d_pct": 1.872,
+        "below_sma20": true,
+        "below_sma72": true,
+        "breaking": false,
+        "reclaiming": false,
+        "summary": "BTC weak (-0.3% 24h, +1.9% 7d)"
+      },
+      "ETH": {
+        "coin": "ETH",
+        "valid": true,
+        "score": 48.71,
+        "state": "MIXED",
+        "close": 1912.8,
+        "return_24h_pct": -0.172,
+        "return_72h_pct": 0.309,
+        "return_7d_pct": 1.728,
+        "below_sma20": true,
+        "below_sma72": false,
+        "breaking": false,
+        "reclaiming": false,
+        "summary": "ETH mixed (-0.2% 24h, +1.7% 7d)"
+      },
+      "SOL": {
+        "coin": "SOL",
+        "valid": true,
+        "score": 71.79,
+        "state": "STRONG",
+        "close": 75.979,
+        "return_24h_pct": 1.825,
+        "return_72h_pct": 2.916,
+        "return_7d_pct": 3.36,
+        "below_sma20": false,
+        "below_sma72": false,
+        "breaking": false,
+        "reclaiming": false,
+        "summary": "SOL strong (+1.8% 24h, +3.4% 7d)"
+      }
+    },
+    "structure_summary": "Crypto majors balanced: 1 breaking, 1 reclaiming, structure 52/100.",
+    "is_extreme": false,
+    "summary": "Sentiment: Fear (F&G=31) + crypto mode BALANCED \u2192 NEUTRAL signal (63/100) | Crypto majors balanced: 1 breaking, 1 reclaiming, structure 52/100."
+  },
+  "mode": "dry_run",
+  "leverage": 2,
+  "adaptive_leverage_enabled": true,
   "us_market_context": {
     "enabled": true,
     "active": true,
@@ -6212,68 +6274,6 @@
       "fresh_count": 0
     },
     "semiconductor_readthrough": "No clean semiconductor handoff yet. Use KOSPI/Nikkei direction as context, but require AMD, NVDA, MU, SNDK, and MRVL to confirm independently in the US session."
-  },
-  "sentiment": {
-    "raw_score": 31,
-    "label": "Fear",
-    "signal_score": 63.1375,
-    "fng_contrarian_score": 69.0,
-    "structural_score": 52.25,
-    "market_mode": "BALANCED",
-    "directional_bias": "NEUTRAL",
-    "risk_off": false,
-    "major_breakdown_count": 1,
-    "major_reclaim_count": 1,
-    "majors": {
-      "BTC": {
-        "coin": "BTC",
-        "valid": true,
-        "score": 36.25,
-        "state": "WEAK",
-        "close": 64757.0,
-        "return_24h_pct": -0.334,
-        "return_72h_pct": 0.083,
-        "return_7d_pct": 1.872,
-        "below_sma20": true,
-        "below_sma72": true,
-        "breaking": false,
-        "reclaiming": false,
-        "summary": "BTC weak (-0.3% 24h, +1.9% 7d)"
-      },
-      "ETH": {
-        "coin": "ETH",
-        "valid": true,
-        "score": 48.71,
-        "state": "MIXED",
-        "close": 1912.8,
-        "return_24h_pct": -0.172,
-        "return_72h_pct": 0.309,
-        "return_7d_pct": 1.728,
-        "below_sma20": true,
-        "below_sma72": false,
-        "breaking": false,
-        "reclaiming": false,
-        "summary": "ETH mixed (-0.2% 24h, +1.7% 7d)"
-      },
-      "SOL": {
-        "coin": "SOL",
-        "valid": true,
-        "score": 71.79,
-        "state": "STRONG",
-        "close": 75.979,
-        "return_24h_pct": 1.825,
-        "return_72h_pct": 2.916,
-        "return_7d_pct": 3.36,
-        "below_sma20": false,
-        "below_sma72": false,
-        "breaking": false,
-        "reclaiming": false,
-        "summary": "SOL strong (+1.8% 24h, +3.4% 7d)"
-      }
-    },
-    "structure_summary": "Crypto majors balanced: 1 breaking, 1 reclaiming, structure 52/100.",
-    "is_extreme": false,
-    "summary": "Sentiment: Fear (F&G=31) + crypto mode BALANCED \u2192 NEUTRAL signal (63/100) | Crypto majors balanced: 1 breaking, 1 reclaiming, structure 52/100."
   },
   "daily_pnl_usd": 6.33,
   "daily_trades": 1,
@@ -15778,38 +15778,6 @@
     "raw": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=27000931)\t12%; charging; 2:30 remaining present: true"
   },
   "config": {
-    "long_threshold": 65.0,
-    "short_threshold": 35.0,
-    "min_hold_minutes": 240.0,
-    "index_min_hold_minutes": 360.0,
-    "reversal_boost": 8.0,
-    "core_long_thesis_enabled": true,
-    "core_long_thesis_coins": [
-      "AAPL",
-      "AMD",
-      "AMZN",
-      "ASML",
-      "AVGO",
-      "COST",
-      "GOOGL",
-      "META",
-      "MSFT",
-      "NVDA",
-      "ORCL",
-      "TSM"
-    ],
-    "core_long_break_confirmation_cycles": 3,
-    "semiconductor_structural_hold_enabled": true,
-    "semiconductor_break_confirmation_cycles": 4,
-    "check_interval_seconds": 120,
-    "analysis_signal_max_age_minutes": 20.0,
-    "adaptive_leverage_enabled": true,
-    "min_leverage": 1,
-    "base_leverage": 2,
-    "max_leverage": 8,
-    "max_trade_usd": 1000.0,
-    "max_trade_notional_usd": 4000.0,
-    "use_daily_market_map": true,
     "coins": [
       "BTC",
       "ETH",
@@ -16200,7 +16168,23 @@
       "UNITREE",
       "ZHIPU"
     ],
-    "dynamic_market_cap_min_usd": 1000000000.0,
+    "core_long_thesis_enabled": true,
+    "core_long_thesis_coins": [
+      "AAPL",
+      "AMD",
+      "AMZN",
+      "ASML",
+      "AVGO",
+      "COST",
+      "GOOGL",
+      "META",
+      "MSFT",
+      "NVDA",
+      "ORCL",
+      "TSM"
+    ],
+    "semiconductor_structural_hold_enabled": true,
+    "semiconductor_break_confirmation_cycles": 4,
     "instrument_types": {
       "BTC": "crypto",
       "ETH": "crypto",
@@ -16843,6 +16827,9 @@
       "software": "Software",
       "other_stocks": "Other Stocks"
     },
+    "check_interval_seconds": 120,
+    "dynamic_market_cap_min_usd": 1000000000.0,
+    "use_daily_market_map": true,
     "asset_category_descriptions": {
       "indices_macro": "Macro-linked index and ETF proxies with slower, cleaner tape.",
       "mag7": "The big US platform leaders where catalyst reactions matter most.",
@@ -16866,6 +16853,714 @@
       "software": "Software longs need durable growth, margin leverage, and AI monetization proof.",
       "other_stocks": "Everything executable that does not fit the main desks yet."
     },
+    "tradexyz_assets": {
+      "AAPL": {
+        "display_name": "Apple",
+        "instrument_type": "equity",
+        "categories": [
+          "mag7"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:AAPL"
+      },
+      "ALUMINIUM": {
+        "display_name": "Aluminium",
+        "instrument_type": "index",
+        "categories": [
+          "commodities_metals"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:ALUMINIUM"
+      },
+      "AMD": {
+        "display_name": "AMD",
+        "instrument_type": "equity",
+        "categories": [
+          "semis_memory"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:AMD"
+      },
+      "AMZN": {
+        "display_name": "Amazon",
+        "instrument_type": "equity",
+        "categories": [
+          "mag7"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:AMZN"
+      },
+      "BABA": {
+        "display_name": "Alibaba",
+        "instrument_type": "equity",
+        "categories": [
+          "asia_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:BABA"
+      },
+      "BIRD": {
+        "display_name": "Allbirds",
+        "instrument_type": "equity",
+        "categories": [
+          "growth"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:BIRD"
+      },
+      "BRENTOIL": {
+        "display_name": "Brent Oil",
+        "instrument_type": "index",
+        "categories": [
+          "energy"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:BRENTOIL"
+      },
+      "BX": {
+        "display_name": "Blackstone",
+        "instrument_type": "equity",
+        "categories": [
+          "financials"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:BX"
+      },
+      "CBRS": {
+        "display_name": "Cerebras Systems",
+        "instrument_type": "equity",
+        "categories": [
+          "pre_ipo",
+          "semis_memory",
+          "ai_infra"
+        ],
+        "pre_ipo": true,
+        "venue_symbol": "xyz:CBRS"
+      },
+      "CL": {
+        "display_name": "Crude Oil",
+        "instrument_type": "index",
+        "categories": [
+          "energy"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:CL"
+      },
+      "COIN": {
+        "display_name": "Coinbase",
+        "instrument_type": "equity",
+        "categories": [
+          "crypto_equities"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:COIN"
+      },
+      "COPPER": {
+        "display_name": "Copper",
+        "instrument_type": "index",
+        "categories": [
+          "commodities_metals"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:COPPER"
+      },
+      "CORN": {
+        "display_name": "Corn",
+        "instrument_type": "index",
+        "categories": [
+          "agriculture"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:CORN"
+      },
+      "COST": {
+        "display_name": "Costco",
+        "instrument_type": "equity",
+        "categories": [
+          "consumer"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:COST"
+      },
+      "CRCL": {
+        "display_name": "Circle",
+        "instrument_type": "equity",
+        "categories": [
+          "crypto_equities"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:CRCL"
+      },
+      "CRWV": {
+        "display_name": "CoreWeave",
+        "instrument_type": "equity",
+        "categories": [
+          "neoclouds"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:CRWV"
+      },
+      "CXMT": {
+        "display_name": "ChangXin Memory Technologies",
+        "instrument_type": "equity",
+        "categories": [
+          "semis_memory",
+          "asia_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:CXMT"
+      },
+      "DKNG": {
+        "display_name": "DraftKings",
+        "instrument_type": "equity",
+        "categories": [
+          "consumer",
+          "growth"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:DKNG"
+      },
+      "DRAM": {
+        "display_name": "DRAM",
+        "instrument_type": "index",
+        "categories": [
+          "semis_memory"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:DRAM"
+      },
+      "DXY": {
+        "display_name": "US Dollar Index",
+        "instrument_type": "index",
+        "categories": [
+          "fx_rates",
+          "indices_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:DXY"
+      },
+      "EBAY": {
+        "display_name": "eBay",
+        "instrument_type": "equity",
+        "categories": [
+          "consumer"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:EBAY"
+      },
+      "EUR": {
+        "display_name": "Euro",
+        "instrument_type": "index",
+        "categories": [
+          "fx_rates"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:EUR"
+      },
+      "EWJ": {
+        "display_name": "Japan ETF",
+        "instrument_type": "index",
+        "categories": [
+          "asia_macro",
+          "indices_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:EWJ"
+      },
+      "EWZ": {
+        "display_name": "Brazil ETF",
+        "instrument_type": "index",
+        "categories": [
+          "latam_macro",
+          "indices_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:EWZ"
+      },
+      "EWY": {
+        "display_name": "South Korea ETF",
+        "instrument_type": "index",
+        "categories": [
+          "asia_macro",
+          "indices_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:EWY"
+      },
+      "GME": {
+        "display_name": "GameStop",
+        "instrument_type": "equity",
+        "categories": [
+          "meme_momentum"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:GME"
+      },
+      "GOLD": {
+        "display_name": "Gold",
+        "instrument_type": "index",
+        "categories": [
+          "commodities_metals"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:GOLD"
+      },
+      "GOOGL": {
+        "display_name": "Alphabet",
+        "instrument_type": "equity",
+        "categories": [
+          "mag7"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:GOOGL"
+      },
+      "H100": {
+        "display_name": "H100 Group",
+        "instrument_type": "equity",
+        "categories": [
+          "crypto_equities",
+          "microcap"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:H100"
+      },
+      "HIMS": {
+        "display_name": "Hims & Hers",
+        "instrument_type": "equity",
+        "categories": [
+          "biotech_glp1",
+          "growth"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:HIMS"
+      },
+      "HOOD": {
+        "display_name": "Robinhood",
+        "instrument_type": "equity",
+        "categories": [
+          "crypto_equities"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:HOOD"
+      },
+      "HYUNDAI": {
+        "display_name": "Hyundai",
+        "instrument_type": "equity",
+        "categories": [
+          "asia_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:HYUNDAI"
+      },
+      "INTC": {
+        "display_name": "Intel",
+        "instrument_type": "equity",
+        "categories": [
+          "semis_memory"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:INTC"
+      },
+      "JP225": {
+        "display_name": "Nikkei 225",
+        "instrument_type": "index",
+        "categories": [
+          "asia_macro",
+          "indices_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:JP225"
+      },
+      "JPY": {
+        "display_name": "Japanese Yen",
+        "instrument_type": "index",
+        "categories": [
+          "fx_rates",
+          "asia_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:JPY"
+      },
+      "KIOXIA": {
+        "display_name": "Kioxia",
+        "instrument_type": "equity",
+        "categories": [
+          "semis_memory",
+          "asia_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:KIOXIA"
+      },
+      "KRW": {
+        "display_name": "Korean Won",
+        "instrument_type": "index",
+        "categories": [
+          "fx_rates",
+          "asia_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:KRW"
+      },
+      "KR200": {
+        "display_name": "KOSPI 200",
+        "instrument_type": "index",
+        "categories": [
+          "asia_macro",
+          "indices_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:KR200"
+      },
+      "LITE": {
+        "display_name": "LITE",
+        "instrument_type": "equity",
+        "categories": [
+          "growth"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:LITE"
+      },
+      "LLY": {
+        "display_name": "Eli Lilly",
+        "instrument_type": "equity",
+        "categories": [
+          "biotech_glp1"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:LLY"
+      },
+      "META": {
+        "display_name": "Meta",
+        "instrument_type": "equity",
+        "categories": [
+          "mag7"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:META"
+      },
+      "MRVL": {
+        "display_name": "Marvell",
+        "instrument_type": "equity",
+        "categories": [
+          "semis_memory"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:MRVL"
+      },
+      "MSFT": {
+        "display_name": "Microsoft",
+        "instrument_type": "equity",
+        "categories": [
+          "mag7"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:MSFT"
+      },
+      "MSTR": {
+        "display_name": "MicroStrategy",
+        "instrument_type": "equity",
+        "categories": [
+          "crypto_equities"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:MSTR"
+      },
+      "MU": {
+        "display_name": "Micron",
+        "instrument_type": "equity",
+        "categories": [
+          "semis_memory"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:MU"
+      },
+      "NATGAS": {
+        "display_name": "Natural Gas",
+        "instrument_type": "index",
+        "categories": [
+          "energy"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:NATGAS"
+      },
+      "NFLX": {
+        "display_name": "Netflix",
+        "instrument_type": "equity",
+        "categories": [
+          "consumer",
+          "growth"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:NFLX"
+      },
+      "NIFTY": {
+        "display_name": "Nifty 50",
+        "instrument_type": "index",
+        "categories": [
+          "asia_macro",
+          "indices_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:NIFTY"
+      },
+      "NVDA": {
+        "display_name": "NVIDIA",
+        "instrument_type": "equity",
+        "categories": [
+          "mag7",
+          "semis_memory"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:NVDA"
+      },
+      "ORCL": {
+        "display_name": "Oracle",
+        "instrument_type": "equity",
+        "categories": [
+          "ai_infra"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:ORCL"
+      },
+      "PALLADIUM": {
+        "display_name": "Palladium",
+        "instrument_type": "index",
+        "categories": [
+          "commodities_metals"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:PALLADIUM"
+      },
+      "PLATINUM": {
+        "display_name": "Platinum",
+        "instrument_type": "index",
+        "categories": [
+          "commodities_metals"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:PLATINUM"
+      },
+      "PLTR": {
+        "display_name": "Palantir",
+        "instrument_type": "equity",
+        "categories": [
+          "ai_infra",
+          "growth"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:PLTR"
+      },
+      "PURRDAT": {
+        "display_name": "PurrDat",
+        "instrument_type": "index",
+        "categories": [
+          "indices_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:PURRDAT"
+      },
+      "RIVN": {
+        "display_name": "Rivian",
+        "instrument_type": "equity",
+        "categories": [
+          "growth"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:RIVN"
+      },
+      "RKLB": {
+        "display_name": "Rocket Lab",
+        "instrument_type": "equity",
+        "categories": [
+          "growth"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:RKLB"
+      },
+      "SILVER": {
+        "display_name": "Silver",
+        "instrument_type": "index",
+        "categories": [
+          "commodities_metals"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:SILVER"
+      },
+      "SKHX": {
+        "display_name": "SK Hynix",
+        "instrument_type": "equity",
+        "categories": [
+          "semis_memory",
+          "asia_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:SKHX"
+      },
+      "SMSN": {
+        "display_name": "Samsung",
+        "instrument_type": "equity",
+        "categories": [
+          "semis_memory",
+          "asia_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:SMSN"
+      },
+      "SNDK": {
+        "display_name": "SanDisk",
+        "instrument_type": "equity",
+        "categories": [
+          "semis_memory"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:SNDK"
+      },
+      "SOFTBANK": {
+        "display_name": "SoftBank",
+        "instrument_type": "equity",
+        "categories": [
+          "asia_macro",
+          "ai_infra"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:SOFTBANK"
+      },
+      "SP500": {
+        "display_name": "S&P 500",
+        "instrument_type": "index",
+        "categories": [
+          "indices_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:SP500"
+      },
+      "TSLA": {
+        "display_name": "Tesla",
+        "instrument_type": "equity",
+        "categories": [
+          "mag7"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:TSLA"
+      },
+      "TSM": {
+        "display_name": "TSMC",
+        "instrument_type": "equity",
+        "categories": [
+          "semis_memory",
+          "asia_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:TSM"
+      },
+      "TTF": {
+        "display_name": "Dutch TTF Gas",
+        "instrument_type": "index",
+        "categories": [
+          "energy"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:TTF"
+      },
+      "URANIUM": {
+        "display_name": "Uranium",
+        "instrument_type": "index",
+        "categories": [
+          "uranium"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:URANIUM"
+      },
+      "URNM": {
+        "display_name": "Uranium Miners ETF",
+        "instrument_type": "index",
+        "categories": [
+          "uranium"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:URNM"
+      },
+      "USAR": {
+        "display_name": "USA Rare Earth",
+        "instrument_type": "equity",
+        "categories": [
+          "uranium",
+          "commodities_metals"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:USAR"
+      },
+      "VIX": {
+        "display_name": "VIX",
+        "instrument_type": "index",
+        "categories": [
+          "volatility",
+          "indices_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:VIX"
+      },
+      "VOL": {
+        "display_name": "Volatility",
+        "instrument_type": "index",
+        "categories": [
+          "volatility"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:VOL"
+      },
+      "WHEAT": {
+        "display_name": "Wheat",
+        "instrument_type": "index",
+        "categories": [
+          "agriculture"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:WHEAT"
+      },
+      "XLE": {
+        "display_name": "Energy Select Sector SPDR",
+        "instrument_type": "index",
+        "categories": [
+          "energy",
+          "indices_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:XLE"
+      },
+      "XYZ100": {
+        "display_name": "XYZ 100",
+        "instrument_type": "index",
+        "categories": [
+          "indices_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:XYZ100"
+      },
+      "ZM": {
+        "display_name": "Zoom Communications",
+        "instrument_type": "equity",
+        "categories": [
+          "software",
+          "growth"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:ZM"
+      }
+    },
+    "long_threshold": 65.0,
+    "short_threshold": 35.0,
+    "min_hold_minutes": 240.0,
+    "index_min_hold_minutes": 360.0,
+    "reversal_boost": 8.0,
+    "core_long_break_confirmation_cycles": 3,
+    "analysis_signal_max_age_minutes": 20.0,
+    "adaptive_leverage_enabled": true,
+    "min_leverage": 1,
+    "base_leverage": 2,
+    "max_leverage": 8,
+    "max_trade_usd": 1000.0,
+    "max_trade_notional_usd": 4000.0,
     "portfolio_theme_map": {
       "BTC": "CRYPTO_CORE",
       "ETH": "CRYPTO_CORE",
@@ -18381,6 +19076,22 @@
           "win_rate": 0.1429
         }
       ]
+    }
+  },
+  "positions_count": 0,
+  "decision_summary": {
+    "long_count": 1,
+    "short_count": 0,
+    "flat_count": 5,
+    "tradable_count": 4,
+    "tradable_active_count": 1,
+    "lead": {
+      "coin": "ETH",
+      "action": "LONG",
+      "score": 100.0,
+      "confidence": "HIGH",
+      "execution_mode": "tradable",
+      "reason": "Long idea is not proven yet: Bitcoin and Ethereum ETFs break $1B in their best week since April and Bl..."
     }
   }
 }
