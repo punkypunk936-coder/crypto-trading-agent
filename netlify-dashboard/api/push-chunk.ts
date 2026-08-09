@@ -1,61 +1,44 @@
 import {
-  CHALLENGER_REPORT_PATH,
-  CONTROL_PATH,
-  DECISION_REVIEW_PATH,
-  MARKET_MAP_PATH,
-  POLICY_HEALTH_REPORT_PATH,
-  PLAYBOOK_DISTILLER_PATH,
-  SNAPSHOT_PATH,
-  STATE_PATH,
-  TRADE_REVIEWS_PATH,
-  TRADES_PATH,
-  buildSnapshot,
-  forwardNetlifyPush,
+  PUSH_RECEIPT_PATH,
+  cleanupChunkBlobs,
+  deleteJson,
   json,
+  persistCanonicalSnapshot,
+  readGitCanonicalSnapshot,
   readJson,
+  snapshotCycle,
+  snapshotVersion,
   unauthorized,
   writeJson,
 } from "../lib/dashboard-store";
 
 function cleanSessionId(value: unknown) {
-  return String(value || "")
-    .trim()
-    .replace(/[^a-zA-Z0-9._-]/g, "")
-    .slice(0, 96);
+  return String(value || "").trim().replace(/[^a-zA-Z0-9._-]/g, "").slice(0, 96);
 }
 
 function chunkPath(sessionId: string, index: number) {
   return `dashboard/push-chunks/${sessionId}/${index}.json`;
 }
 
-async function persistPayload(data: any) {
-  const snapshot = data.snapshot && typeof data.snapshot === "object" && data.snapshot.state
-    ? data.snapshot
-    : buildSnapshot(
-        data.state,
-        data.trades || [],
-        data.control,
-        data.market_map,
-        data.trade_reviews,
-        undefined,
-        data.decision_review_report,
-        data.challenger_report,
-        data.playbook_distiller_report,
-        data.policy_health_report,
-      );
+function chunkPaths(sessionId: string, count: number) {
+  return Array.from({ length: count }, (_, index) => chunkPath(sessionId, index));
+}
 
-  await writeJson(SNAPSHOT_PATH, snapshot);
-  await writeJson(STATE_PATH, snapshot.state || data.state || {});
-  await writeJson(TRADES_PATH, Array.isArray(data.trades) ? data.trades : (snapshot.trades || []));
-  await writeJson(CONTROL_PATH, snapshot.control || data.control || {});
-  await writeJson(MARKET_MAP_PATH, snapshot.market_map || data.market_map || {});
-  await writeJson(TRADE_REVIEWS_PATH, snapshot.trade_reviews || data.trade_reviews || {});
-  await writeJson(DECISION_REVIEW_PATH, snapshot.decision_review_report || data.decision_review_report || {});
-  await writeJson(CHALLENGER_REPORT_PATH, snapshot.challenger_report || data.challenger_report || {});
-  await writeJson(PLAYBOOK_DISTILLER_PATH, snapshot.playbook_distiller_report || data.playbook_distiller_report || {});
-  await writeJson(POLICY_HEALTH_REPORT_PATH, snapshot.policy_health_report || data.policy_health_report || {});
-
-  return snapshot;
+async function githubReceipt(sessionId: string, chunkCount: number, warning: unknown) {
+  const gitSnapshot = await readGitCanonicalSnapshot();
+  if (!gitSnapshot?.state) return null;
+  return {
+    ok: true,
+    assembled: true,
+    durable: true,
+    storage: "github_canonical",
+    session_id: sessionId,
+    chunks: chunkCount,
+    cycle: snapshotCycle(gitSnapshot),
+    version: snapshotVersion(gitSnapshot),
+    updatedAt: gitSnapshot.updatedAt || null,
+    blob_warning: warning instanceof Error ? warning.message : String(warning || "Vercel Blob unavailable"),
+  };
 }
 
 export async function POST(request: Request) {
@@ -77,6 +60,13 @@ export async function POST(request: Request) {
   }
 
   try {
+    const priorReceipt = await readJson(PUSH_RECEIPT_PATH, null);
+    if (priorReceipt?.session_id === sessionId && priorReceipt?.assembled) {
+      return json(priorReceipt);
+    }
+    if (chunkIndex === 0) {
+      await cleanupChunkBlobs(sessionId);
+    }
     await writeJson(chunkPath(sessionId, chunkIndex), { chunk });
 
     const pieces: string[] = [];
@@ -89,12 +79,12 @@ export async function POST(request: Request) {
       const piece = await readJson(chunkPath(sessionId, index), null);
       if (!piece || typeof piece.chunk !== "string") {
         missing.push(index);
-        continue;
+      } else {
+        pieces.push(piece.chunk);
       }
-      pieces.push(piece.chunk);
     }
 
-    if (missing.length > 0) {
+    if (missing.length) {
       return json({
         ok: true,
         assembled: false,
@@ -106,42 +96,37 @@ export async function POST(request: Request) {
 
     const payloadText = pieces.join("");
     const payload = JSON.parse(payloadText);
-    let snapshot;
-    try {
-      snapshot = await persistPayload(payload);
-    } catch (persistError) {
-      const forwarded = await forwardNetlifyPush(payload, request.headers.get("X-Token") || "");
-      if (forwarded.ok) {
-        return json(
-          typeof forwarded.data === "object" && forwarded.data !== null
-            ? { ...forwarded.data, fallback: "netlify", storage: "fallback", assembled: true, session_id: sessionId, chunks: chunkCount, bytes: payloadText.length }
-            : { ok: true, fallback: "netlify", storage: "fallback", assembled: true, session_id: sessionId, chunks: chunkCount, bytes: payloadText.length },
-        );
-      }
-      return json(
-        {
-          ok: false,
-          error: persistError instanceof Error ? persistError.message : "Chunk persistence failed",
-          fallback_error: forwarded.data,
-        },
-        { status: 500 },
-      );
-    }
-
-    return json({
+    const { snapshot, componentErrors } = await persistCanonicalSnapshot(payload);
+    const receipt = {
       ok: true,
       assembled: true,
-      storage: "chunked",
+      durable: true,
+      storage: "vercel_blob",
       session_id: sessionId,
       chunks: chunkCount,
       bytes: payloadText.length,
-      cycle: snapshot?.state?.cycle_number || payload?.state?.cycle_number || 0,
-      server_time: snapshot?.server_time || null,
-    });
+      cycle: snapshotCycle(snapshot),
+      version: snapshotVersion(snapshot),
+      updatedAt: snapshot.updatedAt,
+      component_warnings: componentErrors,
+    };
+    await writeJson(PUSH_RECEIPT_PATH, receipt);
+    await deleteJson(chunkPaths(sessionId, chunkCount));
+    return json(receipt);
   } catch (error) {
-    return json(
-      { ok: false, error: error instanceof Error ? error.message : "Chunk push failed" },
-      { status: 500 },
-    );
+    if (chunkIndex === chunkCount - 1) {
+      const receipt = await githubReceipt(sessionId, chunkCount, error);
+      if (receipt) return json(receipt);
+    }
+    return json({
+      ok: true,
+      assembled: false,
+      durable: true,
+      storage: "github_canonical",
+      session_id: sessionId,
+      received_index: chunkIndex,
+      waiting_for_final_chunk: true,
+      blob_warning: error instanceof Error ? error.message : "Vercel Blob unavailable",
+    }, { status: 202 });
   }
 }

@@ -10284,6 +10284,25 @@ class TradingAgent:
         except Exception as e:
             log.debug(f"dashboard_snapshot.json write failed: {e}")
 
+        # Persist the exact source snapshot before notifying hosted viewers.
+        # This Git branch is the durable canonical store when serverless Blob
+        # storage is unavailable or suspended.
+        git_sync_ok = hosted_state_sync.publish_snapshot(
+            snapshot,
+            state=state,
+            trades=trades_data,
+            control=control_data,
+            market_map=market_map_data,
+            trade_reviews=review_data,
+            decision_review_report=decision_review_data,
+            challenger_report=challenger_report_data,
+            missed_move_report=missed_move_report_data,
+            asset_dossiers=asset_dossier_data,
+            llm_referee_report=llm_referee_report_data,
+            playbook_distiller_report=playbook_distiller_report_data,
+            policy_health_report=policy_health_report_data,
+        )
+
         # Push the exact local dashboard snapshot to the hosted dashboard.
         remote_url = os.environ.get("DASHBOARD_URL", "")
         remote_push_ok = False
@@ -10309,6 +10328,12 @@ class TradingAgent:
                     "policy_health_report": policy_health_report_data,
                 })
                 payload = payload_text.encode()
+                import base64
+                import gzip
+                compressed_payload = json.dumps({
+                    "encoding": "gzip-base64",
+                    "payload": base64.b64encode(gzip.compress(payload, compresslevel=6)).decode("ascii"),
+                }).encode()
                 ctx = ssl.create_default_context()
                 try:
                     import certifi
@@ -10385,7 +10410,13 @@ class TradingAgent:
                     })
 
                 max_single_push_bytes = int(os.environ.get("DASHBOARD_PUSH_MAX_BYTES", "3500000") or 3_500_000)
-                if len(payload) > max_single_push_bytes:
+                if len(compressed_payload) <= max_single_push_bytes:
+                    resp, remote_payload = _post_dashboard_json(
+                        "/api/push",
+                        compressed_payload,
+                        timeout=45,
+                    )
+                elif len(payload) > max_single_push_bytes:
                     remote_payload = _push_dashboard_chunks(payload_text)
                     resp = SimpleNamespace(status=200 if remote_payload.get("ok") else 500)
                     if not remote_payload.get("ok"):
@@ -10483,7 +10514,7 @@ class TradingAgent:
                         pass
                 log.debug(f"Remote dashboard push failed: {detail}")
 
-        if (not remote_push_ok) or remote_push_used_fallback:
+        if ((not remote_push_ok) or remote_push_used_fallback) and not git_sync_ok:
             hosted_state_sync.publish_snapshot(
                 snapshot,
                 state=state,

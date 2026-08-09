@@ -155,6 +155,15 @@ def _write_payload_files(
     policy_health_report: Any,
 ) -> None:
     dashboard_dir = repo_dir / "dashboard"
+    manifest = {
+        "schemaVersion": int(snapshot.get("schemaVersion") or 2),
+        "version": snapshot.get("version"),
+        "updatedAt": snapshot.get("updatedAt"),
+        "cycle_number": ((snapshot.get("state") or {}).get("cycle_number") or 0),
+        "server_time": snapshot.get("server_time"),
+        "snapshot_path": "dashboard/dashboard_snapshot.json",
+    }
+    _write_json(dashboard_dir / "manifest.json", manifest)
     _write_json(dashboard_dir / "dashboard_snapshot.json", snapshot)
     _write_json(dashboard_dir / "current-state.json", state or {})
     _write_json(dashboard_dir / "trades.json", trades or [])
@@ -223,6 +232,13 @@ def publish_snapshot(
             cycle = ((snapshot or {}).get("state") or {}).get("cycle_number", 0)
             stamp = (snapshot or {}).get("server_time") or "unknown-time"
             _run_git(["commit", "-m", f"sync dashboard snapshot cycle {cycle} @ {stamp}"], repo_dir)
+            snapshot_commit = _run_git(["rev-parse", "HEAD"], repo_dir)
+            manifest_path = repo_dir / "dashboard" / "manifest.json"
+            manifest = json.loads(manifest_path.read_text())
+            manifest["snapshot_commit"] = snapshot_commit
+            _write_json(manifest_path, manifest)
+            _run_git(["add", "dashboard/manifest.json"], repo_dir)
+            _run_git(["commit", "-m", f"publish dashboard manifest cycle {cycle}"], repo_dir)
         # This branch is a generated dashboard mirror, not a collaborative branch.
         # Force-pushing keeps the public fallback source aligned to the latest
         # canonical local snapshot even if another stale mirror push landed first.

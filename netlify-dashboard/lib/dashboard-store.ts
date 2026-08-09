@@ -1,10 +1,12 @@
-import { get, put } from "@vercel/blob";
+import { del, get, list, put } from "@vercel/blob";
 
 declare const process: {
   env: Record<string, string | undefined>;
 };
 
 export const SNAPSHOT_PATH = "dashboard/dashboard_snapshot.json";
+export const MANIFEST_PATH = "dashboard/manifest.json";
+export const PUSH_RECEIPT_PATH = "dashboard/push-receipt.json";
 export const STATE_PATH = "dashboard/current-state.json";
 export const TRADES_PATH = "dashboard/trades.json";
 export const CONTROL_PATH = "dashboard/control.json";
@@ -14,6 +16,9 @@ export const DECISION_REVIEW_PATH = "dashboard/decision_review_report.json";
 export const CHALLENGER_REPORT_PATH = "dashboard/challenger_model_report.json";
 export const PLAYBOOK_DISTILLER_PATH = "dashboard/playbook_distiller_report.json";
 export const POLICY_HEALTH_REPORT_PATH = "dashboard/policy_health_report.json";
+export const MISSED_MOVE_REPORT_PATH = "dashboard/missed_move_report.json";
+export const ASSET_DOSSIERS_PATH = "dashboard/asset_dossiers.json";
+export const LLM_REFEREE_REPORT_PATH = "dashboard/llm_referee_report.json";
 export const FALLBACK_REPO_OWNER = "punkypunk936-coder";
 export const FALLBACK_REPO_NAME = "crypto-trading-agent";
 export const FALLBACK_REPO_TAG = "codex/dashboard-state";
@@ -561,11 +566,142 @@ export async function writeJson(pathname: string, value: unknown) {
   });
 }
 
-export function githubFallbackUrl(pathname: string) {
+export async function deleteJson(pathnames: string | string[]) {
+  requireStorage();
+  await del(pathnames);
+}
+
+export async function cleanupChunkBlobs(keepSessionId = "") {
+  requireStorage();
+  const keepPrefix = keepSessionId ? `dashboard/push-chunks/${keepSessionId}/` : "";
+  let cursor: string | undefined;
+  do {
+    const page = await list({ prefix: "dashboard/push-chunks/", cursor, limit: 1000 });
+    const stale = page.blobs
+      .map((blob) => blob.pathname)
+      .filter((pathname) => !keepPrefix || !pathname.startsWith(keepPrefix));
+    if (stale.length) {
+      await del(stale);
+    }
+    cursor = page.hasMore ? page.cursor : undefined;
+  } while (cursor);
+}
+
+function positiveNumber(value: any) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+export function snapshotCycle(snapshot: any) {
+  return positiveNumber(snapshot?.state?.cycle_number ?? snapshot?.cycle_number);
+}
+
+export function snapshotTimestamp(snapshot: any) {
+  const raw = String(
+    snapshot?.updatedAt || snapshot?.server_time || snapshot?.state?.last_cycle || "",
+  ).trim();
+  if (!raw) return 0;
+  const parsed = Date.parse(raw.includes("T") ? raw : raw.replace(" ", "T"));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function snapshotVersion(snapshot: any) {
+  return positiveNumber(snapshot?.version) || snapshotTimestamp(snapshot) || snapshotCycle(snapshot);
+}
+
+export function compareSnapshots(left: any, right: any) {
+  const leftRank = [snapshotVersion(left), snapshotCycle(left), snapshotTimestamp(left)];
+  const rightRank = [snapshotVersion(right), snapshotCycle(right), snapshotTimestamp(right)];
+  for (let index = 0; index < leftRank.length; index += 1) {
+    if (leftRank[index] > rightRank[index]) return 1;
+    if (leftRank[index] < rightRank[index]) return -1;
+  }
+  return 0;
+}
+
+export function canonicalizeSnapshot(snapshot: any) {
+  const source = snapshot && typeof snapshot === "object" ? snapshot : {};
+  const now = new Date();
+  const updatedAt = String(source.updatedAt || "").trim() || now.toISOString();
+  const version = positiveNumber(source.version) || now.getTime();
+  const state = source.state && typeof source.state === "object" ? source.state : defaultState();
+  return {
+    ...source,
+    schemaVersion: positiveNumber(source.schemaVersion) || 2,
+    version,
+    updatedAt,
+    state,
+  };
+}
+
+export function snapshotFromPayload(data: any) {
+  const payload = data && typeof data === "object" ? data : {};
+  if (payload.snapshot && typeof payload.snapshot === "object" && payload.snapshot.state) {
+    return canonicalizeSnapshot(payload.snapshot);
+  }
+
+  const built = buildSnapshot(
+    payload.state,
+    payload.trades || [],
+    payload.control,
+    payload.market_map,
+    payload.trade_reviews,
+    payload.server_time,
+    payload.decision_review_report,
+    payload.challenger_report,
+    payload.playbook_distiller_report,
+    payload.policy_health_report,
+  );
+  const passthrough = { ...payload };
+  delete passthrough.snapshot;
+  delete passthrough.encoding;
+  delete passthrough.payload;
+  return canonicalizeSnapshot({ ...passthrough, ...built });
+}
+
+export function snapshotManifest(snapshot: any) {
+  const canonical = canonicalizeSnapshot(snapshot);
+  return {
+    schemaVersion: canonical.schemaVersion,
+    version: canonical.version,
+    updatedAt: canonical.updatedAt,
+    cycle_number: snapshotCycle(canonical),
+    server_time: canonical.server_time || canonical.state?.last_cycle || null,
+    snapshot_path: SNAPSHOT_PATH,
+  };
+}
+
+export async function persistCanonicalSnapshot(data: any) {
+  const snapshot = snapshotFromPayload(data);
+  await writeJson(SNAPSHOT_PATH, snapshot);
+  await writeJson(MANIFEST_PATH, snapshotManifest(snapshot));
+
+  const components: Array<[string, any]> = [
+    [STATE_PATH, snapshot.state || data?.state || {}],
+    [TRADES_PATH, Array.isArray(data?.trades) ? data.trades : (snapshot.trades || [])],
+    [CONTROL_PATH, snapshot.control || data?.control || {}],
+    [MARKET_MAP_PATH, snapshot.market_map || data?.market_map || {}],
+    [TRADE_REVIEWS_PATH, snapshot.trade_reviews || data?.trade_reviews || {}],
+    [DECISION_REVIEW_PATH, snapshot.decision_review_report || data?.decision_review_report || {}],
+    [CHALLENGER_REPORT_PATH, snapshot.challenger_report || data?.challenger_report || {}],
+    [MISSED_MOVE_REPORT_PATH, snapshot.missed_move_report || data?.missed_move_report || {}],
+    [ASSET_DOSSIERS_PATH, snapshot.asset_dossiers || data?.asset_dossiers || {}],
+    [LLM_REFEREE_REPORT_PATH, snapshot.llm_referee_report || data?.llm_referee_report || {}],
+    [PLAYBOOK_DISTILLER_PATH, snapshot.playbook_distiller_report || data?.playbook_distiller_report || {}],
+    [POLICY_HEALTH_REPORT_PATH, snapshot.policy_health_report || data?.policy_health_report || {}],
+  ];
+  const results = await Promise.allSettled(
+    components.map(([pathname, value]) => writeJson(pathname, value)),
+  );
+  const componentErrors = results.filter((result) => result.status === "rejected").length;
+  return { snapshot, componentErrors };
+}
+
+export function githubFallbackUrl(pathname: string, refOverride = "") {
   const owner = process.env.DASHBOARD_STATE_GITHUB_OWNER || FALLBACK_REPO_OWNER;
   const repo = process.env.DASHBOARD_STATE_GITHUB_REPO || FALLBACK_REPO_NAME;
-  const tag = githubFallbackRef();
-  return `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(tag)}/${pathname}`;
+  const ref = refOverride || githubFallbackRef();
+  return `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(ref)}/${pathname}`;
 }
 
 function githubFallbackRef() {
@@ -598,10 +734,10 @@ function withCacheBuster(url: string) {
   return `${url}${url.includes("?") ? "&" : "?"}ts=${Date.now()}`;
 }
 
-export function githubContentsFallbackUrl(pathname: string) {
+export function githubContentsFallbackUrl(pathname: string, refOverride = "") {
   const owner = process.env.DASHBOARD_STATE_GITHUB_OWNER || FALLBACK_REPO_OWNER;
   const repo = process.env.DASHBOARD_STATE_GITHUB_REPO || FALLBACK_REPO_NAME;
-  const ref = githubFallbackRef();
+  const ref = refOverride || githubFallbackRef();
   return `https://api.github.com/repos/${owner}/${repo}/contents/${encodeGithubPath(pathname)}?ref=${encodeURIComponent(ref)}`;
 }
 
@@ -617,9 +753,9 @@ async function parseJsonResponse(response: Response) {
   }
 }
 
-async function readGithubContentsJson(pathname: string) {
+async function readGithubContentsJson(pathname: string, refOverride = "") {
   try {
-    const response = await fetch(withCacheBuster(githubContentsFallbackUrl(pathname)), {
+    const response = await fetch(withCacheBuster(githubContentsFallbackUrl(pathname, refOverride)), {
       cache: "no-store",
       headers: githubJsonHeaders(),
     });
@@ -628,6 +764,16 @@ async function readGithubContentsJson(pathname: string) {
     }
 
     const meta = await response.json().catch(() => null);
+    const content = typeof meta?.content === "string" ? meta.content.replace(/\s/g, "") : "";
+    const decoder = (globalThis as any).atob;
+    if (content && typeof decoder === "function") {
+      try {
+        return JSON.parse(decoder(content));
+      } catch {
+        // Continue to download_url for large or non-inline content.
+      }
+    }
+
     const downloadUrl = typeof meta?.download_url === "string" ? meta.download_url : "";
     if (downloadUrl) {
       const rawResponse = await fetch(withCacheBuster(downloadUrl), {
@@ -639,15 +785,6 @@ async function readGithubContentsJson(pathname: string) {
       }
     }
 
-    const content = typeof meta?.content === "string" ? meta.content.replace(/\s/g, "") : "";
-    const decoder = (globalThis as any).atob;
-    if (content && typeof decoder === "function") {
-      try {
-        return JSON.parse(decoder(content));
-      } catch {
-        return undefined;
-      }
-    }
     return undefined;
   } catch {
     return undefined;
@@ -655,25 +792,35 @@ async function readGithubContentsJson(pathname: string) {
 }
 
 export async function readGitFallbackJson(pathname: string, fallback: any) {
-  const contentsValue = await readGithubContentsJson(pathname);
-  if (contentsValue !== undefined) {
-    return contentsValue;
-  }
+  return readGitFallbackJsonAtRef(pathname, fallback);
+}
 
+export async function readGitFallbackJsonAtRef(pathname: string, fallback: any, refOverride = "") {
+  if (pathname === MANIFEST_PATH && !refOverride) {
+    const currentManifest = await readGithubContentsJson(pathname);
+    if (currentManifest !== undefined) return currentManifest;
+  }
   try {
-    const response = await fetch(withCacheBuster(githubFallbackUrl(pathname)), {
+    const response = await fetch(withCacheBuster(githubFallbackUrl(pathname, refOverride)), {
       cache: "no-store",
       headers: githubRawHeaders(),
     });
-    if (!response.ok) {
-      return fallback;
+    if (response.ok) {
+      const rawValue = await parseJsonResponse(response);
+      if (rawValue !== undefined) return rawValue;
     }
-
-    const rawValue = await parseJsonResponse(response);
-    return rawValue === undefined ? fallback : rawValue;
   } catch {
-    return fallback;
+    // Fall through to GitHub's contents API when raw delivery is unavailable.
   }
+
+  const contentsValue = await readGithubContentsJson(pathname, refOverride);
+  return contentsValue === undefined ? fallback : contentsValue;
+}
+
+export async function readGitCanonicalSnapshot(manifest?: any) {
+  const canonicalManifest = manifest || await readGitFallbackJson(MANIFEST_PATH, null);
+  const snapshotCommit = String(canonicalManifest?.snapshot_commit || "").trim();
+  return readGitFallbackJsonAtRef(SNAPSHOT_PATH, null, snapshotCommit);
 }
 
 export async function readNetlifyStateFallback() {

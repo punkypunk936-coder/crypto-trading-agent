@@ -1,24 +1,20 @@
 import {
-  CHALLENGER_REPORT_PATH,
-  MARKET_MAP_PATH,
+  MANIFEST_PATH,
   SNAPSHOT_PATH,
-  DECISION_REVIEW_PATH,
-  POLICY_HEALTH_REPORT_PATH,
-  PLAYBOOK_DISTILLER_PATH,
-  CONTROL_PATH,
-  STATE_PATH,
-  TRADE_REVIEWS_PATH,
-  TRADES_PATH,
   buildSnapshot,
+  canonicalizeSnapshot,
+  compareSnapshots,
   defaultControl,
   defaultMarketMap,
   defaultState,
   defaultTradeReviews,
   json,
-  marketMapFromState,
-  readNetlifyStateFallback,
   readGitFallbackJson,
+  readGitCanonicalSnapshot,
   readJson,
+  readNetlifyStateFallback,
+  snapshotCycle,
+  snapshotVersion,
 } from "../lib/dashboard-store";
 
 type DashboardCandidate = {
@@ -26,52 +22,22 @@ type DashboardCandidate = {
   snapshot: any;
 };
 
-function hasRichSnapshot(snapshot: any) {
-  return Boolean(
-    snapshot &&
-    typeof snapshot === "object" &&
-    snapshot.state &&
-    snapshot.action_board &&
-    snapshot.market_map_summary &&
-    snapshot.learning_summary &&
-    snapshot.control &&
-    snapshot.trade_reviews,
-  );
-}
-
-function snapshotCycle(snapshot: any) {
-  const cycle = Number(snapshot?.state?.cycle_number ?? snapshot?.cycle_number ?? 0);
-  return Number.isFinite(cycle) ? cycle : 0;
-}
-
-function snapshotStamp(snapshot: any) {
-  const raw = String(snapshot?.server_time || snapshot?.state?.last_cycle || "").trim();
-  if (!raw) {
-    return 0;
-  }
-  const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
-  const parsed = Date.parse(normalized);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function snapshotStampLabel(snapshot: any) {
-  return snapshot?.server_time || snapshot?.state?.last_cycle || null;
-}
-
 function summarizeCandidates(candidates: DashboardCandidate[]) {
-  return candidates.map((candidate) => ({
-    source: candidate.source,
-    available: Boolean(candidate.snapshot && typeof candidate.snapshot === "object"),
-    rich: hasRichSnapshot(candidate.snapshot),
-    cycle_number: snapshotCycle(candidate.snapshot),
-    stamp: snapshotStampLabel(candidate.snapshot),
+  return candidates.map(({ source, snapshot }) => ({
+    source,
+    available: Boolean(snapshot?.state || snapshot?.version || snapshot?.updatedAt),
+    cycle_number: snapshotCycle(snapshot),
+    version: snapshotVersion(snapshot),
+    updatedAt: snapshot?.updatedAt || null,
+    stamp: snapshot?.server_time || snapshot?.state?.last_cycle || null,
   }));
 }
 
 function withStateSource(snapshot: any, source: string, candidates: DashboardCandidate[]) {
-  const runtime = snapshot?.runtime && typeof snapshot.runtime === "object" ? snapshot.runtime : {};
+  const canonical = canonicalizeSnapshot(snapshot);
+  const runtime = canonical.runtime && typeof canonical.runtime === "object" ? canonical.runtime : {};
   return {
-    ...snapshot,
+    ...canonical,
     runtime: {
       ...runtime,
       dashboard_state_source: source,
@@ -80,129 +46,78 @@ function withStateSource(snapshot: any, source: string, candidates: DashboardCan
   };
 }
 
-function pickFreshestSnapshot(candidates: DashboardCandidate[]) {
-  let winner: DashboardCandidate | null = null;
-  let winnerRank: [number, number] = [-1, -1];
-  for (const candidate of candidates) {
-    const snapshot = candidate.snapshot;
-    if (!hasRichSnapshot(snapshot)) {
-      continue;
-    }
-    const rank: [number, number] = [snapshotCycle(snapshot), snapshotStamp(snapshot)];
-    if (
-      rank[0] > winnerRank[0] ||
-      (rank[0] === winnerRank[0] && rank[1] > winnerRank[1])
-    ) {
-      winner = candidate;
-      winnerRank = rank;
-    }
+function fallbackSnapshot(snapshot: any) {
+  if (!snapshot?.state) return null;
+  if (snapshot.action_board && snapshot.market_map_summary && snapshot.learning_summary) {
+    return canonicalizeSnapshot(snapshot);
   }
-  return winner;
-}
-
-function pickFreshestThinFallback(candidates: DashboardCandidate[]) {
-  let winner: DashboardCandidate | null = null;
-  let winnerRank: [number, number] = [-1, -1];
-  for (const candidate of candidates) {
-    const snapshot = candidate.snapshot;
-    if (!snapshot || typeof snapshot !== "object" || !snapshot.state) {
-      continue;
-    }
-    const rank: [number, number] = [snapshotCycle(snapshot), snapshotStamp(snapshot)];
-    if (
-      rank[0] > winnerRank[0] ||
-      (rank[0] === winnerRank[0] && rank[1] > winnerRank[1])
-    ) {
-      winner = candidate;
-      winnerRank = rank;
-    }
-  }
-  return winner;
+  const derived = buildSnapshot(
+    snapshot.state,
+    snapshot.trades || [],
+    snapshot.control || defaultControl(),
+    snapshot.market_map || defaultMarketMap(),
+    snapshot.trade_reviews || defaultTradeReviews(),
+    snapshot.server_time,
+    snapshot.decision_review_report || {},
+    snapshot.challenger_report || {},
+    snapshot.playbook_distiller_report || {},
+    snapshot.policy_health_report || {},
+  );
+  return canonicalizeSnapshot({ ...snapshot, ...derived });
 }
 
 export async function GET() {
-  const cacheHeaders = { "Cache-Control": "no-store, max-age=0" };
+  const cacheHeaders = {
+    "Cache-Control": "no-store, no-cache, max-age=0, must-revalidate",
+    Pragma: "no-cache",
+  };
+  const candidates: DashboardCandidate[] = [];
+
+  let blobSnapshot: any = null;
+  let blobManifest: any = null;
   try {
-    let blobSnapshot = null;
-    try {
-      blobSnapshot = await readJson(SNAPSHOT_PATH, null);
-    } catch {
-      blobSnapshot = null;
-    }
-
-    const netlifySnapshot = await readNetlifyStateFallback();
-    const gitSnapshot = await readGitFallbackJson(SNAPSHOT_PATH, null);
-
-    const candidates: DashboardCandidate[] = [
-      { source: "vercel_blob", snapshot: blobSnapshot },
-      { source: "netlify_fallback", snapshot: netlifySnapshot },
-      { source: "github_fallback", snapshot: gitSnapshot },
-    ];
-
-    const freshestRichSnapshot = pickFreshestSnapshot(candidates);
-    if (freshestRichSnapshot) {
-      return json(
-        withStateSource(freshestRichSnapshot.snapshot, freshestRichSnapshot.source, candidates),
-        { headers: cacheHeaders },
-      );
-    }
-
-    const thinFallbackSnapshot = pickFreshestThinFallback(candidates);
-    if (thinFallbackSnapshot?.snapshot && typeof thinFallbackSnapshot.snapshot === "object" && thinFallbackSnapshot.snapshot.state) {
-      const snapshot = thinFallbackSnapshot.snapshot;
-      return json(
-        withStateSource(
-          buildSnapshot(
-            snapshot.state,
-            snapshot.trades || [],
-            snapshot.control || defaultControl(),
-            marketMapFromState(snapshot.state),
-            snapshot.trade_reviews || defaultTradeReviews(),
-            snapshot.server_time,
-            snapshot.decision_review_report || {},
-            snapshot.challenger_report || {},
-            snapshot.playbook_distiller_report || {},
-            snapshot.policy_health_report || {},
-          ),
-          thinFallbackSnapshot.source,
-          candidates,
-        ),
-        { headers: cacheHeaders },
-      );
-    }
-
-    const loaders = [
-      [STATE_PATH, defaultState()],
-      [TRADES_PATH, []],
-      [CONTROL_PATH, defaultControl()],
-      [MARKET_MAP_PATH, defaultMarketMap()],
-      [TRADE_REVIEWS_PATH, defaultTradeReviews()],
-      [DECISION_REVIEW_PATH, {}],
-      [CHALLENGER_REPORT_PATH, {}],
-      [PLAYBOOK_DISTILLER_PATH, {}],
-      [POLICY_HEALTH_REPORT_PATH, {}],
-    ] as const;
-    const [state, trades, control, marketMap, tradeReviews, decisionReviewReport, challengerReport, playbookDistillerReport, policyHealthReport] = await Promise.all(
-      loaders.map(async ([path, fallback]) => {
-        try {
-          return await readJson(path, fallback);
-        } catch {
-          return await readGitFallbackJson(path, fallback);
-        }
-      }),
-    );
-    return json(
-      withStateSource(
-        buildSnapshot(state, trades, control, marketMap, tradeReviews, undefined, decisionReviewReport, challengerReport, playbookDistillerReport, policyHealthReport),
-        "component_store",
-        candidates,
-      ),
-      { headers: cacheHeaders },
-    );
-  } catch (error) {
-    return json(
-      buildSnapshot(defaultState(), [], defaultControl(), defaultMarketMap(), defaultTradeReviews(), undefined, {}, {}, {}, {}),
-      { status: 500, headers: cacheHeaders },
-    );
+    [blobSnapshot, blobManifest] = await Promise.all([
+      readJson(SNAPSHOT_PATH, null),
+      readJson(MANIFEST_PATH, null),
+    ]);
+  } catch {
+    blobSnapshot = null;
+    blobManifest = null;
   }
+  candidates.push({ source: "vercel_blob", snapshot: blobSnapshot || blobManifest });
+
+  const gitManifest = await readGitFallbackJson(MANIFEST_PATH, null);
+  candidates.push({ source: "github_canonical_manifest", snapshot: gitManifest });
+
+  const blobIsCurrent = Boolean(
+    blobSnapshot?.state && (!gitManifest || compareSnapshots(blobSnapshot, gitManifest) >= 0),
+  );
+  if (blobIsCurrent) {
+    return json(withStateSource(blobSnapshot, "vercel_blob", candidates), { headers: cacheHeaders });
+  }
+
+  const gitSnapshot = await readGitCanonicalSnapshot(gitManifest);
+  candidates.push({ source: "github_canonical", snapshot: gitSnapshot });
+  if (gitSnapshot?.state) {
+    return json(withStateSource(fallbackSnapshot(gitSnapshot), "github_canonical", candidates), { headers: cacheHeaders });
+  }
+
+  if (blobSnapshot?.state) {
+    return json(withStateSource(fallbackSnapshot(blobSnapshot), "vercel_blob_degraded", candidates), { headers: cacheHeaders });
+  }
+
+  const netlifySnapshot = await readNetlifyStateFallback();
+  candidates.push({ source: "netlify_emergency_fallback", snapshot: netlifySnapshot });
+  if (netlifySnapshot?.state) {
+    return json(withStateSource(fallbackSnapshot(netlifySnapshot), "netlify_emergency_fallback", candidates), { headers: cacheHeaders });
+  }
+
+  return json(
+    withStateSource(
+      buildSnapshot(defaultState(), [], defaultControl(), defaultMarketMap(), defaultTradeReviews()),
+      "default_offline",
+      candidates,
+    ),
+    { status: 503, headers: cacheHeaders },
+  );
 }

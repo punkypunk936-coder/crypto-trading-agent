@@ -6,7 +6,7 @@ Shared dashboard payload builder used by the local Flask UI and remote sync.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 import time
 from typing import Any, Iterable
 
@@ -2572,6 +2572,8 @@ def build_dashboard_snapshot(
     *,
     server_timestamp: str | None = None,
 ) -> dict:
+    updated_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    version = time.time_ns() // 1_000_000
     normalized_market_map = normalize_market_map(market_map)
     normalized_trade_reviews = normalize_trade_reviews(trade_reviews)
     enriched_trades = merge_dataset_into_trades(trades or [], trade_dataset_records)
@@ -2604,6 +2606,9 @@ def build_dashboard_snapshot(
     )
     xyz = build_xyz_section(shaped_state, board)
     return {
+        "schemaVersion": 2,
+        "version": version,
+        "updatedAt": updated_at,
         "state": shaped_state,
         "trades": safe_trades[-50:][::-1],
         "stats": calc_stats(safe_trades),

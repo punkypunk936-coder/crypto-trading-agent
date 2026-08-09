@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import csv
+import gzip
 import json
 import os
 import sys
@@ -6218,7 +6219,11 @@ def test_dashboard_remote_fallback_still_publishes_git_snapshot() -> None:
     assert captured["published"] is True
     push_payload = captured["push_payload"]
     assert isinstance(push_payload, dict)
-    assert push_payload["market_map"]["coins"]["BTC"]["bias"] == "BULLISH"
+    assert push_payload["encoding"] == "gzip-base64"
+    decoded_payload = json.loads(
+        gzip.decompress(base64.b64decode(push_payload["payload"])).decode()
+    )
+    assert decoded_payload["market_map"]["coins"]["BTC"]["bias"] == "BULLISH"
 
 
 def test_trade_memory_records_richer_loss_reasoning() -> None:
