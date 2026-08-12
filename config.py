@@ -75,7 +75,12 @@ def _default_analysis_coins() -> List[str]:
 
 
 def _default_execution_coins() -> List[str]:
-    return _unique_coins(_BASE_EXECUTION_COINS, TRADEXYZ_ASSET_METADATA.keys())
+    analysis_only = set(_ASIA_CONTEXT_COINS)
+    venue_execution_coins = [
+        coin for coin in TRADEXYZ_ASSET_METADATA.keys()
+        if str(coin or "").upper().strip() not in analysis_only
+    ]
+    return _unique_coins(_BASE_EXECUTION_COINS, venue_execution_coins)
 
 
 def _default_instrument_types() -> dict:
@@ -162,6 +167,11 @@ class TradingConfig:
     # TradeXYZ-backed symbols are analysed by default and auto-promoted into
     # the executable universe whenever the connected venue exposes them.
     analysis_coins: List[str]   = field(default_factory=_default_analysis_coins)
+
+    # Regional benchmarks inform the global regime but never become orders.
+    # This lets the agent retain a safe public reference feed if venue candles
+    # disappear without contaminating executable prices.
+    analysis_only_coins: List[str] = field(default_factory=lambda: list(_ASIA_CONTEXT_COINS))
 
     # Keep the live decision loop bounded. The full universe remains visible and
     # is scanned on a rotating basis, while open positions and core markets are

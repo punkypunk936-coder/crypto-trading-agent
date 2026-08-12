@@ -5375,9 +5375,10 @@ function renderDecisionSurface(report, board, state) {
     const direction = String(row.direction || 'FLAT');
     const status = String(row.status || 'NO EDGE');
     const impliedDirection = String(row.implied_us_direction || direction || 'FLAT');
-    const tone = status === 'CONFIRMING' || status === 'LEADING' && impliedDirection === 'LONG' || (row.region === 'US' && direction === 'LONG')
+    // Regional color describes the local tape. Confirmation status is shown separately.
+    const tone = direction === 'LONG'
       ? 'green'
-      : status === 'DIVERGING' || status === 'LEADING' && impliedDirection === 'SHORT' || (row.region === 'US' && direction === 'SHORT')
+      : direction === 'SHORT'
         ? 'red'
         : 'muted';
     const statusLabel = row.region === 'US'
@@ -5385,7 +5386,7 @@ function renderDecisionSurface(report, board, state) {
       : status === 'CONFIRMING'
         ? 'CONFIRMS'
         : status === 'DIVERGING'
-          ? 'CONTRADICTS'
+          ? 'DOES NOT CONFIRM US'
           : status === 'LEADING'
             ? 'EARLY WARNING'
             : status;

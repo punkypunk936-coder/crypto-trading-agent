@@ -164,7 +164,17 @@ class TradingAgent:
         self._last_listing_sync_report: Dict[str, object] = {}
         self._analysis_cursor = 0
         self._last_analysis_batch: List[str] = []
-        self._tradable_coins = [coin.upper() for coin in cfg.trading.coins]
+        self._analysis_only_coin_set = {
+            str(coin or "").upper().strip()
+            for coin in (getattr(cfg.trading, "analysis_only_coins", []) or [])
+            if str(coin or "").strip()
+        }
+        self._tradable_coins = [
+            coin.upper()
+            for coin in cfg.trading.coins
+            if coin.upper() not in self._analysis_only_coin_set
+        ]
+        self.cfg.trading.coins = list(self._tradable_coins)
         self._tradable_coin_set = set(self._tradable_coins)
         self._dynamic_analysis_coins = [
             str(coin).upper()
@@ -317,6 +327,7 @@ class TradingAgent:
         if coin_upper not in self._price_circuits:
             self._price_circuits[coin_upper] = get_price_feed_circuit(f"primary_{coin_upper.lower()}")
 
+        executable = bool(executable and coin_upper not in self._analysis_only_coin_set)
         if executable:
             if coin_upper not in self._tradable_coin_set:
                 self._tradable_coins.append(coin_upper)
@@ -400,6 +411,7 @@ class TradingAgent:
                     auto_promote
                     and market_cap_eligible
                     and (active or promote_before_activity)
+                    and coin_upper not in self._analysis_only_coin_set
                 )
                 result = self._add_runtime_symbol(
                     coin_upper,
@@ -2471,6 +2483,7 @@ class TradingAgent:
         if (
             getattr(self.cfg.trading, "enforce_active_venue_markets", True)
             and is_hyperliquid_supported(coin)
+            and str(coin or "").upper() not in self._analysis_only_coin_set
             and not hyperliquid_market_is_active(coin)
         ):
             log.info(f"[{coin}] Hyperliquid market is currently inactive — keeping it analysis-only")

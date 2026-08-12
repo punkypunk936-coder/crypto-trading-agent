@@ -149,6 +149,20 @@ def _region_direction(asia_context: dict, region: str) -> str:
     return "LONG" if sum(votes) > 0 else "SHORT" if sum(votes) < 0 else "FLAT"
 
 
+def _region_session_move(asia_context: dict, region: str, direction: str) -> float:
+    """Return the average fresh move that supports the region's current direction."""
+    rows = [
+        row for row in list(asia_context.get("benchmarks") or [])
+        if row.get("region") == region and row.get("fresh")
+    ]
+    moves = [
+        _number(row.get("move_pct"))
+        for row in rows
+        if row.get("direction") == direction and _number(row.get("move_pct"))
+    ]
+    return (sum(moves) / len(moves)) if moves else 0.0
+
+
 def _best_correlation(signals: dict, region: str) -> dict:
     candidates = []
     for us_symbol in US_REFERENCES:
@@ -204,6 +218,7 @@ def _region_read(
     relationship = _relationship(value)
     us_direction = _current_us_direction(us_context)
     regional_direction = _region_direction(asia_context, region)
+    session_move_pct = _region_session_move(asia_context, region, regional_direction)
     meaningful = value is not None and abs(value) >= 0.30
     implied_us_direction = regional_direction
     if meaningful and value < 0 and regional_direction in {"LONG", "SHORT"}:
@@ -230,8 +245,11 @@ def _region_read(
             f"{formatted} across {correlation['sample_size']} matched observations."
         )
     elif status == "DIVERGING":
+        local_label = "risk-on" if regional_direction == "LONG" else "risk-off"
+        move_clause = f" ({session_move_pct:+.1f}% average fresh move)" if session_move_pct else ""
         summary = (
-            f"{region} contradicts the current US {us_direction.lower()} read after accounting for a "
+            f"{region} is locally {local_label}{move_clause}, which contradicts the current US "
+            f"{us_direction.lower()} read after accounting for a "
             f"{relationship.lower()} relationship ({formatted}, {correlation['sample_size']} observations). "
             "Treat conviction as lower until the tapes reconnect."
         )
@@ -260,6 +278,7 @@ def _region_read(
         "us_symbol": correlation["us_symbol"],
         "regional_symbol": correlation["regional_symbol"],
         "implied_us_direction": implied_us_direction,
+        "session_move_pct": round(session_move_pct, 4),
         "summary": summary,
     }
 
@@ -348,7 +367,21 @@ def build_global_market_context(
         "DIVERGENT": 0.60,
         "UNCONFIRMED": 1.0,
     }[cross_state]
+    strong_counter_rows = [
+        row for row in correlations
+        if row["status"] == "DIVERGING"
+        and row["relationship"] in {"POSITIVE", "STRONG POSITIVE"}
+        and abs(_number(row.get("session_move_pct"))) >= 1.5
+    ]
+    strong_asia_counter_signal = bool(strong_counter_rows)
+    low_conviction_us_conflict = bool(
+        cross_state == "DIVERGENT"
+        and strong_asia_counter_signal
+        and base_confidence < 0.55
+    )
     tactical_bias = us_direction if us_direction in {"LONG", "SHORT"} else lead_direction
+    if low_conviction_us_conflict:
+        tactical_bias = "SELECTIVE"
     if tactical_bias not in {"LONG", "SHORT"}:
         tactical_bias = "SELECTIVE"
     direction_text = tactical_bias.lower()
@@ -391,16 +424,31 @@ def build_global_market_context(
     elif cross_state == "MIXED":
         cross_summary = "Korea and Japan do not agree on the US handoff. Reduce qualified stock size to 75%."
     elif cross_state == "DIVERGENT":
-        cross_summary = (
-            f"Asian read-through contradicts the US {direction_text} read. "
-            "Reduce qualified stock size to 60% until alignment returns."
-        )
+        if strong_asia_counter_signal:
+            counter_text = ", ".join(
+                f"{row['region']} is locally {'risk-on' if row['direction'] == 'LONG' else 'risk-off'}"
+                for row in strong_counter_rows
+            )
+            cross_summary = (
+                f"The US tape is not confirmed by Asia: {counter_text}. "
+                "Keep the broad call selective and require US asset-level confirmation."
+            )
+        else:
+            cross_summary = (
+                f"Asian read-through contradicts the US {direction_text} read. "
+                "Reduce qualified stock size to 60% until alignment returns."
+            )
     else:
         cross_summary = "Cross-market history is not reliable enough to alter size. Use the US and stock-specific thesis."
 
     regime = _text(us.get("regime")).upper() or "UNKNOWN"
     region_clause = "; ".join(
-        f"{row['region']} {row['status'].lower()} ({row['relationship'].lower()})"
+        (
+            f"{row['region']} {'risk-on' if row['direction'] == 'LONG' else 'risk-off'} locally, "
+            f"{row['status'].lower()} the US ({row['relationship'].lower()})"
+            if row["direction"] in {"LONG", "SHORT"}
+            else f"{row['region']} no local direction ({row['status'].lower()})"
+        )
         for row in correlations
     )
     if cross_state in {"ASIA_LEADS", "EARLY_SIGNAL"}:
@@ -408,6 +456,14 @@ def build_global_market_context(
         headline = (
             f"World tape: {display_bias.lower()} bias. The US is unresolved; "
             f"Korea and Japan provide an {lead_label} signal."
+        )
+    elif low_conviction_us_conflict:
+        lead = strong_counter_rows[0]
+        local_label = "risk-on" if lead["direction"] == "LONG" else "risk-off"
+        move_clause = f" ({lead['session_move_pct']:+.1f}%)" if lead.get("session_move_pct") else ""
+        headline = (
+            f"World tape: {lead['region']} is {local_label}{move_clause}; "
+            f"the US {regime.replace('_', ' ').lower()} read is low-confidence and not confirmed."
         )
     elif regime == "RANGE" and us_direction in {"LONG", "SHORT"}:
         headline = (
@@ -460,7 +516,12 @@ def build_global_market_context(
             "Enter on a reclaim or held pullback, not on an extended candle."
         )
     else:
-        execution = "No broad directional edge. Trade only the clearest asset-specific thesis and keep exposure selective."
+        execution = (
+            "No broad directional edge. Korea supplies a positive US prior, but trade only after the US index and "
+            "individual asset confirm; keep exposure selective."
+            if low_conviction_us_conflict and any(row["direction"] == "LONG" for row in strong_counter_rows)
+            else "No broad directional edge. Trade only the clearest asset-specific thesis and keep exposure selective."
+        )
 
     us_view = {
         "region": "US",
@@ -495,6 +556,8 @@ def build_global_market_context(
             "tactical_bias": tactical_bias,
             "display_bias": display_bias,
             "breadth_conflicts": breadth_conflicts,
+            "strong_asia_counter_signal": strong_asia_counter_signal,
+            "low_conviction_us_conflict": low_conviction_us_conflict,
             "summary": cross_summary,
             "execution": execution,
         },

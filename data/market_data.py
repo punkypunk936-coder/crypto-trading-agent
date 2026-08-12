@@ -3,8 +3,10 @@ data/market_data.py
 Hyperliquid-first market-data layer.
 
 Active runtime behavior:
-  - supported venue symbols use Hyperliquid only
+  - executable venue symbols use Hyperliquid only
   - unsupported macro instruments can still fall back to Yahoo Finance
+  - explicitly analysis-only Asia benchmarks may use Yahoo reference candles
+    when venue data is unavailable; those prices never drive order execution
 
 Legacy Lighter helpers remain below for historical tooling/tests, but the live
 agent path is now Hyperliquid-first and does not quietly fall back away from
@@ -209,11 +211,21 @@ INDEX_YAHOO_MAP = {
     "BRENT": "BZ=F",    # Brent crude futures
     "WTI":   "CL=F",    # WTI crude futures
     "CL":    "CL=F",    # Alias for WTI
+    "KR200": "^KS200",
+    "JP225": "^N225",
     "EWY":   "EWY",
+    "EWJ":   "EWJ",
     "NDX":   "^IXIC",
     "DJI":   "^DJI",
     "VIX":   "^VIX",
     "VIXINDEX": "^VIX",
+}
+
+ANALYSIS_REFERENCE_YAHOO_MAP = {
+    "KR200": "^KS200",
+    "JP225": "^N225",
+    "EWY": "EWY",
+    "EWJ": "EWJ",
 }
 
 EQUITY_YAHOO_MAP = {
@@ -377,7 +389,9 @@ def fetch_candles(
     """
     Fetch the last `lookback` OHLCV candles for `coin`.
 
-    Supported venue markets use Hyperliquid candleSnapshot only.
+    Executable venue markets use Hyperliquid candleSnapshot only. Explicitly
+    analysis-only Asia benchmarks can use reference candles if venue data is
+    unavailable.
     Unsupported macro instruments still fall back to Yahoo Finance.
 
     Returns a DataFrame with columns:
@@ -420,7 +434,7 @@ def fetch_candles(
             stale = _get_stale_frame(cache_key)
             if stale is not None:
                 return stale
-            return None
+            return _fetch_analysis_reference_candles(coin_upper, interval, lookback)
 
         try:
             resp = requests.post(HL_INFO_URL, json=payload, timeout=10)
@@ -464,7 +478,7 @@ def fetch_candles(
                 if stale is not None and _hyperliquid_frame_is_recent(coin_upper, interval, stale):
                     log.info(f"[{coin_upper}] Reusing recent cached Hyperliquid candles while the venue recovers")
                     return stale
-                return None
+                return _fetch_analysis_reference_candles(coin_upper, interval, lookback)
             _cache_frame(cache_key, df, coin=coin_upper)
             log.debug(f"Fetched {len(df)} Hyperliquid candles for {coin_upper}/{hl_coin} ({interval})")
             return df
@@ -474,12 +488,34 @@ def fetch_candles(
         if stale is not None and _hyperliquid_frame_is_recent(coin_upper, interval, stale):
             log.info(f"[{coin_upper}] Reusing recent cached Hyperliquid candles after empty venue response")
             return stale
-        return None
+        return _fetch_analysis_reference_candles(coin_upper, interval, lookback)
 
     # ── Unsupported macro instruments: route to Yahoo Finance ──────────────
     if coin_upper in INDEX_YAHOO_MAP:
         return _fetch_candles_yahoo(coin_upper, interval, lookback)
     return None
+
+
+def _fetch_analysis_reference_candles(
+    coin: str,
+    interval: str,
+    lookback: int,
+) -> Optional[pd.DataFrame]:
+    ticker = ANALYSIS_REFERENCE_YAHOO_MAP.get(str(coin or "").upper().strip())
+    if not ticker:
+        return None
+    log.warning(
+        "[%s] Venue candles unavailable; using Yahoo reference candles for "
+        "analysis-only regional context",
+        coin,
+    )
+    return _fetch_candles_yahoo(
+        coin,
+        interval,
+        lookback,
+        override_ticker=ticker,
+        cache_price=False,
+    )
 
 
 def _fetch_candles_yahoo(
@@ -488,6 +524,7 @@ def _fetch_candles_yahoo(
     lookback: int,
     *,
     override_ticker: str | None = None,
+    cache_price: bool = True,
 ) -> Optional[pd.DataFrame]:
     """
     Fetch OHLCV from Yahoo Finance for index instruments (SP500 etc.).
@@ -575,7 +612,7 @@ def _fetch_candles_yahoo(
     # Trim to requested lookback
     df = df.tail(lookback).reset_index(drop=True)
 
-    _cache_frame(cache_key, df, coin=coin)
+    _cache_frame(cache_key, df, coin=coin if cache_price else "")
     log.info(f"[{coin}] Yahoo Finance: {len(df)} candles ({interval}) | "
              f"last close={df['close'].iloc[-1]:.2f}")
     return df

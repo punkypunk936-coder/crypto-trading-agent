@@ -304,7 +304,15 @@ def enforce_trade_universe(
             return hyperliquid_market_is_active(coin)
         return True
 
-    active = _normalise_coin_list(config.trading.coins)
+    analysis_only = {
+        str(coin or "").upper().strip()
+        for coin in (getattr(config.trading, "analysis_only_coins", []) or [])
+        if str(coin or "").strip()
+    }
+    active = [
+        coin for coin in _normalise_coin_list(config.trading.coins)
+        if coin not in analysis_only
+    ]
     unsupported = sorted(set(active) - supported)
     if unsupported:
         raise ValueError(
@@ -327,7 +335,11 @@ def enforce_trade_universe(
     promoted = []
     armed_pending_activity = []
     if getattr(config.trading, "auto_promote_analysis_coins", False):
-        analysis = _normalise_coin_list(getattr(config.trading, "analysis_coins", []) or [])
+        analysis = [
+            coin
+            for coin in _normalise_coin_list(getattr(config.trading, "analysis_coins", []) or [])
+            if coin not in analysis_only
+        ]
         if not getattr(config.trading, "dynamic_analysis_auto_promote", False):
             dynamic_set = {str(coin).upper() for coin in getattr(config.trading, "dynamic_analysis_coins", []) or []}
             analysis = [coin for coin in analysis if coin not in dynamic_set]
