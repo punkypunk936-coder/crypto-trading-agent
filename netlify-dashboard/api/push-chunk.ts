@@ -1,11 +1,13 @@
 import {
   PUSH_RECEIPT_PATH,
   cleanupChunkBlobs,
+  compareSnapshots,
   deleteJson,
   json,
   persistCanonicalSnapshot,
   readGitCanonicalSnapshot,
   readJson,
+  snapshotFromPayload,
   snapshotCycle,
   snapshotVersion,
   unauthorized,
@@ -24,9 +26,9 @@ function chunkPaths(sessionId: string, count: number) {
   return Array.from({ length: count }, (_, index) => chunkPath(sessionId, index));
 }
 
-async function githubReceipt(sessionId: string, chunkCount: number, warning: unknown) {
+async function githubReceipt(sessionId: string, chunkCount: number, warning: unknown, incoming: any) {
   const gitSnapshot = await readGitCanonicalSnapshot();
-  if (!gitSnapshot?.state) return null;
+  if (!gitSnapshot?.state || compareSnapshots(gitSnapshot, incoming) < 0) return null;
   return {
     ok: true,
     assembled: true,
@@ -51,6 +53,15 @@ export async function POST(request: Request) {
   const chunkIndex = Number.parseInt(String(data?.chunk_index ?? ""), 10);
   const chunkCount = Number.parseInt(String(data?.chunk_count ?? ""), 10);
   const chunk = typeof data?.chunk === "string" ? data.chunk : "";
+  const announcedVersion = Number(data?.version || 0);
+  const announcedCycle = Number(data?.cycle_number || 0);
+  const announcedSnapshot = announcedVersion > 0 || announcedCycle > 0
+    ? {
+        version: announcedVersion,
+        updatedAt: String(data?.updatedAt || ""),
+        state: { cycle_number: announcedCycle },
+      }
+    : null;
 
   if (!sessionId || !Number.isInteger(chunkIndex) || !Number.isInteger(chunkCount) || chunkCount <= 0 || chunkIndex < 0 || chunkIndex >= chunkCount || !chunk) {
     return json({ ok: false, error: "Invalid chunk payload" }, { status: 400 });
@@ -96,6 +107,7 @@ export async function POST(request: Request) {
 
     const payloadText = pieces.join("");
     const payload = JSON.parse(payloadText);
+    const incoming = snapshotFromPayload(payload);
     const { snapshot, componentErrors } = await persistCanonicalSnapshot(payload);
     const receipt = {
       ok: true,
@@ -115,7 +127,23 @@ export async function POST(request: Request) {
     return json(receipt);
   } catch (error) {
     if (chunkIndex === chunkCount - 1) {
-      const receipt = await githubReceipt(sessionId, chunkCount, error);
+      let incoming = null;
+      try {
+        const pieces = await Promise.all(
+          chunkPaths(sessionId, chunkCount).map(async (pathname, index) => {
+            if (index === chunkIndex) return chunk;
+            return String((await readJson(pathname, null))?.chunk || "");
+          }),
+        );
+        if (pieces.every(Boolean)) {
+          incoming = snapshotFromPayload(JSON.parse(pieces.join("")));
+        }
+      } catch {
+        incoming = null;
+      }
+      const receipt = incoming || announcedSnapshot
+        ? await githubReceipt(sessionId, chunkCount, error, incoming || announcedSnapshot)
+        : null;
       if (receipt) return json(receipt);
     }
     return json({

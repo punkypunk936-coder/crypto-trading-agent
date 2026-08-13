@@ -10405,6 +10405,9 @@ class TradingAgent:
                             "chunk_index": index,
                             "chunk_count": len(chunks),
                             "chunk": chunk,
+                            "version": snapshot.get("version"),
+                            "updatedAt": snapshot.get("updatedAt"),
+                            "cycle_number": (snapshot.get("state") or {}).get("cycle_number"),
                         }).encode()
                         if index == len(chunks) - 1:
                             final_body = body
