@@ -264,6 +264,13 @@ class TradingConfig:
     # Filters single-candle noise crossings. 2 = 4 min confirmation at 2min cycles.
     signal_streak_required: int   = 2
 
+    # Compare every mature setup before committing fresh capital. The winner is
+    # selected from the prior completed cycle, then must reconfirm in the live
+    # cycle before either a market or passive entry can be placed.
+    best_trade_gate_enabled: bool = True
+    best_trade_gate_candidate_limit: int = 3
+    best_trade_gate_max_new_entries_per_cycle: int = 1
+
     # ── FLAT-while-positioned guard ───────────────────────────────
     # If signal stays FLAT for this many consecutive cycles while holding a
     # position, the original thesis is gone → close the trade.

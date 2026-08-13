@@ -3623,26 +3623,26 @@ def test_hosted_dashboard_bundle_matches_local_template() -> None:
 def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> None:
     template = Path("dashboard/templates/dashboard.html").read_text()
     assert "Global trade posture" in template
-    assert "Priority Setups" in template
+    assert "Best Trades" in template
+    assert "Fresh capital decision" in template
     assert "renderDecisionSurface" in template
     assert "renderPrioritySetups" in template
+    assert "renderDecisionJournal" in template
     assert "Combined call" in template
     assert "Why this market call" in template
     assert "priceSourceHtml" not in template
     assert "Price source:" not in template
-    assert "Research &amp; Review" in template
+    assert "Research &amp; Review" not in template
     assert "Realized P&amp;L" in template
+    assert "Decision Journal" in template
+    assert "Open Risk" in template
+    assert 'id="share-link"' not in template
+    assert 'id="kill-btn" onclick="handleKill()" hidden' in template
     assert 'id="tradexyz-volume-shortcut-btn"' not in template
-    assert "Desk Briefing" in template
-    assert "Open Level Sheet" in template
-    assert "Latest Win" in template
-    assert "daily-briefing" in template
-    assert "Stock Desks" in template
     assert "prob-chip" in template
     assert "Reclaim odds" in template
     assert "next_setup_reason" in template
     assert "setupStanceChipHtml" in template
-    assert "Watchlist" in template
     assert "renderCallWatchlist" in template
     assert "BULLISH CALL" in template
     assert "BEARISH CALL" in template
@@ -3650,12 +3650,7 @@ def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> N
     assert "simpleNextText" in template
     assert "Opened because:" in template
     assert "Holding because:" in template
-    assert "Proactive Desk" in template
     assert "renderProactiveDesk" in template
-    assert "Morning Scout Book" in template
-    assert "Starter Basket" in template
-    assert "Starter Execution" in template
-    assert "Forecast Calibration" in template
     assert '<div class="card-label">xyz</div>' not in template
     assert "renderXyzSection" not in template
     assert "xyzSegmentGroups" not in template
@@ -3665,13 +3660,10 @@ def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> N
     assert "data-xyz-segment" not in template
     assert "DEFAULT_ASSET_CATEGORY_LABELS" not in template
     assert "if (key === 'indices_macro')" not in template
-    assert "STANCE SEARCH" in template
     assert "commandSearchCandidates" in template
-    assert "<strong>Lead:</strong>" in template
     assert "friction-stack" in template
     assert "catalyst-rail" in template
     assert "coherentActionBoardLead" in template
-    assert "leadSummaryText(coherentLead" in template
     assert "AbortController" in template
     assert "scheduleRefresh(" in template
     assert "setInterval(refresh, 10000);" not in template
@@ -10629,7 +10621,105 @@ def test_trade_logger_recovery_allocates_unique_closed_ids() -> None:
             trade_logger_module._open_trades.update(original_open)
 
 
+def test_best_trade_gate_ranks_the_whole_mature_book_before_entry() -> None:
+    agent = TradingAgent.__new__(TradingAgent)
+    agent.cfg = SimpleNamespace(trading=SimpleNamespace(
+        best_trade_gate_enabled=True,
+        best_trade_gate_candidate_limit=3,
+        best_trade_gate_max_new_entries_per_cycle=1,
+        analysis_signal_max_age_minutes=20.0,
+    ))
+    agent.risk = SimpleNamespace(has_position=lambda _coin: False)
+    agent.order_mgr = SimpleNamespace(has_pending=lambda _coin: False)
+    agent._tradable_coin_set = {"DELL", "HPE", "STALE"}
+    agent._cycle = 11
+    agent._cycle_new_entry_count = 0
+    now = time.time()
+    signals = {
+        "HPE": {
+            "action": "LONG",
+            "execution_mode": "tradable",
+            "analysis_updated_ts": now,
+            "score": 68,
+            "confidence": "MEDIUM",
+            "expectancy_probability": 0.62,
+            "expectancy_expected_r": 0.35,
+            "expectancy_uncertainty": 0.32,
+            "planned_risk_reward_ratio": 2.0,
+            "execution_quality_score": 72,
+            "data_reliability_score": 78,
+        },
+        "DELL": {
+            "action": "LONG",
+            "execution_mode": "tradable",
+            "analysis_updated_ts": now,
+            "score": 78,
+            "confidence": "HIGH",
+            "expectancy_probability": 0.74,
+            "expectancy_expected_r": 0.82,
+            "expectancy_uncertainty": 0.16,
+            "planned_risk_reward_ratio": 2.8,
+            "execution_quality_score": 88,
+            "data_reliability_score": 92,
+        },
+        "STALE": {
+            "action": "LONG",
+            "execution_mode": "tradable",
+            "analysis_updated_ts": now - 3600,
+            "score": 99,
+            "confidence": "HIGH",
+            "expectancy_probability": 0.99,
+        },
+    }
+
+    gate = agent._prepare_best_trade_gate(signals)
+
+    assert gate["status"] == "SELECTED"
+    assert gate["selected"]["coin"] == "DELL"
+    assert [item["coin"] for item in gate["candidates"]] == ["DELL", "HPE"]
+    assert agent._best_trade_entry_admission("DELL", "LONG")[0] is True
+    blocked, reason = agent._best_trade_entry_admission("HPE", "LONG")
+    assert blocked is False
+    assert "DELL ranks ahead" in reason
+    agent._record_best_trade_commitment("DELL", "LONG")
+    assert agent._best_trade_entry_admission("DELL", "LONG")[0] is False
+
+
+def test_best_trade_gate_blocks_market_and_limit_paths_before_exchange_io() -> None:
+    cfg = build_config()
+    exchange = StubExchange("stub", should_fill=True)
+    agent = TradingAgent(cfg, [exchange])
+    agent._cycle = 5
+    agent._best_trade_gate = {
+        "enabled": True,
+        "status": "SELECTED",
+        "selected": {"coin": "ETH", "direction": "LONG"},
+    }
+    agent._cycle_new_entry_count = 0
+    order = OrderRequest(
+        coin="BTC",
+        direction="LONG",
+        size_usd=100.0,
+        size_coin=1.0,
+        price=100.0,
+        stop_loss=90.0,
+        take_profit=125.0,
+        leverage=1,
+        approved=True,
+    )
+
+    assert agent._execute_order("BTC", Signal("LONG"), order) is False
+    assert exchange.market_buy_calls == 0
+    result = agent._place_limit_order("BTC", "LONG", 99.0, 100.0, 90.0, 125.0, 70.0)
+    assert result["success"] is False
+    assert "ETH ranks ahead" in result["reason"]
+
+
 def run_all() -> None:
+    test_best_trade_gate_ranks_the_whole_mature_book_before_entry()
+    print("PASS best-trade ranking gate")
+    test_best_trade_gate_blocks_market_and_limit_paths_before_exchange_io()
+    print("PASS best-trade central entry paths")
     test_hyperliquid_all_mids_is_shared_across_symbols()
     print("PASS shared Hyperliquid allMids cache")
     test_analysis_budget_prioritizes_core_and_rotates_the_rest()

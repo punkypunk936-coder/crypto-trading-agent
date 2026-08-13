@@ -152,6 +152,13 @@ class TradingAgent:
         self._last_us_market_context: Dict[str, object] = {}
         self._last_ai_infrastructure_context: Dict[str, object] = {}
         self._last_power_status: Dict[str, object] = {}
+        self._best_trade_gate: Dict[str, object] = {
+            "enabled": bool(getattr(cfg.trading, "best_trade_gate_enabled", True)),
+            "status": "INITIALIZING",
+            "candidates": [],
+            "selected": None,
+        }
+        self._cycle_new_entry_count = 0
         self._orderbook_history: Dict[str, List[dict]] = {}
         self._last_proactive_execution: Dict[str, object] = {}
         self._last_proactive_report: Dict[str, object] = {}
@@ -1206,6 +1213,13 @@ class TradingAgent:
         except Exception as exc:
             log.warning("AI-infrastructure breadth scan failed: %s", exc)
 
+        # Freeze and rank the completed prior-cycle book before any action in
+        # this cycle can commit fresh capital, including re-entry workflows.
+        prior_signals = dict(self._last_signals or {})
+        self._last_signals = prior_signals
+        self._refresh_us_market_context()
+        self._prepare_best_trade_gate(prior_signals)
+
         # 3. Exit monitoring (SL / TP / trailing)
         current_prices = self._fetch_all_prices()
         self._check_and_execute_exits(current_prices, portfolio_usd)
@@ -1225,9 +1239,6 @@ class TradingAgent:
         log.info(self._memory.summary())
 
         # 7. Execute mapped trigger hits before the slower full analysis pass.
-        prior_signals = dict(self._last_signals or {})
-        self._last_signals = prior_signals
-        self._refresh_us_market_context()
         trigger_executed = self._execute_active_trigger_entries(
             current_prices,
             portfolio_usd,
@@ -1469,6 +1480,221 @@ class TradingAgent:
         except Exception:
             updated_at = 0.0
         return updated_at > 0 and (time.time() - updated_at) <= max_age
+
+    @staticmethod
+    def _best_trade_direction(snapshot: dict) -> str:
+        snap = dict(snapshot or {})
+        for value in (snap.get("action"), snap.get("decision"), snap.get("signal")):
+            direction = str(value or "").upper()
+            if direction in {"LONG", "SHORT"}:
+                return direction
+        return ""
+
+    @staticmethod
+    def _best_trade_number(snapshot: dict, *paths, default: float = 0.0) -> float:
+        snap = dict(snapshot or {})
+        for path in paths:
+            value = snap
+            for key in path if isinstance(path, tuple) else (path,):
+                if not isinstance(value, dict):
+                    value = None
+                    break
+                value = value.get(key)
+            if value not in (None, ""):
+                try:
+                    number = float(value)
+                    if math.isfinite(number):
+                        return number
+                except Exception:
+                    continue
+        return float(default)
+
+    def _best_trade_candidate(self, coin: str, snapshot: dict) -> Optional[dict]:
+        snap = dict(snapshot or {})
+        direction = self._best_trade_direction(snap)
+        if direction not in {"LONG", "SHORT"}:
+            return None
+        if str(snap.get("execution_mode") or "tradable").lower() != "tradable":
+            return None
+        if not self._signal_snapshot_is_fresh(snap):
+            return None
+        if self.risk.has_position(coin) or self.order_mgr.has_pending(coin):
+            return None
+        if snap.get("entry_blocked") or snap.get("hard_block"):
+            return None
+        if snap.get("thesis_permitted") is False:
+            return None
+
+        probability = self._best_trade_number(
+            snap,
+            ("expectancy", "probability"),
+            "expectancy_probability",
+            default=0.50,
+        )
+        if probability > 1.0:
+            probability /= 100.0
+        expected_r = self._best_trade_number(
+            snap,
+            ("expectancy", "expected_r"),
+            "expectancy_expected_r",
+            default=0.0,
+        )
+        uncertainty = self._best_trade_number(
+            snap,
+            ("expectancy", "uncertainty"),
+            "expectancy_uncertainty",
+            default=0.50,
+        )
+        if uncertainty > 1.0:
+            uncertainty /= 100.0
+        risk_reward = self._best_trade_number(
+            snap,
+            "planned_risk_reward_ratio",
+            ("trade_plan", "risk_reward_ratio"),
+            default=0.0,
+        )
+        execution_quality = self._best_trade_number(
+            snap,
+            "execution_quality_score",
+            ("execution_quality", "score"),
+            default=50.0,
+        )
+        reliability = self._best_trade_number(
+            snap,
+            "data_reliability_score",
+            ("data_reliability", "score"),
+            default=50.0,
+        )
+        raw_score = self._best_trade_number(snap, "score", default=50.0)
+        directional_strength = raw_score if direction == "LONG" else 100.0 - raw_score
+        chase_pct = abs(self._best_trade_number(
+            snap,
+            "entry_trigger_chase_pct",
+            ("execution_plan", "chase_pct"),
+            default=0.0,
+        ))
+        confidence = str(snap.get("confidence") or "LOW").upper()
+        confidence_bonus = {"LOW": 0.0, "MEDIUM": 3.0, "HIGH": 7.0}.get(confidence, 0.0)
+
+        rank_score = (
+            probability * 32.0
+            + max(-1.0, min(expected_r, 2.5)) * 10.0
+            + max(0.0, min(risk_reward, 4.0)) * 6.0
+            + max(0.0, min(directional_strength, 100.0)) * 0.16
+            + max(0.0, min(execution_quality, 100.0)) * 0.11
+            + max(0.0, min(reliability, 100.0)) * 0.10
+            + confidence_bonus
+            - max(0.0, min(uncertainty, 1.0)) * 15.0
+            - min(chase_pct, 5.0) * 3.0
+        )
+        why = str(
+            snap.get("decision_reason")
+            or snap.get("thesis_summary")
+            or snap.get("reason")
+            or "The setup leads the current risk-adjusted ranking."
+        )
+        return {
+            "coin": coin,
+            "direction": direction,
+            "rank_score": round(rank_score, 3),
+            "probability": round(probability, 4),
+            "expected_r": round(expected_r, 4),
+            "risk_reward_ratio": round(risk_reward, 3),
+            "execution_quality": round(execution_quality, 2),
+            "data_reliability": round(reliability, 2),
+            "uncertainty": round(uncertainty, 4),
+            "confidence": confidence,
+            "why": why,
+        }
+
+    def _prepare_best_trade_gate(self, prior_signals: dict) -> dict:
+        enabled = bool(getattr(self.cfg.trading, "best_trade_gate_enabled", True))
+        self._cycle_new_entry_count = 0
+        if not enabled:
+            self._best_trade_gate = {
+                "enabled": False,
+                "status": "DISABLED",
+                "cycle": self._cycle,
+                "candidates": [],
+                "selected": None,
+                "headline": "Best-trade comparison is disabled.",
+            }
+            return dict(self._best_trade_gate)
+
+        candidates = []
+        for coin, snapshot in dict(prior_signals or {}).items():
+            coin_upper = str(coin or "").upper().strip()
+            if not coin_upper or coin_upper not in self._tradable_coin_set:
+                continue
+            candidate = self._best_trade_candidate(coin_upper, snapshot)
+            if candidate:
+                candidates.append(candidate)
+        candidates.sort(key=lambda item: (-float(item.get("rank_score") or 0.0), item.get("coin", "")))
+        limit = max(1, int(getattr(self.cfg.trading, "best_trade_gate_candidate_limit", 3) or 3))
+        shortlist = candidates[:limit]
+        selected = dict(shortlist[0]) if shortlist else None
+        self._best_trade_gate = {
+            "enabled": True,
+            "status": "SELECTED" if selected else "WAIT",
+            "cycle": self._cycle,
+            "considered_count": len(candidates),
+            "candidates": shortlist,
+            "selected": selected,
+            "headline": (
+                f"{selected['coin']} {selected['direction']} leads; it still must reconfirm before entry."
+                if selected
+                else "No mature setup deserves fresh capital yet."
+            ),
+            "principle": "Compare the whole mature book, fund one winner, and let no-trade remain a valid decision.",
+        }
+        if selected:
+            log.info(
+                "Best-trade gate selected %s %s (rank %.2f) from %s mature candidates",
+                selected["coin"],
+                selected["direction"],
+                float(selected["rank_score"]),
+                len(candidates),
+            )
+        else:
+            log.info("Best-trade gate: no mature candidate survived the prior cycle")
+        return dict(self._best_trade_gate)
+
+    def _best_trade_entry_admission(self, coin: str, direction: str) -> tuple[bool, str]:
+        if not bool(getattr(self.cfg.trading, "best_trade_gate_enabled", True)):
+            return True, "best-trade gate disabled"
+        if self.risk.has_position(coin):
+            return True, "existing position management"
+        # Unit-level and recovery actions can run before the first active cycle.
+        if self._cycle <= 0:
+            return True, "agent cycle has not started"
+
+        maximum = max(
+            1,
+            int(getattr(self.cfg.trading, "best_trade_gate_max_new_entries_per_cycle", 1) or 1),
+        )
+        if int(getattr(self, "_cycle_new_entry_count", 0) or 0) >= maximum:
+            return False, "fresh-capital allowance is already used for this cycle"
+        gate = dict(getattr(self, "_best_trade_gate", {}) or {})
+        selected = dict(gate.get("selected") or {})
+        if not selected:
+            return False, "no prior-cycle setup won the best-trade comparison"
+        if str(selected.get("coin") or "").upper() != str(coin or "").upper():
+            return False, f"{selected.get('coin')} ranks ahead for fresh capital this cycle"
+        if str(selected.get("direction") or "").upper() != str(direction or "").upper():
+            return False, "the live direction no longer matches the selected thesis"
+        return True, "selected setup reconfirmed"
+
+    def _record_best_trade_commitment(self, coin: str, direction: str) -> None:
+        self._cycle_new_entry_count = int(getattr(self, "_cycle_new_entry_count", 0) or 0) + 1
+        gate = dict(getattr(self, "_best_trade_gate", {}) or {})
+        gate["status"] = "COMMITTED"
+        gate["committed"] = {
+            "coin": str(coin or "").upper(),
+            "direction": str(direction or "").upper(),
+            "cycle": self._cycle,
+        }
+        gate["headline"] = f"{str(coin or '').upper()} {str(direction or '').upper()} received this cycle's fresh capital."
+        self._best_trade_gate = gate
 
     def _patient_execution_profile(self, coin: str, signal) -> dict:
         enabled = bool(getattr(self.cfg.trading, "patient_execution_enabled", True))
@@ -7973,6 +8199,16 @@ class TradingAgent:
         return max(0.0, margin)
 
     def _execute_order(self, coin, signal, order):
+        new_entry = (
+            not self.risk.has_position(coin)
+            and not bool(getattr(order, "is_scale_in", False))
+            and not bool(getattr(order, "existing_admission", False))
+        )
+        if new_entry:
+            admitted, admission_reason = self._best_trade_entry_admission(coin, signal.action)
+            if not admitted:
+                log.info(f"[{coin}] Best-trade gate blocked market entry: {admission_reason}")
+                return False
         exchanges = self._eligible_exchanges(coin)
         if not exchanges:
             log.error(f"[{coin}] No exchange supports this symbol")
@@ -8102,6 +8338,8 @@ class TradingAgent:
                     f"| ${order.size_usd:.2f} notional / ${self._order_margin_usd(order):.2f} margin @ {order_leverage}x "
                     f"| SL ${order.stop_loss:.2f} TP ${order.take_profit:.2f}"
                 )
+                if new_entry:
+                    self._record_best_trade_commitment(coin, signal.action)
                 return True
             elif not result:
                 log.error(f"[{coin}] ❌ No result returned from {ex.name}")
@@ -8696,8 +8934,20 @@ class TradingAgent:
                            maker_only: bool = False,
                            extra_metadata: Optional[dict] = None,
                            leverage: Optional[int] = None,
-                           margin_usd: float = 0.0) -> dict:
+                           margin_usd: float = 0.0,
+                           existing_admission: bool = False) -> dict:
         """Place a limit order on the first eligible exchange and register or book any fill."""
+        new_entry = not self.risk.has_position(coin) and not existing_admission
+        if new_entry:
+            admitted, admission_reason = self._best_trade_entry_admission(coin, direction)
+            if not admitted:
+                log.info(f"[{coin}] Best-trade gate blocked passive entry: {admission_reason}")
+                return {
+                    "success": False,
+                    "pending": False,
+                    "filled": False,
+                    "reason": admission_reason,
+                }
         exchanges = [ex for ex in self._eligible_exchanges(coin) if ex.supports_limit_orders()]
         if not exchanges:
             log.error(f"[{coin}] No exchange supports limit orders for this symbol")
@@ -8799,6 +9049,8 @@ class TradingAgent:
                     )
 
                 if remaining_size_coin <= 1e-9 or not result.order_id:
+                    if new_entry:
+                        self._record_best_trade_commitment(coin, direction)
                     return {"success": True, "pending": False, "filled": filled_size_coin > 0}
 
                 pending = PendingOrder(
@@ -8858,6 +9110,8 @@ class TradingAgent:
                     f"${remaining_size_usd:.2f} notional / ${remaining_size_usd / max(order_leverage, 1):.2f} margin @ {order_leverage}x "
                     f"SL=${sl:.2f} TP=${tp:.2f} (reason={reason})"
                 )
+                if new_entry:
+                    self._record_best_trade_commitment(coin, direction)
                 return {"success": True, "pending": True, "filled": filled_size_coin > 0}
             else:
                 log.error(f"[{coin}] Limit order failed on {ex.name}: {result.error}")
@@ -9182,6 +9436,7 @@ class TradingAgent:
                     },
                     leverage=getattr(pending, "leverage", self.cfg.trading.leverage),
                     margin_usd=target_size / max(int(getattr(pending, "leverage", self.cfg.trading.leverage) or 1), 1),
+                    existing_admission=True,
                 )
                 self._record_decision_snapshot(
                     coin,
@@ -9225,6 +9480,7 @@ class TradingAgent:
             },
             leverage=getattr(pending, "leverage", self.cfg.trading.leverage),
             margin_usd=getattr(pending, "margin_usd", 0.0),
+            existing_admission=True,
         )
         if result.get("success"):
             log.info(
@@ -9257,6 +9513,7 @@ class TradingAgent:
             approved=True,
         )
         synthetic_signal = self._build_pending_signal(pending, live_price=live_price, reason=reason)
+        order.existing_admission = True
         if orderbook_signal and getattr(orderbook_signal, "valid", False):
             synthetic_signal.execution_plan = {
                 "mode": "market",
@@ -10062,6 +10319,7 @@ class TradingAgent:
             "us_market_context": dict(self._last_us_market_context or {}),
             "global_market_context": dict(self._last_us_market_context or {}),
             "ai_infrastructure": dict(self._last_ai_infrastructure_context or {}),
+            "best_trade_gate": dict(self._best_trade_gate or {}),
             "sentiment":     sentiment,
             "daily_pnl_usd":     round(getattr(self.risk, "daily_pnl_usd", 0.0), 2),
             "daily_trades":      getattr(self.risk, "daily_trades", 0),
@@ -10097,6 +10355,8 @@ class TradingAgent:
                 "semiconductor_break_confirmation_cycles": getattr(self.cfg.trading, "semiconductor_break_confirmation_cycles", 4),
                 "check_interval_seconds": self.cfg.trading.check_interval_seconds,
                 "analysis_signal_max_age_minutes": getattr(self.cfg.trading, "analysis_signal_max_age_minutes", 20.0),
+                "best_trade_gate_enabled": getattr(self.cfg.trading, "best_trade_gate_enabled", True),
+                "best_trade_gate_max_new_entries_per_cycle": getattr(self.cfg.trading, "best_trade_gate_max_new_entries_per_cycle", 1),
                 "adaptive_leverage_enabled": getattr(self.cfg.trading, "adaptive_leverage_enabled", False),
                 "min_leverage":           getattr(self.cfg.trading, "min_leverage", 1),
                 "base_leverage":          getattr(self.cfg.trading, "base_leverage", self.cfg.trading.leverage),
