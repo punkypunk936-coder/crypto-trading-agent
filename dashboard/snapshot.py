@@ -12,6 +12,7 @@ from typing import Any, Iterable
 
 import daily_radar
 import asia_session
+import ai_infrastructure
 import global_market_context
 import earnings_session
 import us_market_context
@@ -2604,6 +2605,17 @@ def build_dashboard_snapshot(
         radar,
         ledger_path=earnings_ledger_path,
     )
+    ai_infrastructure_context = dict(shaped_state.get("ai_infrastructure") or {})
+    if not ai_infrastructure_context:
+        try:
+            ai_infrastructure_context = ai_infrastructure.build_ai_infrastructure_context()
+        except Exception as exc:
+            ai_infrastructure_context = {
+                "enabled": True,
+                "active": False,
+                "headline": "AI infrastructure breadth scan is temporarily unavailable.",
+                "errors": [type(exc).__name__],
+            }
     xyz = build_xyz_section(shaped_state, board)
     return {
         "schemaVersion": 2,
@@ -2619,6 +2631,7 @@ def build_dashboard_snapshot(
         "global_market_context": global_context,
         "asia_session": asia_context,
         "earnings_session": earnings_context,
+        "ai_infrastructure": ai_infrastructure_context,
         "xyz": xyz,
         "market_map": normalized_market_map,
         "market_map_summary": market_map_summary(normalized_market_map),

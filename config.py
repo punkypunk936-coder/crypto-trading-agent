@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import List
 from dotenv import load_dotenv
 
+from ai_infrastructure import AI_INFRA_COVERAGE_METADATA, AI_INFRA_COVERAGE_COINS, AI_INFRA_REFERENCE_ONLY_COINS
 from asset_context import (
     DEFAULT_ASSET_CATEGORY_LABELS,
     THEME_BY_CATEGORY,
@@ -71,6 +72,7 @@ def _default_analysis_coins() -> List[str]:
         _US_CONTEXT_COINS,
         _ASIA_CONTEXT_COINS,
         TRADEXYZ_ASSET_METADATA.keys(),
+        AI_INFRA_COVERAGE_COINS,
     )
 
 
@@ -87,6 +89,8 @@ def _default_instrument_types() -> dict:
     instrument_types = dict(_BASE_INSTRUMENT_TYPES)
     for coin, meta in TRADEXYZ_ASSET_METADATA.items():
         instrument_types[str(coin).upper()] = str(meta.get("instrument_type") or "equity").strip().lower()
+    for coin in AI_INFRA_COVERAGE_COINS:
+        instrument_types[str(coin).upper()] = "equity"
     return instrument_types
 
 
@@ -95,6 +99,11 @@ def _default_asset_category_map() -> dict:
     for coin, meta in TRADEXYZ_ASSET_METADATA.items():
         categories = normalize_asset_category_values(meta.get("categories") or ["other_stocks"])
         category_map[str(coin).upper()] = categories or ["other_stocks"]
+    for coin, meta in AI_INFRA_COVERAGE_METADATA.items():
+        existing = list(category_map.get(str(coin).upper()) or [])
+        if not existing or existing == ["other_stocks"]:
+            existing = normalize_asset_category_values(meta.get("categories") or ["ai_infra"])
+        category_map[str(coin).upper()] = existing or ["ai_infra"]
     return category_map
 
 
@@ -171,7 +180,9 @@ class TradingConfig:
     # Regional benchmarks inform the global regime but never become orders.
     # This lets the agent retain a safe public reference feed if venue candles
     # disappear without contaminating executable prices.
-    analysis_only_coins: List[str] = field(default_factory=lambda: list(_ASIA_CONTEXT_COINS))
+    analysis_only_coins: List[str] = field(
+        default_factory=lambda: _unique_coins(_ASIA_CONTEXT_COINS, AI_INFRA_REFERENCE_ONLY_COINS)
+    )
 
     # Keep the live decision loop bounded. The full universe remains visible and
     # is scanned on a rotating basis, while open positions and core markets are
@@ -179,7 +190,12 @@ class TradingConfig:
     analysis_cycle_budget_enabled: bool = True
     analysis_max_symbols_per_cycle: int = 20
     analysis_priority_coins: List[str] = field(
-        default_factory=lambda: _unique_coins(_US_CONTEXT_COINS, _BASE_EXECUTION_COINS, _ASIA_CONTEXT_COINS)
+        default_factory=lambda: _unique_coins(
+            _US_CONTEXT_COINS,
+            _BASE_EXECUTION_COINS,
+            _ASIA_CONTEXT_COINS,
+            ["DELL", "HPE", "NVDA", "CRWV", "VRT", "ANET"],
+        )
     )
     analysis_active_signal_slots: int = 6
     analysis_signal_max_age_minutes: float = 20.0

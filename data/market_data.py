@@ -19,6 +19,7 @@ import time
 import requests
 import pandas as pd
 from typing import Optional
+from ai_infrastructure import AI_INFRA_COVERAGE_METADATA
 from logger import get_logger
 from exchanges.hyperliquid_markets import (
     get_hyperliquid_market_dex,
@@ -242,6 +243,10 @@ EQUITY_YAHOO_MAP = {
     "CRWV": "CRWV",
     "HIMS": "HIMS",
 }
+EQUITY_YAHOO_MAP.update({
+    symbol: str(meta.get("yahoo_symbol") or symbol)
+    for symbol, meta in AI_INFRA_COVERAGE_METADATA.items()
+})
 
 # Yahoo Finance interval map: our interval → yf period/interval params
 _YF_INTERVAL_MAP = {
@@ -490,7 +495,11 @@ def fetch_candles(
             return stale
         return _fetch_analysis_reference_candles(coin_upper, interval, lookback)
 
-    # ── Unsupported macro instruments: route to Yahoo Finance ──────────────
+    # ── Unsupported reference instruments: route to Yahoo Finance ─────────
+    # These symbols are coverage-only. They can inform sector leadership and
+    # deep analysis, but cannot become orders without a supported venue.
+    if coin_upper in EQUITY_YAHOO_MAP:
+        return _fetch_candles_yahoo(coin_upper, interval, lookback)
     if coin_upper in INDEX_YAHOO_MAP:
         return _fetch_candles_yahoo(coin_upper, interval, lookback)
     return None
@@ -647,6 +656,8 @@ def get_current_price(coin: str) -> Optional[float]:
 
     # ── Macro fallback: Yahoo Finance latest close ─────────────────────────
     if coin_upper in INDEX_YAHOO_MAP:
+        return _get_index_price_yahoo(coin_upper)
+    if coin_upper in EQUITY_YAHOO_MAP:
         return _get_index_price_yahoo(coin_upper)
     return None
 

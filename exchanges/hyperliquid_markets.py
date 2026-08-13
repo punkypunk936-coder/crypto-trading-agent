@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
+from ai_infrastructure import AI_INFRA_COVERAGE_METADATA, TRADEXYZ_AI_INFRA_SYMBOLS
 from logger import get_logger
 
 log = get_logger("hl_markets")
@@ -262,6 +263,23 @@ TRADEXYZ_ASSET_METADATA: Dict[str, Dict[str, Any]] = {
     "XYZ100": {"display_name": "XYZ 100", "instrument_type": "index", "categories": ["indices_macro"]},
     "ZM": {"display_name": "Zoom Communications", "instrument_type": "equity", "categories": ["software", "growth"]},
 }
+
+# Keep newly listed AI-infrastructure contracts classified on their first
+# runtime sync instead of letting them disappear into the generic stock bucket.
+for _symbol in TRADEXYZ_AI_INFRA_SYMBOLS:
+    _coverage = dict(AI_INFRA_COVERAGE_METADATA.get(_symbol) or {})
+    if not _coverage:
+        continue
+    _existing = dict(TRADEXYZ_ASSET_METADATA.get(_symbol) or {})
+    _categories = list(_existing.get("categories") or [])
+    if not _categories or _categories == ["other_stocks"]:
+        _categories = list(_coverage.get("categories") or [])
+    TRADEXYZ_ASSET_METADATA[_symbol] = {
+        **_existing,
+        "display_name": str(_existing.get("display_name") or _coverage.get("display_name") or _symbol),
+        "instrument_type": "equity",
+        "categories": _categories or ["ai_infra"],
+    }
 
 _TRADEXYZ_PERP_MARKETS: Dict[str, Dict[str, Any]] = {
     coin: {

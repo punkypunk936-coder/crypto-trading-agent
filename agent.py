@@ -55,6 +55,7 @@ from datetime import datetime
 
 import os
 import analog_engine
+import ai_infrastructure
 import asia_session
 import asset_dossier
 import challenger_model
@@ -149,6 +150,7 @@ class TradingAgent:
         self._last_sentiment: Dict[str, object] = {}
         self._last_signals: Dict[str, dict] = {}
         self._last_us_market_context: Dict[str, object] = {}
+        self._last_ai_infrastructure_context: Dict[str, object] = {}
         self._last_power_status: Dict[str, object] = {}
         self._orderbook_history: Dict[str, List[dict]] = {}
         self._last_proactive_execution: Dict[str, object] = {}
@@ -1199,6 +1201,11 @@ class TradingAgent:
         self._last_sentiment = dict(sentiment or {})
         log.info(sentiment_summary(sentiment))
 
+        try:
+            self._last_ai_infrastructure_context = ai_infrastructure.build_ai_infrastructure_context()
+        except Exception as exc:
+            log.warning("AI-infrastructure breadth scan failed: %s", exc)
+
         # 3. Exit monitoring (SL / TP / trailing)
         current_prices = self._fetch_all_prices()
         self._check_and_execute_exits(current_prices, portfolio_usd)
@@ -1326,11 +1333,16 @@ class TradingAgent:
             if len(selected) >= budget:
                 return selected
 
-        priority_coins = [
+        mover_focus = [
+            str(coin or "").upper()
+            for coin in list((self._last_ai_infrastructure_context or {}).get("focus_symbols") or [])
+            if str(coin or "").upper() in coins
+        ]
+        priority_coins = list(dict.fromkeys(mover_focus + [
             str(coin or "").upper()
             for coin in (getattr(self.cfg.trading, "analysis_priority_coins", []) or [])
             if str(coin or "").upper() in coins
-        ]
+        ]))
         active_candidates = [
             coin
             for coin in self._trigger_watch_candidates_from_signals(self._last_signals)
@@ -7739,6 +7751,7 @@ class TradingAgent:
             "market_map_notes": sig.get("market_map_notes", ""),
             "us_market_context": dict(self._last_us_market_context or {}),
             "global_market_context": dict(self._last_us_market_context or {}),
+            "ai_infrastructure": dict(self._last_ai_infrastructure_context or {}),
             "us_market_anchor": dict(sig.get("us_market_anchor") or {}),
             "us_market_anchor_summary": sig.get("us_market_anchor_summary", ""),
             "narrative_summary": sig.get("narrative_summary", ""),
@@ -10048,6 +10061,7 @@ class TradingAgent:
             "signals":       getattr(self, "_last_signals", {}),
             "us_market_context": dict(self._last_us_market_context or {}),
             "global_market_context": dict(self._last_us_market_context or {}),
+            "ai_infrastructure": dict(self._last_ai_infrastructure_context or {}),
             "sentiment":     sentiment,
             "daily_pnl_usd":     round(getattr(self.risk, "daily_pnl_usd", 0.0), 2),
             "daily_trades":      getattr(self.risk, "daily_trades", 0),

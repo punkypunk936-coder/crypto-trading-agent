@@ -3080,6 +3080,215 @@
     border-radius: 0;
   }
 
+  .ai-tape-section {
+    padding: 22px 16px 24px;
+    border-bottom: 1px solid rgba(235, 237, 229, 0.14);
+  }
+  .ai-tape-head,
+  .ai-sector-title-row,
+  .ai-member-row,
+  .ai-mover-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .ai-tape-head { align-items: flex-start; }
+  .ai-tape-title {
+    margin: 5px 0 0;
+    color: var(--text);
+    font-size: 22px;
+    line-height: 1.25;
+  }
+  .ai-tape-status {
+    max-width: 520px;
+    text-align: right;
+  }
+  .ai-tape-status-line {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .ai-tape-meta {
+    margin-top: 6px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 10px;
+    line-height: 1.4;
+  }
+  .ai-tape-brief {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 0.7fr);
+    gap: 30px;
+    margin-top: 18px;
+    padding: 15px 0;
+    border-top: 1px solid rgba(235, 237, 229, 0.08);
+    border-bottom: 1px solid rgba(235, 237, 229, 0.08);
+  }
+  .ai-tape-headline {
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.45;
+  }
+  .ai-tape-action,
+  .ai-tape-avoid {
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  .ai-tape-avoid { margin-top: 5px; color: var(--muted); }
+  .ai-sector-tabs {
+    display: flex;
+    gap: 0;
+    margin-top: 16px;
+    overflow-x: auto;
+    border-bottom: 1px solid rgba(235, 237, 229, 0.09);
+  }
+  .ai-sector-tab {
+    appearance: none;
+    flex: 0 0 auto;
+    min-height: 50px;
+    padding: 8px 14px;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    text-align: left;
+  }
+  .ai-sector-tab:hover { color: var(--text); }
+  .ai-sector-tab.active {
+    color: var(--text);
+    border-bottom-color: var(--green);
+  }
+  .ai-sector-tab-name,
+  .ai-sector-tab-move {
+    display: block;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .ai-sector-tab-move { margin-top: 4px; font-size: 11px; }
+  .ai-sector-detail {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 0.9fr);
+    gap: 34px;
+    padding-top: 19px;
+  }
+  .ai-sector-title {
+    color: var(--text);
+    font-size: 17px;
+    font-weight: 800;
+  }
+  .ai-sector-chips { display: flex; align-items: center; gap: 6px; }
+  .ai-sector-copy {
+    margin-top: 10px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .ai-sector-readthrough { color: var(--muted); }
+  .ai-sector-stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin-top: 16px;
+    border-top: 1px solid rgba(235, 237, 229, 0.07);
+    border-bottom: 1px solid rgba(235, 237, 229, 0.07);
+  }
+  .ai-sector-stat {
+    min-width: 0;
+    padding: 11px 10px 11px 0;
+    border-right: 1px solid rgba(235, 237, 229, 0.06);
+  }
+  .ai-sector-stat + .ai-sector-stat { padding-left: 10px; }
+  .ai-sector-stat:last-child { border-right: 0; }
+  .ai-sector-stat span,
+  .ai-member-head span {
+    display: block;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 8px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .ai-sector-stat strong {
+    display: block;
+    margin-top: 4px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+  }
+  .ai-member-list { border-top: 1px solid rgba(235, 237, 229, 0.07); }
+  .ai-member-head,
+  .ai-member-row {
+    display: grid;
+    grid-template-columns: minmax(90px, 1fr) 70px 70px 88px;
+    gap: 10px;
+    align-items: center;
+  }
+  .ai-member-head { padding: 0 0 8px; }
+  .ai-member-row {
+    min-height: 37px;
+    border-bottom: 1px solid rgba(235, 237, 229, 0.055);
+    color: var(--text-secondary);
+    font-family: var(--mono);
+    font-size: 10px;
+  }
+  .ai-member-name { color: var(--text); font-size: 11px; font-weight: 800; }
+  .ai-member-mode {
+    justify-self: end;
+    color: var(--muted);
+    font-size: 8px;
+    font-weight: 700;
+  }
+  .ai-member-ask {
+    appearance: none;
+    justify-self: end;
+    padding: 4px 7px;
+    color: var(--blue);
+    background: var(--blue-dim);
+    border: 1px solid rgba(91, 140, 255, 0.24);
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 8px;
+    font-weight: 800;
+  }
+  .ai-member-ask:hover { border-color: rgba(91, 140, 255, 0.55); }
+  .ai-movers {
+    margin-top: 17px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(235, 237, 229, 0.08);
+  }
+  .ai-mover-label {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .ai-mover-strip {
+    display: flex;
+    gap: 8px;
+    margin-top: 9px;
+    overflow-x: auto;
+  }
+  .ai-mover {
+    flex: 0 0 auto;
+    min-width: 118px;
+    padding: 8px 9px;
+    border-left: 2px solid rgba(235, 237, 229, 0.18);
+    background: rgba(255, 255, 255, 0.018);
+  }
+  .ai-mover.green { border-left-color: var(--green); }
+  .ai-mover.red { border-left-color: var(--red); }
+  .ai-mover-symbol { color: var(--text); font-family: var(--mono); font-size: 11px; font-weight: 800; }
+  .ai-mover-sector { margin-top: 3px; color: var(--muted); font-size: 8px; text-transform: uppercase; }
+  .ai-mover-change { font-family: var(--mono); font-size: 12px; font-weight: 800; }
+
   .account-strip {
     display: grid;
     grid-template-columns: 0.85fr 0.85fr 0.7fr 1.6fr;
@@ -3477,6 +3686,13 @@
       grid-column: auto;
       text-align: left;
     }
+    .ai-tape-head,
+    .ai-sector-title-row { align-items: flex-start; }
+    .ai-tape-brief,
+    .ai-sector-detail { grid-template-columns: 1fr; gap: 16px; }
+    .ai-sector-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .ai-sector-stat:nth-child(2) { border-right: 0; }
+    .ai-sector-stat:nth-child(-n+2) { border-bottom: 1px solid rgba(235, 237, 229, 0.06); }
     .account-strip { grid-template-columns: 1fr 1fr; }
     .account-metric { padding: 14px 10px; }
     .account-metric:nth-child(2n) { border-right: 0; }
@@ -3513,6 +3729,8 @@
   }
   @media (max-width: 380px) {
     .grid-4 { grid-template-columns: 1fr; }
+    .ai-member-head,
+    .ai-member-row { grid-template-columns: minmax(72px, 1fr) 54px 54px 68px; gap: 6px; }
   }
 </style>
 </head>
@@ -3557,7 +3775,7 @@
       </div>
       <div class="ask-punky-prompts">
         <button class="ask-punky-prompt" type="button" onclick="askPunkyPrompt('Should I take CBRS?')">CBRS</button>
-        <button class="ask-punky-prompt" type="button" onclick="askPunkyPrompt('Is NVDA a trade here?')">NVDA</button>
+        <button class="ask-punky-prompt" type="button" onclick="askPunkyPrompt('Should I take DELL?')">DELL</button>
         <button class="ask-punky-prompt" type="button" onclick="askPunkyPrompt('Should I long HYPE?')">HYPE</button>
       </div>
     </div>
@@ -3616,6 +3834,34 @@
     <summary>Why this market call</summary>
     <div id="global-market-body" class="radar-context-band" hidden></div>
   </details>
+</section>
+
+<!-- AI INFRASTRUCTURE TAPE -->
+<section class="ai-tape-section" id="ai-infrastructure-card" aria-labelledby="ai-tape-title">
+  <div class="ai-tape-head">
+    <div>
+      <div class="section-kicker">AI supply-chain breadth</div>
+      <h2 class="ai-tape-title" id="ai-tape-title">AI Infrastructure Tape</h2>
+    </div>
+    <div class="ai-tape-status">
+      <div class="ai-tape-status-line">
+        <span id="ai-tape-regime" class="badge badge-offline">SCANNING</span>
+      </div>
+      <div class="ai-tape-meta" id="ai-tape-meta">Mapping chips through powered data centers...</div>
+    </div>
+  </div>
+  <div class="ai-tape-brief">
+    <div class="ai-tape-headline" id="ai-tape-headline">Waiting for the first complete vertical read.</div>
+    <div>
+      <div class="ai-tape-action" id="ai-tape-action">The agent will identify where leadership is broadening.</div>
+      <div class="ai-tape-avoid" id="ai-tape-avoid">No vertical gets promoted without price confirmation.</div>
+    </div>
+  </div>
+  <div class="ai-sector-tabs" id="ai-sector-tabs" role="tablist" aria-label="AI infrastructure sectors"></div>
+  <div class="ai-sector-detail" id="ai-sector-detail">
+    <div class="empty-state">Building the sector tape...</div>
+  </div>
+  <div class="ai-movers" id="ai-movers" hidden></div>
 </section>
 
 <!-- ACCOUNT STRIP -->
@@ -4660,8 +4906,10 @@ let latestPolicyHealthReport = { summary: {}, findings: [], roadmap: [] };
 let latestProactiveTraderReport = { summary: {} };
 let latestDailyRadar = { summary: {}, top_assets: [] };
 let latestGlobalMarketContext = { active: false, benchmarks: [], market_views: [] };
+let latestAiInfrastructure = { active: false, sectors: [], unusual_movers: [] };
 let latestEarningsSession = { active: false, rows: [] };
 let latestPnlAttribution = {};
+let selectedAiSector = '';
 let commandSearchOpen = false;
 let commandSearchIndex = 0;
 let commandSearchQuery = '';
@@ -5846,6 +6094,123 @@ function renderGlobalMarketContext(report) {
   + '</div>';
 }
 
+function aiTapeTone(value) {
+  const numeric = Number(value || 0);
+  return numeric > 0.05 ? 'green' : numeric < -0.05 ? 'red' : 'muted';
+}
+
+function aiTapePct(value) {
+  const numeric = Number(value || 0);
+  return (numeric >= 0 ? '+' : '') + numeric.toFixed(2) + '%';
+}
+
+function selectAiSector(key) {
+  selectedAiSector = String(key || '');
+  renderAiInfrastructure(latestAiInfrastructure);
+}
+
+function renderAiInfrastructure(report) {
+  const safe = report || {};
+  const card = document.getElementById('ai-infrastructure-card');
+  const regimeNode = document.getElementById('ai-tape-regime');
+  const metaNode = document.getElementById('ai-tape-meta');
+  const headlineNode = document.getElementById('ai-tape-headline');
+  const actionNode = document.getElementById('ai-tape-action');
+  const avoidNode = document.getElementById('ai-tape-avoid');
+  const tabsNode = document.getElementById('ai-sector-tabs');
+  const detailNode = document.getElementById('ai-sector-detail');
+  const moversNode = document.getElementById('ai-movers');
+  if (!card || !regimeNode || !metaNode || !headlineNode || !actionNode || !avoidNode || !tabsNode || !detailNode || !moversNode) return;
+
+  const sectors = Array.isArray(safe.sectors) ? safe.sectors.filter((row) => row && row.key) : [];
+  const summary = safe.summary || {};
+  const regime = String(safe.regime || 'SCANNING');
+  const regimeBias = regime.includes('RISK-ON') || regime.includes('LEADERSHIP')
+    ? 'bullish'
+    : regime.includes('RISK-OFF')
+      ? 'bearish'
+      : 'neutral';
+  regimeNode.className = biasClass(regimeBias);
+  regimeNode.textContent = safe.active ? regime : 'SCAN DEGRADED';
+  headlineNode.textContent = safe.headline || 'AI infrastructure breadth is temporarily unavailable.';
+  actionNode.innerHTML = '<strong>Watch:</strong> ' + esc(shortText(safe.action || 'Wait for sector leadership to resolve.', 260));
+  avoidNode.innerHTML = '<strong>Risk:</strong> ' + esc(shortText(safe.avoid || 'Do not force a basket-level conclusion.', 260));
+  const sourceTime = safe.market_time ? new Date(safe.market_time) : null;
+  const timeText = sourceTime && !Number.isNaN(sourceTime.getTime())
+    ? sourceTime.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : 'waiting for market time';
+  metaNode.textContent = [
+    String(summary.covered_count || 0) + '/' + String(summary.universe_count || 0) + ' names',
+    String(summary.sector_count || sectors.length || 0) + ' verticals',
+    String(Math.round(Number(summary.breadth_pct || 0))) + '% positive breadth',
+    timeText,
+  ].join(' • ');
+
+  if (!sectors.length) {
+    tabsNode.innerHTML = '';
+    detailNode.innerHTML = '<div class="empty-state">The broad tape could not be read. Existing trade decisions remain available.</div>';
+    moversNode.hidden = true;
+    return;
+  }
+  if (!selectedAiSector || !sectors.some((row) => String(row.key) === selectedAiSector)) {
+    selectedAiSector = String(sectors[0].key);
+  }
+  tabsNode.innerHTML = sectors.map((sector) => {
+    const active = String(sector.key) === selectedAiSector;
+    return '<button type="button" role="tab" aria-selected="' + String(active) + '" class="ai-sector-tab' + (active ? ' active' : '') + '" onclick="selectAiSector(\'' + esc(sector.key) + '\')">'
+      + '<span class="ai-sector-tab-name">' + esc(sector.label || sector.key) + '</span>'
+      + '<span class="ai-sector-tab-move ' + aiTapeTone(sector.move_1d) + '">' + esc(aiTapePct(sector.move_1d)) + '</span>'
+    + '</button>';
+  }).join('');
+
+  const sector = sectors.find((row) => String(row.key) === selectedAiSector) || sectors[0];
+  const members = Array.isArray(sector.members) ? sector.members : [];
+  const statusBias = String(sector.status || '').toUpperCase() === 'LEADING'
+    ? 'bullish'
+    : String(sector.status || '').toUpperCase() === 'LAGGING'
+      ? 'bearish'
+      : 'neutral';
+  detailNode.innerHTML = '<div>'
+    + '<div class="ai-sector-title-row">'
+      + '<div class="ai-sector-title">' + esc(sector.label || sector.key) + '</div>'
+      + '<div class="ai-sector-chips"><span class="' + biasClass(statusBias) + '">' + esc(sector.status || 'MIXED') + '</span><span class="decision-mode">' + esc(sector.setup || 'MIXED') + '</span></div>'
+    + '</div>'
+    + '<div class="ai-sector-copy"><strong>Why it matters:</strong> ' + esc(sector.why || '') + '</div>'
+    + '<div class="ai-sector-copy ai-sector-readthrough"><strong>Confirmation:</strong> ' + esc(sector.readthrough || '') + '</div>'
+    + '<div class="ai-sector-stats">'
+      + '<div class="ai-sector-stat"><span>Today</span><strong class="' + aiTapeTone(sector.move_1d) + '">' + esc(aiTapePct(sector.move_1d)) + '</strong></div>'
+      + '<div class="ai-sector-stat"><span>5 sessions</span><strong class="' + aiTapeTone(sector.move_5d) + '">' + esc(aiTapePct(sector.move_5d)) + '</strong></div>'
+      + '<div class="ai-sector-stat"><span>20 sessions</span><strong class="' + aiTapeTone(sector.move_20d) + '">' + esc(aiTapePct(sector.move_20d)) + '</strong></div>'
+      + '<div class="ai-sector-stat"><span>Breadth</span><strong>' + esc(String(Math.round(Number(sector.breadth_pct || 0)))) + '%</strong></div>'
+    + '</div>'
+  + '</div>'
+  + '<div>'
+    + '<div class="ai-member-head"><span>Name</span><span>1D</span><span>5D</span><span>Use</span></div>'
+    + '<div class="ai-member-list">' + members.map((member) => {
+      const ticker = String(member.coin || '').toUpperCase();
+      const use = member.tradexyz
+        ? '<button type="button" class="ai-member-ask" onclick="askPunkyPrompt(\'Should I take ' + esc(ticker) + '?\')">ASK</button>'
+        : '<span class="ai-member-mode" title="Reference signal only; no supported execution venue">REFERENCE</span>';
+      return '<div class="ai-member-row">'
+        + '<span class="ai-member-name">' + esc(ticker) + '</span>'
+        + '<span class="' + aiTapeTone(member.move_1d) + '">' + esc(aiTapePct(member.move_1d)) + '</span>'
+        + '<span class="' + aiTapeTone(member.move_5d) + '">' + esc(aiTapePct(member.move_5d)) + '</span>'
+        + use
+      + '</div>';
+    }).join('') + '</div>'
+  + '</div>';
+
+  const movers = Array.isArray(safe.unusual_movers) ? safe.unusual_movers : [];
+  moversNode.hidden = !movers.length;
+  moversNode.innerHTML = movers.length
+    ? '<div class="ai-mover-row"><span class="ai-mover-label">Moves the agent cannot ignore</span><span class="ai-tape-meta">5%+ in one session</span></div>'
+      + '<div class="ai-mover-strip">' + movers.slice(0, 10).map((member) => '<div class="ai-mover ' + aiTapeTone(member.move_1d) + '">'
+        + '<div class="ai-mover-row"><span class="ai-mover-symbol">' + esc(member.coin || '--') + '</span><span class="ai-mover-change ' + aiTapeTone(member.move_1d) + '">' + esc(aiTapePct(member.move_1d)) + '</span></div>'
+        + '<div class="ai-mover-sector">' + esc(member.sector_label || '') + (member.tradexyz ? ' • EXEC' : ' • REF') + '</div>'
+      + '</div>').join('') + '</div>'
+    : '';
+}
+
 function renderEarningsSession(report) {
   const body = document.getElementById('earnings-session-body');
   if (!body) return;
@@ -6809,6 +7174,7 @@ async function refresh() {
     latestProactiveTraderReport = data.proactive_trader_report || { summary: {} };
     latestDailyRadar = data.daily_radar || ((s || {}).daily_radar) || { summary: {}, top_assets: [] };
     latestGlobalMarketContext = data.global_market_context || ((s || {}).global_market_context) || data.us_market_context || ((s || {}).us_market_context) || { active: false, benchmarks: [], market_views: [] };
+    latestAiInfrastructure = data.ai_infrastructure || ((s || {}).ai_infrastructure) || { active: false, sectors: [], unusual_movers: [] };
     latestEarningsSession = data.earnings_session || { active: false, rows: [] };
     latestPnlAttribution = data.pnl_attribution || {};
     const actionBoard = data.action_board || { items: [], lead: null };
@@ -6946,6 +7312,7 @@ async function refresh() {
 
     renderDecisionSurface(latestGlobalMarketContext, actionBoard, s);
     renderGlobalMarketContext(latestGlobalMarketContext);
+    renderAiInfrastructure(latestAiInfrastructure);
     renderPrioritySetups(actionBoard);
     renderDurableTheses(latestDailyRadar);
     renderEarningsSession(latestEarningsSession);
