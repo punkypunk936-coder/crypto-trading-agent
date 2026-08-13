@@ -1357,8 +1357,8 @@
     backdrop-filter: blur(14px);
   }
   .command-palette {
-    width: min(760px, 100%);
-    max-height: min(76vh, 720px);
+    width: min(1080px, 100%);
+    max-height: min(84vh, 860px);
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
     border: 1px solid rgba(235, 237, 229, 0.12);
@@ -1369,8 +1369,52 @@
   }
   .command-input-wrap {
     border-bottom: 1px solid rgba(235, 237, 229, 0.08);
-    padding: 12px;
+    padding: 14px 16px;
     background: rgba(255,255,255,0.025);
+  }
+  .ask-punky-head,
+  .ask-punky-query-row,
+  .ask-punky-verdict-head,
+  .ask-punky-chart-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .ask-punky-head { margin-bottom: 10px; }
+  .ask-punky-kicker,
+  .ask-punky-section-title {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+  }
+  .ask-punky-title {
+    margin-top: 3px;
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 750;
+  }
+  .ask-punky-close {
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+    border: 1px solid rgba(235, 237, 229, 0.12);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+  }
+  .ask-punky-close:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+  .ask-punky-query-row {
+    border: 1px solid rgba(91, 140, 255, 0.28);
+    border-radius: 8px;
+    padding: 5px 5px 5px 10px;
+    background: rgba(0,0,0,0.22);
   }
   .command-input {
     width: 100%;
@@ -1383,10 +1427,41 @@
     line-height: 1.4;
     padding: 4px 2px;
   }
+  .ask-punky-submit {
+    min-width: 76px;
+    padding: 9px 13px;
+    border: 1px solid rgba(91, 140, 255, 0.38);
+    border-radius: 6px;
+    background: var(--blue-dim);
+    color: #cbd8ff;
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 800;
+  }
+  .ask-punky-submit:hover { background: rgba(91, 140, 255, 0.22); }
+  .ask-punky-submit:disabled { opacity: 0.48; cursor: wait; }
+  .ask-punky-prompts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 9px;
+  }
+  .ask-punky-prompt {
+    border: 1px solid rgba(235, 237, 229, 0.10);
+    border-radius: 999px;
+    padding: 5px 8px;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 9px;
+  }
+  .ask-punky-prompt:hover { color: var(--text); border-color: rgba(91, 140, 255, 0.3); }
   .command-body {
     min-height: 0;
     display: grid;
-    grid-template-columns: minmax(220px, 0.85fr) minmax(280px, 1.15fr);
+    grid-template-columns: minmax(205px, 0.55fr) minmax(480px, 1.45fr);
   }
   .command-results {
     min-height: 0;
@@ -1468,6 +1543,118 @@
     color: var(--text);
     font-size: 13px;
     line-height: 1.45;
+  }
+  .ask-punky-answer { display: grid; gap: 14px; }
+  .ask-punky-verdict {
+    border: 1px solid rgba(235, 237, 229, 0.09);
+    border-radius: 8px;
+    padding: 14px;
+    background: rgba(255,255,255,0.025);
+  }
+  .ask-punky-verdict.take { border-color: rgba(0,230,138,0.30); background: rgba(0,230,138,0.055); }
+  .ask-punky-verdict.avoid { border-color: rgba(255,77,106,0.28); background: rgba(255,77,106,0.05); }
+  .ask-punky-verdict.wait { border-color: rgba(255,184,77,0.28); background: rgba(255,184,77,0.05); }
+  .ask-punky-decision {
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 900;
+  }
+  .ask-punky-verdict.take .ask-punky-decision { color: var(--green); }
+  .ask-punky-verdict.avoid .ask-punky-decision { color: var(--red); }
+  .ask-punky-verdict.wait .ask-punky-decision { color: var(--yellow); }
+  .ask-punky-confidence {
+    color: var(--text-secondary);
+    font-family: var(--mono);
+    font-size: 10px;
+    text-align: right;
+  }
+  .ask-punky-summary {
+    margin: 10px 0 0;
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.55;
+  }
+  .ask-punky-plan {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    border: 1px solid rgba(235, 237, 229, 0.08);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .ask-punky-plan-item {
+    min-width: 0;
+    padding: 10px;
+    border-right: 1px solid rgba(235, 237, 229, 0.07);
+  }
+  .ask-punky-plan-item:last-child { border-right: 0; }
+  .ask-punky-plan-label {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+  .ask-punky-plan-value {
+    margin-top: 5px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+  }
+  .ask-punky-why {
+    margin: 8px 0 0;
+    padding-left: 18px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .ask-punky-why li + li { margin-top: 6px; }
+  .ask-punky-chart {
+    border: 1px solid rgba(235, 237, 229, 0.08);
+    border-radius: 8px;
+    padding: 12px;
+    background: rgba(0,0,0,0.18);
+  }
+  .ask-punky-chart-head { margin-bottom: 9px; }
+  .ask-punky-chart-meta,
+  .ask-punky-source {
+    color: var(--text-secondary);
+    font-family: var(--mono);
+    font-size: 9px;
+  }
+  .ask-punky-source { color: var(--blue); text-decoration: none; }
+  .ask-punky-chart-svg { display: block; width: 100%; height: auto; }
+  .ask-punky-evidence {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .ask-punky-evidence-item {
+    border-top: 1px solid rgba(235, 237, 229, 0.08);
+    padding-top: 9px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .ask-punky-evidence-item strong { display: block; margin-bottom: 3px; color: var(--text); }
+  .ask-punky-loading {
+    display: grid;
+    place-items: center;
+    min-height: 330px;
+    color: var(--text-secondary);
+    font-family: var(--mono);
+    font-size: 11px;
+    text-align: center;
+  }
+  .ask-punky-error {
+    border: 1px solid rgba(255,77,106,0.25);
+    border-radius: 8px;
+    padding: 14px;
+    color: #ffc1cc;
+    background: rgba(255,77,106,0.05);
+    font-size: 12px;
+    line-height: 1.5;
   }
   .command-empty {
     padding: 18px 12px;
@@ -3217,6 +3404,10 @@
       border-right: 0;
       border-bottom: 1px solid rgba(235, 237, 229, 0.08);
     }
+    .command-palette { max-height: calc(100vh - 64px); }
+    .ask-punky-plan { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .ask-punky-plan-item { border-bottom: 1px solid rgba(235, 237, 229, 0.07); }
+    .ask-punky-evidence { grid-template-columns: 1fr; }
     .daily-sheet-header {
       display: none;
     }
@@ -3335,7 +3526,7 @@
     <h1>PUNKY TRADING AGENT</h1>
   </div>
   <div class="header-right">
-    <button class="command-search-btn" id="command-search-btn" type="button" onclick="openCommandSearch()">STANCE SEARCH</button>
+    <button class="command-search-btn" id="command-search-btn" type="button" onclick="openCommandSearch()">ASK PUNKY</button>
     <a href="/share" id="share-link" target="_blank" style="padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;font-family:var(--mono);letter-spacing:0.5px;background:var(--blue-dim);color:var(--blue);border:1px solid rgba(91,140,255,0.3);text-decoration:none;transition:all 0.2s ease;">Share P&amp;L</a>
     <button class="kill-btn" id="kill-btn" onclick="handleKill()">KILL SWITCH</button>
     <span id="mode-badge" class="badge badge-offline">OFFLINE</span>
@@ -3344,16 +3535,31 @@
 </header>
 
 <div class="command-palette-shell" id="command-palette-shell" hidden>
-  <div class="command-palette" role="dialog" aria-modal="true" aria-label="Find asset">
+  <div class="command-palette" role="dialog" aria-modal="true" aria-label="Ask Punky about a trade">
     <div class="command-input-wrap">
-      <input
-        id="command-search-input"
-        class="command-input"
-        type="text"
-        autocomplete="off"
-        placeholder="Type a ticker..."
-        oninput="handleCommandSearch(this.value)"
-      />
+      <div class="ask-punky-head">
+        <div>
+          <div class="ask-punky-kicker">Ask Punky</div>
+          <div class="ask-punky-title">Trade decision, with the evidence attached.</div>
+        </div>
+        <button class="ask-punky-close" type="button" onclick="closeCommandSearch()" title="Close" aria-label="Close">&times;</button>
+      </div>
+      <div class="ask-punky-query-row">
+        <input
+          id="command-search-input"
+          class="command-input"
+          type="text"
+          autocomplete="off"
+          placeholder="Should I take CBRS?"
+          oninput="handleCommandSearch(this.value)"
+        />
+        <button class="ask-punky-submit" id="ask-punky-submit" type="button" onclick="runAskPunky()">ASK</button>
+      </div>
+      <div class="ask-punky-prompts">
+        <button class="ask-punky-prompt" type="button" onclick="askPunkyPrompt('Should I take CBRS?')">CBRS</button>
+        <button class="ask-punky-prompt" type="button" onclick="askPunkyPrompt('Is NVDA a trade here?')">NVDA</button>
+        <button class="ask-punky-prompt" type="button" onclick="askPunkyPrompt('Should I long HYPE?')">HYPE</button>
+      </div>
     </div>
     <div class="command-body">
       <div class="command-results" id="command-search-results"></div>
@@ -4460,6 +4666,10 @@ let commandSearchOpen = false;
 let commandSearchIndex = 0;
 let commandSearchQuery = '';
 let commandSearchMatches = [];
+let commandActiveAnswer = null;
+let commandAnalysisRequest = 0;
+let commandAnalysisLoading = false;
+let lastAskedTicker = '';
 let refreshRequest = null;
 let refreshTimer = null;
 let refreshFailureCount = 0;
@@ -4982,8 +5192,28 @@ function actionBoardItems() {
     : [];
 }
 
+function commandTickerFromQuery(query) {
+  const raw = String(query || '').trim().toUpperCase();
+  if (!raw && lastAskedTicker) return lastAskedTicker;
+  const tracked = actionBoardItems()
+    .map((item) => String((item || {}).coin || '').trim().toUpperCase())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+  const tokens = raw.match(/[A-Z0-9][A-Z0-9.-]{0,14}/g) || [];
+  const trackedMatch = tracked.find((ticker) => tokens.includes(ticker));
+  if (trackedMatch) return trackedMatch;
+  const cashtag = raw.match(/\$([A-Z][A-Z0-9.-]{0,11})\b/);
+  if (cashtag) return cashtag[1];
+  if (/^[A-Z0-9][A-Z0-9.-]{0,14}$/.test(raw)) return raw;
+  const stopWords = new Set(['A', 'ABOUT', 'AN', 'AT', 'BUY', 'CAN', 'DECISION', 'DO', 'ENTRY', 'GO', 'HERE', 'HOW', 'I', 'INVALID', 'INVALIDATION', 'IS', 'IT', 'LONG', 'NOW', 'OR', 'PRICE', 'PUNKY', 'SELL', 'SHORT', 'SHOULD', 'STOP', 'TAKE', 'TARGET', 'THE', 'THIS', 'TRADE', 'WAIT', 'WHAT', 'WHY']);
+  const fallback = tokens.slice().reverse().find((token) => token.length >= 2 && !stopWords.has(token));
+  return fallback || lastAskedTicker || '';
+}
+
 function commandSearchCandidates(query) {
-  const normalized = String(query || '').trim().toUpperCase();
+  const rawQuery = String(query || '').trim().toUpperCase();
+  const parsedTicker = commandTickerFromQuery(rawQuery);
+  const normalized = parsedTicker || rawQuery;
   const seen = new Set();
   const candidates = [];
   actionBoardItems().forEach((item) => {
@@ -5037,27 +5267,394 @@ function commandDetailLine(label, value) {
 function commandDetailHtml(item) {
   const safe = item || {};
   if (!safe.coin) {
-    return '<div class="command-empty">Type a ticker to pull the agent call, level, invalidation, and thesis.</div>';
+    return '<div class="command-empty">Ask about a ticker. Punky will fetch the live Hyperliquid chart before answering.</div>';
   }
-  const modeClass = safe.tradable ? 'signal-mode-tradable' : 'signal-mode-watch';
-  const status = String(safe.status || '').toUpperCase();
-  const holdingText = status.startsWith('OPEN_')
-    ? simpleThesisText(safe, 90)
-    : surfaceModeMeta(safe.mode_meta, safe.tradable);
-  return '<div class="command-detail-title">'
-      + '<div class="command-detail-symbol">' + esc(safe.coin || '--') + '</div>'
-      + '<span class="' + modeClass + '">' + esc(surfaceModeBadge(safe.mode_badge, safe.tradable)) + '</span>'
+  return '<div class="command-empty"><strong>' + esc(safe.coin || '--') + '</strong><br>Press Ask for a fresh decision. The scheduled agent read will only be used when it is current.</div>';
+}
+
+function askPunkyRequestedSide(query) {
+  const normalized = String(query || '').toLowerCase();
+  if (/\b(short|sell)\b/.test(normalized)) return 'SHORT';
+  if (/\b(long|buy)\b/.test(normalized)) return 'LONG';
+  return '';
+}
+
+function askPunkyEma(values, period) {
+  const clean = (values || []).map(Number).filter(Number.isFinite);
+  if (!clean.length) return [];
+  const multiplier = 2 / (period + 1);
+  const result = [clean[0]];
+  for (let index = 1; index < clean.length; index += 1) {
+    result.push((clean[index] * multiplier) + (result[index - 1] * (1 - multiplier)));
+  }
+  return result;
+}
+
+function askPunkyAtr(bars, period=14) {
+  if (!Array.isArray(bars) || bars.length < 2) return 0;
+  const ranges = bars.slice(1).map((bar, index) => Math.max(
+    Number(bar.h) - Number(bar.l),
+    Math.abs(Number(bar.h) - Number(bars[index].c)),
+    Math.abs(Number(bar.l) - Number(bars[index].c)),
+  ));
+  const tail = ranges.slice(-period);
+  return tail.length ? tail.reduce((sum, value) => sum + value, 0) / tail.length : 0;
+}
+
+function askPunkyPrice(value, reference=0) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '--';
+  const anchor = Math.abs(Number(reference) || number);
+  const decimals = anchor >= 100 ? 2 : anchor >= 10 ? 3 : anchor >= 1 ? 4 : 5;
+  return number.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
+
+function askPunkyPct(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '--';
+  return (number >= 0 ? '+' : '') + number.toFixed(2) + '%';
+}
+
+function askPunkyVenueCandidates(ticker, item) {
+  const safe = item || {};
+  const explicit = String(safe.venue_symbol || safe.exchange_symbol || '').trim();
+  const instrument = String(safe.instrument_type || safe.asset_bucket || '').toLowerCase();
+  const equityLike = instrument.includes('equity') || instrument.includes('stock') || instrument.includes('macro') || instrument.includes('index');
+  const preferred = explicit || (equityLike ? 'xyz:' + ticker : ticker);
+  return [...new Set([preferred, 'xyz:' + ticker, ticker].filter(Boolean))];
+}
+
+async function askPunkyFetchCandles(ticker, item) {
+  const endTime = Date.now();
+  const startTime = endTime - (12 * 24 * 60 * 60 * 1000);
+  let lastError = null;
+  for (const venueSymbol of askPunkyVenueCandidates(ticker, item)) {
+    try {
+      const response = await fetch('https://api.hyperliquid.xyz/info', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'candleSnapshot',
+          req: { coin: venueSymbol, interval: '1h', startTime, endTime },
+        }),
+      });
+      if (!response.ok) throw new Error('Hyperliquid returned HTTP ' + response.status);
+      const payload = await response.json();
+      const bars = (Array.isArray(payload) ? payload : [])
+        .map((row) => ({
+          t: Number(row.t), T: Number(row.T), o: Number(row.o), h: Number(row.h),
+          l: Number(row.l), c: Number(row.c), v: Number(row.v || 0),
+        }))
+        .filter((row) => [row.t, row.o, row.h, row.l, row.c].every(Number.isFinite))
+        .sort((a, b) => a.t - b.t);
+      if (bars.length >= 55) return { bars, venueSymbol };
+      lastError = new Error('Only ' + bars.length + ' hourly candles were available for ' + venueSymbol);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error('No Hyperliquid candles were found for ' + ticker);
+}
+
+function askPunkyExactEarningsRow(ticker) {
+  return (Array.isArray((latestEarningsSession || {}).rows) ? latestEarningsSession.rows : [])
+    .find((row) => String((row || {}).coin || '').trim().toUpperCase() === ticker) || null;
+}
+
+function askPunkyMarketRead() {
+  const context = latestGlobalMarketContext || {};
+  const policy = context.execution_policy || {};
+  const direction = String(policy.preferred_direction || '').toUpperCase();
+  const updatedAt = Date.parse(context.updated_at || '');
+  const fresh = Number.isFinite(updatedAt) && (Date.now() - updatedAt) <= (6 * 60 * 60 * 1000);
+  return {
+    direction: direction === 'LONG' || direction === 'SHORT' ? direction : '',
+    fresh,
+    regime: String(context.regime || 'UNMAPPED').replaceAll('_', ' '),
+    headline: String(context.headline || context.commentary || '').trim(),
+  };
+}
+
+function askPunkyDossier(ticker) {
+  const store = latestAssetDossiers || {};
+  const assets = store.assets && typeof store.assets === 'object' ? store.assets : store;
+  return (assets || {})[ticker] || (assets || {})[ticker.toLowerCase()] || null;
+}
+
+function askPunkyAnalyse(ticker, query, item, candleResult) {
+  const allBars = candleResult.bars;
+  const closedBars = allBars.filter((bar) => !bar.T || bar.T <= Date.now());
+  const bars = (closedBars.length >= 55 ? closedBars : allBars).slice(-240);
+  const closes = bars.map((bar) => bar.c);
+  const ema20Series = askPunkyEma(closes, 20);
+  const ema50Series = askPunkyEma(closes, 50);
+  const current = closes[closes.length - 1];
+  const ema20 = ema20Series[ema20Series.length - 1];
+  const ema50 = ema50Series[ema50Series.length - 1];
+  const ema20Prior = ema20Series[Math.max(0, ema20Series.length - 7)];
+  const atr = askPunkyAtr(bars, 14) || current * 0.01;
+  const return6h = ((current / closes[Math.max(0, closes.length - 7)]) - 1) * 100;
+  const return24h = ((current / closes[Math.max(0, closes.length - 25)]) - 1) * 100;
+  const priorWindow = bars.slice(-25, -1);
+  const recentWindow = bars.slice(-13);
+  const priorHigh = Math.max(...priorWindow.map((bar) => bar.h));
+  const priorLow = Math.min(...priorWindow.map((bar) => bar.l));
+  const recentHigh = Math.max(...recentWindow.map((bar) => bar.h));
+  const recentLow = Math.min(...recentWindow.map((bar) => bar.l));
+  const market = askPunkyMarketRead();
+  const earnings = askPunkyExactEarningsRow(ticker);
+  let score = 0;
+  score += current >= ema20 ? 1.05 : -1.05;
+  score += ema20 >= ema50 ? 1.25 : -1.25;
+  score += ema20 >= ema20Prior ? 0.70 : -0.70;
+  score += return6h >= 0 ? 0.65 : -0.65;
+  score += return24h >= 0 ? 0.55 : -0.55;
+  if (current > priorHigh) score += 0.85;
+  if (current < priorLow) score -= 0.85;
+  if (market.fresh && market.direction) score += market.direction === 'LONG' ? 0.40 : -0.40;
+  if (earnings && String(earnings.direction || '').toUpperCase() === 'LONG') score += 0.35;
+  if (earnings && String(earnings.direction || '').toUpperCase() === 'SHORT') score -= 0.35;
+
+  const direction = score >= 0 ? 'LONG' : 'SHORT';
+  const requestedSide = askPunkyRequestedSide(query);
+  const extensionAtr = Math.abs(current - ema20) / Math.max(atr, current * 0.001);
+  const eventPhase = String((earnings || {}).phase || '').toUpperCase();
+  const eventGate = eventPhase === 'PRE_EVENT' || eventPhase === 'LIVE';
+  const lastBarTime = Number(bars[bars.length - 1].T || bars[bars.length - 1].t);
+  const candleFresh = Number.isFinite(lastBarTime) && (Date.now() - lastBarTime) <= (4 * 60 * 60 * 1000);
+
+  let invalidation;
+  let target;
+  let entry = current;
+  if (direction === 'LONG') {
+    const supports = [recentLow, ema20 - (0.35 * atr), ema50]
+      .filter((value) => Number.isFinite(value) && value < current);
+    invalidation = (supports.length ? Math.max(...supports) : current - (1.5 * atr)) - (0.20 * atr);
+    if (extensionAtr > 1.75) entry = ema20 + (0.35 * atr);
+    const risk = Math.max(entry - invalidation, 0.8 * atr);
+    target = priorHigh > entry + (1.35 * risk) ? priorHigh : entry + (2 * risk);
+  } else {
+    const resistances = [recentHigh, ema20 + (0.35 * atr), ema50]
+      .filter((value) => Number.isFinite(value) && value > current);
+    invalidation = (resistances.length ? Math.min(...resistances) : current + (1.5 * atr)) + (0.20 * atr);
+    if (extensionAtr > 1.75) entry = ema20 - (0.35 * atr);
+    const risk = Math.max(invalidation - entry, 0.8 * atr);
+    target = priorLow < entry - (1.35 * risk) ? priorLow : entry - (2 * risk);
+  }
+  const riskDistance = Math.abs(entry - invalidation);
+  const rewardDistance = Math.abs(target - entry);
+  const rr = riskDistance > 0 ? rewardDistance / riskDistance : 0;
+  const clearStructure = Math.abs(score) >= 3.15;
+  const tooExtended = extensionAtr > 1.75;
+  const tradeReady = clearStructure && rr >= 1.5 && !tooExtended && !eventGate && candleFresh;
+  const conflictsWithRequest = tradeReady && requestedSide && requestedSide !== direction;
+
+  let tone = 'wait';
+  let decision = 'WAIT';
+  let summary = '';
+  if (conflictsWithRequest) {
+    tone = 'avoid';
+    decision = 'AVOID ' + requestedSide;
+    summary = 'No. The live structure currently favors ' + direction.toLowerCase() + ', so the ' + requestedSide.toLowerCase() + ' thesis is fighting price action.';
+  } else if (tradeReady) {
+    tone = 'take';
+    decision = 'TAKE ' + direction;
+    summary = 'Yes. The chart has enough directional agreement to take the ' + direction.toLowerCase() + ', provided the thesis invalidation is respected.';
+  } else if (eventGate) {
+    summary = 'No trade yet. A live earnings event can reset every chart level; wait for the print and the first confirmed reaction.';
+  } else if (!candleFresh) {
+    summary = 'No trade. Hyperliquid candles are stale, so Punky will not manufacture a decision from old price data.';
+  } else if (tooExtended) {
+    summary = 'Do not chase it here. Direction is ' + direction.toLowerCase() + ', but price is ' + extensionAtr.toFixed(1) + ' ATR from its 20-hour mean.';
+  } else {
+    summary = 'No trade yet. The live chart does not have enough agreement to justify paying risk; wait for a cleaner trigger.';
+  }
+
+  const confidence = Math.max(48, Math.min(84, Math.round(52 + (Math.abs(score) * 6) + (candleFresh ? 4 : -12) + (market.fresh ? 2 : 0) - (eventGate ? 8 : 0))));
+  const structureWhy = current >= ema20 && ema20 >= ema50
+    ? 'Price is above both the 20h and 50h EMAs, with the fast average on top: buyers control the current structure.'
+    : current <= ema20 && ema20 <= ema50
+      ? 'Price is below both the 20h and 50h EMAs, with the fast average underneath: sellers control the current structure.'
+      : 'Price and the 20h/50h EMA stack disagree, which is a transition rather than a clean trend.';
+  const momentumWhy = 'Momentum is ' + askPunkyPct(return6h) + ' over 6h and ' + askPunkyPct(return24h) + ' over 24h; the current 1h ATR is ' + askPunkyPrice(atr, current) + '.';
+  const levelWhy = direction === 'LONG'
+    ? 'The long is wrong below ' + askPunkyPrice(invalidation, current) + '; upside pays toward ' + askPunkyPrice(target, current) + ' if buyers keep the structure.'
+    : 'The short is wrong above ' + askPunkyPrice(invalidation, current) + '; downside pays toward ' + askPunkyPrice(target, current) + ' if sellers keep the structure.';
+  const earningsMetrics = earnings && Array.isArray(earnings.metrics)
+    ? earnings.metrics.map((metric) => String(metric || '').trim()).filter(Boolean).slice(0, 5)
+    : [];
+  const earningsWhy = earnings
+    ? (eventPhase + ': ' + String(earnings.decision || earnings.post_report_check || 'tracked event').trim()
+      + (earningsMetrics.length ? '. Watch ' + earningsMetrics.join(', ') + '.' : ''))
+    : 'No ticker-matched earnings event is present in Punky\'s active event ledger, so the chart call is not claiming an earnings edge.';
+
+  const scheduledFresh = Boolean(item && item.analysis_fresh && !String(item.status || '').toUpperCase().includes('STALE'));
+  const dossier = askPunkyDossier(ticker);
+  const evidence = [
+    {
+      label: 'Live chart',
+      value: candleResult.venueSymbol + ' • ' + bars.length + ' hourly candles • last bar ' + new Date(lastBarTime).toLocaleString(),
+    },
+    {
+      label: 'Market tape',
+      value: market.fresh ? ((market.regime || 'Mapped') + (market.headline ? ' • ' + shortText(market.headline, 150) : '')) : 'Global context is stale or unavailable; it was excluded from the score.',
+    },
+    {
+      label: 'Earnings',
+      value: earnings ? shortText(earningsWhy, 180) : earningsWhy,
+    },
+    {
+      label: 'Agent memory',
+      value: scheduledFresh
+        ? shortText(simpleThesisText(item, 180), 180)
+        : 'The scheduled ticker read is stale or absent, so it was not allowed to decide this trade.' + (dossier ? ' Long-term dossier remains context only.' : ''),
+    },
+  ];
+
+  return {
+    ticker, query, bars: allBars.slice(-72), venueSymbol: candleResult.venueSymbol,
+    direction, requestedSide, decision, tone, summary, confidence,
+    score, current, entry, target, invalidation, rr, atr, ema20, ema50,
+    return6h, return24h, extensionAtr, candleFresh, eventGate,
+    why: [structureWhy, momentumWhy, levelWhy, earningsWhy], evidence,
+    analysedAt: new Date().toISOString(),
+  };
+}
+
+function askPunkyChartHtml(answer) {
+  const bars = (answer.bars || []).slice(-64);
+  if (bars.length < 2) return '<div class="command-empty">Chart unavailable.</div>';
+  const width = 760;
+  const height = 300;
+  const pad = { left: 10, right: 92, top: 12, bottom: 24 };
+  const chartWidth = width - pad.left - pad.right;
+  const chartHeight = height - pad.top - pad.bottom;
+  const levels = [
+    { key: 'target', label: 'TARGET', value: Number(answer.target), color: '#00e68a' },
+    { key: 'current', label: 'NOW', value: Number(answer.current), color: '#5b8cff' },
+    { key: 'entry', label: 'ENTRY', value: Number(answer.entry), color: '#ffb84d' },
+    { key: 'invalid', label: 'INVALID', value: Number(answer.invalidation), color: '#ff4d6a' },
+  ].filter((level) => Number.isFinite(level.value));
+  const priceValues = bars.flatMap((bar) => [bar.h, bar.l]).concat(levels.map((level) => level.value));
+  let minPrice = Math.min(...priceValues);
+  let maxPrice = Math.max(...priceValues);
+  const range = Math.max(maxPrice - minPrice, Math.abs(answer.current) * 0.005, 0.0001);
+  minPrice -= range * 0.07;
+  maxPrice += range * 0.07;
+  const yFor = (value) => pad.top + ((maxPrice - value) / (maxPrice - minPrice)) * chartHeight;
+  const step = chartWidth / bars.length;
+  const candleWidth = Math.max(2, Math.min(7, step * 0.58));
+  const grid = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+    const y = pad.top + (chartHeight * ratio);
+    return '<line x1="' + pad.left + '" y1="' + y.toFixed(1) + '" x2="' + (pad.left + chartWidth) + '" y2="' + y.toFixed(1) + '" stroke="rgba(235,237,229,0.06)" />';
+  }).join('');
+  const candles = bars.map((bar, index) => {
+    const x = pad.left + (index * step) + (step / 2);
+    const openY = yFor(bar.o);
+    const closeY = yFor(bar.c);
+    const highY = yFor(bar.h);
+    const lowY = yFor(bar.l);
+    const up = bar.c >= bar.o;
+    const color = up ? '#00e68a' : '#ff4d6a';
+    const bodyY = Math.min(openY, closeY);
+    const bodyHeight = Math.max(1.2, Math.abs(closeY - openY));
+    return '<line x1="' + x.toFixed(1) + '" y1="' + highY.toFixed(1) + '" x2="' + x.toFixed(1) + '" y2="' + lowY.toFixed(1) + '" stroke="' + color + '" stroke-width="1" />'
+      + '<rect x="' + (x - candleWidth / 2).toFixed(1) + '" y="' + bodyY.toFixed(1) + '" width="' + candleWidth.toFixed(1) + '" height="' + bodyHeight.toFixed(1) + '" fill="' + color + '" rx="0.7" />';
+  }).join('');
+  const usedLabelY = [];
+  const levelLines = levels.map((level) => {
+    const rawY = yFor(level.value);
+    let labelY = rawY;
+    while (usedLabelY.some((existing) => Math.abs(existing - labelY) < 14)) labelY += 14;
+    labelY = Math.min(height - 12, Math.max(12, labelY));
+    usedLabelY.push(labelY);
+    return '<line x1="' + pad.left + '" y1="' + rawY.toFixed(1) + '" x2="' + (pad.left + chartWidth) + '" y2="' + rawY.toFixed(1) + '" stroke="' + level.color + '" stroke-width="1" stroke-dasharray="4 4" opacity="0.78" />'
+      + '<text x="' + (pad.left + chartWidth + 6) + '" y="' + (labelY + 3).toFixed(1) + '" fill="' + level.color + '" font-size="8" font-family="ui-monospace,monospace">' + level.label + ' ' + esc(askPunkyPrice(level.value, answer.current)) + '</text>';
+  }).join('');
+  const startLabel = new Date(bars[0].t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const endLabel = new Date(bars[bars.length - 1].t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return '<svg class="ask-punky-chart-svg" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="' + esc(answer.ticker) + ' Hyperliquid one hour candlestick chart">'
+    + grid + candles + levelLines
+    + '<text x="' + pad.left + '" y="' + (height - 5) + '" fill="#777d78" font-size="8" font-family="ui-monospace,monospace">' + esc(startLabel) + '</text>'
+    + '<text x="' + (pad.left + chartWidth - 32) + '" y="' + (height - 5) + '" fill="#777d78" font-size="8" font-family="ui-monospace,monospace">' + esc(endLabel) + '</text>'
+  + '</svg>';
+}
+
+function askPunkyPlanItem(label, value) {
+  return '<div class="ask-punky-plan-item"><div class="ask-punky-plan-label">' + esc(label) + '</div><div class="ask-punky-plan-value">' + esc(value) + '</div></div>';
+}
+
+function askPunkyAnswerHtml(answer) {
+  const link = 'https://app.hyperliquid.xyz/trade/' + encodeURIComponent(answer.venueSymbol);
+  return '<div class="ask-punky-answer">'
+    + '<div class="ask-punky-verdict ' + esc(answer.tone) + '">'
+      + '<div class="ask-punky-verdict-head">'
+        + '<div><div class="ask-punky-kicker">' + esc(answer.ticker) + ' decision</div><div class="ask-punky-decision">' + esc(answer.decision) + '</div></div>'
+        + '<div class="ask-punky-confidence">CONFIDENCE ' + esc(answer.confidence) + '%<br>LIVE 1H READ</div>'
+      + '</div>'
+      + '<p class="ask-punky-summary">' + esc(answer.summary) + '</p>'
     + '</div>'
-    + '<div class="search-chip-row">' + setupStanceChipHtml(safe) + probabilityChipHtml(safe) + eventChipHtml(safe) + '</div>'
-    + '<div class="command-detail-card">'
-      + commandDetailLine('Call', simpleActionText(safe))
-      + commandDetailLine('Level', simpleNextText(safe, 96))
-      + commandDetailLine('Invalid if', simpleInvalidationText(safe, 96))
-      + commandDetailLine(status.startsWith('OPEN_') ? 'Holding because' : 'Why', simpleThesisText(safe, 96))
-      + (safe.micro_desk_verdict ? commandDetailLine('Desk', String(safe.micro_desk_verdict) + ' • ' + shortText(safe.micro_desk_summary || '', 96)) : '')
-      + commandDetailLine('Mode', holdingText)
+    + '<div class="ask-punky-plan">'
+      + askPunkyPlanItem('Current', askPunkyPrice(answer.current, answer.current))
+      + askPunkyPlanItem('Entry / trigger', askPunkyPrice(answer.entry, answer.current))
+      + askPunkyPlanItem('Target', askPunkyPrice(answer.target, answer.current))
+      + askPunkyPlanItem('Thesis invalid if', (answer.direction === 'LONG' ? 'Below ' : 'Above ') + askPunkyPrice(answer.invalidation, answer.current))
+      + askPunkyPlanItem('Reward / risk', Number(answer.rr).toFixed(2) + 'x')
     + '</div>'
-    + priceIntegrityWarningHtml(safe);
+    + '<div><div class="ask-punky-section-title">Why</div><ol class="ask-punky-why">' + answer.why.map((line) => '<li>' + esc(line) + '</li>').join('') + '</ol></div>'
+    + '<div class="ask-punky-chart">'
+      + '<div class="ask-punky-chart-head"><div><div class="ask-punky-section-title">Hyperliquid price action</div><div class="ask-punky-chart-meta">' + esc(answer.venueSymbol) + ' • 1h • updated ' + esc(new Date(answer.analysedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })) + '</div></div><a class="ask-punky-source" href="' + esc(link) + '" target="_blank" rel="noopener noreferrer">OPEN CHART ↗</a></div>'
+      + askPunkyChartHtml(answer)
+    + '</div>'
+    + '<div><div class="ask-punky-section-title">Evidence quality</div><div class="ask-punky-evidence">'
+      + answer.evidence.map((entry) => '<div class="ask-punky-evidence-item"><strong>' + esc(entry.label) + '</strong>' + esc(entry.value) + '</div>').join('')
+    + '</div></div>'
+  + '</div>';
+}
+
+function askPunkyLoadingHtml(ticker) {
+  return '<div class="ask-punky-loading"><div><strong>Reading ' + esc(ticker) + ' now...</strong><br><br>Fetching Hyperliquid candles and checking structure, levels, market tape, and earnings.</div></div>';
+}
+
+async function runAskPunky(seed='') {
+  const input = document.getElementById('command-search-input');
+  if (seed && input) input.value = seed;
+  const query = String(seed || (input ? input.value : commandSearchQuery) || '').trim();
+  commandSearchQuery = query;
+  const ticker = commandTickerFromQuery(query) || String(((commandSearchMatches || [])[commandSearchIndex] || {}).coin || '').toUpperCase();
+  const detail = document.getElementById('command-search-detail');
+  if (!ticker) {
+    if (detail) detail.innerHTML = '<div class="ask-punky-error">I could not find a ticker in that question. Try a symbol such as CBRS, NVDA, or HYPE.</div>';
+    return;
+  }
+  const item = dashboardItemForCoin(ticker) || null;
+  const requestId = ++commandAnalysisRequest;
+  commandAnalysisLoading = true;
+  commandActiveAnswer = null;
+  lastAskedTicker = ticker;
+  const submit = document.getElementById('ask-punky-submit');
+  if (submit) submit.disabled = true;
+  renderCommandSearch();
+  try {
+    const candles = await askPunkyFetchCandles(ticker, item);
+    const answer = askPunkyAnalyse(ticker, query, item, candles);
+    if (requestId !== commandAnalysisRequest) return;
+    commandActiveAnswer = answer;
+  } catch (error) {
+    if (requestId !== commandAnalysisRequest) return;
+    commandActiveAnswer = { error: String((error || {}).message || error || 'Live analysis failed.'), ticker };
+  } finally {
+    if (requestId === commandAnalysisRequest) {
+      commandAnalysisLoading = false;
+      if (submit) submit.disabled = false;
+      renderCommandSearch();
+    }
+  }
+}
+
+function askPunkyPrompt(query) {
+  openCommandSearch(query);
+  runAskPunky(query);
 }
 
 function renderCommandSearch() {
@@ -5069,14 +5666,21 @@ function renderCommandSearch() {
   if (commandSearchIndex < 0) commandSearchIndex = 0;
   if (!commandSearchMatches.length) {
     const normalized = String(commandSearchQuery || '').trim().toUpperCase();
-    results.innerHTML = '<div class="command-empty">' + esc(normalized ? ('No live read for ' + normalized + '.') : 'No active ideas loaded yet.') + '</div>';
-    detail.innerHTML = '<div class="command-empty">Try another tracked ticker.</div>';
-    return;
+    results.innerHTML = '<div class="command-empty">' + esc(normalized ? ('No scheduled read matches this query. Punky can still try the live Hyperliquid market.') : 'Tracked ideas will appear here.') + '</div>';
+  } else {
+    results.innerHTML = commandSearchMatches
+      .map((item, index) => commandResultHtml(item, index, index === commandSearchIndex))
+      .join('');
   }
-  results.innerHTML = commandSearchMatches
-    .map((item, index) => commandResultHtml(item, index, index === commandSearchIndex))
-    .join('');
-  detail.innerHTML = commandDetailHtml(commandSearchMatches[commandSearchIndex]);
+  if (commandAnalysisLoading) {
+    detail.innerHTML = askPunkyLoadingHtml(lastAskedTicker || commandTickerFromQuery(commandSearchQuery) || 'the market');
+  } else if (commandActiveAnswer && commandActiveAnswer.error) {
+    detail.innerHTML = '<div class="ask-punky-error"><strong>' + esc(commandActiveAnswer.ticker || 'Ticker') + ' could not be analysed live.</strong><br>' + esc(commandActiveAnswer.error) + '</div>';
+  } else if (commandActiveAnswer) {
+    detail.innerHTML = askPunkyAnswerHtml(commandActiveAnswer);
+  } else {
+    detail.innerHTML = commandDetailHtml(commandSearchMatches[commandSearchIndex]);
+  }
 }
 
 function openCommandSearch(seed='') {
@@ -5110,16 +5714,19 @@ function selectCommandTicker(ticker) {
   commandSearchIndex = 0;
   const commandInput = document.getElementById('command-search-input');
   if (commandInput) commandInput.value = normalized;
+  commandActiveAnswer = null;
   renderCommandSearch();
+  runAskPunky(normalized);
 }
 
 function activateCommandSearchSelection() {
-  const item = commandSearchMatches[commandSearchIndex];
-  if (!item) return;
-  selectCommandTicker(item.coin);
+  runAskPunky();
 }
 
 function handleCommandSearch(value) {
+  commandAnalysisRequest += 1;
+  commandAnalysisLoading = false;
+  commandActiveAnswer = null;
   commandSearchQuery = String(value == null ? '' : value);
   commandSearchIndex = 0;
   renderCommandSearch();
