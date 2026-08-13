@@ -29,6 +29,7 @@ import sys
 import json
 import re
 import csv
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 from typing import List, Optional, Dict
@@ -216,6 +217,9 @@ class TradingAgent:
         self._micro_desk = micro_desk.MicroDesk(cfg.trading, data_dir=DATA_DIR)
         self._llm_referee = llm_referee.LLMReferee(cfg.trading)
         self._last_learning_report_refresh_ts = 0.0
+        self._learning_report_refresh_lock = threading.Lock()
+        self._learning_report_refresh_inflight = False
+        self._learning_report_refresh_thread: Optional[threading.Thread] = None
 
         # ── Signal streak: require N consecutive cycles before entering ──────
         # Prevents entering on the very first noisy crossing of a threshold.
@@ -881,46 +885,76 @@ class TradingAgent:
         if self._last_learning_report_refresh_ts and (now - self._last_learning_report_refresh_ts) < refresh_seconds:
             return
 
-        target_r = float(getattr(self.cfg.trading, "decision_review_target_r", 0.25) or 0.25)
-        horizon_minutes = int(getattr(self.cfg.trading, "decision_review_horizon_minutes", 720) or 720)
-        interval = str(getattr(self.cfg.trading, "decision_review_interval", "5m") or "5m")
-        dedupe_minutes = int(getattr(self.cfg.trading, "decision_review_dedupe_minutes", 30) or 30)
-
-        try:
-            if getattr(self.cfg.trading, "decision_review_enabled", True):
-                decision_review_lab.build_and_save_report(
-                    data_dir=DATA_DIR,
-                    target_r=target_r,
-                    horizon_minutes=horizon_minutes,
-                    interval=interval,
-                    dedupe_minutes=dedupe_minutes,
-                )
-            if getattr(self.cfg.trading, "missed_move_lab_enabled", True):
-                missed_move_lab.build_and_save_report(
-                    data_dir=DATA_DIR,
-                    target_r=target_r,
-                    horizon_minutes=horizon_minutes,
-                    interval=interval,
-                    dedupe_minutes=dedupe_minutes,
-                )
-            if getattr(self.cfg.trading, "challenger_model_enabled", True):
-                challenger_model.build_and_save_report(
-                    self.cfg,
-                    data_dir=DATA_DIR,
-                )
-            if getattr(self.cfg.trading, "playbook_distiller_enabled", True):
-                playbook_distiller.build_and_save_report(
-                    self.cfg,
-                    data_dir=DATA_DIR,
-                )
-            if getattr(self.cfg.trading, "policy_health_enabled", True):
-                policy_health.build_and_save_report(
-                    data_dir=DATA_DIR,
-                    config=self.cfg.trading,
-                )
+        with self._learning_report_refresh_lock:
+            if self._learning_report_refresh_inflight:
+                return
+            self._learning_report_refresh_inflight = True
             self._last_learning_report_refresh_ts = now
-        except Exception as exc:
-            log.debug("Learning report refresh skipped: %s", exc)
+
+        def refresh() -> None:
+            target_r = float(getattr(self.cfg.trading, "decision_review_target_r", 0.25) or 0.25)
+            horizon_minutes = int(getattr(self.cfg.trading, "decision_review_horizon_minutes", 720) or 720)
+            interval = str(getattr(self.cfg.trading, "decision_review_interval", "5m") or "5m")
+            dedupe_minutes = int(getattr(self.cfg.trading, "decision_review_dedupe_minutes", 30) or 30)
+            jobs = []
+            if getattr(self.cfg.trading, "decision_review_enabled", True):
+                jobs.append((
+                    "decision review",
+                    lambda: decision_review_lab.build_and_save_report(
+                        data_dir=DATA_DIR,
+                        target_r=target_r,
+                        horizon_minutes=horizon_minutes,
+                        interval=interval,
+                        dedupe_minutes=dedupe_minutes,
+                    ),
+                ))
+            if getattr(self.cfg.trading, "missed_move_lab_enabled", True):
+                jobs.append((
+                    "missed-move lab",
+                    lambda: missed_move_lab.build_and_save_report(
+                        data_dir=DATA_DIR,
+                        target_r=target_r,
+                        horizon_minutes=horizon_minutes,
+                        interval=interval,
+                        dedupe_minutes=dedupe_minutes,
+                    ),
+                ))
+            if getattr(self.cfg.trading, "challenger_model_enabled", True):
+                jobs.append((
+                    "challenger model",
+                    lambda: challenger_model.build_and_save_report(self.cfg, data_dir=DATA_DIR),
+                ))
+            if getattr(self.cfg.trading, "playbook_distiller_enabled", True):
+                jobs.append((
+                    "playbook distiller",
+                    lambda: playbook_distiller.build_and_save_report(self.cfg, data_dir=DATA_DIR),
+                ))
+            if getattr(self.cfg.trading, "policy_health_enabled", True):
+                jobs.append((
+                    "policy health",
+                    lambda: policy_health.build_and_save_report(
+                        data_dir=DATA_DIR,
+                        config=self.cfg.trading,
+                    ),
+                ))
+
+            try:
+                for label, job in jobs:
+                    try:
+                        job()
+                    except Exception as exc:
+                        log.warning("Background %s refresh failed: %s", label, exc)
+                log.info("Background learning reports refreshed")
+            finally:
+                with self._learning_report_refresh_lock:
+                    self._learning_report_refresh_inflight = False
+
+        self._learning_report_refresh_thread = threading.Thread(
+            target=refresh,
+            name="punky-learning-reports",
+            daemon=True,
+        )
+        self._learning_report_refresh_thread.start()
 
     # ── Recovery and reconciliation ──────────────────────────
 
@@ -1308,8 +1342,8 @@ class TradingAgent:
         # 8. Summary + write state.json for dashboard
         log.info("\n" + self.risk.summary(portfolio_usd))
         log.info(self.order_mgr.summary())
-        self._maybe_refresh_learning_reports()
         self._write_state(portfolio_usd, sentiment)
+        self._maybe_refresh_learning_reports()
 
         # 8. Heartbeat notification every 6 cycles
         if self._cycle % 6 == 0:

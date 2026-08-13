@@ -15,6 +15,7 @@ import json
 import os
 import sys
 import tempfile
+import threading
 import time
 import urllib.request
 from datetime import datetime, timezone
@@ -10715,11 +10716,58 @@ def test_best_trade_gate_blocks_market_and_limit_paths_before_exchange_io() -> N
     assert "ETH ranks ahead" in result["reason"]
 
 
+def test_learning_reports_refresh_without_blocking_market_state() -> None:
+    agent = TradingAgent.__new__(TradingAgent)
+    agent.cfg = SimpleNamespace(trading=SimpleNamespace(
+        decision_review_enabled=True,
+        challenger_model_enabled=False,
+        missed_move_lab_enabled=False,
+        playbook_distiller_enabled=False,
+        policy_health_enabled=False,
+        challenger_refresh_hours=6.0,
+        decision_review_target_r=0.25,
+        decision_review_horizon_minutes=720,
+        decision_review_interval="5m",
+        decision_review_dedupe_minutes=30,
+    ))
+    agent._last_learning_report_refresh_ts = 0.0
+    agent._learning_report_refresh_lock = threading.Lock()
+    agent._learning_report_refresh_inflight = False
+    agent._learning_report_refresh_thread = None
+    started = threading.Event()
+    release = threading.Event()
+    original_builder = decision_review_lab_module.build_and_save_report
+
+    def slow_builder(**_kwargs):
+        started.set()
+        assert release.wait(timeout=2.0)
+
+    try:
+        decision_review_lab_module.build_and_save_report = slow_builder
+        began = time.monotonic()
+        agent._maybe_refresh_learning_reports()
+        elapsed = time.monotonic() - began
+        assert elapsed < 0.2
+        assert started.wait(timeout=1.0)
+        assert agent._learning_report_refresh_inflight is True
+        release.set()
+        agent._learning_report_refresh_thread.join(timeout=2.0)
+        assert agent._learning_report_refresh_inflight is False
+        assert agent._last_learning_report_refresh_ts > 0.0
+    finally:
+        release.set()
+        if agent._learning_report_refresh_thread is not None:
+            agent._learning_report_refresh_thread.join(timeout=2.0)
+        decision_review_lab_module.build_and_save_report = original_builder
+
+
 def run_all() -> None:
     test_best_trade_gate_ranks_the_whole_mature_book_before_entry()
     print("PASS best-trade ranking gate")
     test_best_trade_gate_blocks_market_and_limit_paths_before_exchange_io()
     print("PASS best-trade central entry paths")
+    test_learning_reports_refresh_without_blocking_market_state()
+    print("PASS non-blocking learning reports")
     test_hyperliquid_all_mids_is_shared_across_symbols()
     print("PASS shared Hyperliquid allMids cache")
     test_analysis_budget_prioritizes_core_and_rotates_the_rest()
