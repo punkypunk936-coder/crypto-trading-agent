@@ -73,6 +73,9 @@ PLAYBOOK_DISTILLER_REPORT = PLAYBOOK_DISTILLER_REPORT_JSON
 POLICY_HEALTH_REPORT = POLICY_HEALTH_REPORT_JSON
 PROACTIVE_TRADER_REPORT = PROACTIVE_TRADER_REPORT_JSON
 HOSTED_INDEX = CODE_ROOT / "netlify-dashboard" / "public" / "index.html"
+HOSTED_ASK_CONFIDENCE = (
+    CODE_ROOT / "netlify-dashboard" / "public" / "ask-confidence.js"
+)
 SNAPSHOT_REFRESH_GRACE_SECONDS = max(
     0.0,
     float(os.environ.get("DASHBOARD_SNAPSHOT_REFRESH_GRACE_SECONDS", "20") or 20),
@@ -508,6 +511,13 @@ def index():
     if HOSTED_INDEX.exists():
         return send_file(HOSTED_INDEX)
     return render_template("dashboard.html")
+
+
+@app.route("/ask-confidence.js")
+def ask_confidence_script():
+    response = send_file(HOSTED_ASK_CONFIDENCE, mimetype="application/javascript")
+    response.headers["Cache-Control"] = "no-cache, max-age=0, must-revalidate"
+    return response
 
 
 @app.route("/tradexyz-volume")

@@ -1386,10 +1386,39 @@
   .ask-punky-verdict.avoid .ask-punky-decision { color: var(--red); }
   .ask-punky-verdict.wait .ask-punky-decision { color: var(--yellow); }
   .ask-punky-confidence {
+    min-width: 150px;
+    color: var(--text-secondary);
+    font-family: var(--mono);
+    text-align: right;
+  }
+  .ask-punky-confidence strong {
+    display: block;
+    color: var(--text);
+    font-size: 28px;
+    line-height: 1;
+  }
+  .ask-punky-confidence-label {
+    display: block;
+    margin-top: 5px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0;
+  }
+  .ask-punky-confidence-term {
+    display: block;
+    margin-top: 3px;
+    color: var(--muted);
+    font-size: 9px;
+    letter-spacing: 0;
+  }
+  .ask-punky-confidence-context {
+    margin-top: 10px;
+    padding-top: 9px;
+    border-top: 1px solid rgba(235, 237, 229, 0.08);
     color: var(--text-secondary);
     font-family: var(--mono);
     font-size: 10px;
-    text-align: right;
+    line-height: 1.45;
   }
   .ask-punky-summary {
     margin: 10px 0 0;
@@ -3852,6 +3881,7 @@
   <div id="pnl-dialog-body" class="pnl-dialog-body"></div>
 </dialog>
 
+<script src="/ask-confidence.js"></script>
 <script>
 const fmt  = (n, dec=2) => n == null ? '--' : Number(n).toLocaleString('en-US', {minimumFractionDigits:dec, maximumFractionDigits:dec});
 const fmtP = (n) => n == null ? '--' : (n >= 0 ? '+' : '') + fmt(n) + '%';
@@ -5493,9 +5523,58 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
   const riskDistance = Math.abs(entry - invalidation);
   const rewardDistance = Math.abs(target - entry);
   const rr = riskDistance > 0 ? rewardDistance / riskDistance : 0;
+  const assetBucket = assetBucketForCoin(ticker);
+  const settledForecasts = PunkyConfidence.settleForecasts(
+    PunkyConfidence.load(),
+    ticker,
+    bars,
+  );
+  PunkyConfidence.save(settledForecasts);
+  const askHistory = PunkyConfidence.calibrationSummary(
+    settledForecasts,
+    direction,
+    rr,
+    assetBucket,
+  );
+  const scheduledStatus = String((item || {}).status || '').toUpperCase();
+  const scheduledAction = String((item || {}).action || '').toUpperCase();
+  const scheduledDirection = scheduledStatus.includes('LONG') || scheduledAction === 'LONG'
+    ? 'LONG'
+    : scheduledStatus.includes('SHORT') || scheduledAction === 'SHORT' ? 'SHORT' : '';
+  const scheduledProbability = Number(
+    (item || {}).probability
+    || (Number((item || {}).probability_pct) / 100)
+    || 0,
+  );
+  const scheduledFresh = Boolean(
+    item
+    && item.analysis_fresh
+    && !String(item.status || '').toUpperCase().includes('STALE'),
+  );
+  const confidenceModel = PunkyConfidence.calibrate({
+    direction,
+    score,
+    rr,
+    extensionAtr,
+    barsCount: bars.length,
+    candleFresh,
+    marketFresh: market.fresh,
+    scheduledFresh,
+    scheduledDirection,
+    scheduledProbability,
+    earningsMapped: Boolean(latestEarningsSession && Array.isArray(latestEarningsSession.rows)),
+    eventGate,
+    history: askHistory,
+  });
+  const confidence = confidenceModel.probabilityPct;
   const clearStructure = Math.abs(score) >= 3.15;
   const tooExtended = extensionAtr > 1.75;
-  const tradeReady = clearStructure && rr >= 1.5 && !tooExtended && !eventGate && candleFresh;
+  const tradeReady = clearStructure
+    && rr >= 1.5
+    && !tooExtended
+    && !eventGate
+    && candleFresh
+    && confidenceModel.decisionSupported;
   const conflictsWithRequest = tradeReady && requestedSide && requestedSide !== direction;
 
   let tone = 'wait';
@@ -5515,11 +5594,12 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
     summary = 'No trade. Hyperliquid candles are stale, so Punky will not manufacture a decision from old price data.';
   } else if (tooExtended) {
     summary = 'Do not chase it here. Direction is ' + direction.toLowerCase() + ', but price is ' + extensionAtr.toFixed(1) + ' ATR from its 20-hour mean.';
+  } else if (!confidenceModel.decisionSupported) {
+    summary = 'No trade yet. The directional read is ' + direction.toLowerCase() + ', but its measured edge over the ' + confidenceModel.breakEvenPct + '% break-even rate is not strong enough to risk money.';
   } else {
     summary = 'No trade yet. The live chart does not have enough agreement to justify paying risk; wait for a cleaner trigger.';
   }
 
-  const confidence = Math.max(48, Math.min(84, Math.round(52 + (Math.abs(score) * 6) + (candleFresh ? 4 : -12) + (market.fresh ? 2 : 0) - (eventGate ? 8 : 0))));
   const structureWhy = current >= ema20 && ema20 >= ema50
     ? 'Price is above both the 20h and 50h EMAs, with the fast average on top: buyers control the current structure.'
     : current <= ema20 && ema20 <= ema50
@@ -5537,8 +5617,11 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
       + (earningsMetrics.length ? '. Watch ' + earningsMetrics.join(', ') + '.' : ''))
     : 'No ticker-matched earnings event is present in Punky\'s active event ledger, so the chart call is not claiming an earnings edge.';
 
-  const scheduledFresh = Boolean(item && item.analysis_fresh && !String(item.status || '').toUpperCase().includes('STALE'));
   const dossier = askPunkyDossier(ticker);
+  const confidenceRecord = confidenceModel.samples > 0
+    ? confidenceModel.calibrationStatus + ' • ' + confidenceModel.samples + ' resolved ' + confidenceModel.scope
+      + ' • ' + confidenceModel.hitRatePct + '% hit rate • Brier ' + Number(confidenceModel.brier).toFixed(3)
+    : 'EARLY • no resolved Ask calls yet; certainty is capped while Punky builds a live record.';
   const evidence = [
     {
       label: 'Live chart',
@@ -5558,6 +5641,10 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
         ? shortText(simpleThesisText(item, 180), 180)
         : 'The scheduled ticker read is stale or absent, so it was not allowed to decide this trade.' + (dossier ? ' Long-term dossier remains context only.' : ''),
     },
+    {
+      label: 'Confidence record',
+      value: confidenceRecord,
+    },
   ];
 
   return {
@@ -5565,6 +5652,17 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
     direction, requestedSide, decision, tone, summary, confidence,
     score, current, entry, target, invalidation, rr, atr, ema20, ema50,
     return6h, return24h, extensionAtr, candleFresh, eventGate,
+    probability: confidenceModel.probability,
+    breakEvenPct: confidenceModel.breakEvenPct,
+    edgePctPoints: confidenceModel.edgePctPoints,
+    evidenceQuality: confidenceModel.evidenceQuality,
+    confidenceLabel: confidenceModel.confidenceLabel,
+    calibrationStatus: confidenceModel.calibrationStatus,
+    calibrationSamples: confidenceModel.samples,
+    calibrationHitRatePct: confidenceModel.hitRatePct,
+    calibrationBrier: confidenceModel.brier,
+    horizonHours: confidenceModel.horizonHours,
+    assetBucket,
     why: [structureWhy, momentumWhy, levelWhy, earningsWhy], evidence,
     analysedAt: new Date().toISOString(),
   };
@@ -5635,13 +5733,19 @@ function askPunkyPlanItem(label, value) {
 
 function askPunkyAnswerHtml(answer) {
   const link = 'https://app.hyperliquid.xyz/trade/' + encodeURIComponent(answer.venueSymbol);
+  const confidenceTitle = 'Estimated chance that the displayed target is reached before thesis invalidation within ' + answer.horizonHours + ' hours. This is a forecast, not a guarantee.';
   return '<div class="ask-punky-answer">'
     + '<div class="ask-punky-verdict ' + esc(answer.tone) + '">'
       + '<div class="ask-punky-verdict-head">'
         + '<div><div class="ask-punky-kicker">' + esc(answer.ticker) + ' decision</div><div class="ask-punky-decision">' + esc(answer.decision) + '</div></div>'
-        + '<div class="ask-punky-confidence">CONFIDENCE ' + esc(answer.confidence) + '%<br>LIVE 1H READ</div>'
+        + '<div class="ask-punky-confidence" title="' + esc(confidenceTitle) + '">'
+          + '<strong>' + esc(answer.confidence) + '%</strong>'
+          + '<span class="ask-punky-confidence-label">' + esc(answer.confidenceLabel) + ' CONFIDENCE</span>'
+          + '<span class="ask-punky-confidence-term">TARGET FIRST • ' + esc(answer.horizonHours) + 'H</span>'
+        + '</div>'
       + '</div>'
       + '<p class="ask-punky-summary">' + esc(answer.summary) + '</p>'
+      + '<div class="ask-punky-confidence-context">Break-even ' + esc(answer.breakEvenPct) + '% • measured edge ' + (Number(answer.edgePctPoints) >= 0 ? '+' : '') + esc(answer.edgePctPoints) + 'pp • evidence ' + esc(answer.evidenceQuality) + '/100 • calibration ' + esc(answer.calibrationStatus) + '</div>'
     + '</div>'
     + '<div class="ask-punky-plan">'
       + askPunkyPlanItem('Current', askPunkyPrice(answer.current, answer.current))
@@ -5688,6 +5792,11 @@ async function runAskPunky(seed='') {
     const candles = await askPunkyFetchCandles(ticker, item);
     const answer = askPunkyAnalyse(ticker, query, item, candles);
     if (requestId !== commandAnalysisRequest) return;
+    const recordedForecasts = PunkyConfidence.recordForecast(
+      PunkyConfidence.load(),
+      answer,
+    );
+    PunkyConfidence.save(recordedForecasts);
     commandActiveAnswer = answer;
   } catch (error) {
     if (requestId !== commandAnalysisRequest) return;
