@@ -74,6 +74,7 @@ def _normalize_record(source: dict) -> dict | None:
         "direction": direction,
         "decision": str(source.get("decision") or "")[:80],
         "query": str(source.get("query") or "")[:240],
+        "source": str(source.get("source") or "ask_punky")[:80],
         "analysedAt": _iso(analysed_ts),
         "horizonHours": max(1.0, min(168.0, _safe_float(source.get("horizonHours"), 24.0))),
         "venueSymbol": str(source.get("venueSymbol") or resolve_hyperliquid_symbol(ticker) or ticker).strip(),

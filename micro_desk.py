@@ -149,7 +149,7 @@ class MicroDesk:
     def _ask_forecast_rows(self) -> list[dict]:
         by_id = {
             str(row.get("id") or ""): row
-            for row in ask_call_learning.load_forecasts(data_dir=self.data_dir)
+            for row in ask_call_learning.upsert_forecasts([], data_dir=self.data_dir)
             if row.get("id")
         }
         dashboard_url = str(os.environ.get("DASHBOARD_URL", "") or "").strip().rstrip("/")

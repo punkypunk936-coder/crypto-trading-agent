@@ -57,6 +57,7 @@ from datetime import datetime
 import os
 import analog_engine
 import ai_infrastructure
+import ask_call_learning
 import asia_session
 import asset_dossier
 import challenger_model
@@ -113,6 +114,7 @@ from exchanges.hyperliquid_markets import (
     hyperliquid_instrument_type,
     hyperliquid_market_is_active,
     is_hyperliquid_supported,
+    resolve_hyperliquid_symbol,
 )
 from narrative import get_narrative_signal
 from strategy.aggressive_strategy import AggressiveStrategy
@@ -177,6 +179,11 @@ class TradingAgent:
             for coin in (getattr(cfg.trading, "analysis_new_listing_seed_coins", []) or [])
             if str(coin or "").strip()
         ]
+        self._analysis_forecast_ids = {
+            str(row.get("id") or "")
+            for row in ask_call_learning.load_forecasts()
+            if str(row.get("source") or "") == "scheduled_agent" and row.get("id")
+        }
         self._analysis_cursor = 0
         self._last_analysis_batch: List[str] = []
         self._analysis_only_coin_set = {
@@ -793,6 +800,59 @@ class TradingAgent:
         })
         return lifecycle
 
+    def _record_analysis_forecast(self, coin: str, signal) -> None:
+        direction = str(getattr(signal, "action", "") or "").upper()
+        if direction not in {"LONG", "SHORT"}:
+            return
+        snapshot = dict(self._last_signals.get(coin) or {})
+        analysed_ts = float(snapshot.get("analysis_updated_ts") or time.time())
+        forecast_id = f"scheduled:{coin}:{direction}:{int(analysed_ts // (6 * 3600))}"
+        if forecast_id in self._analysis_forecast_ids:
+            return
+        entry = float(snapshot.get("price") or snapshot.get("live_price") or 0.0)
+        target = float(snapshot.get("planned_take_profit") or 0.0)
+        invalidation = float(snapshot.get("planned_stop_loss") or 0.0)
+        if entry <= 0 or target <= 0 or invalidation <= 0:
+            return
+        geometry_valid = (
+            target > entry > invalidation
+            if direction == "LONG"
+            else target < entry < invalidation
+        )
+        if not geometry_valid:
+            return
+        expectancy = dict(getattr(signal, "expectancy", {}) or {})
+        probability = float(expectancy.get("probability") or 0.0)
+        if not 0.0 < probability < 1.0:
+            score = float(getattr(signal, "score", 50.0) or 50.0)
+            probability = 0.50 + min(0.25, abs(score - 50.0) / 100.0)
+        confidence = str(getattr(signal, "confidence", "LOW") or "LOW").upper()
+        evidence_quality = {"LOW": 45.0, "MEDIUM": 60.0, "HIGH": 75.0}.get(confidence, 50.0)
+        record = {
+            "id": forecast_id,
+            "ticker": coin,
+            "direction": direction,
+            "decision": "SCHEDULED CALL",
+            "query": "automatic agent analysis",
+            "analysedAt": datetime.fromtimestamp(analysed_ts).astimezone().isoformat(),
+            "horizonHours": 24,
+            "venueSymbol": str(snapshot.get("venue_symbol") or resolve_hyperliquid_symbol(coin) or coin),
+            "current": entry,
+            "target": target,
+            "invalidation": invalidation,
+            "rr": float(snapshot.get("planned_risk_reward_ratio") or 0.0),
+            "assetBucket": str(snapshot.get("instrument_type") or ""),
+            "probability": probability,
+            "evidenceQuality": evidence_quality,
+            "limitedHistory": bool(snapshot.get("new_listing_limited_history")),
+            "source": "scheduled_agent",
+        }
+        try:
+            ask_call_learning.upsert_forecasts([record], settle=False)
+            self._analysis_forecast_ids.add(forecast_id)
+        except Exception as exc:
+            log.debug("[%s] Scheduled forecast ledger write skipped: %s", coin, exc)
+
     def _load_json_file(self, path: Path) -> dict:
         if not path.exists():
             return {}
@@ -1390,11 +1450,24 @@ class TradingAgent:
             for coin in self._dynamic_analysis_coins
             if coin in coins and coin not in self._last_signals
         ]
-        queued_new = [
-            coin
-            for coin in self._new_listing_queue
-            if coin in coins and coin not in self._last_signals
-        ]
+        minimum_primary_candles = max(
+            1,
+            int(getattr(self.cfg.trading, "new_listing_min_primary_candles", 40) or 40),
+        )
+        queued_new = []
+        for coin in self._new_listing_queue:
+            if coin not in coins:
+                continue
+            prior = dict(self._last_signals.get(coin) or {})
+            primary_candles = int(prior.get("primary_history_candles") or 0)
+            still_building_history = bool(
+                not prior
+                or prior.get("new_listing_limited_history")
+                or prior.get("execution_mode") == "analysis_only_new_listing"
+                or primary_candles < minimum_primary_candles
+            )
+            if still_building_history:
+                queued_new.append(coin)
         new_listing_candidates = list(dict.fromkeys(queued_new + unseen_dynamic))
         new_listing_slots = min(
             max(0, int(getattr(self.cfg.trading, "analysis_new_listing_slots", 2) or 2)),
@@ -3343,6 +3416,7 @@ class TradingAgent:
             "llm_referee_why_now": "",
         }
         self._refresh_first_principles_view(coin)
+        self._record_analysis_forecast(coin, signal)
         if new_listing_limited_history and not current_pos:
             self._last_signals[coin]["execution_mode"] = "analysis_only_new_listing"
             self._last_signals[coin]["next_unblock_reason"] = (

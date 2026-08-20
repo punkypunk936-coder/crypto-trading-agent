@@ -10499,6 +10499,73 @@ def test_analysis_budget_reserves_a_slot_for_a_new_venue_listing() -> None:
     assert len(batch) == 4
 
 
+def test_analysis_budget_keeps_refreshing_a_limited_history_listing() -> None:
+    cfg = build_config()
+    cfg.trading.analysis_cycle_budget_enabled = True
+    cfg.trading.analysis_max_symbols_per_cycle = 4
+    cfg.trading.analysis_new_listing_slots = 1
+    cfg.trading.analysis_new_listing_seed_coins = ["MRNA"]
+    cfg.trading.analysis_priority_coins = ["BTC", "ETH", "SOL"]
+    cfg.trading.analysis_coins = ["BTC", "ETH", "SOL", "MRNA", "AAPL"]
+    agent = TradingAgent(cfg, [])
+    agent._last_signals = {
+        "BTC": {"action": "FLAT"},
+        "ETH": {"action": "FLAT"},
+        "SOL": {"action": "FLAT"},
+        "MRNA": {
+            "action": "FLAT",
+            "execution_mode": "analysis_only_new_listing",
+            "new_listing_limited_history": True,
+            "primary_history_candles": 26,
+        },
+    }
+
+    batch = agent._analysis_batch_for_cycle()
+
+    assert "MRNA" in batch
+    assert len(batch) == 4
+
+
+def test_scheduled_directional_calls_enter_verified_forecast_pipeline() -> None:
+    cfg = build_config()
+    agent = TradingAgent(cfg, [])
+    now_ts = time.time()
+    agent._last_signals = {
+        "NVDA": {
+            "analysis_updated_ts": now_ts,
+            "price": 180.0,
+            "planned_take_profit": 170.0,
+            "planned_stop_loss": 185.0,
+            "planned_risk_reward_ratio": 2.0,
+            "venue_symbol": "xyz:NVDA",
+            "instrument_type": "equity",
+        }
+    }
+    captured = []
+    original_upsert = agent_module.ask_call_learning.upsert_forecasts
+    try:
+        agent_module.ask_call_learning.upsert_forecasts = (
+            lambda rows, **kwargs: captured.extend(rows) or list(rows)
+        )
+        signal = SimpleNamespace(
+            action="SHORT",
+            expectancy={"probability": 0.72},
+            confidence="HIGH",
+            score=28.0,
+        )
+        agent._record_analysis_forecast("NVDA", signal)
+        agent._record_analysis_forecast("NVDA", signal)
+    finally:
+        agent_module.ask_call_learning.upsert_forecasts = original_upsert
+
+    assert len(captured) == 1
+    assert captured[0]["ticker"] == "NVDA"
+    assert captured[0]["direction"] == "SHORT"
+    assert captured[0]["source"] == "scheduled_agent"
+    assert captured[0]["target"] == 170.0
+    assert captured[0]["invalidation"] == 185.0
+
+
 def test_dashboard_marks_a_limited_history_listing_as_analysis_only() -> None:
     now_ts = time.time()
     snapshot = build_dashboard_snapshot(

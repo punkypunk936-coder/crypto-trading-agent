@@ -1,5 +1,14 @@
 import type { Context, Config } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
+import { gunzipSync } from "node:zlib";
+
+function decodePayload(payload: any) {
+  if (payload?.encoding !== "gzip-base64" || typeof payload?.payload !== "string") {
+    return payload;
+  }
+  const decoded = gunzipSync(Buffer.from(payload.payload, "base64")).toString("utf8");
+  return JSON.parse(decoded);
+}
 
 export default async (req: Request, context: Context) => {
   if (req.method !== "POST") {
@@ -15,7 +24,7 @@ export default async (req: Request, context: Context) => {
     }
   }
 
-  const data = await req.json();
+  const data = decodePayload(await req.json());
   if (!data || !data.state) {
     return new Response("Missing state in payload", { status: 400 });
   }

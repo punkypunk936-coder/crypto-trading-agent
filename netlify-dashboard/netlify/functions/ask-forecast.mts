@@ -1,6 +1,7 @@
-import { json, readJson, writeJson } from "../lib/dashboard-store";
+import type { Context, Config } from "@netlify/functions";
+import { getStore } from "@netlify/blobs";
 
-const LEDGER_PATH = "dashboard/ask-forecast-ledger.json";
+const LEDGER_KEY = "ask-forecast-ledger";
 const MAX_RECORDS = 2000;
 const MAX_SETTLEMENTS = 24;
 const RESOLUTION_SOURCE = "venue_candle_path_v2";
@@ -48,7 +49,7 @@ function normalize(source: any) {
 
 async function fetchCandles(record: any, nowMs: number) {
   const startedMs = Date.parse(record.analysedAt);
-  const expiresMs = startedMs + (finite(record.horizonHours, 24) * 60 * 60 * 1000);
+  const expiresMs = startedMs + finite(record.horizonHours, 24) * 60 * 60 * 1000;
   const endMs = Math.min(nowMs, expiresMs);
   if (!(startedMs > 0) || endMs <= startedMs) return [];
   const response = await fetch("https://api.hyperliquid.xyz/info", {
@@ -59,8 +60,8 @@ async function fetchCandles(record: any, nowMs: number) {
       req: {
         coin: record.venueSymbol,
         interval: "15m",
-        startTime: startedMs - (15 * 60 * 1000),
-        endTime: endMs + (15 * 60 * 1000),
+        startTime: startedMs - 15 * 60 * 1000,
+        endTime: endMs + 15 * 60 * 1000,
       },
     }),
   });
@@ -72,7 +73,7 @@ async function fetchCandles(record: any, nowMs: number) {
 function settle(record: any, bars: any[], nowMs: number) {
   if ([0, 1].includes(record.outcome)) return record;
   const startedMs = Date.parse(record.analysedAt);
-  const expiresMs = startedMs + (finite(record.horizonHours, 24) * 60 * 60 * 1000);
+  const expiresMs = startedMs + finite(record.horizonHours, 24) * 60 * 60 * 1000;
   const relevant = bars.filter((bar) => finite(bar?.t) >= startedMs && finite(bar?.t) <= expiresMs);
   if (!relevant.length) return record;
   for (const bar of relevant) {
@@ -102,7 +103,29 @@ function settle(record: any, bars: any[], nowMs: number) {
   return record;
 }
 
-async function settlePending(records: any[]) {
+async function processRecords(incoming: any[] = []) {
+  const store = getStore({ name: "trading-state", consistency: "strong" });
+  const stored = await store.get(LEDGER_KEY, { type: "json" });
+  const byId = new Map<string, any>();
+  for (const raw of Array.isArray(stored) ? stored : []) {
+    const record = normalize(raw);
+    if (record) byId.set(record.id, record);
+  }
+  for (const raw of incoming.slice(0, 500)) {
+    const record = normalize(raw);
+    if (!record) continue;
+    const prior = byId.get(record.id);
+    if (prior && [0, 1].includes(prior.outcome)) {
+      record.outcome = prior.outcome;
+      record.outcomeReason = prior.outcomeReason;
+      record.resolvedAt = prior.resolvedAt;
+      record.resolutionSource = prior.resolutionSource;
+    }
+    byId.set(record.id, { ...(prior || {}), ...record });
+  }
+  let records = [...byId.values()]
+    .sort((a, b) => Date.parse(a.analysedAt) - Date.parse(b.analysedAt))
+    .slice(-MAX_RECORDS);
   const nowMs = Date.now();
   const pending = records
     .map((record, index) => ({ record, index }))
@@ -112,9 +135,9 @@ async function settlePending(records: any[]) {
     index,
     record: settle(record, await fetchCandles(record, nowMs).catch(() => []), nowMs),
   })));
-  const next = records.slice();
-  for (const item of settled) next[item.index] = item.record;
-  return next;
+  for (const item of settled) records[item.index] = item.record;
+  await store.setJSON(LEDGER_KEY, records);
+  return records;
 }
 
 function summary(records: any[]) {
@@ -140,51 +163,25 @@ function summary(records: any[]) {
   };
 }
 
-async function processRecords(incoming: any[] = []) {
-  const stored = await readJson(LEDGER_PATH, []);
-  const byId = new Map<string, any>();
-  for (const raw of Array.isArray(stored) ? stored : []) {
-    const record = normalize(raw);
-    if (record) byId.set(record.id, record);
+export default async (req: Request, context: Context) => {
+  if (!["GET", "POST"].includes(req.method)) {
+    return new Response("Method not allowed", { status: 405 });
   }
-  for (const raw of incoming.slice(0, 500)) {
-    const record = normalize(raw);
-    if (!record) continue;
-    const prior = byId.get(record.id);
-    if (prior && [0, 1].includes(prior.outcome)) {
-      record.outcome = prior.outcome;
-      record.outcomeReason = prior.outcomeReason;
-      record.resolvedAt = prior.resolvedAt;
-      record.resolutionSource = prior.resolutionSource;
-    }
-    byId.set(record.id, { ...(prior || {}), ...record });
-  }
-  let records = [...byId.values()]
-    .sort((a, b) => Date.parse(a.analysedAt) - Date.parse(b.analysedAt))
-    .slice(-MAX_RECORDS);
-  records = await settlePending(records);
-  await writeJson(LEDGER_PATH, records);
-  return records;
-}
-
-export async function GET() {
   try {
-    const records = await processRecords();
-    return json({ ok: true, records: records.slice(-500), summary: summary(records) }, {
-      headers: { "Cache-Control": "no-store, no-cache, max-age=0" },
+    const payload = req.method === "POST" ? await req.json().catch(() => ({})) : {};
+    const incoming = Array.isArray((payload as any)?.records) ? (payload as any).records : [];
+    const records = await processRecords(incoming);
+    return new Response(JSON.stringify({ ok: true, records: records.slice(-500), summary: summary(records) }), {
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-store, max-age=0" },
     });
   } catch (error) {
-    return json({ ok: false, error: error instanceof Error ? error.message : "Ask ledger unavailable" }, { status: 503 });
+    return new Response(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : "Ask ledger unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
   }
-}
+};
 
-export async function POST(request: Request) {
-  try {
-    const payload = await request.json().catch(() => ({}));
-    const incoming = Array.isArray(payload?.records) ? payload.records : [];
-    const records = await processRecords(incoming);
-    return json({ ok: true, records: records.slice(-500), summary: summary(records) });
-  } catch (error) {
-    return json({ ok: false, error: error instanceof Error ? error.message : "Ask ledger unavailable" }, { status: 503 });
-  }
-}
+export const config: Config = {
+  path: "/api/ask-forecast",
+};
