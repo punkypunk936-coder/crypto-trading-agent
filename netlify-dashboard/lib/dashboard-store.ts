@@ -262,6 +262,7 @@ export function actionBoard(state: any, marketMap: any) {
     const confidence = String(sig.confidence || "LOW").toUpperCase();
     const score = safeFloat(sig.score || 50);
     const action = String(sig.action || "FLAT").toUpperCase();
+    const desk = sig.micro_desk && typeof sig.micro_desk === "object" ? sig.micro_desk : {};
 
     let status = "NO_SETUP";
     let label = "No setup";
@@ -344,6 +345,12 @@ export function actionBoard(state: any, marketMap: any) {
       map_summary: summaryText,
       confidence,
       score: Math.round(score * 10) / 10,
+      probability: safeFloat(desk.calibrated_probability || sig.expectancy_probability),
+      probability_pct: Math.round(safeFloat(desk.calibrated_probability || sig.expectancy_probability) * 100),
+      probability_empirical_samples: Math.round(safeFloat(desk.ask_family_samples || desk.global_samples)),
+      probability_empirical_pct: Math.round(safeFloat(desk.ask_family_hit_rate ?? desk.global_win_rate) * 100),
+      probability_reinforcement_family: String(desk.family || ""),
+      probability_reinforcement_delta: safeFloat(desk.ask_reinforcement_delta),
       pnl_usd: pos ? safeFloat(pos.unrealised_pnl) : 0,
     });
   }

@@ -127,3 +127,28 @@ test("historical misses pull future confidence down", () => {
   });
   assert.ok(corrected.probabilityPct < optimistic.probabilityPct);
 });
+
+test("new-listing intraday analysis stays capped and cannot fake certainty", () => {
+  const result = confidence.calibrate({
+    rr: 3,
+    score: 6,
+    barsCount: 61,
+    candleFresh: true,
+    marketFresh: true,
+    scheduledFresh: true,
+    scheduledDirection: "SHORT",
+    direction: "SHORT",
+    scheduledProbability: 0.9,
+    limitedHistory: true,
+    history: { samples: 30, wins: 30 },
+  });
+  assert.ok(result.probabilityPct <= 58);
+});
+
+test("server-settled records replace unresolved local copies", () => {
+  const local = [{ id: "spcx-short", ticker: "SPCX", outcome: null }];
+  const server = [{ id: "spcx-short", ticker: "SPCX", outcome: 1, resolutionSource: "venue_candle_path_v2" }];
+  const merged = confidence.mergeRecords(local, server);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].outcome, 1);
+});

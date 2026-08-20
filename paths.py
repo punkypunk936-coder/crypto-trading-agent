@@ -52,6 +52,7 @@ PROACTIVE_TRADER_REPORT_JSON = DATA_DIR / "proactive_trader_report.json"  # Rese
 EARNINGS_SESSION_JSON = DATA_DIR / "earnings_session.json"  # Pre/post earnings metric checklist and decision ledger
 THESIS_LEDGER_JSONL = DATA_DIR / "thesis_ledger.jsonl"      # Persistent structured pre-trade theses
 FORECAST_LEDGER_JSONL = DATA_DIR / "forecast_ledger.jsonl"  # Persistent probability forecasts and later outcomes
+ASK_FORECAST_LEDGER_JSONL = DATA_DIR / "ask_forecast_ledger.jsonl"  # Durable Ask Punky calls and venue-settled outcomes
 
 # ── Logs directory ────────────────────────────────────────────────────────────
 LOGS_DIR = DATA_DIR / "logs"

@@ -1393,6 +1393,8 @@ def _setup_probability(
     probability_source = "heuristic"
     empirical_rate: float | None = None
     empirical_samples = 0
+    reinforcement_delta = 0.0
+    reinforcement_family = ""
     label = "Setup odds"
     reasons: list[str] = []
 
@@ -1551,13 +1553,25 @@ def _setup_probability(
     if 0.0 < desk_probability <= 1.0 and str(desk.get("verdict") or ""):
         probability = desk_probability
         probability_source = "micro_desk_calibrated"
-        empirical_rate = _safe_float(desk.get("global_win_rate"))
-        empirical_samples = int(desk.get("global_samples") or 0)
+        family_samples = int(desk.get("ask_family_samples") or 0)
+        empirical_rate = (
+            _safe_float(desk.get("ask_family_hit_rate"))
+            if family_samples > 0
+            else _safe_float(desk.get("global_win_rate"))
+        )
+        empirical_samples = family_samples or int(desk.get("global_samples") or 0)
+        reinforcement_delta = _safe_float(desk.get("ask_reinforcement_delta"))
+        reinforcement_family = str(desk.get("family") or "") if family_samples > 0 else ""
         reasons = [
             f"micro desk: {int(round(_safe_float(desk.get('raw_probability')) * 100.0))}% raw, "
             f"{int(round(desk_probability * 100.0))}% calibrated",
             f"edge {_safe_float(desk.get('net_edge_bps')):+.1f}bps after cost",
         ]
+        if family_samples > 0:
+            reasons.append(
+                f"{family_samples} verified {reinforcement_family or 'matching'} calls, "
+                f"{int(round(_safe_float(desk.get('ask_family_hit_rate')) * 100.0))}% hit"
+            )
 
     probability = _clamp(probability, 0.05, 0.95)
     probability_pct = int(round(probability * 100.0))
@@ -1582,6 +1596,8 @@ def _setup_probability(
         "probability_empirical": round(empirical_rate, 4) if empirical_rate is not None else None,
         "probability_empirical_pct": int(round(empirical_rate * 100.0)) if empirical_rate is not None else None,
         "probability_empirical_samples": empirical_samples,
+        "probability_reinforcement_family": reinforcement_family,
+        "probability_reinforcement_delta": round(reinforcement_delta, 4),
     }
 
 
@@ -1641,12 +1657,19 @@ def action_board(
         sig = dict(signals.get(coin) or {})
         pos = positions_by_coin.get(coin)
         map_entry = dict(entries.get(coin) or {})
+        declared_execution_mode = str(sig.get("execution_mode") or "").strip().lower()
+        analysis_only_new_listing = declared_execution_mode == "analysis_only_new_listing"
         tradable = (
-            coin in configured_tradeable
-            or (sig.get("execution_mode") or "observation_only") == "tradable"
-            or pos is not None
+            pos is not None
+            or (
+                not analysis_only_new_listing
+                and (
+                    coin in configured_tradeable
+                    or declared_execution_mode == "tradable"
+                )
+            )
         )
-        execution_mode = "tradable" if tradable else str(sig.get("execution_mode") or "observation_only")
+        execution_mode = "tradable" if tradable else declared_execution_mode or "observation_only"
         bias = str(
             sig.get("market_map_bias")
             or map_entry.get("bias")
@@ -2010,7 +2033,12 @@ def action_board(
             execution_note=execution_note,
         )
 
-        if tradable:
+        if analysis_only_new_listing:
+            mode_label = "ANALYSIS ONLY"
+            mode_meta = "History building"
+            mode_badge = "NEW"
+            mode_detail = next_unblock or "The listing is covered, but execution waits for a mature primary candle history."
+        elif tradable:
             mode_label = "EXECUTABLE"
             mode_meta = "Executable"
             mode_badge = "EXEC"

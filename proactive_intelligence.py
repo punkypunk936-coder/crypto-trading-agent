@@ -18,11 +18,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+import requests
+
 from asset_context import asset_bucket, asset_categories_for_coin, instrument_type_for_coin, theme_for_coin
+from exchanges.hyperliquid_markets import resolve_hyperliquid_symbol
 from logger import get_logger
 from paths import DATA_DIR, FORECAST_LEDGER_JSONL, PROACTIVE_TRADER_REPORT_JSON, THESIS_LEDGER_JSONL
 
 log = get_logger("proactive")
+
+FORECAST_RESOLUTION_SOURCE = "venue_candle_path_v2"
 
 READ_THROUGH_LINKS: dict[str, list[str]] = {
     "crypto": ["crypto_equities", "meme_momentum", "growth"],
@@ -689,6 +694,71 @@ def _forecast_price_for_coin(coin: str, state: dict) -> float:
     return _live_price(signal)
 
 
+def _resolve_forecast_from_venue_path(forecast: dict, now_ts: float) -> dict:
+    row = dict(forecast)
+    created_ts = _safe_float(row.get("created_at_ts")) or _parse_ts(row.get("created_at"))
+    horizon_hours = _safe_float(row.get("horizon_hours"), 24.0)
+    expires_ts = created_ts + horizon_hours * 3600.0
+    entry = _safe_float(row.get("entry_price"))
+    direction = _safe_str(row.get("direction")).upper()
+    target_move = _safe_float(row.get("target_move_pct"))
+    if created_ts <= 0 or entry <= 0 or target_move <= 0 or direction not in {"LONG", "SHORT"}:
+        return row
+    venue_symbol = resolve_hyperliquid_symbol(_safe_str(row.get("coin")).upper())
+    response = requests.post(
+        "https://api.hyperliquid.xyz/info",
+        json={
+            "type": "candleSnapshot",
+            "req": {
+                "coin": venue_symbol,
+                "interval": "15m",
+                "startTime": int((created_ts - 900.0) * 1000),
+                "endTime": int((min(now_ts, expires_ts) + 900.0) * 1000),
+            },
+        },
+        timeout=8,
+    )
+    response.raise_for_status()
+    bars = sorted(
+        [item for item in response.json() if isinstance(item, dict)],
+        key=lambda item: _safe_float(item.get("t")),
+    )
+    relevant = [
+        bar for bar in bars
+        if created_ts * 1000 <= _safe_float(bar.get("t")) <= expires_ts * 1000
+    ]
+    if not relevant:
+        return row
+    target = entry * (1.0 + target_move) if direction == "LONG" else entry * (1.0 - target_move)
+    hit_bar = next(
+        (
+            bar for bar in relevant
+            if (_safe_float(bar.get("h")) >= target if direction == "LONG" else _safe_float(bar.get("l")) <= target)
+        ),
+        None,
+    )
+    if hit_bar is None and now_ts < expires_ts:
+        return row
+    last_close = _safe_float(relevant[-1].get("c"), entry)
+    raw_return = (last_close - entry) / entry
+    directional_return = raw_return if direction == "LONG" else -raw_return
+    outcome = 1 if hit_bar is not None else 0
+    probability = _safe_float(row.get("probability"), 0.5)
+    resolved_ms = _safe_float((hit_bar or relevant[-1]).get("T") or (hit_bar or relevant[-1]).get("t"))
+    row.update({
+        "resolved": True,
+        "resolved_at": datetime.fromtimestamp(resolved_ms / 1000.0, tz=timezone.utc).isoformat(),
+        "resolved_price": last_close,
+        "directional_return_pct": round(directional_return * 100.0, 4),
+        "outcome": outcome,
+        "brier": round((probability - outcome) ** 2, 6),
+        "target_price": round(target, 6),
+        "resolution_source": FORECAST_RESOLUTION_SOURCE,
+        "resolution_reason": "target_first" if outcome else "horizon_expired_before_target",
+    })
+    return row
+
+
 def build_forecast_calibration(
     state: dict,
     scout_book: dict,
@@ -733,29 +803,20 @@ def build_forecast_calibration(
             "thesis_id": candidate.get("thesis_id", ""),
         }
 
-    for forecast in by_id.values():
-        if forecast.get("resolved"):
-            continue
+    repair_budget = max(1, int(_cfg_value(config, "proactive_forecast_repair_per_refresh", 20) or 20))
+    repair_candidates = [
+        forecast for forecast in by_id.values()
+        if not forecast.get("resolved") or forecast.get("resolution_source") != FORECAST_RESOLUTION_SOURCE
+    ]
+    repair_candidates.sort(key=lambda row: _parse_ts(row.get("created_at")))
+    for forecast in repair_candidates[:repair_budget]:
         created_ts = _safe_float(forecast.get("created_at_ts")) or _parse_ts(forecast.get("created_at"))
-        if not created_ts or (now_ts - created_ts) < (_safe_float(forecast.get("horizon_hours"), horizon_hours) * 3600.0):
+        if not created_ts:
             continue
-        coin = _safe_str(forecast.get("coin")).upper()
-        current = _forecast_price_for_coin(coin, state)
-        entry = _safe_float(forecast.get("entry_price"))
-        if current <= 0 or entry <= 0:
-            continue
-        raw_return = (current - entry) / entry
-        directional_return = raw_return if forecast.get("direction") == "LONG" else -raw_return
-        outcome = 1.0 if directional_return >= _safe_float(forecast.get("target_move_pct")) else 0.0
-        probability = _safe_float(forecast.get("probability"), 0.5)
-        forecast.update({
-            "resolved": True,
-            "resolved_at": _iso_now(),
-            "resolved_price": current,
-            "directional_return_pct": round(directional_return * 100.0, 4),
-            "outcome": int(outcome),
-            "brier": round((probability - outcome) ** 2, 6),
-        })
+        try:
+            by_id[str(forecast.get("forecast_id"))] = _resolve_forecast_from_venue_path(forecast, now_ts)
+        except Exception as exc:
+            log.debug("Forecast path settlement skipped for %s: %s", forecast.get("coin"), exc)
 
     all_rows = sorted(by_id.values(), key=lambda item: _parse_ts(item.get("created_at")), reverse=True)[:1000]
     open_rows = [row for row in all_rows if not row.get("resolved")]

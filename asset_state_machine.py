@@ -41,7 +41,8 @@ def derive_major_catalyst_watch(signal_snapshot: Mapping[str, Any] | None) -> di
 
     action = _safe_str(snap.get("action"), "FLAT").upper()
     candidate_action = _safe_str(snap.get("thesis_candidate_action"), action).upper()
-    tradable = _safe_str(snap.get("execution_mode"), "observation_only") == "tradable"
+    execution_mode = _safe_str(snap.get("execution_mode"), "observation_only").lower()
+    tradable = execution_mode == "tradable"
     thesis_permitted = bool(snap.get("thesis_permitted", False))
     if tradable and action in {"LONG", "SHORT"} and thesis_permitted:
         return {"active": False}
@@ -189,7 +190,8 @@ def build_asset_state(
     current_position = _safe_str(current_position).upper()
     action = _safe_str(snap.get("action"), "FLAT").upper()
     candidate_action = _safe_str(snap.get("thesis_candidate_action"), action).upper()
-    tradable = _safe_str(snap.get("execution_mode"), "observation_only") == "tradable"
+    execution_mode = _safe_str(snap.get("execution_mode"), "observation_only").lower()
+    tradable = execution_mode == "tradable"
     reliability = dict(snap.get("data_reliability") or {})
     execution_quality = dict(snap.get("execution_quality") or {})
     conviction_entry = dict(snap.get("conviction_entry") or (snap.get("thesis") or {}).get("conviction_entry") or {})
@@ -206,6 +208,16 @@ def build_asset_state(
         state = "PENDING_ENTRY"
         label = "Pending entry"
         next_unblock = "Waiting for the resting limit order to fill, cancel, or expire."
+    elif execution_mode == "analysis_only_new_listing" or stage_key == "new_listing_history_gate":
+        history_interval = _safe_str(snap.get("primary_history_interval"), "1h")
+        history_count = max(0, _safe_int(snap.get("primary_history_candles")))
+        minimum_history = max(1, _safe_int(snap.get("minimum_primary_history_candles"), 40))
+        state = "OBSERVATION_ONLY"
+        label = "New listing: analysis only"
+        next_unblock = (
+            f"Primary history is {history_count}/{minimum_history} completed {history_interval} candles. "
+            "Analysis is live, but execution stays locked until the primary history is mature."
+        )
     elif stage_key == "signal_streak_wait":
         remaining = max(0, _safe_int(snap.get("streak_confirmation_remaining"), 1))
         state = "WAITING_CONFIRMATION"

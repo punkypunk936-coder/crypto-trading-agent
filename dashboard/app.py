@@ -19,6 +19,7 @@ from datetime import datetime
 from pathlib import Path
 
 import decision_dataset
+import ask_call_learning
 import asia_session
 import global_market_context
 import earnings_session
@@ -571,6 +572,23 @@ def api_tradexyz_volume():
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)}), 502
     return jsonify({"ok": True, **payload})
+
+
+@app.route("/api/ask-forecast", methods=["GET", "POST"])
+def api_ask_forecast():
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        incoming = data.get("records") if isinstance(data, dict) else []
+        if not isinstance(incoming, list):
+            return jsonify({"ok": False, "error": "records must be an array"}), 400
+        rows = ask_call_learning.upsert_forecasts(incoming[:500])
+    else:
+        rows = ask_call_learning.upsert_forecasts([])
+    return jsonify({
+        "ok": True,
+        "records": rows[-500:],
+        "summary": ask_call_learning.forecast_summary(rows),
+    })
 
 
 @app.route("/api/push", methods=["POST"])

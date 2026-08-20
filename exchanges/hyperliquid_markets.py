@@ -230,6 +230,7 @@ TRADEXYZ_ASSET_METADATA: Dict[str, Dict[str, Any]] = {
     "LLY": {"display_name": "Eli Lilly", "instrument_type": "equity", "categories": ["biotech_glp1"]},
     "META": {"display_name": "Meta", "instrument_type": "equity", "categories": ["mag7"]},
     "MRVL": {"display_name": "Marvell", "instrument_type": "equity", "categories": ["semis_memory"]},
+    "MRNA": {"display_name": "Moderna", "instrument_type": "equity", "categories": ["biotech_glp1"]},
     "MSFT": {"display_name": "Microsoft", "instrument_type": "equity", "categories": ["mag7"]},
     "MSTR": {"display_name": "MicroStrategy", "instrument_type": "equity", "categories": ["crypto_equities"]},
     "MU": {"display_name": "Micron", "instrument_type": "equity", "categories": ["semis_memory"]},

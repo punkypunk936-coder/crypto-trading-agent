@@ -172,6 +172,11 @@ class TradingAgent:
         self._performance_edge_cache: Dict[str, object] = {}
         self._last_tradexyz_listing_sync_cycle = -1_000_000
         self._last_listing_sync_report: Dict[str, object] = {}
+        self._new_listing_queue: List[str] = [
+            str(coin or "").upper()
+            for coin in (getattr(cfg.trading, "analysis_new_listing_seed_coins", []) or [])
+            if str(coin or "").strip()
+        ]
         self._analysis_cursor = 0
         self._last_analysis_batch: List[str] = []
         self._analysis_only_coin_set = {
@@ -354,6 +359,8 @@ class TradingAgent:
         if dynamic and (analysis_added or execution_added):
             if coin_upper not in self._dynamic_analysis_coins:
                 self._dynamic_analysis_coins.append(coin_upper)
+            if analysis_added and coin_upper not in self._new_listing_queue:
+                self._new_listing_queue.append(coin_upper)
             cfg_dynamic = [
                 str(value or "").upper()
                 for value in (getattr(self.cfg.trading, "dynamic_analysis_coins", []) or [])
@@ -1377,6 +1384,28 @@ class TradingAgent:
                 selected.append(coin_upper)
             if len(selected) >= budget:
                 return selected
+
+        unseen_dynamic = [
+            coin
+            for coin in self._dynamic_analysis_coins
+            if coin in coins and coin not in self._last_signals
+        ]
+        queued_new = [
+            coin
+            for coin in self._new_listing_queue
+            if coin in coins and coin not in self._last_signals
+        ]
+        new_listing_candidates = list(dict.fromkeys(queued_new + unseen_dynamic))
+        new_listing_slots = min(
+            max(0, int(getattr(self.cfg.trading, "analysis_new_listing_slots", 2) or 2)),
+            max(0, budget - len(selected)),
+            len(new_listing_candidates),
+        )
+        selected_new = new_listing_candidates[:new_listing_slots]
+        selected.extend(selected_new)
+        if selected_new:
+            remaining_new = [coin for coin in new_listing_candidates if coin not in selected_new]
+            self._new_listing_queue = remaining_new + selected_new
 
         mover_focus = [
             str(coin or "").upper()
@@ -2784,12 +2813,63 @@ class TradingAgent:
                 log.warning(f"[{coin}] No completed candles available — skipping")
                 return
 
+        requested_interval = str(self.cfg.trading.candle_interval or "1h")
+        analysis_interval = requested_interval
+        primary_history_candles = len(analysis_df)
+        new_listing_symbol = coin in self._new_listing_queue or coin in self._dynamic_analysis_coins
+        minimum_primary_candles = max(
+            1,
+            int(getattr(self.cfg.trading, "new_listing_min_primary_candles", 40) or 40),
+        )
+        new_listing_limited_history = new_listing_symbol and primary_history_candles < minimum_primary_candles
+        if (
+            new_listing_limited_history
+            and getattr(self.cfg.trading, "new_listing_intraday_fallback_enabled", True)
+        ):
+            fallback_interval = str(
+                getattr(self.cfg.trading, "new_listing_intraday_fallback_interval", "15m") or "15m"
+            )
+            if fallback_interval != requested_interval:
+                fallback_df = retry_with_backoff(
+                    fetch_candles,
+                    max_retries=2,
+                    base_delay=0.5,
+                    coin=coin,
+                    interval=fallback_interval,
+                    lookback=max(100, int(self.cfg.trading.lookback_periods or 100)),
+                )
+                fallback_analysis_df = fallback_df
+                if fallback_df is not None and getattr(self.cfg.trading, "use_closed_candles_for_conviction", True):
+                    fallback_analysis_df = completed_candle_frame(fallback_df)
+                if fallback_analysis_df is not None and len(fallback_analysis_df) >= minimum_primary_candles:
+                    df = fallback_df
+                    analysis_df = fallback_analysis_df
+                    analysis_interval = fallback_interval
+                    log.info(
+                        "[%s] New-listing coverage: %s completed %s candles are immature; "
+                        "using %s completed %s candles for analysis only",
+                        coin,
+                        primary_history_candles,
+                        requested_interval,
+                        len(analysis_df),
+                        fallback_interval,
+                    )
+
+        if new_listing_limited_history and (analysis_df is None or len(analysis_df) < minimum_primary_candles):
+            log.warning(
+                "[%s] Insufficient mature or intraday listing history (%s %s candles) — skipping",
+                coin,
+                0 if analysis_df is None else len(analysis_df),
+                analysis_interval,
+            )
+            return
+
         live_price = float(df["close"].iloc[-1]) if len(df) else 0.0
         analysis_price = float(analysis_df["close"].iloc[-1]) if len(analysis_df) else live_price
         momentum_context = self._recent_momentum_context(df, live_price)
         if getattr(self.cfg.trading, "use_closed_candles_for_conviction", True):
             log.info(
-                f"[{coin}] Conviction on completed {self.cfg.trading.candle_interval} candles "
+                f"[{coin}] Conviction on completed {analysis_interval} candles "
                 f"@ {analysis_price:.2f} | live price {live_price:.2f}"
             )
         if momentum_context.get("momentum_expansion_active"):
@@ -2817,7 +2897,7 @@ class TradingAgent:
 
         price_action = build_position_price_action(
             df,
-            interval=self.cfg.trading.candle_interval,
+            interval=analysis_interval,
             max_bars=48,
         )
         if price_action.get("valid") and regimes:
@@ -3031,6 +3111,12 @@ class TradingAgent:
             "momentum_expansion_strong": momentum_context.get("momentum_expansion_strong", False),
             "momentum_expansion_summary": momentum_context.get("momentum_expansion_summary", ""),
             "using_closed_candles": bool(getattr(self.cfg.trading, "use_closed_candles_for_conviction", True)),
+            "analysis_interval": analysis_interval,
+            "analysis_history_candles": len(analysis_df),
+            "primary_history_interval": requested_interval,
+            "primary_history_candles": primary_history_candles,
+            "minimum_primary_history_candles": minimum_primary_candles,
+            "new_listing_limited_history": new_listing_limited_history,
             "price_action": price_action,
             "regime_absorption_score": float(getattr(regimes, "absorption_score", 50.0) or 50.0) if regimes else 50.0,
             "regime_absorption_summary": str(getattr(regimes, "absorption_desc", "") or "") if regimes else "",
@@ -3257,7 +3343,43 @@ class TradingAgent:
             "llm_referee_why_now": "",
         }
         self._refresh_first_principles_view(coin)
+        if new_listing_limited_history and not current_pos:
+            self._last_signals[coin]["execution_mode"] = "analysis_only_new_listing"
+            self._last_signals[coin]["next_unblock_reason"] = (
+                f"Collect {minimum_primary_candles} completed {requested_interval} candles before execution."
+            )
+        if new_listing_limited_history and not current_pos and signal.action in {"LONG", "SHORT"}:
+            candidate_action = signal.action
+            reason = (
+                f"New listing analysis leans {candidate_action}, but only {primary_history_candles} completed "
+                f"{requested_interval} candles exist; execution waits for {minimum_primary_candles}."
+            )
+            self._last_signals[coin]["new_listing_candidate_action"] = candidate_action
+            self._last_signals[coin]["thesis_candidate_action"] = candidate_action
+            self._last_signals[coin]["execution_mode"] = "analysis_only_new_listing"
+            signal.action = "FLAT"
+            signal.flat_reason = reason
+            signal.reason = reason
+            self._sync_signal_snapshot(coin, signal)
+            self._refresh_asset_state(coin, stage="new_listing_history_gate", current_position=current_pos)
+            self._last_signals[coin]["next_unblock_reason"] = (
+                f"Collect {minimum_primary_candles} completed {requested_interval} candles before execution."
+            )
+            self._record_decision_snapshot(
+                coin,
+                portfolio_usd=portfolio_usd,
+                stage="new_listing_history_gate",
+                signal=signal,
+                current_position=current_pos,
+                blocked=True,
+            )
+            return
+
         self._refresh_asset_state(coin, stage="analysis", current_position=current_pos)
+        if new_listing_limited_history and not current_pos:
+            self._last_signals[coin]["next_unblock_reason"] = (
+                f"Collect {minimum_primary_candles} completed {requested_interval} candles before execution."
+            )
         self._apply_momentum_expansion_conviction(coin, signal)
         self._apply_analog_context(
             coin,
@@ -3426,6 +3548,11 @@ class TradingAgent:
                     )
             else:
                 self._flat_streak.pop(coin, None)
+                if new_listing_limited_history:
+                    self._last_signals[coin]["execution_mode"] = "analysis_only_new_listing"
+                    self._last_signals[coin]["next_unblock_reason"] = (
+                        f"Collect {minimum_primary_candles} completed {requested_interval} candles before execution."
+                    )
                 self._record_decision_snapshot(
                     coin,
                     portfolio_usd=portfolio_usd,

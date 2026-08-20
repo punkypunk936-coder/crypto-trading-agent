@@ -6653,6 +6653,22 @@ def test_asset_state_machine_reports_confirmation_wait_clearly() -> None:
     assert "confirming cycle" in lifecycle["next_unblock_reason"]
 
 
+def test_asset_state_machine_keeps_new_listing_history_gate_explicit() -> None:
+    lifecycle = asset_state_machine_module.build_asset_state(
+        {
+            "action": "FLAT",
+            "execution_mode": "analysis_only_new_listing",
+            "primary_history_interval": "1h",
+            "primary_history_candles": 17,
+            "minimum_primary_history_candles": 40,
+        },
+        stage="flat_no_trade",
+    )
+    assert lifecycle["state"] == "OBSERVATION_ONLY"
+    assert lifecycle["label"] == "New listing: analysis only"
+    assert "17/40 completed 1h candles" in lifecycle["next_unblock_reason"]
+
+
 def test_asset_state_machine_promotes_major_catalyst_reclaim_watch() -> None:
     lifecycle = asset_state_machine_module.build_asset_state(
         {
@@ -10460,6 +10476,53 @@ def test_analysis_budget_reserves_slots_for_ranked_active_theses() -> None:
     batch = agent._analysis_batch_for_cycle()
     assert batch[:2] == ["BTC", "ETH"]
     assert batch[2:] == ["AMZN", "AAPL"]
+
+
+def test_analysis_budget_reserves_a_slot_for_a_new_venue_listing() -> None:
+    cfg = build_config()
+    cfg.trading.analysis_cycle_budget_enabled = True
+    cfg.trading.analysis_max_symbols_per_cycle = 4
+    cfg.trading.analysis_new_listing_slots = 1
+    cfg.trading.analysis_new_listing_seed_coins = ["MRNA"]
+    cfg.trading.analysis_priority_coins = ["BTC", "ETH", "SOL"]
+    cfg.trading.analysis_coins = ["BTC", "ETH", "SOL", "MRNA", "AAPL"]
+    agent = TradingAgent(cfg, [])
+    agent._last_signals = {
+        "BTC": {"action": "FLAT"},
+        "ETH": {"action": "FLAT"},
+        "SOL": {"action": "FLAT"},
+    }
+
+    batch = agent._analysis_batch_for_cycle()
+
+    assert "MRNA" in batch
+    assert len(batch) == 4
+
+
+def test_dashboard_marks_a_limited_history_listing_as_analysis_only() -> None:
+    now_ts = time.time()
+    snapshot = build_dashboard_snapshot(
+        state={
+            "status": "online",
+            "last_cycle": datetime.fromtimestamp(now_ts).strftime("%Y-%m-%d %H:%M:%S"),
+            "positions": [],
+            "signals": {
+                "MRNA": {
+                    "action": "FLAT",
+                    "analysis_updated_ts": now_ts,
+                    "execution_mode": "analysis_only_new_listing",
+                    "new_listing_limited_history": True,
+                    "next_unblock_reason": "Collect 40 completed 1h candles before execution.",
+                }
+            },
+            "config": {"coins": ["MRNA"], "analysis_coins": ["MRNA"]},
+        },
+        trades=[],
+    )
+    item = next(row for row in snapshot["action_board"]["items"] if row["coin"] == "MRNA")
+    assert item["tradable"] is False
+    assert item["execution_mode"] == "analysis_only_new_listing"
+    assert item["mode_label"] == "ANALYSIS ONLY"
 
 
 def test_neutral_map_trigger_requires_high_conviction_and_sizes_down() -> None:

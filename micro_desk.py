@@ -9,13 +9,21 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import statistics
 import time
 from collections import Counter, defaultdict, deque
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+import requests
+
+import ask_call_learning
 import trade_dataset
+from paths import FORECAST_LEDGER_JSONL
+
+
+FORECAST_RESOLUTION_SOURCE = "venue_candle_path_v2"
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
@@ -138,6 +146,59 @@ class MicroDesk:
             clean.append(enriched)
         return clean, rejected
 
+    def _ask_forecast_rows(self) -> list[dict]:
+        by_id = {
+            str(row.get("id") or ""): row
+            for row in ask_call_learning.load_forecasts(data_dir=self.data_dir)
+            if row.get("id")
+        }
+        dashboard_url = str(os.environ.get("DASHBOARD_URL", "") or "").strip().rstrip("/")
+        if dashboard_url and not dashboard_url.startswith(("http://127.0.0.1", "http://localhost")):
+            try:
+                response = requests.get(f"{dashboard_url}/api/ask-forecast", timeout=8)
+                response.raise_for_status()
+                payload = response.json()
+                for row in list(payload.get("records") or []):
+                    record_id = str((row or {}).get("id") or "")
+                    if record_id:
+                        by_id[record_id] = dict(row)
+            except Exception:
+                pass
+        verified = [
+            dict(row)
+            for row in by_id.values()
+            if row.get("outcome") in {0, 1}
+            and str(row.get("resolutionSource") or "") == ask_call_learning.RESOLUTION_SOURCE
+        ]
+        proactive_path = self.data_dir / FORECAST_LEDGER_JSONL.name
+        try:
+            with proactive_path.open(encoding="utf-8") as handle:
+                for line in handle:
+                    try:
+                        row = json.loads(line)
+                    except (TypeError, ValueError):
+                        continue
+                    if not isinstance(row, dict):
+                        continue
+                    if row.get("outcome") not in {0, 1}:
+                        continue
+                    if str(row.get("resolution_source") or "") != FORECAST_RESOLUTION_SOURCE:
+                        continue
+                    coin = _safe_str(row.get("coin")).upper()
+                    direction = _safe_str(row.get("direction")).upper()
+                    if coin and direction in {"LONG", "SHORT"}:
+                        verified.append({
+                            "id": f"proactive:{row.get('forecast_id') or coin + ':' + direction}",
+                            "ticker": coin,
+                            "direction": direction,
+                            "outcome": int(row.get("outcome") or 0),
+                            "assetBucket": _safe_str(row.get("asset_bucket")),
+                            "resolutionSource": FORECAST_RESOLUTION_SOURCE,
+                        })
+        except OSError:
+            pass
+        return list({str(row.get("id")): row for row in verified if row.get("id")}.values())
+
     def _calibrate_from_model(
         self,
         raw_probability: float,
@@ -160,20 +221,29 @@ class MicroDesk:
         instrument_key = f"{instrument_type.lower()}:{direction.upper()}"
         instrument = dict((model.get("instruments") or {}).get(instrument_key) or {})
         instrument_rate = _safe_float(instrument.get("posterior"), global_rate)
+        ask_family = dict((model.get("ask_families") or {}).get(family_key) or {})
+        ask_family_rate = _safe_float(ask_family.get("posterior"), family_rate)
+        ask_family_samples = int(ask_family.get("samples") or 0)
 
         samples = int(global_stats.get("samples") or 0)
         raw_weight = 0.10 if samples >= 50 else 0.35
         family_weight = min(0.30, int(family.get("samples") or 0) / 80.0)
         bucket_weight = min(0.45, int(bucket.get("samples") or 0) / 120.0)
         instrument_weight = min(0.20, int(instrument.get("samples") or 0) / 120.0)
-        global_weight = max(0.0, 1.0 - raw_weight - family_weight - bucket_weight - instrument_weight)
-        total_weight = raw_weight + family_weight + bucket_weight + instrument_weight + global_weight
-        calibrated = (
+        ask_weight = min(0.22, ask_family_samples / 8.0)
+        global_weight = max(0.0, 1.0 - raw_weight - family_weight - bucket_weight - instrument_weight - ask_weight)
+        baseline_total = raw_weight + family_weight + bucket_weight + instrument_weight + global_weight
+        baseline = (
             raw * raw_weight
             + family_rate * family_weight
             + bucket_rate * bucket_weight
             + instrument_rate * instrument_weight
             + global_rate * global_weight
+        ) / max(baseline_total, 1e-9)
+        total_weight = baseline_total + ask_weight
+        calibrated = (
+            baseline * baseline_total
+            + ask_family_rate * ask_weight
         ) / max(total_weight, 1e-9)
         max_probability = _clamp(
             _safe_float(getattr(self.cfg, "micro_desk_max_calibrated_probability", 0.78), 0.78),
@@ -191,11 +261,16 @@ class MicroDesk:
             "family_samples": int(family.get("samples") or 0),
             "instrument_family": instrument_key,
             "instrument_samples": int(instrument.get("samples") or 0),
+            "ask_family_samples": ask_family_samples,
+            "ask_family_wins": int(ask_family.get("wins") or 0),
+            "ask_family_hit_rate": _safe_float(ask_family.get("win_rate")),
+            "ask_family_posterior": round(ask_family_rate, 4),
+            "ask_reinforcement_delta": round(calibrated - baseline, 4),
             "global_samples": samples,
             "global_win_rate": round(global_rate, 4),
         }
 
-    def _fit_model(self, rows: list[dict]) -> dict:
+    def _fit_model(self, rows: list[dict], *, ask_rows: list[dict] | None = None) -> dict:
         wins = sum(row["win"] for row in rows)
         samples = len(rows)
         global_rate = self._posterior(wins, samples, 0.50, 12.0)
@@ -217,6 +292,34 @@ class MicroDesk:
                 for key, items in groups.items()
             }
 
+        ask_rows = list(ask_rows or [])
+        ask_global_wins = sum(int(row.get("outcome") or 0) for row in ask_rows)
+        ask_global_rate = self._posterior(ask_global_wins, len(ask_rows), global_rate, 6.0)
+
+        def build_ask_stats() -> dict:
+            groups: dict[str, list[dict]] = defaultdict(list)
+            for row in ask_rows:
+                key = f"{_safe_str(row.get('ticker')).upper()}:{_safe_str(row.get('direction')).upper()}"
+                if key != ":":
+                    groups[key].append(row)
+            return {
+                key: {
+                    "samples": len(items),
+                    "wins": sum(int(item.get("outcome") or 0) for item in items),
+                    "win_rate": round(sum(int(item.get("outcome") or 0) for item in items) / max(1, len(items)), 4),
+                    "posterior": round(
+                        self._posterior(
+                            sum(int(item.get("outcome") or 0) for item in items),
+                            len(items),
+                            ask_global_rate,
+                            3.0,
+                        ),
+                        4,
+                    ),
+                }
+                for key, items in groups.items()
+            }
+
         return {
             "global": {
                 "samples": samples,
@@ -231,6 +334,13 @@ class MicroDesk:
                 global_rate,
                 24.0,
             ),
+            "ask_global": {
+                "samples": len(ask_rows),
+                "wins": ask_global_wins,
+                "win_rate": round(ask_global_wins / max(1, len(ask_rows)), 4),
+                "posterior": round(ask_global_rate, 4),
+            },
+            "ask_families": build_ask_stats(),
         }
 
     def refresh(self, *, force: bool = False) -> dict:
@@ -253,7 +363,8 @@ class MicroDesk:
             })
 
         samples = len(calibration_rows)
-        fitted = self._fit_model(calibration_rows)
+        ask_rows = self._ask_forecast_rows()
+        fitted = self._fit_model(calibration_rows, ask_rows=ask_rows)
         self._model = {
             "generated_at": int(time.time()),
             "clean_history_trades": len(clean),
@@ -539,6 +650,7 @@ class MicroDesk:
     def summary(self) -> dict:
         model = dict(self._model or {})
         global_stats = dict(model.get("global") or {})
+        ask_stats = dict(model.get("ask_global") or {})
         calibration = dict(model.get("calibration") or {})
         raw_brier = _safe_float(calibration.get("raw_brier"))
         calibrated_brier = _safe_float(calibration.get("calibrated_brier"))
@@ -556,6 +668,8 @@ class MicroDesk:
             "rejected_history_rows": int(model.get("rejected_history_rows") or 0),
             "rejection_reasons": dict(model.get("rejection_reasons") or {}),
             "calibration_samples": int(global_stats.get("samples") or 0),
+            "ask_forecast_samples": int(ask_stats.get("samples") or 0),
+            "ask_forecast_hit_rate": _safe_float(ask_stats.get("win_rate")),
             "empirical_win_rate": _safe_float(global_stats.get("win_rate")),
             "posterior_win_rate": _safe_float(global_stats.get("posterior")),
             "raw_brier": raw_brier,

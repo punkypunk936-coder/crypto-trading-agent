@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 import tempfile
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -156,6 +157,36 @@ def test_micro_desk_requires_passive_entry_when_confidence_is_overstated(tmp_pat
     assert result["verdict"] == "PASSIVE_ONLY"
     assert result["net_edge_bps"] > 0
     assert result["size_multiplier"] < 1.0
+
+
+def test_micro_desk_reinforces_verified_correct_short_calls(tmp_path: Path) -> None:
+    rows = [
+        {
+            "forecast_id": f"spcx-short-{index}",
+            "coin": "SPCX",
+            "direction": "SHORT",
+            "asset_bucket": "equity",
+            "outcome": 1,
+            "resolved": True,
+            "resolution_source": "venue_candle_path_v2",
+        }
+        for index in range(4)
+    ]
+    (tmp_path / "forecast_ledger.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+    desk = micro_desk.MicroDesk(_cfg(), data_dir=tmp_path)
+    calibrated = desk._calibrate_from_model(
+        0.58,
+        coin="SPCX",
+        direction="SHORT",
+        instrument_type="equity",
+    )
+
+    assert calibrated["ask_family_samples"] == 4
+    assert calibrated["ask_family_wins"] == 4
+    assert calibrated["ask_reinforcement_delta"] > 0
 
 
 if __name__ == "__main__":

@@ -51,6 +51,18 @@
     }
   }
 
+  function mergeRecords(localRecords, remoteRecords) {
+    const byId = new Map();
+    for (const row of [...normalizeRecords(localRecords), ...normalizeRecords(remoteRecords)]) {
+      const key = String(row.id || "").trim();
+      if (!key) continue;
+      byId.set(key, { ...(byId.get(key) || {}), ...row });
+    }
+    return normalizeRecords([...byId.values()].sort((left, right) => (
+      Date.parse(String(left.analysedAt || "")) - Date.parse(String(right.analysedAt || ""))
+    )));
+  }
+
   function barTime(bar) {
     return finite(bar && (bar.t || bar.T), 0);
   }
@@ -181,12 +193,14 @@
       ? input.history
       : { samples: 0, wins: 0, hitRate: null, brier: null, scope: "all Ask calls", totalResolved: 0 };
     let quality = 0;
-    quality += finite(input && input.barsCount, 0) >= 120 ? 30 : finite(input && input.barsCount, 0) >= 55 ? 20 : 5;
+    const barsCount = finite(input && input.barsCount, 0);
+    quality += barsCount >= 120 ? 30 : barsCount >= 55 ? 20 : barsCount >= 40 ? 15 : barsCount >= 20 ? 8 : 3;
     quality += input && input.candleFresh ? 25 : 0;
     quality += input && input.marketFresh ? 15 : 0;
     quality += scheduledFresh && sameDirection ? 15 : 0;
     quality += input && input.earningsMapped ? 5 : 0;
     quality += Math.min(10, finite(history.samples, 0) / 2);
+    if (input && input.limitedHistory) quality -= 10;
     quality = Math.round(clamp(quality, 0, 100));
 
     if (input && input.eventGate) liveProbability -= 0.06;
@@ -202,7 +216,8 @@
     }
 
     const certaintyCap = samples >= 30 ? 0.86 : samples >= 10 ? 0.78 : 0.68;
-    const qualityCap = quality >= 80 ? certaintyCap : quality >= 60 ? Math.min(certaintyCap, 0.72) : 0.62;
+    let qualityCap = quality >= 80 ? certaintyCap : quality >= 60 ? Math.min(certaintyCap, 0.72) : 0.62;
+    if (input && input.limitedHistory) qualityCap = Math.min(qualityCap, 0.58);
     probability = clamp(probability, 0.08, qualityCap);
     const edge = probability - breakEven;
     const decisionSupported = Boolean(input && input.candleFresh)
@@ -257,6 +272,7 @@
       decision: String(forecast.decision || ""),
       query: String(forecast.query || "").slice(0, 240),
       analysedAt,
+      venueSymbol: String(forecast.venueSymbol || ticker),
       horizonHours: clamp(finite(forecast.horizonHours, HORIZON_HOURS), 1, 168),
       current: finite(forecast.current, 0),
       target: finite(forecast.target, 0),
@@ -266,6 +282,7 @@
       assetBucket: String(forecast.assetBucket || ""),
       probability: clamp(finite(forecast.probability, 0.5), 0.01, 0.99),
       evidenceQuality: clamp(finite(forecast.evidenceQuality, 0), 0, 100),
+      limitedHistory: Boolean(forecast.limitedHistory),
       outcome: null,
       outcomeReason: "",
       resolvedAt: null,
@@ -279,6 +296,7 @@
     rrBucket,
     load,
     save,
+    mergeRecords,
     settleForecasts,
     calibrationSummary,
     calibrate,

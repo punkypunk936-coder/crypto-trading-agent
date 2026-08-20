@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
+  <meta charset="UTF-8">
+  <link rel="icon" href="data:,">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Crypto Trading Agent</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1374,17 +1375,17 @@
     padding: 14px;
     background: rgba(255,255,255,0.025);
   }
-  .ask-punky-verdict.take { border-color: rgba(0,230,138,0.30); background: rgba(0,230,138,0.055); }
-  .ask-punky-verdict.avoid { border-color: rgba(255,77,106,0.28); background: rgba(255,77,106,0.05); }
   .ask-punky-verdict.wait { border-color: rgba(255,184,77,0.28); background: rgba(255,184,77,0.05); }
+  .ask-punky-verdict.long { border-color: rgba(0,230,138,0.30); background: rgba(0,230,138,0.055); }
+  .ask-punky-verdict.short { border-color: rgba(255,77,106,0.28); background: rgba(255,77,106,0.05); }
   .ask-punky-decision {
     font-family: var(--mono);
     font-size: 22px;
     font-weight: 900;
   }
-  .ask-punky-verdict.take .ask-punky-decision { color: var(--green); }
-  .ask-punky-verdict.avoid .ask-punky-decision { color: var(--red); }
-  .ask-punky-verdict.wait .ask-punky-decision { color: var(--yellow); }
+  .ask-punky-verdict.long .ask-punky-decision { color: var(--green); }
+  .ask-punky-verdict.short .ask-punky-decision { color: var(--red); }
+  .ask-punky-verdict.wait:not(.long):not(.short) .ask-punky-decision { color: var(--yellow); }
   .ask-punky-confidence {
     min-width: 150px;
     color: var(--text-secondary);
@@ -5405,29 +5406,65 @@ function askPunkyVenueCandidates(ticker, item) {
 
 async function askPunkyFetchCandles(ticker, item) {
   const endTime = Date.now();
-  const startTime = endTime - (12 * 24 * 60 * 60 * 1000);
   let lastError = null;
+  let limitedCandidate = null;
+
+  const fetchBars = async (venueSymbol, interval, lookbackMs) => {
+    const response = await fetch('https://api.hyperliquid.xyz/info', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'candleSnapshot',
+        req: { coin: venueSymbol, interval, startTime: endTime - lookbackMs, endTime },
+      }),
+    });
+    if (!response.ok) throw new Error('Hyperliquid returned HTTP ' + response.status);
+    const payload = await response.json();
+    return (Array.isArray(payload) ? payload : [])
+      .map((row) => ({
+        t: Number(row.t), T: Number(row.T), o: Number(row.o), h: Number(row.h),
+        l: Number(row.l), c: Number(row.c), v: Number(row.v || 0),
+      }))
+      .filter((row) => [row.t, row.o, row.h, row.l, row.c].every(Number.isFinite))
+      .sort((a, b) => a.t - b.t);
+  };
+
   for (const venueSymbol of askPunkyVenueCandidates(ticker, item)) {
     try {
-      const response = await fetch('https://api.hyperliquid.xyz/info', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'candleSnapshot',
-          req: { coin: venueSymbol, interval: '1h', startTime, endTime },
-        }),
-      });
-      if (!response.ok) throw new Error('Hyperliquid returned HTTP ' + response.status);
-      const payload = await response.json();
-      const bars = (Array.isArray(payload) ? payload : [])
-        .map((row) => ({
-          t: Number(row.t), T: Number(row.T), o: Number(row.o), h: Number(row.h),
-          l: Number(row.l), c: Number(row.c), v: Number(row.v || 0),
-        }))
-        .filter((row) => [row.t, row.o, row.h, row.l, row.c].every(Number.isFinite))
-        .sort((a, b) => a.t - b.t);
-      if (bars.length >= 55) return { bars, venueSymbol };
+      const bars = await fetchBars(venueSymbol, '1h', 12 * 24 * 60 * 60 * 1000);
+      if (bars.length >= 55) {
+        return { bars, venueSymbol, interval: '1h', limitedHistory: false, primaryBarsCount: bars.length };
+      }
+      if (!limitedCandidate || bars.length > limitedCandidate.bars.length) {
+        limitedCandidate = { bars, venueSymbol };
+      }
+      if (bars.length >= 8) break;
       lastError = new Error('Only ' + bars.length + ' hourly candles were available for ' + venueSymbol);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (limitedCandidate && limitedCandidate.bars.length >= 8) {
+    try {
+      const intradayBars = await fetchBars(
+        limitedCandidate.venueSymbol,
+        '15m',
+        4 * 24 * 60 * 60 * 1000,
+      );
+      if (intradayBars.length >= 40) {
+        return {
+          bars: intradayBars,
+          venueSymbol: limitedCandidate.venueSymbol,
+          interval: '15m',
+          limitedHistory: true,
+          primaryBarsCount: limitedCandidate.bars.length,
+        };
+      }
+      lastError = new Error(
+        'This is a new listing with only ' + limitedCandidate.bars.length
+        + ' hourly and ' + intradayBars.length + ' intraday candles. Punky needs a little more live history.',
+      );
     } catch (error) {
       lastError = error;
     }
@@ -5460,10 +5497,20 @@ function askPunkyDossier(ticker) {
   return (assets || {})[ticker] || (assets || {})[ticker.toLowerCase()] || null;
 }
 
+function askPunkyIntervalMinutes(interval) {
+  const match = String(interval || '1h').toLowerCase().match(/^(\d+)(m|h|d)$/);
+  if (!match) return 60;
+  const value = Number(match[1]);
+  return match[2] === 'd' ? value * 1440 : match[2] === 'h' ? value * 60 : value;
+}
+
 function askPunkyAnalyse(ticker, query, item, candleResult) {
   const allBars = candleResult.bars;
   const closedBars = allBars.filter((bar) => !bar.T || bar.T <= Date.now());
-  const bars = (closedBars.length >= 55 ? closedBars : allBars).slice(-240);
+  const bars = (closedBars.length >= 40 ? closedBars : allBars).slice(-240);
+  const interval = String(candleResult.interval || '1h');
+  const intervalMinutes = askPunkyIntervalMinutes(interval);
+  const limitedHistory = Boolean(candleResult.limitedHistory);
   const closes = bars.map((bar) => bar.c);
   const ema20Series = askPunkyEma(closes, 20);
   const ema50Series = askPunkyEma(closes, 50);
@@ -5472,8 +5519,10 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
   const ema50 = ema50Series[ema50Series.length - 1];
   const ema20Prior = ema20Series[Math.max(0, ema20Series.length - 7)];
   const atr = askPunkyAtr(bars, 14) || current * 0.01;
-  const return6h = ((current / closes[Math.max(0, closes.length - 7)]) - 1) * 100;
-  const return24h = ((current / closes[Math.max(0, closes.length - 25)]) - 1) * 100;
+  const barsFor6h = Math.max(1, Math.round((6 * 60) / intervalMinutes));
+  const barsFor24h = Math.max(1, Math.round((24 * 60) / intervalMinutes));
+  const return6h = ((current / closes[Math.max(0, closes.length - 1 - barsFor6h)]) - 1) * 100;
+  const return24h = ((current / closes[Math.max(0, closes.length - 1 - barsFor24h)]) - 1) * 100;
   const priorWindow = bars.slice(-25, -1);
   const recentWindow = bars.slice(-13);
   const priorHigh = Math.max(...priorWindow.map((bar) => bar.h));
@@ -5500,7 +5549,8 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
   const eventPhase = String((earnings || {}).phase || '').toUpperCase();
   const eventGate = eventPhase === 'PRE_EVENT' || eventPhase === 'LIVE';
   const lastBarTime = Number(bars[bars.length - 1].T || bars[bars.length - 1].t);
-  const candleFresh = Number.isFinite(lastBarTime) && (Date.now() - lastBarTime) <= (4 * 60 * 60 * 1000);
+  const candleFresh = Number.isFinite(lastBarTime)
+    && (Date.now() - lastBarTime) <= (Math.max(60, intervalMinutes * 4) * 60 * 1000);
 
   let invalidation;
   let target;
@@ -5564,6 +5614,7 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
     scheduledProbability,
     earningsMapped: Boolean(latestEarningsSession && Array.isArray(latestEarningsSession.rows)),
     eventGate,
+    limitedHistory,
     history: askHistory,
   });
   const confidence = confidenceModel.probabilityPct;
@@ -5573,6 +5624,7 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
     && rr >= 1.5
     && !tooExtended
     && !eventGate
+    && !limitedHistory
     && candleFresh
     && confidenceModel.decisionSupported;
   const conflictsWithRequest = tradeReady && requestedSide && requestedSide !== direction;
@@ -5592,6 +5644,9 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
     summary = 'No trade yet. A live earnings event can reset every chart level; wait for the print and the first confirmed reaction.';
   } else if (!candleFresh) {
     summary = 'No trade. Hyperliquid candles are stale, so Punky will not manufacture a decision from old price data.';
+  } else if (limitedHistory) {
+    summary = 'New listing read: the live structure currently leans ' + direction.toLowerCase()
+      + ', but only ' + Number(candleResult.primaryBarsCount || 0) + ' hourly candles exist. Punky will analyse it now and wait for mature history before risking money.';
   } else if (tooExtended) {
     summary = 'Do not chase it here. Direction is ' + direction.toLowerCase() + ', but price is ' + extensionAtr.toFixed(1) + ' ATR from its 20-hour mean.';
   } else if (!confidenceModel.decisionSupported) {
@@ -5601,11 +5656,12 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
   }
 
   const structureWhy = current >= ema20 && ema20 >= ema50
-    ? 'Price is above both the 20h and 50h EMAs, with the fast average on top: buyers control the current structure.'
+    ? 'Price is above both the fast and slow EMAs (' + interval + '), with the fast average on top: buyers control the current structure.'
     : current <= ema20 && ema20 <= ema50
-      ? 'Price is below both the 20h and 50h EMAs, with the fast average underneath: sellers control the current structure.'
-      : 'Price and the 20h/50h EMA stack disagree, which is a transition rather than a clean trend.';
-  const momentumWhy = 'Momentum is ' + askPunkyPct(return6h) + ' over 6h and ' + askPunkyPct(return24h) + ' over 24h; the current 1h ATR is ' + askPunkyPrice(atr, current) + '.';
+      ? 'Price is below both the fast and slow EMAs (' + interval + '), with the fast average underneath: sellers control the current structure.'
+      : 'Price and the fast/slow EMA stack (' + interval + ') disagree, which is a transition rather than a clean trend.';
+  const momentumWhy = 'Momentum is ' + askPunkyPct(return6h) + ' over 6h and ' + askPunkyPct(return24h)
+    + ' over the available 24h window; the current ' + interval + ' ATR is ' + askPunkyPrice(atr, current) + '.';
   const levelWhy = direction === 'LONG'
     ? 'The long is wrong below ' + askPunkyPrice(invalidation, current) + '; upside pays toward ' + askPunkyPrice(target, current) + ' if buyers keep the structure.'
     : 'The short is wrong above ' + askPunkyPrice(invalidation, current) + '; downside pays toward ' + askPunkyPrice(target, current) + ' if sellers keep the structure.';
@@ -5622,10 +5678,18 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
     ? confidenceModel.calibrationStatus + ' • ' + confidenceModel.samples + ' resolved ' + confidenceModel.scope
       + ' • ' + confidenceModel.hitRatePct + '% hit rate • Brier ' + Number(confidenceModel.brier).toFixed(3)
     : 'EARLY • no resolved Ask calls yet; certainty is capped while Punky builds a live record.';
+  const backendSamples = Number((item || {}).probability_empirical_samples || 0);
+  const backendHitRate = Number((item || {}).probability_empirical_pct || 0);
+  const backendFamily = String((item || {}).probability_reinforcement_family || scheduledDirection || direction);
+  const backendReinforcement = backendSamples > 0
+    ? backendSamples + ' venue-verified ' + (backendFamily || direction) + ' calls • ' + backendHitRate
+      + '% hit rate • already reflected in the scheduled probability'
+    : 'No venue-verified calls exist for this exact ticker/direction yet; confidence is still prior-weighted.';
   const evidence = [
     {
       label: 'Live chart',
-      value: candleResult.venueSymbol + ' • ' + bars.length + ' hourly candles • last bar ' + new Date(lastBarTime).toLocaleString(),
+      value: candleResult.venueSymbol + ' • ' + bars.length + ' ' + interval + ' candles • last bar ' + new Date(lastBarTime).toLocaleString()
+        + (limitedHistory ? ' • NEW LISTING: ' + Number(candleResult.primaryBarsCount || 0) + ' hourly candles' : ''),
     },
     {
       label: 'Market tape',
@@ -5645,10 +5709,15 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
       label: 'Confidence record',
       value: confidenceRecord,
     },
+    {
+      label: 'Backend reinforcement',
+      value: backendReinforcement,
+    },
   ];
 
   return {
     ticker, query, bars: allBars.slice(-72), venueSymbol: candleResult.venueSymbol,
+    interval, limitedHistory, primaryBarsCount: Number(candleResult.primaryBarsCount || bars.length),
     direction, requestedSide, decision, tone, summary, confidence,
     score, current, entry, target, invalidation, rr, atr, ema20, ema50,
     return6h, return24h, extensionAtr, candleFresh, eventGate,
@@ -5720,7 +5789,7 @@ function askPunkyChartHtml(answer) {
   }).join('');
   const startLabel = new Date(bars[0].t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   const endLabel = new Date(bars[bars.length - 1].t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  return '<svg class="ask-punky-chart-svg" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="' + esc(answer.ticker) + ' Hyperliquid one hour candlestick chart">'
+  return '<svg class="ask-punky-chart-svg" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="' + esc(answer.ticker) + ' Hyperliquid ' + esc(answer.interval || '1h') + ' candlestick chart">'
     + grid + candles + levelLines
     + '<text x="' + pad.left + '" y="' + (height - 5) + '" fill="#777d78" font-size="8" font-family="ui-monospace,monospace">' + esc(startLabel) + '</text>'
     + '<text x="' + (pad.left + chartWidth - 32) + '" y="' + (height - 5) + '" fill="#777d78" font-size="8" font-family="ui-monospace,monospace">' + esc(endLabel) + '</text>'
@@ -5735,7 +5804,7 @@ function askPunkyAnswerHtml(answer) {
   const link = 'https://app.hyperliquid.xyz/trade/' + encodeURIComponent(answer.venueSymbol);
   const confidenceTitle = 'Estimated chance that the displayed target is reached before thesis invalidation within ' + answer.horizonHours + ' hours. This is a forecast, not a guarantee.';
   return '<div class="ask-punky-answer">'
-    + '<div class="ask-punky-verdict ' + esc(answer.tone) + '">'
+    + '<div class="ask-punky-verdict ' + esc(answer.tone) + ' ' + esc(String(answer.direction || '').toLowerCase()) + '">'
       + '<div class="ask-punky-verdict-head">'
         + '<div><div class="ask-punky-kicker">' + esc(answer.ticker) + ' decision</div><div class="ask-punky-decision">' + esc(answer.decision) + '</div></div>'
         + '<div class="ask-punky-confidence" title="' + esc(confidenceTitle) + '">'
@@ -5756,7 +5825,7 @@ function askPunkyAnswerHtml(answer) {
     + '</div>'
     + '<div><div class="ask-punky-section-title">Why</div><ol class="ask-punky-why">' + answer.why.map((line) => '<li>' + esc(line) + '</li>').join('') + '</ol></div>'
     + '<div class="ask-punky-chart">'
-      + '<div class="ask-punky-chart-head"><div><div class="ask-punky-section-title">Hyperliquid price action</div><div class="ask-punky-chart-meta">' + esc(answer.venueSymbol) + ' • 1h • updated ' + esc(new Date(answer.analysedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })) + '</div></div><a class="ask-punky-source" href="' + esc(link) + '" target="_blank" rel="noopener noreferrer">OPEN CHART ↗</a></div>'
+      + '<div class="ask-punky-chart-head"><div><div class="ask-punky-section-title">Hyperliquid price action</div><div class="ask-punky-chart-meta">' + esc(answer.venueSymbol) + ' • ' + esc(answer.interval || '1h') + (answer.limitedHistory ? ' • limited listing history' : '') + ' • updated ' + esc(new Date(answer.analysedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })) + '</div></div><a class="ask-punky-source" href="' + esc(link) + '" target="_blank" rel="noopener noreferrer">OPEN CHART ↗</a></div>'
       + askPunkyChartHtml(answer)
     + '</div>'
     + '<div><div class="ask-punky-section-title">Evidence quality</div><div class="ask-punky-evidence">'
@@ -5767,6 +5836,26 @@ function askPunkyAnswerHtml(answer) {
 
 function askPunkyLoadingHtml(ticker) {
   return '<div class="ask-punky-loading"><div><strong>Reading ' + esc(ticker) + ' now...</strong><br><br>Fetching Hyperliquid candles and checking structure, levels, market tape, and earnings.</div></div>';
+}
+
+async function askPunkySyncForecasts(records) {
+  try {
+    const response = await fetch('/api/ask-forecast', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ records: Array.isArray(records) ? records : [] }),
+    });
+    if (!response.ok) return PunkyConfidence.load();
+    const payload = await response.json();
+    const merged = PunkyConfidence.mergeRecords(
+      PunkyConfidence.load(),
+      Array.isArray(payload.records) ? payload.records : [],
+    );
+    PunkyConfidence.save(merged);
+    return merged;
+  } catch (_) {
+    return PunkyConfidence.load();
+  }
 }
 
 async function runAskPunky(seed='') {
@@ -5797,6 +5886,7 @@ async function runAskPunky(seed='') {
       answer,
     );
     PunkyConfidence.save(recordedForecasts);
+    askPunkySyncForecasts(recordedForecasts);
     commandActiveAnswer = answer;
   } catch (error) {
     if (requestId !== commandAnalysisRequest) return;
@@ -7418,6 +7508,9 @@ function handleKill() {
 }
 
 refresh();
+if (!STATIC_GITHUB_PAGES_MODE) {
+  setTimeout(() => askPunkySyncForecasts(PunkyConfidence.load()), 1200);
+}
 </script>
 </body>
 </html>

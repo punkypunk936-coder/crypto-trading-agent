@@ -198,6 +198,9 @@ class TradingConfig:
         )
     )
     analysis_active_signal_slots: int = 6
+    # Reserve analysis capacity for venue listings that do not have a signal yet.
+    analysis_new_listing_slots: int = 2
+    analysis_new_listing_seed_coins: List[str] = field(default_factory=lambda: ["MRNA"])
     analysis_signal_max_age_minutes: float = 20.0
     cycle_price_poll_max_trigger_symbols: int = 24
     checkpoint_recovery_max_age_seconds: float = 86400.0
@@ -731,6 +734,9 @@ class TradingConfig:
     dynamic_market_cap_keep_indices_without_cap: bool = True
     tradexyz_listing_auto_sync_enabled: bool = True
     tradexyz_listing_sync_interval_cycles: int = 5
+    new_listing_intraday_fallback_enabled: bool = True
+    new_listing_intraday_fallback_interval: str = "15m"
+    new_listing_min_primary_candles: int = 40
 
     # ── Multi-timeframe analysis ─────────────────────────
     # Fetches 4H and 12H candles to determine the higher-timeframe trend.
