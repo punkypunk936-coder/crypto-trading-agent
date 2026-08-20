@@ -10512,6 +10512,9 @@ def test_dashboard_marks_a_limited_history_listing_as_analysis_only() -> None:
                     "analysis_updated_ts": now_ts,
                     "execution_mode": "analysis_only_new_listing",
                     "new_listing_limited_history": True,
+                    "primary_history_interval": "1h",
+                    "primary_history_candles": 17,
+                    "minimum_primary_history_candles": 40,
                     "next_unblock_reason": "Collect 40 completed 1h candles before execution.",
                 }
             },
@@ -10523,6 +10526,8 @@ def test_dashboard_marks_a_limited_history_listing_as_analysis_only() -> None:
     assert item["tradable"] is False
     assert item["execution_mode"] == "analysis_only_new_listing"
     assert item["mode_label"] == "ANALYSIS ONLY"
+    assert item["asset_state_label"] == "New listing: analysis only"
+    assert "17/40 completed 1h candles" in item["next_unblock_reason"]
 
 
 def test_neutral_map_trigger_requires_high_conviction_and_sizes_down() -> None:

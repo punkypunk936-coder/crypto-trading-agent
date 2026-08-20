@@ -1773,6 +1773,20 @@ def action_board(
         asset_state_label = str(sig.get("asset_state_label") or "").strip()
         catalyst_watch_label = asset_state_label if asset_state == "MAJOR_CATALYST_WATCH" else ""
         next_unblock = str(sig.get("next_unblock_reason") or "").strip()
+        if analysis_only_new_listing:
+            primary_interval = str(sig.get("primary_history_interval") or "1h").strip()
+            primary_candles = max(0, int(_safe_float(sig.get("primary_history_candles"))))
+            minimum_primary_candles = max(
+                1,
+                int(_safe_float(sig.get("minimum_primary_history_candles")) or 40),
+            )
+            asset_state = "OBSERVATION_ONLY"
+            asset_state_label = "New listing: analysis only"
+            next_unblock = (
+                f"Primary history is {primary_candles}/{minimum_primary_candles} completed "
+                f"{primary_interval} candles. Analysis is live, but execution stays locked "
+                "until the primary history is mature."
+            )
         state_override = asset_state in {
             "PENDING_ENTRY",
             "WAITING_CONFIRMATION",
