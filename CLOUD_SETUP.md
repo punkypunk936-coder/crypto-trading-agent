@@ -1,20 +1,21 @@
 # Public Dashboard Deployment
 
-The current public dashboard is hosted on Netlify:
+The current shareable dashboard is hosted on GitHub Pages:
 
-<https://punky-crypto-agent-dash.netlify.app/>
+<https://punkypunk936-coder.github.io/crypto-trading-agent/>
 
 ## Current architecture
 
 ```text
 Local trading agent
-  -> token-protected snapshot push
-  -> Netlify Function
-  -> durable Netlify Blobs state
-  -> public read-only dashboard
+  -> canonical snapshot commit
+  -> dashboard-state branch
+  -> public read-only GitHub Pages dashboard
 ```
 
 The dashboard remains reachable when the local Mac is offline. Fresh analysis only advances while the local agent is running and able to push snapshots; otherwise the public page keeps the last accepted state and marks it stale.
+
+The older Netlify mirror remains available at <https://punky-crypto-agent-dash.netlify.app/>, but new Netlify deploys are currently blocked by account credits. Do not treat that copy as the canonical frontend release.
 
 Required local runtime variables:
 
