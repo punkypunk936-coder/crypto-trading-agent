@@ -1,84 +1,67 @@
-# Cloud Setup Guide — Railway Worker + Railway Dashboard
+# Public Dashboard Deployment
 
-This repo now treats the cloud path as **phase 2**. The primary production-hardening target is the local Mac runtime. When you move to cloud, use **two Railway services**:
+The current public dashboard is hosted on Netlify:
 
-- **worker service** → runs `python3 main.py`
-- **dashboard service** → runs `dashboard/app.py`
+<https://punky-crypto-agent-dash.netlify.app/>
 
-Do not use Netlify as the primary dashboard path for this repo anymore.
+## Current architecture
 
-## Architecture
-
-- Worker service
-  - persistent volume mounted at `/data`
-  - `DATA_DIR=/data`
-  - runs the dry-run or live agent loop
-- Dashboard service
-  - Flask app from `dashboard/app.py`
-  - receives `POST /api/push`
-  - exposes `GET /api/state` and `POST /api/kill`
-- Shared secret
-  - both services use the same `DASHBOARD_TOKEN`
-
-## Worker service
-
-Deploy the repo root to Railway.
-
-Required worker variables:
-
-- `DATA_DIR=/data`
-- `DASHBOARD_URL=https://<your-dashboard-service>.up.railway.app`
-- `DASHBOARD_TOKEN=<shared-secret>`
-
-If you later run live on Lighter, also set:
-
-- `LIGHTER_L1_PRIVATE_KEY`
-- `LIGHTER_ACCOUNT_INDEX`
-- `LIGHTER_API_KEY_INDEX`
-- `LIGHTER_API_PRIVATE_KEY`
-- `LIGHTER_API_BASE_URL`
-- `LIGHTER_WEB3_URL`
-
-If you only want dry-run in cloud, Lighter private credentials are not required, but public market-data connectivity still is.
-
-## Dashboard service
-
-Deploy the `dashboard/` directory as a separate Railway service.
-
-Required dashboard variables:
-
-- `DASHBOARD_TOKEN=<same shared-secret>`
-
-Start command:
-
-```bash
-gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 30
+```text
+Local trading agent
+  -> token-protected snapshot push
+  -> Netlify Function
+  -> durable Netlify Blobs state
+  -> public read-only dashboard
 ```
 
-## Volumes
+The dashboard remains reachable when the local Mac is offline. Fresh analysis only advances while the local agent is running and able to push snapshots; otherwise the public page keeps the last accepted state and marks it stale.
 
-The worker must have a Railway volume mounted at `/data`.
+Required local runtime variables:
 
-That volume stores:
+- `DASHBOARD_URL=https://punky-crypto-agent-dash.netlify.app`
+- `DASHBOARD_TOKEN=<shared-secret>`
 
-- `checkpoints.db`
-- `trade_memory.json`
-- `state.json`
-- `trades_log.csv`
-- `control.json`
-- `KILL`
+Required Netlify variable:
 
-## Recommended deployment order
+- `DASHBOARD_TOKEN=<same-shared-secret>`
 
-1. Get the agent stable locally with launchd in dry-run mode
-2. Run `python3 main.py --preflight`
-3. Deploy the dashboard service to Railway
-4. Deploy the worker service to Railway
-5. Confirm the worker can push to `/api/push`
-6. Confirm `/api/state` and `/api/kill` work from the Railway dashboard URL
+Never commit the shared token, exchange credentials, wallet keys, or `.env` files.
 
-## Notes
+## Container fallback
 
-- Default paper-trading scope is now **Lighter-only BTC/ETH/SOL**
-- The local Mac runtime remains the primary always-on setup for this repo
-- Use Railway only after the local dry-run has been stable for multiple days
+The repository also includes a Fly-compatible Flask deployment for moving the dashboard off Netlify without changing the agent snapshot contract:
+
+- `Dockerfile.dashboard`
+- `.dockerignore.dashboard`
+- `dashboard/fly.toml`
+
+It provides:
+
+- persistent state at `/data`
+- complete-schema compressed and chunked snapshot ingestion
+- canonical version and timestamp ordering
+- stale snapshot rejection
+- a public read-only interface
+- token-protected agent pushes
+
+Create the volume and deploy from the repository root:
+
+```bash
+fly volumes create dashboard_data --region bom --size 1 -c dashboard/fly.toml
+fly secrets set DASHBOARD_TOKEN='<shared-secret>' -c dashboard/fly.toml
+fly deploy -c dashboard/fly.toml
+```
+
+Then set the local worker's `DASHBOARD_URL` to the Fly hostname and restart the agent.
+
+## Verification contract
+
+A production deployment is ready only when all of these pass:
+
+1. `GET /healthz` returns `200` with the current version and timestamp.
+2. `POST /api/push` accepts a fresh compressed snapshot.
+3. `POST /api/push-chunk` assembles a complete large snapshot.
+4. `GET /api/state` returns the complete pushed schema.
+5. An older version is rejected and cannot replace fresh state.
+6. Restarting the dashboard does not lose the accepted snapshot.
+7. Public mutation requests are rejected.

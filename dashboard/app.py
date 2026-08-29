@@ -9,9 +9,14 @@ Start locally:   python3 dashboard/app.py
 Deploy (Railway): set PORT env var, agent pushes to your Railway URL
 """
 
+import base64
+import gzip
+import io
 import json
 import hmac
 import os
+import re
+import shutil
 import tempfile
 import threading
 import time
@@ -85,8 +90,25 @@ SNAPSHOT_REFRESH_GRACE_SECONDS = max(
 # Secret token for push endpoint (set DASHBOARD_TOKEN env var for security)
 PUSH_TOKEN = os.environ.get("DASHBOARD_TOKEN", "")
 DASHBOARD_BASIC_AUTH = os.environ.get("DASHBOARD_BASIC_AUTH", "")
+PUBLIC_READ_ONLY = str(os.environ.get("DASHBOARD_PUBLIC_READ_ONLY", "")).strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+MAX_PUSH_BYTES = max(
+    1_000_000,
+    int(os.environ.get("DASHBOARD_MAX_PUSH_BYTES", "12000000") or 12_000_000),
+)
+MAX_DECOMPRESSED_PUSH_BYTES = max(
+    10_000_000,
+    int(os.environ.get("DASHBOARD_MAX_DECOMPRESSED_PUSH_BYTES", "64000000") or 64_000_000),
+)
+PUSH_CHUNKS_DIR = SNAPSHOT.parent / "push_chunks"
+_SAFE_SESSION_ID = re.compile(r"^[A-Za-z0-9._-]{1,120}$")
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
+app.config["MAX_CONTENT_LENGTH"] = MAX_PUSH_BYTES
 
 # In-memory store for remote-pushed snapshot
 _remote_state = {"snapshot": None}
@@ -103,7 +125,10 @@ _lock = threading.Lock()
 
 @app.before_request
 def _require_dashboard_basic_auth():
-    if not DASHBOARD_BASIC_AUTH or request.path == "/api/push":
+    push_paths = {"/api/push", "/api/push-chunk"}
+    if PUBLIC_READ_ONLY and request.method not in {"GET", "HEAD", "OPTIONS"} and request.path not in push_paths:
+        abort(403, "Public dashboard is read-only")
+    if not DASHBOARD_BASIC_AUTH or request.path in push_paths:
         return None
     auth = request.authorization
     supplied = f"{auth.username}:{auth.password}" if auth else ""
@@ -114,6 +139,39 @@ def _require_dashboard_basic_auth():
         401,
         {"WWW-Authenticate": 'Basic realm="Trading Dashboard"'},
     )
+
+
+def _require_push_token() -> None:
+    if not PUSH_TOKEN:
+        return
+    supplied = request.headers.get("X-Token", "")
+    if not hmac.compare_digest(supplied, PUSH_TOKEN):
+        abort(403, "Invalid token")
+
+
+def _decode_push_payload(data: object) -> dict:
+    if not isinstance(data, dict):
+        abort(400, "JSON object required")
+    if data.get("encoding") != "gzip-base64":
+        return data
+
+    encoded = data.get("payload")
+    if not isinstance(encoded, str) or not encoded:
+        abort(400, "Missing compressed payload")
+    try:
+        compressed = base64.b64decode(encoded, validate=True)
+        with gzip.GzipFile(fileobj=io.BytesIO(compressed), mode="rb") as archive:
+            raw = archive.read(MAX_DECOMPRESSED_PUSH_BYTES + 1)
+        if len(raw) > MAX_DECOMPRESSED_PUSH_BYTES:
+            abort(413, "Decompressed dashboard payload is too large")
+        decoded = json.loads(raw.decode("utf-8"))
+    except Exception as exc:
+        if hasattr(exc, "code"):
+            raise
+        abort(400, f"Invalid compressed payload: {exc}")
+    if not isinstance(decoded, dict):
+        abort(400, "Decoded payload must be a JSON object")
+    return decoded
 
 def _load_state_local() -> dict:
     if STATE.exists():
@@ -363,6 +421,17 @@ def _state_revision(state: dict | None) -> tuple[int, str]:
     return cycle, str(safe_state.get("last_cycle") or "")
 
 
+def _snapshot_revision(snapshot: dict | None) -> tuple[int, int, str]:
+    safe_snapshot = dict(snapshot or {})
+    try:
+        version = int(safe_snapshot.get("version") or 0)
+    except (TypeError, ValueError):
+        version = 0
+    cycle, last_cycle = _state_revision(safe_snapshot.get("state"))
+    updated_at = str(safe_snapshot.get("updatedAt") or safe_snapshot.get("server_time") or last_cycle)
+    return version, cycle, updated_at
+
+
 def _snapshot_needs_refresh(snapshot: dict | None = None) -> bool:
     if not SNAPSHOT.exists():
         return True
@@ -458,6 +527,16 @@ def _queue_local_snapshot_refresh(server_timestamp: str | None = None, *, force:
 def _hydrate_snapshot_payload(data: dict, *, server_timestamp: str | None = None) -> dict:
     snapshot = data.get("snapshot")
     if isinstance(snapshot, dict) and "state" in snapshot:
+        if _snapshot_is_prebuilt(snapshot) and "daily_radar" in snapshot:
+            # A pushed dashboard snapshot is already the canonical public
+            # schema. Preserve every current and future field verbatim rather
+            # than rebuilding it through an older server schema.
+            hydrated = dict(snapshot)
+            hydrated["state"] = augment_state(snapshot.get("state") or {})
+            hydrated["control"] = normalize_control(snapshot.get("control"))
+            hydrated.setdefault("schemaVersion", 1)
+            hydrated.setdefault("server_time", server_timestamp or snapshot.get("updatedAt"))
+            return hydrated
         return build_dashboard_snapshot(
             snapshot.get("state"),
             snapshot.get("trades", []),
@@ -491,6 +570,39 @@ def _hydrate_snapshot_payload(data: dict, *, server_timestamp: str | None = None
         proactive_trader_report=data.get("proactive_trader_report"),
         server_timestamp=server_timestamp,
     )
+
+
+def _accept_dashboard_payload(data: dict) -> tuple[dict, int]:
+    if "snapshot" not in data and "state" not in data:
+        abort(400, "Missing snapshot/state in payload")
+
+    snapshot = _hydrate_snapshot_payload(data)
+    with _lock:
+        current_remote = _remote_state.get("snapshot")
+    current = current_remote if isinstance(current_remote, dict) else _load_snapshot_local()
+    incoming_revision = _snapshot_revision(snapshot)
+    current_revision = _snapshot_revision(current)
+    if isinstance(current, dict) and incoming_revision < current_revision:
+        return {
+            "ok": True,
+            "accepted": False,
+            "reason": "stale_snapshot",
+            "incomingRevision": incoming_revision,
+            "currentRevision": current_revision,
+        }, 202
+
+    _save_snapshot_local(snapshot)
+    with _lock:
+        _remote_state["snapshot"] = snapshot
+
+    state = snapshot.get("state") or {}
+    return {
+        "ok": True,
+        "accepted": True,
+        "cycle": state.get("cycle_number", 0),
+        "version": snapshot.get("version"),
+        "updatedAt": snapshot.get("updatedAt"),
+    }, 200
 
 
 def _set_kill_state(snapshot: dict, *, active: bool, reason: str, requested_at: str) -> dict:
@@ -593,24 +705,73 @@ def api_ask_forecast():
 
 @app.route("/api/push", methods=["POST"])
 def api_push():
-    """Agent pushes state here each cycle (for remote/Railway deployment)."""
-    # Token check
-    if PUSH_TOKEN:
-        token = request.headers.get("X-Token", "")
-        if token != PUSH_TOKEN:
-            abort(403, "Invalid token")
+    """Accept the agent's canonical snapshot and persist it durably."""
+    _require_push_token()
+    data = _decode_push_payload(request.get_json(silent=True))
+    response, status = _accept_dashboard_payload(data)
+    return jsonify(response), status
 
-    data = request.get_json(silent=True)
-    if not data or ("snapshot" not in data and "state" not in data):
-        abort(400, "Missing snapshot/state in payload")
 
-    snapshot = _hydrate_snapshot_payload(data)
+@app.route("/api/push-chunk", methods=["POST"])
+def api_push_chunk():
+    """Assemble oversized snapshots without relying on process memory."""
+    _require_push_token()
+    data = request.get_json(silent=True) or {}
+    session_id = str(data.get("session_id") or "")
+    if not _SAFE_SESSION_ID.fullmatch(session_id):
+        abort(400, "Invalid session_id")
+    try:
+        chunk_index = int(data.get("chunk_index"))
+        chunk_count = int(data.get("chunk_count"))
+    except (TypeError, ValueError):
+        abort(400, "Invalid chunk metadata")
+    chunk = data.get("chunk")
+    if not isinstance(chunk, str):
+        abort(400, "Missing chunk")
+    if not (1 <= chunk_count <= 100) or not (0 <= chunk_index < chunk_count):
+        abort(400, "Chunk index/count out of range")
+    if len(chunk) > 1_000_000:
+        abort(413, "Chunk is too large")
 
-    with _lock:
-        _remote_state["snapshot"] = snapshot
+    PUSH_CHUNKS_DIR.mkdir(parents=True, exist_ok=True)
+    now = time.time()
+    for candidate in PUSH_CHUNKS_DIR.iterdir():
+        try:
+            if candidate.is_dir() and now - candidate.stat().st_mtime > 3600:
+                shutil.rmtree(candidate, ignore_errors=True)
+        except OSError:
+            continue
 
-    state = snapshot.get("state") or {}
-    return jsonify({"ok": True, "cycle": state.get("cycle_number", 0)})
+    session_dir = PUSH_CHUNKS_DIR / session_id
+    session_dir.mkdir(parents=True, exist_ok=True)
+    part_path = session_dir / f"{chunk_index:04d}.part"
+    temp_path = session_dir / f".{chunk_index:04d}.tmp"
+    temp_path.write_text(chunk, encoding="utf-8")
+    temp_path.replace(part_path)
+
+    part_paths = [session_dir / f"{index:04d}.part" for index in range(chunk_count)]
+    received = sum(path.exists() for path in part_paths)
+    if received < chunk_count:
+        return jsonify({
+            "ok": True,
+            "assembled": False,
+            "session_id": session_id,
+            "received": received,
+            "chunk_count": chunk_count,
+        })
+
+    try:
+        payload_text = "".join(path.read_text(encoding="utf-8") for path in part_paths)
+        if len(payload_text.encode("utf-8")) > MAX_DECOMPRESSED_PUSH_BYTES:
+            abort(413, "Assembled dashboard payload is too large")
+        payload = json.loads(payload_text)
+        if not isinstance(payload, dict):
+            abort(400, "Assembled payload must be a JSON object")
+        response, status = _accept_dashboard_payload(payload)
+        response.update({"assembled": True, "session_id": session_id})
+        return jsonify(response), status
+    finally:
+        shutil.rmtree(session_dir, ignore_errors=True)
 
 
 @app.route("/api/kill", methods=["POST"])
@@ -710,8 +871,14 @@ def api_reviews():
 
 
 @app.route("/health")
+@app.route("/healthz")
 def health():
-    return jsonify({"status": "ok"})
+    snapshot = _load_snapshot_local()
+    return jsonify({
+        "status": "ok",
+        "version": (snapshot or {}).get("version"),
+        "updatedAt": (snapshot or {}).get("updatedAt"),
+    })
 
 
 if __name__ == "__main__":

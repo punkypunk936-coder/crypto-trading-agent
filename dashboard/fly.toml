@@ -2,10 +2,19 @@ app = "punky-crypto-dashboard"
 primary_region = "bom"
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = "Dockerfile.dashboard"
+  ignorefile = ".dockerignore.dashboard"
 
 [env]
   PORT = "8080"
+  DATA_DIR = "/data"
+  DASHBOARD_PUBLIC_READ_ONLY = "true"
+  DASHBOARD_MAX_PUSH_BYTES = "12000000"
+  DASHBOARD_MAX_DECOMPRESSED_PUSH_BYTES = "64000000"
+
+[mounts]
+  source = "dashboard_data"
+  destination = "/data"
 
 [http_service]
   internal_port = 8080
@@ -15,7 +24,14 @@ primary_region = "bom"
   min_machines_running = 1
   processes = ["app"]
 
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval = "30s"
+    method = "GET"
+    path = "/healthz"
+    timeout = "5s"
+
 [[vm]]
-  memory = "256mb"
+  memory = "512mb"
   cpu_kind = "shared"
   cpus = 1
