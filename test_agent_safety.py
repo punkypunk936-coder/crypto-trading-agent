@@ -3665,6 +3665,12 @@ def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> N
     assert "friction-stack" in template
     assert "catalyst-rail" in template
     assert "coherentActionBoardLead" in template
+    assert 'id="terminal-desk"' in template
+    assert "Opportunity tape" in template
+    assert 'id="punky-analyst"' in template
+    assert "renderTerminalWorkspace" in template
+    assert "runPunkyDock" in template
+    assert "openPunkyFullAnalysis" in template
     assert "AbortController" in template
     assert "scheduleRefresh(" in template
     assert "setInterval(refresh, 10000);" not in template

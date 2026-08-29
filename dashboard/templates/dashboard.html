@@ -78,7 +78,7 @@
   }
 
   .container {
-    max-width: 1280px;
+    max-width: 1560px;
     margin: 0 auto;
     padding: 0 16px;
     position: relative;
@@ -3435,6 +3435,345 @@
   }
   .position-logic strong { color: var(--text); }
 
+  /* ── Punky Desk ─────────────────────────── */
+  .terminal-shell {
+    margin: 4px 0 20px;
+    border: 1px solid rgba(235, 237, 229, 0.13);
+    background: rgba(16, 18, 17, 0.76);
+  }
+  .terminal-nav {
+    min-height: 52px;
+    display: grid;
+    grid-template-columns: auto minmax(260px, 1fr) auto;
+    align-items: center;
+    gap: 18px;
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(235, 237, 229, 0.11);
+    background: rgba(10, 12, 11, 0.94);
+  }
+  .terminal-nav-tabs {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .terminal-nav-tab {
+    min-height: 34px;
+    padding: 0 11px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+  .terminal-nav-tab:hover,
+  .terminal-nav-tab.active {
+    color: var(--text);
+    border-bottom-color: var(--blue);
+  }
+  .terminal-command-trigger {
+    min-width: 0;
+    min-height: 34px;
+    padding: 0 12px;
+    border: 1px solid rgba(235, 237, 229, 0.12);
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.025);
+    color: var(--muted);
+    cursor: text;
+    font-family: var(--mono);
+    font-size: 10px;
+    text-align: left;
+  }
+  .terminal-command-trigger:hover {
+    border-color: rgba(91, 140, 255, 0.42);
+    color: var(--text);
+  }
+  .terminal-status {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 700;
+    white-space: nowrap;
+    text-transform: uppercase;
+  }
+  .terminal-status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px rgba(0, 230, 138, 0.42);
+  }
+  .terminal-grid {
+    display: grid;
+    grid-template-columns: 190px minmax(0, 1fr) 300px;
+    align-items: stretch;
+  }
+  .terminal-watchlist,
+  .terminal-assistant {
+    min-width: 0;
+    background: rgba(10, 12, 11, 0.42);
+  }
+  .terminal-watchlist { border-right: 1px solid rgba(235, 237, 229, 0.10); }
+  .terminal-assistant { border-left: 1px solid rgba(235, 237, 229, 0.10); }
+  .terminal-panel-inner {
+    position: sticky;
+    top: 10px;
+    max-height: calc(100vh - 20px);
+    overflow: auto;
+  }
+  .terminal-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 44px;
+    padding: 0 12px;
+    border-bottom: 1px solid rgba(235, 237, 229, 0.08);
+  }
+  .terminal-panel-title {
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+  .terminal-panel-count {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 9px;
+  }
+  .terminal-watch-row {
+    width: 100%;
+    min-height: 58px;
+    display: block;
+    padding: 9px 11px;
+    border: 0;
+    border-bottom: 1px solid rgba(235, 237, 229, 0.06);
+    border-left: 2px solid transparent;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+  }
+  .terminal-watch-row:hover { background: rgba(255, 255, 255, 0.025); }
+  .terminal-watch-row.active {
+    border-left-color: var(--blue);
+    background: rgba(91, 140, 255, 0.075);
+  }
+  .terminal-watch-top,
+  .terminal-watch-meta,
+  .terminal-focus-top,
+  .terminal-dock-verdict-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .terminal-watch-symbol {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 800;
+  }
+  .terminal-watch-direction {
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 800;
+  }
+  .terminal-watch-direction.long { color: var(--green); }
+  .terminal-watch-direction.short { color: var(--red); }
+  .terminal-watch-direction.watch { color: var(--muted); }
+  .terminal-watch-meta {
+    margin-top: 6px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 8px;
+  }
+  .terminal-center { min-width: 0; }
+  .terminal-focus {
+    min-height: 166px;
+    padding: 18px 16px;
+    border-bottom: 1px solid rgba(235, 237, 229, 0.10);
+    background: rgba(91, 140, 255, 0.035);
+  }
+  .terminal-focus-symbol {
+    color: var(--text);
+    font-size: 25px;
+    font-weight: 800;
+  }
+  .terminal-focus-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .terminal-focus-thesis {
+    max-width: 860px;
+    margin-top: 10px;
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .terminal-focus-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin-top: 15px;
+  }
+  .terminal-focus-field {
+    min-width: 0;
+    padding-top: 9px;
+    border-top: 1px solid rgba(235, 237, 229, 0.08);
+  }
+  .terminal-focus-label {
+    display: block;
+    margin-bottom: 4px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 8px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+  .terminal-focus-value {
+    color: var(--text);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .terminal-focus-value.risk { color: var(--red); }
+  .terminal-analyse-btn,
+  .terminal-dock-submit,
+  .terminal-dock-full {
+    min-height: 32px;
+    padding: 0 10px;
+    border: 1px solid rgba(91, 140, 255, 0.48);
+    border-radius: 5px;
+    background: rgba(91, 140, 255, 0.10);
+    color: var(--text);
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+  .terminal-analyse-btn:hover,
+  .terminal-dock-submit:hover,
+  .terminal-dock-full:hover { background: rgba(91, 140, 255, 0.18); }
+  .terminal-center .decision-cockpit { margin-top: 0; }
+  .terminal-center .decision-cockpit-grid { grid-template-columns: 1fr; gap: 18px; }
+  .terminal-center .decision-playbook {
+    border-top: 1px solid rgba(235, 237, 229, 0.10);
+    border-left: 0;
+  }
+  .terminal-center .decision-playbook-row { padding-left: 0; }
+  .terminal-center > .full-width { margin-bottom: 0; }
+  .terminal-center .priority-section { margin-top: 0; border-bottom: 0; }
+  .terminal-dock-compose { padding: 12px; }
+  .terminal-dock-input {
+    width: 100%;
+    height: 70px;
+    resize: none;
+    padding: 10px;
+    border: 1px solid rgba(235, 237, 229, 0.13);
+    border-radius: 5px;
+    outline: none;
+    background: rgba(0, 0, 0, 0.20);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .terminal-dock-input:focus { border-color: rgba(91, 140, 255, 0.52); }
+  .terminal-dock-submit {
+    width: 100%;
+    margin-top: 8px;
+  }
+  .terminal-dock-answer {
+    padding: 12px;
+    border-top: 1px solid rgba(235, 237, 229, 0.08);
+  }
+  .terminal-dock-empty {
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.6;
+  }
+  .terminal-dock-empty strong { color: var(--text); }
+  .terminal-dock-loading {
+    color: var(--text);
+    font-size: 11px;
+    line-height: 1.6;
+  }
+  .terminal-dock-decision {
+    color: var(--text);
+    font-size: 19px;
+    font-weight: 800;
+  }
+  .terminal-dock-confidence {
+    color: var(--blue);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 800;
+  }
+  .terminal-dock-summary {
+    margin-top: 9px;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.55;
+  }
+  .terminal-dock-plan {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    margin-top: 12px;
+    border-top: 1px solid rgba(235, 237, 229, 0.08);
+  }
+  .terminal-dock-plan > div {
+    min-width: 0;
+    padding: 9px 7px 9px 0;
+    border-bottom: 1px solid rgba(235, 237, 229, 0.06);
+  }
+  .terminal-dock-plan > div:nth-child(2n) { padding-left: 9px; }
+  .terminal-dock-plan span {
+    display: block;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 8px;
+    text-transform: uppercase;
+  }
+  .terminal-dock-plan strong {
+    display: block;
+    margin-top: 4px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 10px;
+  }
+  .terminal-dock-plan strong.risk { color: var(--red); }
+  .terminal-dock-full { width: 100%; margin-top: 12px; }
+  .terminal-dock-error { color: var(--red); font-size: 11px; line-height: 1.55; }
+
+  @media (max-width: 1380px) {
+    .terminal-center .priority-setup { grid-template-columns: minmax(150px, 0.7fr) 1fr; }
+    .terminal-center .priority-setup > :last-child { grid-column: 2; }
+  }
+  @media (max-width: 1120px) {
+    .terminal-grid { grid-template-columns: 190px minmax(0, 1fr); }
+    .terminal-assistant {
+      grid-column: 1 / -1;
+      border-top: 1px solid rgba(235, 237, 229, 0.10);
+      border-left: 0;
+    }
+    .terminal-assistant .terminal-panel-inner {
+      position: static;
+      max-height: none;
+      display: grid;
+      grid-template-columns: 190px minmax(260px, 0.7fr) minmax(340px, 1.3fr);
+    }
+    .terminal-assistant .terminal-panel-head { border-right: 1px solid rgba(235, 237, 229, 0.08); }
+    .terminal-dock-compose { border-right: 1px solid rgba(235, 237, 229, 0.08); }
+    .terminal-dock-answer { border-top: 0; }
+  }
+
   /* ── Responsive ─────────────────────────── */
   @media (max-width: 1024px) {
     .grid-4 { grid-template-columns: repeat(2, 1fr); }
@@ -3654,6 +3993,37 @@
     .position-decision-item:nth-child(2) { border-right: 0; }
     .position-decision-item:nth-child(-n+2) { border-bottom: 1px solid rgba(235, 237, 229, 0.07); }
     .position-logic-grid { grid-template-columns: 1fr; gap: 8px; }
+    .terminal-shell { margin-right: -4px; margin-left: -4px; }
+    .terminal-nav {
+      grid-template-columns: 1fr;
+      gap: 7px;
+      padding: 8px;
+    }
+    .terminal-nav-tabs { overflow-x: auto; }
+    .terminal-status { display: none; }
+    .terminal-grid { display: block; }
+    .terminal-watchlist { border-right: 0; border-bottom: 1px solid rgba(235, 237, 229, 0.10); }
+    .terminal-watchlist .terminal-panel-inner { position: static; max-height: none; }
+    .terminal-watchlist-body {
+      display: flex;
+      overflow-x: auto;
+    }
+    .terminal-watch-row {
+      flex: 0 0 126px;
+      min-height: 62px;
+      border-left: 0;
+      border-bottom: 2px solid transparent;
+      border-right: 1px solid rgba(235, 237, 229, 0.06);
+    }
+    .terminal-watch-row.active { border-bottom-color: var(--blue); }
+    .terminal-focus { padding: 16px 10px; }
+    .terminal-focus-top { align-items: flex-start; }
+    .terminal-focus-actions { align-items: flex-end; flex-direction: column; }
+    .terminal-focus-grid { grid-template-columns: 1fr; gap: 9px; }
+    .terminal-assistant .terminal-panel-inner { display: block; }
+    .terminal-assistant .terminal-panel-head,
+    .terminal-dock-compose { border-right: 0; }
+    .terminal-dock-answer { border-top: 1px solid rgba(235, 237, 229, 0.08); }
   }
   @media (max-width: 380px) {
     .grid-4 { grid-template-columns: 1fr; }
@@ -3672,7 +4042,6 @@
     <h1>PUNKY TRADING AGENT</h1>
   </div>
   <div class="header-right">
-    <button class="command-search-btn" id="command-search-btn" type="button" onclick="openCommandSearch()">ASK PUNKY</button>
     <button class="kill-btn" id="kill-btn" onclick="handleKill()" hidden>KILL SWITCH</button>
     <span id="mode-badge" class="badge badge-offline">OFFLINE</span>
     <span id="last-update"></span>
@@ -3712,6 +4081,38 @@
     </div>
   </div>
 </div>
+
+<section class="terminal-shell" id="terminal-desk" aria-label="Punky trading desk">
+  <nav class="terminal-nav" aria-label="Trading desk navigation">
+    <div class="terminal-nav-tabs">
+      <button class="terminal-nav-tab active" type="button" onclick="scrollTerminalSection('terminal-desk')">Today</button>
+      <button class="terminal-nav-tab" type="button" onclick="scrollTerminalSection('open-trades-card')">Positions</button>
+      <button class="terminal-nav-tab" type="button" onclick="scrollTerminalSection('ai-infrastructure-card')">Research</button>
+      <button class="terminal-nav-tab" type="button" onclick="scrollTerminalSection('decision-journal')">Journal</button>
+    </div>
+    <button class="terminal-command-trigger" type="button" onclick="focusPunkyDock()">⌕ Ask about a ticker, setup, or risk...</button>
+    <div class="terminal-status"><span class="terminal-status-dot"></span><span>Decision engine live</span></div>
+  </nav>
+
+  <div class="terminal-grid">
+    <aside class="terminal-watchlist" aria-label="Opportunity tape">
+      <div class="terminal-panel-inner">
+        <div class="terminal-panel-head">
+          <span class="terminal-panel-title">Opportunity tape</span>
+          <span class="terminal-panel-count" id="terminal-watchlist-count">0 ranked</span>
+        </div>
+        <div class="terminal-watchlist-body" id="terminal-watchlist-body">
+          <div class="empty-state">Ranking the live tape...</div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="terminal-center">
+      <section class="terminal-focus" id="terminal-focus" aria-label="Selected trade brief">
+        <div id="terminal-focus-body">
+          <div class="empty-state">Waiting for the first ranked setup...</div>
+        </div>
+      </section>
 
 <!-- DECISION SURFACE -->
 <section class="decision-cockpit" id="decision-cockpit">
@@ -3778,6 +4179,31 @@
     </div>
   </section>
 </div>
+
+    </main>
+
+    <aside class="terminal-assistant" id="punky-analyst" aria-label="Ask Punky analyst">
+      <div class="terminal-panel-inner">
+        <div class="terminal-panel-head">
+          <span class="terminal-panel-title">Ask Punky</span>
+          <span class="terminal-panel-count">Live decision</span>
+        </div>
+        <div class="terminal-dock-compose">
+          <textarea
+            class="terminal-dock-input"
+            id="punky-dock-input"
+            placeholder="Should I take CBRS?"
+            onkeydown="handlePunkyDockKey(event)"
+          ></textarea>
+          <button class="terminal-dock-submit" id="punky-dock-submit" type="button" onclick="runPunkyDock()">Analyze trade</button>
+        </div>
+        <div class="terminal-dock-answer" id="punky-dock-answer">
+          <div class="terminal-dock-empty"><strong>Pick a name from the tape.</strong><br>Punky will return TAKE, WAIT, or AVOID with entry, target, invalidation, and calibrated confidence.</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</section>
 
 <!-- OPEN TRADES -->
 <div class="full-width">
@@ -4762,6 +5188,7 @@ let latestAiInfrastructure = { active: false, sectors: [], unusual_movers: [] };
 let latestEarningsSession = { active: false, rows: [] };
 let latestPnlAttribution = {};
 let selectedAiSector = '';
+let terminalSelectedTicker = '';
 let commandSearchOpen = false;
 let commandSearchIndex = 0;
 let commandSearchQuery = '';
@@ -5234,6 +5661,20 @@ document.addEventListener('click', (event) => {
 
 document.addEventListener('click', (event) => {
   if (!event.target || !event.target.closest) return;
+  const tapeButton = event.target.closest('[data-terminal-ticker]');
+  if (tapeButton) {
+    event.preventDefault();
+    selectTerminalTicker(tapeButton.dataset.terminalTicker);
+    return;
+  }
+  const analyseButton = event.target.closest('[data-terminal-analyse]');
+  if (analyseButton) {
+    event.preventDefault();
+    const ticker = String(analyseButton.dataset.terminalAnalyse || '').trim().toUpperCase();
+    focusPunkyDock('Should I take ' + ticker + '?');
+    runPunkyDock('Should I take ' + ticker + '?');
+    return;
+  }
   const resultButton = event.target.closest('.command-result-item[data-command-ticker]');
   if (resultButton) {
     event.preventDefault();
@@ -5250,7 +5691,12 @@ document.addEventListener('keydown', (event) => {
   const commandFind = (event.ctrlKey || event.metaKey) && key === 'f';
   const commandOpen = commandFind || ((event.ctrlKey || event.metaKey) && key === 'k');
   const slashOpen = key === '/' && !event.ctrlKey && !event.metaKey && !event.altKey && !isEditableTarget(event.target);
-  if (commandOpen || slashOpen) {
+  if (slashOpen) {
+    event.preventDefault();
+    focusPunkyDock();
+    return;
+  }
+  if (commandOpen) {
     event.preventDefault();
     openCommandSearch();
     return;
@@ -5888,7 +6334,8 @@ async function runAskPunky(seed='') {
   const ticker = commandTickerFromQuery(query) || String(((commandSearchMatches || [])[commandSearchIndex] || {}).coin || '').toUpperCase();
   const detail = document.getElementById('command-search-detail');
   if (!ticker) {
-    if (detail) detail.innerHTML = '<div class="ask-punky-error">I could not find a ticker in that question. Try a symbol such as CBRS, NVDA, or HYPE.</div>';
+    commandActiveAnswer = { error: 'I could not find a ticker in that question. Try a symbol such as CBRS, NVDA, or HYPE.', ticker: 'Question' };
+    renderCommandSearch();
     return;
   }
   const item = dashboardItemForCoin(ticker) || null;
@@ -5951,6 +6398,7 @@ function renderCommandSearch() {
   } else {
     detail.innerHTML = commandDetailHtml(commandSearchMatches[commandSearchIndex]);
   }
+  renderPunkyDock();
 }
 
 function openCommandSearch(seed='') {
@@ -6429,6 +6877,152 @@ function coherentActionBoardLead(board) {
   if (safe.lead && prioritySetupIsCoherent(safe.lead)) return safe.lead;
   const ranked = sortCallItems(items);
   return ranked.find((item) => item.tradable) || ranked[0] || null;
+}
+
+function terminalActionItems(board) {
+  const safe = board || {};
+  const items = Array.isArray(safe.items) ? safe.items.filter((item) => item && item.coin) : [];
+  const coherent = items.filter(prioritySetupIsCoherent);
+  return sortCallItems(coherent.length ? coherent : items);
+}
+
+function selectTerminalTicker(ticker) {
+  const normalized = String(ticker || '').trim().toUpperCase();
+  if (!normalized) return;
+  terminalSelectedTicker = normalized;
+  const dockInput = document.getElementById('punky-dock-input');
+  if (dockInput) dockInput.value = 'Should I take ' + normalized + '?';
+  renderTerminalWorkspace(latestActionBoard);
+}
+
+function renderTerminalWatchlist(board) {
+  const body = document.getElementById('terminal-watchlist-body');
+  const count = document.getElementById('terminal-watchlist-count');
+  if (!body || !count) return;
+  const items = terminalActionItems(board);
+  count.textContent = String(Math.min(12, items.length)) + ' of ' + String(items.length);
+  if (!items.length) {
+    body.innerHTML = '<div class="empty-state">No reliable opportunity has cleared the tape yet.</div>';
+    return;
+  }
+  body.innerHTML = items.slice(0, 12).map((item) => {
+    const ticker = String(item.coin || '').trim().toUpperCase();
+    const direction = prioritySetupDirection(item);
+    const directionClass = direction === 'LONG' ? 'long' : direction === 'SHORT' ? 'short' : 'watch';
+    const odds = compactOddsText(item) || String(item.confidence || 'developing').toLowerCase();
+    return '<button type="button" class="terminal-watch-row' + (ticker === terminalSelectedTicker ? ' active' : '') + '" data-terminal-ticker="' + esc(ticker) + '" aria-pressed="' + String(ticker === terminalSelectedTicker) + '">'
+      + '<div class="terminal-watch-top"><span class="terminal-watch-symbol">' + esc(ticker) + '</span><span class="terminal-watch-direction ' + directionClass + '">' + esc(direction) + '</span></div>'
+      + '<div class="terminal-watch-meta"><span>' + esc(simpleActionText(item)) + '</span><span>' + esc(odds) + '</span></div>'
+    + '</button>';
+  }).join('');
+}
+
+function renderTerminalFocus(board) {
+  const body = document.getElementById('terminal-focus-body');
+  if (!body) return;
+  const items = terminalActionItems(board);
+  const lead = coherentActionBoardLead(board) || items[0] || null;
+  if (!terminalSelectedTicker || !items.some((item) => String(item.coin || '').trim().toUpperCase() === terminalSelectedTicker)) {
+    terminalSelectedTicker = String((lead || {}).coin || '').trim().toUpperCase();
+  }
+  const item = items.find((entry) => String(entry.coin || '').trim().toUpperCase() === terminalSelectedTicker) || lead;
+  if (!item) {
+    body.innerHTML = '<div class="empty-state">The decision engine is waiting for a setup with enough evidence.</div>';
+    return;
+  }
+  const ticker = String(item.coin || '').trim().toUpperCase();
+  const dockInput = document.getElementById('punky-dock-input');
+  if (dockInput && !String(dockInput.value || '').trim()) dockInput.value = 'Should I take ' + ticker + '?';
+  const direction = prioritySetupDirection(item);
+  const directionBias = direction === 'LONG' ? 'bullish' : direction === 'SHORT' ? 'bearish' : 'neutral';
+  const odds = compactOddsText(item) || String(item.confidence || 'developing').toLowerCase();
+  const thesis = whyLeadText(item, 260) || simpleThesisText(item, 260);
+  body.innerHTML = '<div class="terminal-focus-top">'
+      + '<div><div class="section-kicker">Selected opportunity</div><div class="terminal-focus-symbol">' + esc(ticker) + '</div></div>'
+      + '<div class="terminal-focus-actions"><span class="' + biasClass(directionBias) + '">' + esc(direction) + ' • ' + esc(odds) + '</span><button class="terminal-analyse-btn" type="button" data-terminal-analyse="' + esc(ticker) + '">Analyze</button></div>'
+    + '</div>'
+    + '<div class="terminal-focus-thesis">' + esc(thesis || 'The thesis is still forming; no capital should move until the evidence improves.') + '</div>'
+    + '<div class="terminal-focus-grid">'
+      + '<div class="terminal-focus-field"><span class="terminal-focus-label">Act when</span><div class="terminal-focus-value">' + esc(simpleNextText(item, 150)) + '</div></div>'
+      + '<div class="terminal-focus-field"><span class="terminal-focus-label">Invalid if</span><div class="terminal-focus-value risk">' + esc(simpleInvalidationText(item, 150)) + '</div></div>'
+    + '</div>';
+}
+
+function renderTerminalWorkspace(board) {
+  renderTerminalFocus(board);
+  renderTerminalWatchlist(board);
+  renderPunkyDock();
+}
+
+function renderPunkyDock() {
+  const body = document.getElementById('punky-dock-answer');
+  const submit = document.getElementById('punky-dock-submit');
+  if (!body) return;
+  if (submit) submit.disabled = commandAnalysisLoading;
+  if (commandAnalysisLoading) {
+    body.innerHTML = '<div class="terminal-dock-loading"><strong>Reading ' + esc(lastAskedTicker || terminalSelectedTicker || 'the tape') + '...</strong><br>Checking live price action, market context, earnings, levels, and prior calibration.</div>';
+    return;
+  }
+  if (commandActiveAnswer && commandActiveAnswer.error) {
+    body.innerHTML = '<div class="terminal-dock-error"><strong>Live analysis failed.</strong><br>' + esc(commandActiveAnswer.error) + '</div>';
+    return;
+  }
+  if (!commandActiveAnswer) {
+    const selected = terminalSelectedTicker || 'a ticker';
+    body.innerHTML = '<div class="terminal-dock-empty"><strong>' + esc(selected === 'a ticker' ? 'Pick a name from the tape.' : selected + ' is selected.') + '</strong><br>Ask whether to take it. Punky will attach the decision, risk levels, evidence, and confidence.</div>';
+    return;
+  }
+  const answer = commandActiveAnswer;
+  const invalidation = (answer.direction === 'LONG' ? 'Below ' : 'Above ') + askPunkyPrice(answer.invalidation, answer.current);
+  body.innerHTML = '<div class="terminal-dock-verdict-head">'
+      + '<div><div class="section-kicker">' + esc(answer.ticker) + ' decision</div><div class="terminal-dock-decision ' + esc(String(answer.direction || '').toLowerCase() === 'long' ? 'green' : 'red') + '">' + esc(answer.decision) + '</div></div>'
+      + '<div class="terminal-dock-confidence">' + esc(answer.confidence) + '%</div>'
+    + '</div>'
+    + '<div class="terminal-dock-summary">' + esc(answer.summary) + '</div>'
+    + '<div class="terminal-dock-plan">'
+      + '<div><span>Entry</span><strong>' + esc(askPunkyPrice(answer.entry, answer.current)) + '</strong></div>'
+      + '<div><span>Target</span><strong class="green">' + esc(askPunkyPrice(answer.target, answer.current)) + '</strong></div>'
+      + '<div><span>Invalid if</span><strong class="risk">' + esc(invalidation) + '</strong></div>'
+      + '<div><span>Reward / risk</span><strong>' + esc(Number(answer.rr).toFixed(2)) + 'x</strong></div>'
+    + '</div>'
+    + '<button class="terminal-dock-full" type="button" onclick="openPunkyFullAnalysis()">Open chart &amp; evidence</button>';
+}
+
+async function runPunkyDock(seed='') {
+  const dockInput = document.getElementById('punky-dock-input');
+  const query = String(seed || (dockInput ? dockInput.value : '') || '').trim();
+  if (dockInput && seed) dockInput.value = seed;
+  if (!query) {
+    if (dockInput) dockInput.focus();
+    return;
+  }
+  const commandInput = document.getElementById('command-search-input');
+  if (commandInput) commandInput.value = query;
+  await runAskPunky(query);
+}
+
+function handlePunkyDockKey(event) {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault();
+    runPunkyDock();
+  }
+}
+
+function focusPunkyDock(seed='') {
+  const input = document.getElementById('punky-dock-input');
+  if (!input) return;
+  if (seed) input.value = seed;
+  document.getElementById('punky-analyst')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  setTimeout(() => input.focus(), 0);
+}
+
+function openPunkyFullAnalysis() {
+  openCommandSearch(commandSearchQuery || (terminalSelectedTicker ? 'Should I take ' + terminalSelectedTicker + '?' : ''));
+}
+
+function scrollTerminalSection(id) {
+  const target = document.getElementById(id);
+  if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function priorityDirectionChipHtml(item) {
@@ -7389,6 +7983,7 @@ async function refresh() {
     renderGlobalMarketContext(latestGlobalMarketContext);
     renderAiInfrastructure(latestAiInfrastructure);
     renderPrioritySetups(actionBoard);
+    renderTerminalWorkspace(actionBoard);
     if (commandSearchOpen) renderCommandSearch();
 
     // Performance Stats
