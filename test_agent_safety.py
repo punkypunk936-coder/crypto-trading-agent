@@ -3672,6 +3672,11 @@ def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> N
     assert "body.visitor-mode .closed-trades-section" in template
     assert "PAPER MODE" in template
     assert "Open Risk" in template
+    assert "BUY ABOVE" in template
+    assert "SHORT BELOW" in template
+    assert "First profit level" in template
+    assert "Wait for long" not in template
+    assert "Wait for short" not in template
     assert 'id="terminal-lane-equity"' in template
     assert 'id="terminal-lane-coin"' in template
     assert "terminalLaneForItem" in template
@@ -10114,9 +10119,10 @@ def test_dashboard_surfaces_patient_execution_blocker_over_ready_call() -> None:
     )
     lead = snapshot["action_board"]["lead"]
     assert lead["status"] == "EXECUTION_BLOCKED"
-    assert lead["label"] == "Bullish, entry blocked"
+    assert lead["label"] == "BUY ABOVE $260.40"
     assert lead["patient_execution_blocked"] is True
-    assert "1.25 conflict points" in lead["next_setup_reason"]
+    assert "reaches and stays above $260.40" in lead["next_setup_reason"]
+    assert "1.25 conflict points" in lead["desk_reason"]
 
 
 def test_dashboard_uses_post_gate_wait_as_the_canonical_ticker_action() -> None:
@@ -10132,6 +10138,8 @@ def test_dashboard_uses_post_gate_wait_as_the_canonical_ticker_action() -> None:
                     "instrument_type": "equity",
                     "live_price": 217.28,
                     "displayed_long_trigger": 218.81,
+                    "planned_stop_loss": 216.98,
+                    "planned_take_profit": 218.20,
                     "analysis_updated_ts": time.time(),
                     "execution_decision": "WAIT",
                     "execution_direction": "LONG",
@@ -10149,7 +10157,7 @@ def test_dashboard_uses_post_gate_wait_as_the_canonical_ticker_action() -> None:
             "cycle_number": 1,
         },
         [],
-        market_map={"coins": {"MRVL": {"bias": "NEUTRAL", "supports": [216.98]}}},
+        market_map={"coins": {"MRVL": {"bias": "NEUTRAL", "supports": [216.98], "resistances": [218.81, 225.0]}}},
     )
     lead = snapshot["action_board"]["lead"]
     assert lead["status"] == "WAIT_EXECUTION"
@@ -10157,7 +10165,53 @@ def test_dashboard_uses_post_gate_wait_as_the_canonical_ticker_action() -> None:
     assert lead["desk_state"] == "WAITING"
     assert lead["thesis_direction"] == "LONG"
     assert "4H and 12H" in lead["desk_reason"]
+    assert lead["label"] == "BUY ABOVE $218.81"
+    assert lead["plain_plan"]["entry"] == 218.81
+    assert lead["plain_plan"]["target"] == 225.0
+    assert lead["plain_plan"]["invalidation"] == 216.98
+    assert "Wait for long" not in lead["next_setup_reason"]
     assert snapshot["action_board"]["execution_loop"]["mode"] == "dry_run"
+
+
+def test_dashboard_explains_short_setup_with_entry_profit_and_exit_levels() -> None:
+    snapshot = build_dashboard_snapshot(
+        {
+            "signals": {
+                "COIN": {
+                    "action": "SHORT",
+                    "score": 72.0,
+                    "confidence": "HIGH",
+                    "execution_mode": "tradable",
+                    "instrument_type": "equity",
+                    "live_price": 166.20,
+                    "displayed_short_trigger": 164.90,
+                    "planned_stop_loss": 167.00,
+                    "planned_take_profit": 165.50,
+                    "analysis_updated_ts": time.time(),
+                    "execution_decision": "WAIT",
+                    "execution_direction": "SHORT",
+                    "execution_reason": "Price has not broken the level cleanly yet.",
+                }
+            },
+            "positions": [],
+            "config": {
+                "coins": ["COIN"],
+                "analysis_coins": ["COIN"],
+                "analysis_signal_max_age_minutes": 20.0,
+            },
+            "cycle_number": 1,
+        },
+        [],
+        market_map={"coins": {"COIN": {"bias": "BEARISH", "supports": [160.0, 164.90], "resistances": [167.0]}}},
+    )
+    lead = snapshot["action_board"]["lead"]
+    assert lead["desk_action"] == "WAIT"
+    assert lead["label"] == "SHORT BELOW $164.90"
+    assert lead["plain_plan"]["entry"] == 164.90
+    assert lead["plain_plan"]["target"] == 160.0
+    assert lead["plain_plan"]["invalidation"] == 167.0
+    assert "falls and stays below $164.90" in lead["plain_plan"]["entry_text"]
+    assert "rises above $167.00" in lead["plain_plan"]["invalidation_text"]
 
 
 def test_blocked_decision_records_wait_before_optional_dataset_write() -> None:
@@ -11443,6 +11497,10 @@ def run_all() -> None:
     print("PASS dashboard stale-call transparency")
     test_dashboard_surfaces_patient_execution_blocker_over_ready_call()
     print("PASS dashboard patient-entry blocker")
+    test_dashboard_uses_post_gate_wait_as_the_canonical_ticker_action()
+    print("PASS dashboard canonical conditional long plan")
+    test_dashboard_explains_short_setup_with_entry_profit_and_exit_levels()
+    print("PASS dashboard canonical conditional short plan")
     test_first_principles_guard_blocks_marginal_price_only_entry()
     print("PASS first-principles marginal block")
     test_first_principles_guard_allows_marginal_event_attention_starter()

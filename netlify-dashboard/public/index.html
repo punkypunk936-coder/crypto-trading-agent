@@ -4857,34 +4857,80 @@ const simpleLevelText = (value, fallback='Level forming', limit=74) => {
   const cleaned = stripLevelMath(value);
   return shortText(cleaned || fallback, limit);
 };
+const firstLevelNumber = (value) => {
+  const match = String(value == null ? '' : value).match(/[-+]?\d[\d,]*(?:\.\d+)?/);
+  if (!match) return 0;
+  const number = Number(match[0].replaceAll(',', ''));
+  return Number.isFinite(number) ? number : 0;
+};
+const plainPlanForItem = (item) => {
+  const safe = item || {};
+  const provided = safe.plain_plan && typeof safe.plain_plan === 'object' ? safe.plain_plan : {};
+  if (provided.headline) return provided;
+  const status = String(safe.status || '').toUpperCase();
+  const direction = terminalThesisDirection(safe);
+  const current = Number(safe.venue_price || safe.reference_price || 0);
+  if (status === 'STALE_REVIEW') {
+    return {
+      direction: '', headline: 'FRESH CHECK NEEDED',
+      entry_text: 'Run a fresh check before considering an entry.',
+      target_text: 'A fresh profit level is still needed.',
+      invalidation_text: 'A fresh exit level is still needed.',
+    };
+  }
+  if (!['LONG', 'SHORT'].includes(direction)) {
+    return {
+      direction: '', headline: 'NO TRADE YET',
+      entry_text: 'No entry level is ready yet.',
+      target_text: 'No profit level is ready yet.',
+      invalidation_text: 'No exit level is ready yet.',
+    };
+  }
+  const entry = firstLevelNumber(safe.trigger || safe.entry_status) || current;
+  let invalidation = Number(safe.planned_stop_loss || firstLevelNumber(safe.invalidation_short || safe.invalidation));
+  let target = Number(safe.planned_take_profit || 0);
+  if (direction === 'LONG') {
+    if (!(invalidation > 0 && invalidation < entry)) invalidation = entry * 0.99;
+    if (!(target > entry)) target = entry + (2 * (entry - invalidation));
+  } else {
+    if (!(invalidation > entry)) invalidation = entry * 1.01;
+    if (!(target > 0 && target < entry)) target = entry - (2 * (invalidation - entry));
+  }
+  const entryDisplay = '$' + askPunkyPrice(entry, entry);
+  const targetDisplay = '$' + askPunkyPrice(target, entry);
+  const exitDisplay = '$' + askPunkyPrice(invalidation, entry);
+  const open = status.startsWith('OPEN_');
+  const working = status === 'PENDING_ENTRY';
+  const headline = open
+    ? direction + ' OPEN'
+    : working
+      ? (direction === 'LONG' ? 'BUY' : 'SHORT') + ' ORDER AT ' + entryDisplay
+      : direction === 'LONG' ? 'BUY ABOVE ' + entryDisplay : 'SHORT BELOW ' + entryDisplay;
+  return {
+    direction, headline, current, entry, target, invalidation,
+    entry_text: open
+      ? 'Position opened near ' + entryDisplay + '.'
+      : working
+        ? 'The ' + (direction === 'LONG' ? 'buy' : 'short') + ' order is waiting at ' + entryDisplay + '.'
+        : direction === 'LONG'
+          ? 'Consider buying only after price reaches and stays above ' + entryDisplay + '.'
+          : 'Consider shorting only after price falls and stays below ' + entryDisplay + '.',
+    target_text: 'First price to consider taking profit: ' + targetDisplay + '.',
+    invalidation_text: direction === 'LONG'
+      ? 'Leave the long idea if price falls below ' + exitDisplay + '.'
+      : 'Leave the short idea if price rises above ' + exitDisplay + '.',
+  };
+};
 const simpleActionText = (item) => {
-  const status = String((item || {}).status || '').toUpperCase();
-  if (status === 'OPEN_LONG') return 'Holding long';
-  if (status === 'OPEN_SHORT') return 'Holding short';
-  const deskAction = terminalDeskAction(item);
-  const deskState = String((item || {}).desk_state || '').toUpperCase();
-  const thesis = terminalThesisDirection(item);
-  if (status === 'PENDING_ENTRY' || deskState === 'ORDER_WORKING') return thesis ? thesis + ' order working' : 'Order working';
-  if (deskAction === 'LONG') return 'Long active';
-  if (deskAction === 'SHORT') return 'Short active';
-  if (thesis === 'LONG') return 'Wait for long';
-  if (thesis === 'SHORT') return 'Wait for short';
-  if (status === 'COOLDOWN') return 'Cooling off';
-  return 'Wait';
+  return String(plainPlanForItem(item).headline || 'NO TRADE YET');
 };
 const simpleNextText = (item, limit=76) => {
-  const safe = item || {};
-  const status = String(safe.status || '').toUpperCase();
-  const level = simpleLevelText(safe.trigger || safe.entry_status, 'Level forming', 54);
-  if (status === 'OPEN_LONG' || status === 'OPEN_SHORT') return shortText('Hold: ' + level, limit);
-  if (status === 'PENDING_ENTRY') return shortText('Working: ' + level, limit);
-  if (status === 'READY_LONG') return shortText('Buy if: ' + level, limit);
-  if (status === 'READY_SHORT') return shortText('Short if: ' + level, limit);
-  if (status === 'WATCH_LONG' || status === 'WAIT_RECLAIM') return shortText('Needs: ' + level, limit);
-  if (status === 'WATCH_SHORT' || status === 'WAIT_BREAKDOWN') return shortText('Needs: ' + level, limit);
-  if (status === 'COOLDOWN') return 'Cooling off.';
-  return shortText(level || setupReasonText(safe, limit), limit);
+  return shortText(plainPlanForItem(item).entry_text || 'No entry level is ready yet.', limit);
 };
+const simpleTargetText = (item, limit=78) => shortText(
+  plainPlanForItem(item).target_text || 'No profit level is ready yet.',
+  limit
+);
 const simpleRiskText = (item, limit=70) => {
   const risk = simpleLevelText((item || {}).risk || '', '', limit);
   if (risk) return risk.replace(/^Lose\s/i, 'Wrong below ').replace(/^Reclaim\s/i, 'Wrong above ');
@@ -4892,6 +4938,8 @@ const simpleRiskText = (item, limit=70) => {
 };
 const simpleInvalidationText = (item, limit=78) => {
   const safe = item || {};
+  const plain = cleanSentence(plainPlanForItem(safe).invalidation_text || '');
+  if (plain) return shortText(plain, limit);
   const direct = cleanSentence(safe.invalidation_short || safe.invalidation || '');
   if (direct) {
     return shortText(
@@ -4945,7 +4993,7 @@ const whyLeadText = (item, limit=170) => {
 };
 const leadSummaryText = (item, limit=220) => {
   if (!item) return 'Waiting for the next clean setup.';
-  return shortText(simpleNextText(item, 86) + ' • ' + simpleInvalidationText(item, 76) + ' • ' + simpleThesisText(item, 76), limit);
+  return shortText(simpleNextText(item, 86) + ' • ' + simpleTargetText(item, 76) + ' • ' + simpleInvalidationText(item, 76), limit);
 };
 const frictionStateLabel = (status) => {
   const key = String(status || 'wait').toLowerCase();
@@ -6009,7 +6057,7 @@ function commandResultHtml(item, index, active) {
       + '<span class="' + modeClass + '">' + esc(surfaceModeBadge(safe.mode_badge, safe.tradable)) + '</span>'
     + '</div>'
     + '<div class="command-result-note">' + esc(simpleActionText(safe)) + ' • ' + esc(simpleNextText(safe, 64)) + '</div>'
-    + '<div class="command-result-note">' + esc(simpleInvalidationText(safe, 68)) + '</div>'
+    + '<div class="command-result-note">' + esc(simpleTargetText(safe, 68)) + ' • ' + esc(simpleInvalidationText(safe, 68)) + '</div>'
   + '</button>';
 }
 
@@ -6229,6 +6277,7 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
   const scheduledDeskAction = item ? terminalDeskAction(item) : '';
   const scheduledDeskState = String((item || {}).desk_state || '').toUpperCase();
   const scheduledDeskReason = String((item || {}).desk_reason || (item || {}).execution_note || '').trim();
+  const scheduledPlan = plainPlanForItem(item);
   const direction = scheduledDirection || chartDirection;
   const requestedSide = askPunkyRequestedSide(query);
   const extensionAtr = Math.abs(current - ema20) / Math.max(atr, current * 0.001);
@@ -6255,6 +6304,17 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
     if (extensionAtr > 1.75) entry = ema20 - (0.35 * atr);
     const risk = Math.max(invalidation - entry, 0.8 * atr);
     target = priorLow < entry - (1.35 * risk) ? priorLow : entry - (2 * risk);
+  }
+  if (
+    scheduledPlan
+    && scheduledPlan.direction === direction
+    && Number(scheduledPlan.entry) > 0
+    && Number(scheduledPlan.target) > 0
+    && Number(scheduledPlan.invalidation) > 0
+  ) {
+    entry = Number(scheduledPlan.entry);
+    target = Number(scheduledPlan.target);
+    invalidation = Number(scheduledPlan.invalidation);
   }
   const riskDistance = Math.abs(entry - invalidation);
   const rewardDistance = Math.abs(target - entry);
@@ -6313,9 +6373,15 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
   const scheduledWait = Boolean(item && scheduledDeskAction === 'WAIT');
   const scheduledOpen = Boolean(item && scheduledDeskState === 'OPEN');
   const scheduledWorking = Boolean(item && scheduledDeskState === 'ORDER_WORKING');
+  const entryLabel = askPunkyPrice(entry, current);
+  const targetLabel = askPunkyPrice(target, current);
+  const exitLabel = askPunkyPrice(invalidation, current);
+  const conditionalDecision = direction === 'LONG'
+    ? 'BUY ABOVE ' + entryLabel
+    : 'SHORT BELOW ' + entryLabel;
 
   let tone = 'wait';
-  let decision = 'WAIT';
+  let decision = conditionalDecision;
   let summary = '';
   if (conflictsWithRequest) {
     tone = 'avoid';
@@ -6326,43 +6392,47 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
     decision = 'HOLD ' + direction;
     summary = 'The ' + direction.toLowerCase() + ' is already open. Manage the position against the displayed invalidation instead of creating a second opinion.';
   } else if (scheduledWorking) {
-    decision = direction + ' ORDER WORKING';
-    summary = scheduledDeskReason || 'The paper entry order is already resting. Punky is waiting for a fill, cancel, or reprice.';
+    decision = (direction === 'LONG' ? 'BUY' : 'SHORT') + ' ORDER AT ' + entryLabel;
+    summary = 'The order is already placed at ' + entryLabel + '. First profit level: ' + targetLabel + '. Leave the idea at ' + exitLabel + '.';
   } else if (scheduledWait) {
-    decision = 'WAIT FOR ' + direction;
-    summary = (scheduledDeskReason || 'The final execution gate has not cleared.')
-      + (chartDirection === direction
-        ? ' The live chart agrees with the thesis, but no order is allowed until the remaining gate clears.'
-        : ' The live chart currently leans ' + chartDirection.toLowerCase() + ', so the ' + direction.toLowerCase() + ' thesis remains unfunded.');
+    summary = chartDirection === direction
+      ? (direction === 'LONG'
+        ? 'The idea is bullish, but this is not a buy at any price. Consider buying only above ' + entryLabel + '. First profit level: ' + targetLabel + '. Leave if price falls below ' + exitLabel + '.'
+        : 'The idea is bearish, but this is not a short at any price. Consider shorting only below ' + entryLabel + '. First profit level: ' + targetLabel + '. Leave if price rises above ' + exitLabel + '.')
+      : 'The broader idea points ' + direction.toLowerCase() + ', but the live chart currently points ' + chartDirection.toLowerCase()
+        + '. Do not enter now. Reconsider only at ' + entryLabel + ', with ' + targetLabel + ' as the first profit level and ' + exitLabel + ' as the exit level.';
   } else if (tradeReady) {
     tone = 'take';
-    decision = 'TAKE ' + direction;
-    summary = 'Yes. The chart has enough directional agreement to take the ' + direction.toLowerCase() + ', provided the thesis invalidation is respected.';
+    decision = direction === 'LONG' ? 'BUY NOW' : 'SHORT NOW';
+    summary = 'The live price action supports this trade. Enter near ' + entryLabel + ', consider taking profit near ' + targetLabel + ', and leave if price reaches ' + exitLabel + '.';
   } else if (eventGate) {
+    decision = 'NO TRADE DURING EARNINGS';
     summary = 'No trade yet. A live earnings event can reset every chart level; wait for the print and the first confirmed reaction.';
   } else if (!candleFresh) {
+    decision = 'FRESH PRICE NEEDED';
     summary = 'No trade. Hyperliquid candles are stale, so Punky will not manufacture a decision from old price data.';
   } else if (limitedHistory) {
+    decision = 'MORE PRICE HISTORY NEEDED';
     summary = 'New listing read: the live structure currently leans ' + direction.toLowerCase()
       + ', but only ' + Number(candleResult.primaryBarsCount || 0) + ' hourly candles exist. Punky will analyse it now and wait for mature history before risking money.';
   } else if (tooExtended) {
-    summary = 'Do not chase it here. Direction is ' + direction.toLowerCase() + ', but price is ' + extensionAtr.toFixed(1) + ' ATR from its 20-hour mean.';
+    summary = 'Do not chase the current price. The direction still points ' + direction.toLowerCase() + ', but price has moved too far too quickly. The next level worth considering is ' + entryLabel + '.';
   } else if (!confidenceModel.decisionSupported) {
-    summary = 'No trade yet. The directional read is ' + direction.toLowerCase() + ', but its measured edge over the ' + confidenceModel.breakEvenPct + '% break-even rate is not strong enough to risk money.';
+    summary = 'The direction currently points ' + direction.toLowerCase() + ', but the evidence is not strong enough to risk money now. Reconsider only at ' + entryLabel + '.';
   } else {
-    summary = 'No trade yet. The live chart does not have enough agreement to justify paying risk; wait for a cleaner trigger.';
+    summary = 'The live chart is not clear enough to enter now. The next price worth considering is ' + entryLabel + '; aim first for ' + targetLabel + ' and leave at ' + exitLabel + ' if the idea fails.';
   }
 
   const structureWhy = current >= ema20 && ema20 >= ema50
-    ? 'Price is above both the fast and slow EMAs (' + interval + '), with the fast average on top: buyers control the current structure.'
+    ? 'Price is holding above both its recent and longer average (' + interval + '), so buyers currently have control.'
     : current <= ema20 && ema20 <= ema50
-      ? 'Price is below both the fast and slow EMAs (' + interval + '), with the fast average underneath: sellers control the current structure.'
-      : 'Price and the fast/slow EMA stack (' + interval + ') disagree, which is a transition rather than a clean trend.';
-  const momentumWhy = 'Momentum is ' + askPunkyPct(return6h) + ' over 6h and ' + askPunkyPct(return24h)
-    + ' over the available 24h window; the current ' + interval + ' ATR is ' + askPunkyPrice(atr, current) + '.';
+      ? 'Price is below both its recent and longer average (' + interval + '), so sellers currently have control.'
+      : 'Price is caught between its recent and longer average (' + interval + '), so neither buyers nor sellers have clear control.';
+  const momentumWhy = 'Price moved ' + askPunkyPct(return6h) + ' over the last 6 hours and ' + askPunkyPct(return24h)
+    + ' over the available 24-hour window. A usual ' + interval + ' move is about ' + askPunkyPrice(atr, current) + '.';
   const levelWhy = direction === 'LONG'
-    ? 'The long is wrong below ' + askPunkyPrice(invalidation, current) + '; upside pays toward ' + askPunkyPrice(target, current) + ' if buyers keep the structure.'
-    : 'The short is wrong above ' + askPunkyPrice(invalidation, current) + '; downside pays toward ' + askPunkyPrice(target, current) + ' if sellers keep the structure.';
+    ? 'For a long: consider buying at ' + entryLabel + ', take some profit near ' + targetLabel + ', and leave if price falls below ' + exitLabel + '.'
+    : 'For a short: consider entering at ' + entryLabel + ', take some profit near ' + targetLabel + ', and leave if price rises above ' + exitLabel + '.';
   const earningsMetrics = earnings && Array.isArray(earnings.metrics)
     ? earnings.metrics.map((metric) => String(metric || '').trim()).filter(Boolean).slice(0, 5)
     : [];
@@ -6519,14 +6589,14 @@ function askPunkyAnswerHtml(answer) {
         + '</div>'
       + '</div>'
       + '<p class="ask-punky-summary">' + esc(answer.summary) + '</p>'
-      + '<div class="ask-punky-confidence-context">Thesis ' + esc(answer.direction) + ' • live chart ' + esc(answer.chartDirection || answer.direction) + ' • break-even ' + esc(answer.breakEvenPct) + '% • measured edge ' + (Number(answer.edgePctPoints) >= 0 ? '+' : '') + esc(answer.edgePctPoints) + 'pp • evidence ' + esc(answer.evidenceQuality) + '/100</div>'
+      + '<div class="ask-punky-confidence-context">Agent view: ' + esc(answer.direction) + ' • live price action: ' + esc(answer.chartDirection || answer.direction) + ' • evidence quality: ' + esc(answer.evidenceQuality) + '/100</div>'
     + '</div>'
     + '<div class="ask-punky-plan">'
-      + askPunkyPlanItem('Current', askPunkyPrice(answer.current, answer.current))
-      + askPunkyPlanItem('Entry / trigger', askPunkyPrice(answer.entry, answer.current))
-      + askPunkyPlanItem('Target', askPunkyPrice(answer.target, answer.current))
-      + askPunkyPlanItem('Thesis invalid if', (answer.direction === 'LONG' ? 'Below ' : 'Above ') + askPunkyPrice(answer.invalidation, answer.current))
-      + askPunkyPlanItem('Reward / risk', Number(answer.rr).toFixed(2) + 'x')
+      + askPunkyPlanItem('Price now', askPunkyPrice(answer.current, answer.current))
+      + askPunkyPlanItem(answer.direction === 'LONG' ? 'Buy only above' : 'Short only below', askPunkyPrice(answer.entry, answer.current))
+      + askPunkyPlanItem('First profit level', askPunkyPrice(answer.target, answer.current))
+      + askPunkyPlanItem('Leave the idea if', (answer.direction === 'LONG' ? 'Below ' : 'Above ') + askPunkyPrice(answer.invalidation, answer.current))
+      + askPunkyPlanItem('Potential gain vs loss', Number(answer.rr).toFixed(2) + 'x')
     + '</div>'
     + '<div><div class="ask-punky-section-title">Why</div><ol class="ask-punky-why">' + answer.why.map((line) => '<li>' + esc(line) + '</li>').join('') + '</ol></div>'
     + '<div class="ask-punky-chart">'
@@ -7365,10 +7435,10 @@ function renderTerminalWatchlist(board) {
     const ticker = String(item.coin || '').trim().toUpperCase();
     const thesisDirection = terminalThesisDirection(item);
     const action = terminalDeskAction(item);
-    const actionClass = terminalActionClass(action);
+    const actionClass = terminalActionClass(action === 'WAIT' ? thesisDirection : action);
     return '<button type="button" class="terminal-watch-row' + (ticker === terminalSelectedTicker ? ' active' : '') + '" data-terminal-ticker="' + esc(ticker) + '" aria-pressed="' + String(ticker === terminalSelectedTicker) + '">'
-      + '<div class="terminal-watch-top"><span class="terminal-watch-symbol">' + esc(ticker) + '</span><span class="terminal-watch-direction ' + actionClass + '">' + esc(action) + '</span></div>'
-      + '<div class="terminal-watch-meta"><span>' + esc(thesisDirection ? thesisDirection + ' thesis' : 'No directional thesis') + '</span><span>' + esc(terminalDeskState(item)) + '</span></div>'
+      + '<div class="terminal-watch-top"><span class="terminal-watch-symbol">' + esc(ticker) + '</span><span class="terminal-watch-direction ' + actionClass + '">' + esc(simpleActionText(item)) + '</span></div>'
+      + '<div class="terminal-watch-meta"><span>' + esc(simpleTargetText(item, 48)) + '</span><span>' + esc(terminalDeskState(item)) + '</span></div>'
     + '</button>';
   }).join('');
 }
@@ -7392,18 +7462,19 @@ function renderTerminalFocus(board) {
   if (dockInput && !String(dockInput.value || '').trim()) dockInput.value = 'Should I take ' + ticker + '?';
   const thesisDirection = terminalThesisDirection(item);
   const action = terminalDeskAction(item);
-  const actionBias = action === 'LONG' ? 'bullish' : action === 'SHORT' ? 'bearish' : 'neutral';
+  const visibleDirection = action === 'WAIT' ? thesisDirection : action;
+  const actionBias = visibleDirection === 'LONG' ? 'bullish' : visibleDirection === 'SHORT' ? 'bearish' : 'neutral';
   const deskReason = String(item.desk_reason || item.execution_note || 'No order is allowed yet.');
   const thesis = whyLeadText(item, 260) || simpleThesisText(item, 260);
   body.innerHTML = '<div class="terminal-focus-top">'
       + '<div><div class="section-kicker">Selected ' + (terminalAssetLane === 'coin' ? 'coin' : 'stock') + '</div><div class="terminal-focus-symbol">' + esc(ticker) + '</div></div>'
-      + '<div class="terminal-focus-actions"><span class="' + biasClass(actionBias) + '">' + esc(action) + (thesisDirection ? ' • ' + esc(thesisDirection) + ' THESIS' : '') + '</span><button class="terminal-analyse-btn" type="button" data-terminal-analyse="' + esc(ticker) + '">Recheck</button></div>'
+      + '<div class="terminal-focus-actions"><span class="' + biasClass(actionBias) + '">' + esc(simpleActionText(item)) + '</span><button class="terminal-analyse-btn" type="button" data-terminal-analyse="' + esc(ticker) + '">Recheck</button></div>'
     + '</div>'
     + '<div class="terminal-focus-thesis">' + esc(thesis || 'The thesis is still forming; no capital should move until the evidence improves.') + '</div>'
     + '<div class="terminal-focus-grid">'
-      + '<div class="terminal-focus-field"><span class="terminal-focus-label">Agent action</span><div class="terminal-focus-value ' + (action === 'WAIT' ? 'wait' : '') + '">' + esc(action + ' • ' + terminalDeskState(item) + '. ' + deskReason) + '</div></div>'
-      + '<div class="terminal-focus-field"><span class="terminal-focus-label">Trade changes when</span><div class="terminal-focus-value">' + esc(simpleNextText(item, 150)) + '</div></div>'
-      + '<div class="terminal-focus-field"><span class="terminal-focus-label">Thesis invalid if</span><div class="terminal-focus-value risk">' + esc(simpleInvalidationText(item, 150)) + '</div></div>'
+      + '<div class="terminal-focus-field"><span class="terminal-focus-label">When to enter</span><div class="terminal-focus-value">' + esc(simpleNextText(item, 150)) + '</div></div>'
+      + '<div class="terminal-focus-field"><span class="terminal-focus-label">First profit level</span><div class="terminal-focus-value green">' + esc(simpleTargetText(item, 150)) + '</div></div>'
+      + '<div class="terminal-focus-field"><span class="terminal-focus-label">When to leave</span><div class="terminal-focus-value risk">' + esc(simpleInvalidationText(item, 150)) + '</div></div>'
     + '</div>';
 }
 
@@ -7445,10 +7516,10 @@ function renderPunkyDock() {
     + '<div class="terminal-dock-alignment">THESIS ' + esc(answer.direction) + ' • LIVE CHART ' + esc(answer.chartDirection || answer.direction) + '</div>'
     + '<div class="terminal-dock-summary">' + esc(answer.summary) + '</div>'
     + '<div class="terminal-dock-plan">'
-      + '<div><span>Entry</span><strong>' + esc(askPunkyPrice(answer.entry, answer.current)) + '</strong></div>'
-      + '<div><span>Target</span><strong class="green">' + esc(askPunkyPrice(answer.target, answer.current)) + '</strong></div>'
-      + '<div><span>Invalid if</span><strong class="risk">' + esc(invalidation) + '</strong></div>'
-      + '<div><span>Reward / risk</span><strong>' + esc(Number(answer.rr).toFixed(2)) + 'x</strong></div>'
+      + '<div><span>' + (answer.direction === 'LONG' ? 'Buy only above' : 'Short only below') + '</span><strong>' + esc(askPunkyPrice(answer.entry, answer.current)) + '</strong></div>'
+      + '<div><span>First profit level</span><strong class="green">' + esc(askPunkyPrice(answer.target, answer.current)) + '</strong></div>'
+      + '<div><span>Leave the idea if</span><strong class="risk">' + esc(invalidation) + '</strong></div>'
+      + '<div><span>Potential gain vs loss</span><strong>' + esc(Number(answer.rr).toFixed(2)) + 'x</strong></div>'
     + '</div>'
     + '<button class="terminal-dock-full" type="button" onclick="openPunkyFullAnalysis()">Open chart &amp; evidence</button>';
 }
@@ -7529,7 +7600,10 @@ function priorityDirectionChipHtml(item) {
   const action = terminalDeskAction(item);
   if (action === 'LONG') return '<span class="' + biasClass('bullish') + '">LONG</span>';
   if (action === 'SHORT') return '<span class="' + biasClass('bearish') + '">SHORT</span>';
-  return '<span class="' + biasClass('neutral') + '">WAIT</span>';
+  const thesis = terminalThesisDirection(item);
+  if (thesis === 'LONG') return '<span class="' + biasClass('bullish') + '">LONG SETUP</span>';
+  if (thesis === 'SHORT') return '<span class="' + biasClass('bearish') + '">SHORT SETUP</span>';
+  return '<span class="' + biasClass('neutral') + '">NO TRADE</span>';
 }
 
 function renderPrioritySetups(board) {
@@ -7586,8 +7660,9 @@ function renderPrioritySetups(board) {
         + '<div class="priority-field-value" style="margin-top:6px;">' + esc(simpleActionText(item)) + ' • ' + esc(terminalDeskState(item)) + '</div>'
         + '<div class="priority-setup-actions"><span class="muted">' + esc(confidenceText) + '</span><button type="button" class="priority-ask" onclick="askPunkyPrompt(\'Should I take ' + esc(item.coin) + '?\')">ASK PUNKY</button></div>'
       + '</div>'
-      + '<div><span class="priority-field-label">Decision reason</span><div class="priority-field-value">' + esc(shortText(deskReason, 140)) + '</div></div>'
-      + '<div><span class="priority-field-label">Invalid if</span><div class="priority-field-value priority-risk">' + esc(simpleInvalidationText(item, 110)) + '</div></div>'
+      + '<div><span class="priority-field-label">When to enter</span><div class="priority-field-value">' + esc(simpleNextText(item, 140)) + '</div></div>'
+      + '<div><span class="priority-field-label">First profit level</span><div class="priority-field-value">' + esc(simpleTargetText(item, 110)) + '</div></div>'
+      + '<div><span class="priority-field-label">When to leave</span><div class="priority-field-value priority-risk">' + esc(simpleInvalidationText(item, 110)) + '</div></div>'
       + '<div><span class="priority-field-label">Why it matters</span><div class="priority-field-value">' + esc(simpleThesisText(item, 150)) + '</div></div>'
     + '</div>';
   }).join('') + '</div>';
@@ -8057,7 +8132,7 @@ function renderActionBoard(board) {
     : '';
   html += '<div class="asset-bucket-note">' + esc('Calls are grouped by direction. Top executable setups are below.' + categoryNote) + '</div>';
   if (visibleLead) {
-    html += '<div class="lead-callout"><strong>Lead:</strong> ' + esc(visibleLead.coin + ' - ' + simpleNextText(visibleLead, 88)) + '<br><strong>Inval:</strong> ' + esc(simpleInvalidationText(visibleLead, 92)) + '<br><strong>Why:</strong> ' + esc(simpleThesisText(visibleLead, 92)) + '</div>';
+    html += '<div class="lead-callout"><strong>Lead:</strong> ' + esc(visibleLead.coin + ' - ' + simpleActionText(visibleLead)) + '<br><strong>Entry:</strong> ' + esc(simpleNextText(visibleLead, 92)) + '<br><strong>Profit:</strong> ' + esc(simpleTargetText(visibleLead, 92)) + '<br><strong>Leave:</strong> ' + esc(simpleInvalidationText(visibleLead, 92)) + '</div>';
   }
   html += '<div class="decision-board asset-section-stack">';
   if (visibleTradableItems.length) {
@@ -8082,13 +8157,14 @@ function renderActionBoard(board) {
             + '<div class="token-line"><div class="decision-coin">' + esc(item.coin) + '</div><span class="signal-mode-tradable">' + esc(item.mode_badge || 'LIVE') + '</span>' + stanceChip + probabilityChipHtml(item) + eventChipHtml(item) + categoryBadge + (status === 'PENDING_ENTRY' ? '<span class="review-chip">ORDER LIVE</span>' : '') + '</div>'
             + '<div class="token-subline token-subline-simple">' + esc(simpleThesisText(item, 88)) + '</div>'
           + '</div>'
-          + '<div class="decision-summary-side"><div class="token-preview">' + esc(simpleNextText(item, 76)) + '<br>' + esc(simpleInvalidationText(item, 68)) + '</div><span class="token-chevron">⌄</span></div>'
+          + '<div class="decision-summary-side"><div class="token-preview">' + esc(simpleActionText(item)) + '<br>' + esc(simpleTargetText(item, 68)) + '</div><span class="token-chevron">⌄</span></div>'
         + '</summary>'
         + '<div class="decision-body">'
           + '<div class="token-detail-grid">'
-            + '<div class="token-detail"><span class="token-detail-label">Now</span><div class="token-detail-value">' + esc(simpleActionText(item)) + '</div></div>'
-            + '<div class="token-detail"><span class="token-detail-label">Next</span><div class="token-detail-value">' + esc(simpleNextText(item, 96)) + '</div></div>'
-            + '<div class="token-detail"><span class="token-detail-label">Invalid if</span><div class="token-detail-value">' + esc(simpleInvalidationText(item, 92)) + '</div></div>'
+            + '<div class="token-detail"><span class="token-detail-label">Direction</span><div class="token-detail-value">' + esc(simpleActionText(item)) + '</div></div>'
+            + '<div class="token-detail"><span class="token-detail-label">When to enter</span><div class="token-detail-value">' + esc(simpleNextText(item, 96)) + '</div></div>'
+            + '<div class="token-detail"><span class="token-detail-label">First profit level</span><div class="token-detail-value">' + esc(simpleTargetText(item, 92)) + '</div></div>'
+            + '<div class="token-detail"><span class="token-detail-label">When to leave</span><div class="token-detail-value">' + esc(simpleInvalidationText(item, 92)) + '</div></div>'
             + '<div class="token-detail"><span class="token-detail-label">Why</span><div class="token-detail-value">' + esc(simpleThesisText(item, 96)) + '</div></div>'
             + (item.micro_desk_verdict ? '<div class="token-detail"><span class="token-detail-label">Desk</span><div class="token-detail-value">' + esc(String(item.micro_desk_verdict) + ' • ' + shortText(item.micro_desk_summary || '', 110)) + '</div></div>' : '')
           + '</div>'

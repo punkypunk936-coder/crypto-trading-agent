@@ -659,6 +659,145 @@ def _invalidation_text(
     return ""
 
 
+def _plain_trade_plan(
+    *,
+    status: str,
+    direction: str,
+    current_price: float = 0.0,
+    entry_price: float | None = None,
+    stop_price: float | None = None,
+    target_price: float | None = None,
+    supports: Any = None,
+    resistances: Any = None,
+) -> dict[str, Any]:
+    """Build one visitor-facing plan without changing the execution decision."""
+    status_upper = str(status or "").upper()
+    direction_upper = str(direction or "").upper()
+    current = _safe_float(current_price)
+    if status_upper == "STALE_REVIEW":
+        return {
+            "direction": "",
+            "headline": "FRESH CHECK NEEDED",
+            "summary": "These levels are old. Run a fresh check before considering a trade.",
+            "entry_text": "Run a fresh check before considering an entry.",
+            "target_text": "A fresh profit level is still needed.",
+            "invalidation_text": "A fresh exit level is still needed.",
+            "current": round(current, 6) if current else 0.0,
+            "entry": 0.0,
+            "target": 0.0,
+            "invalidation": 0.0,
+            "reward_risk": 0.0,
+        }
+    if direction_upper not in {"LONG", "SHORT"}:
+        return {
+            "direction": "",
+            "headline": "NO TRADE YET",
+            "summary": "There is no clear buy or short setup yet.",
+            "entry_text": "No entry level is ready yet.",
+            "target_text": "No profit level is ready yet.",
+            "invalidation_text": "No exit level is ready yet.",
+            "current": round(current, 6) if current else 0.0,
+            "entry": 0.0,
+            "target": 0.0,
+            "invalidation": 0.0,
+            "reward_risk": 0.0,
+        }
+
+    entry = _safe_float(entry_price) or current
+    if entry <= 0:
+        return {
+            "direction": direction_upper,
+            "headline": f"{direction_upper} LEVEL FORMING",
+            "summary": "The direction is clear, but a trustworthy entry level is not ready yet.",
+            "entry_text": "A trustworthy entry level is still forming.",
+            "target_text": "The first profit level is still forming.",
+            "invalidation_text": "The exit level is still forming.",
+            "current": round(current, 6) if current else 0.0,
+            "entry": 0.0,
+            "target": 0.0,
+            "invalidation": 0.0,
+            "reward_risk": 0.0,
+        }
+
+    support_levels = sorted({
+        _safe_float(value)
+        for value in list(supports or [])
+        if _safe_float(value) > 0
+    })
+    resistance_levels = sorted({
+        _safe_float(value)
+        for value in list(resistances or [])
+        if _safe_float(value) > 0
+    })
+    stop = _safe_float(stop_price)
+    target = _safe_float(target_price)
+
+    if direction_upper == "LONG":
+        if stop <= 0 or stop >= entry:
+            valid_stops = [level for level in support_levels if level < entry]
+            stop = max(valid_stops) if valid_stops else entry * 0.99
+        if target <= entry:
+            valid_targets = [level for level in resistance_levels if level > entry]
+            target = min(valid_targets) if valid_targets else 0.0
+        if target <= entry:
+            target = entry + (2.0 * max(entry - stop, entry * 0.005))
+    else:
+        if stop <= entry:
+            valid_stops = [level for level in resistance_levels if level > entry]
+            stop = min(valid_stops) if valid_stops else entry * 1.01
+        if target <= 0 or target >= entry:
+            valid_targets = [level for level in support_levels if level < entry]
+            target = max(valid_targets) if valid_targets else 0.0
+        if target <= 0 or target >= entry:
+            target = entry - (2.0 * max(stop - entry, entry * 0.005))
+
+    risk_distance = abs(entry - stop)
+    reward_distance = abs(target - entry)
+    reward_risk = reward_distance / risk_distance if risk_distance > 0 else 0.0
+    entry_display = f"${entry:,.2f}"
+    target_display = f"${target:,.2f}"
+    stop_display = f"${stop:,.2f}"
+    is_open = status_upper.startswith("OPEN_")
+    is_working = status_upper == "PENDING_ENTRY"
+
+    if is_open:
+        headline = f"{direction_upper} OPEN"
+        entry_text = (
+            f"The long position opened near {entry_display}."
+            if direction_upper == "LONG"
+            else f"The short position opened near {entry_display}."
+        )
+    elif is_working:
+        headline = f"{'BUY' if direction_upper == 'LONG' else 'SHORT'} ORDER AT {entry_display}"
+        entry_text = f"The {'buy' if direction_upper == 'LONG' else 'short'} order is waiting at {entry_display}."
+    elif direction_upper == "LONG":
+        headline = f"BUY ABOVE {entry_display}"
+        entry_text = f"Consider buying only after price reaches and stays above {entry_display}."
+    else:
+        headline = f"SHORT BELOW {entry_display}"
+        entry_text = f"Consider shorting only after price falls and stays below {entry_display}."
+
+    target_text = f"First price to consider taking profit: {target_display}."
+    invalidation_text = (
+        f"Leave the long idea if price falls below {stop_display}."
+        if direction_upper == "LONG"
+        else f"Leave the short idea if price rises above {stop_display}."
+    )
+    return {
+        "direction": direction_upper,
+        "headline": headline,
+        "summary": " ".join((entry_text, target_text, invalidation_text)),
+        "entry_text": entry_text,
+        "target_text": target_text,
+        "invalidation_text": invalidation_text,
+        "current": round(current, 6) if current else 0.0,
+        "entry": round(entry, 6),
+        "target": round(target, 6),
+        "invalidation": round(stop, 6),
+        "reward_risk": round(reward_risk, 3),
+    }
+
+
 def _clip_text(text: Any, limit: int = 120) -> str:
     cleaned = " ".join(str(text or "").split())
     if len(cleaned) <= limit:
@@ -1816,6 +1955,7 @@ def action_board(
         entry_status = ""
         trade_plan = dict(sig.get("trade_plan") or {})
         planned_stop = _safe_float(sig.get("planned_stop_loss") or trade_plan.get("stop_loss"))
+        planned_target = _safe_float(sig.get("planned_take_profit") or trade_plan.get("take_profit"))
         first_principles_view = dict(sig.get("first_principles") or {})
         first_principles_thesis = str(
             first_principles_view.get("plain_thesis")
@@ -2123,6 +2263,33 @@ def action_board(
             desk_action = "WAIT"
             desk_state = "WAITING"
             desk_reason = recorded_execution_reason or execution_note or "No order is allowed yet."
+        if pos:
+            plain_entry = _safe_float(pos.get("entry_price"))
+            plain_target = _safe_float(pos.get("take_profit")) or planned_target
+        elif status == "PENDING_ENTRY":
+            plain_entry = _safe_float(
+                trade_plan.get("entry_price")
+                or trade_plan.get("entry")
+                or sig.get("limit_price")
+                or sig.get("price")
+            )
+            plain_target = planned_target
+        else:
+            plain_entry = long_trigger if thesis_direction == "LONG" else short_trigger
+            plain_target = planned_target
+        plain_plan = _plain_trade_plan(
+            status=status,
+            direction=thesis_direction,
+            current_price=live_anchor,
+            entry_price=plain_entry,
+            stop_price=stop_for_invalidation,
+            target_price=plain_target,
+            supports=list(map_entry.get("supports") or []) + ([support] if support else []),
+            resistances=list(map_entry.get("resistances") or []) + ([resistance] if resistance else []),
+        )
+        if plain_plan.get("direction") and status not in {"OPEN_LONG", "OPEN_SHORT", "PENDING_ENTRY"}:
+            label = str(plain_plan.get("headline") or label)
+            next_setup_reason = str(plain_plan.get("entry_text") or next_setup_reason)
         catalyst_rail = _build_catalyst_rail(sig)
         conviction_entry = dict(sig.get("conviction_entry") or {})
         conviction_entry_active = bool(
@@ -2213,6 +2380,8 @@ def action_board(
                 "invalidation": invalidation,
                 "invalidation_short": invalidation,
                 "planned_stop_loss": round(stop_for_invalidation, 6) if stop_for_invalidation else 0.0,
+                "planned_take_profit": round(planned_target, 6) if planned_target else 0.0,
+                "plain_plan": plain_plan,
                 "map_summary": map_summary,
                 "friction_stack": friction_stack,
                 "catalyst_rail": catalyst_rail,
