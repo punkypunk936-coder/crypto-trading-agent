@@ -3626,7 +3626,7 @@ def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> N
     assert "Global trade posture" in template
     assert "Agent Decisions" in template
     assert "Best Trades" not in template
-    assert "Fresh capital decision" in template
+    assert "Fresh paper-capital decision" in template
     assert "renderDecisionSurface" in template
     assert "renderPrioritySetups" in template
     assert "renderDecisionJournal" in template
@@ -3636,7 +3636,17 @@ def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> N
     assert "Price source:" not in template
     assert "Research &amp; Review" not in template
     assert "Realized P&amp;L" in template
-    assert "Decision Journal" in template
+    assert ">Overview</button>" in template
+    assert ">Market Research</button>" in template
+    assert ">Track Record</button>" in template
+    assert "Track Record &amp; Learning" in template
+    assert "AI Infrastructure Leadership" in template
+    assert "scrollTerminalSection('decision-journal', this)" in template
+    assert "if (target.tagName === 'DETAILS') target.open = true" in template
+    assert "const PUBLIC_VISITOR_MODE = !LOCAL_OPERATOR_MODE" in template
+    assert "document.body.classList.add('visitor-mode')" in template
+    assert "body.visitor-mode .closed-trades-section" in template
+    assert "PAPER MODE" in template
     assert "Open Risk" in template
     assert 'id="share-link"' not in template
     assert 'id="kill-btn" onclick="handleKill()" hidden' in template

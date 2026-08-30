@@ -3509,6 +3509,50 @@
     background: var(--green);
     box-shadow: 0 0 8px rgba(0, 230, 138, 0.42);
   }
+  .visitor-context {
+    display: none;
+    grid-template-columns: minmax(0, 1.3fr) minmax(320px, 1fr);
+    align-items: center;
+    gap: 24px;
+    padding: 13px 16px;
+    border-bottom: 1px solid rgba(235, 237, 229, 0.10);
+    background: rgba(91, 140, 255, 0.045);
+  }
+  body.visitor-mode .visitor-context { display: grid; }
+  .visitor-context strong {
+    display: block;
+    margin-top: 3px;
+    color: var(--text);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .visitor-flow {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1px;
+    overflow: hidden;
+    border: 1px solid rgba(235, 237, 229, 0.09);
+    border-radius: 5px;
+    background: rgba(235, 237, 229, 0.09);
+  }
+  .visitor-flow span {
+    min-width: 0;
+    padding: 8px 7px;
+    background: rgba(10, 12, 11, 0.96);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 8px;
+    font-weight: 800;
+    text-align: center;
+    text-transform: uppercase;
+  }
+  .nav-target { scroll-margin-top: 14px; }
+  .section-flash { animation: sectionFlash 1.2s ease-out; }
+  @keyframes sectionFlash {
+    0% { box-shadow: 0 0 0 1px rgba(91, 140, 255, 0.85), 0 0 24px rgba(91, 140, 255, 0.16); }
+    100% { box-shadow: none; }
+  }
+  body.visitor-mode .closed-trades-section { display: none; }
   .terminal-grid {
     display: grid;
     grid-template-columns: 190px minmax(0, 1fr) 300px;
@@ -4009,6 +4053,8 @@
       padding: 8px;
     }
     .terminal-nav-tabs { overflow-x: auto; }
+    .visitor-context { grid-template-columns: 1fr; gap: 10px; }
+    .visitor-flow { grid-template-columns: 1fr 1fr; }
     .terminal-status { display: none; }
     .terminal-grid { display: block; }
     .terminal-watchlist { border-right: 0; border-bottom: 1px solid rgba(235, 237, 229, 0.10); }
@@ -4091,17 +4137,30 @@
   </div>
 </div>
 
-<section class="terminal-shell" id="terminal-desk" aria-label="Punky trading desk">
+<section class="terminal-shell nav-target" id="terminal-desk" aria-label="Punky trading desk">
   <nav class="terminal-nav" aria-label="Trading desk navigation">
     <div class="terminal-nav-tabs">
-      <button class="terminal-nav-tab active" type="button" onclick="scrollTerminalSection('terminal-desk')">Today</button>
-      <button class="terminal-nav-tab" type="button" onclick="scrollTerminalSection('open-trades-card')">Positions</button>
-      <button class="terminal-nav-tab" type="button" onclick="scrollTerminalSection('ai-infrastructure-card')">Research</button>
-      <button class="terminal-nav-tab" type="button" onclick="scrollTerminalSection('decision-journal')">Journal</button>
+      <button class="terminal-nav-tab active" data-nav-target="terminal-desk" type="button" onclick="scrollTerminalSection('terminal-desk', this)">Overview</button>
+      <button class="terminal-nav-tab" data-nav-target="open-trades-card" type="button" onclick="scrollTerminalSection('open-trades-card', this)">Positions</button>
+      <button class="terminal-nav-tab" data-nav-target="ai-infrastructure-card" type="button" onclick="scrollTerminalSection('ai-infrastructure-card', this)">Market Research</button>
+      <button class="terminal-nav-tab" data-nav-target="decision-journal" type="button" onclick="scrollTerminalSection('decision-journal', this)">Track Record</button>
     </div>
     <button class="terminal-command-trigger" type="button" onclick="focusPunkyDock()">⌕ Ask about a ticker, setup, or risk...</button>
     <div class="terminal-status"><span class="terminal-status-dot"></span><span id="terminal-execution-status">Paper execution active</span></div>
   </nav>
+
+  <div class="visitor-context" aria-label="What Punky does">
+    <div>
+      <div class="section-kicker">AI research with paper execution</div>
+      <strong>Punky turns live market evidence into one capital decision: LONG, SHORT, or WAIT. A directional thesis is not a trade until every risk gate clears.</strong>
+    </div>
+    <div class="visitor-flow" aria-label="Agent decision loop">
+      <span>Scan markets</span>
+      <span>Build thesis</span>
+      <span>Paper trade</span>
+      <span>Learn</span>
+    </div>
+  </div>
 
   <div class="terminal-grid">
     <aside class="terminal-watchlist" aria-label="Opportunity tape">
@@ -4178,7 +4237,7 @@
   <section class="priority-section" id="priority-setups-card">
     <div class="primary-section-head">
       <div>
-        <div class="section-kicker">Fresh capital decision</div>
+        <div class="section-kicker">Fresh paper-capital decision</div>
         <h2>Agent Decisions</h2>
       </div>
       <div class="primary-section-note" id="priority-setups-meta">The agent compares every mature setup before funding one winner.</div>
@@ -4216,10 +4275,10 @@
 
 <!-- OPEN TRADES -->
 <div class="full-width">
-  <div class="card card-highlight" id="open-trades-card">
+  <div class="card card-highlight nav-target" id="open-trades-card">
     <div class="primary-section-head">
       <div>
-        <div class="section-kicker">Current exposure</div>
+        <div class="section-kicker">Paper portfolio</div>
         <h2>Open Positions <span id="open-count" class="open-count" style="display:none;">0</span></h2>
       </div>
       <div class="primary-section-note"><span class="pulse" id="pulse-dot"></span> Thesis, invalidation, objective, and the next decision.</div>
@@ -4234,11 +4293,11 @@
 </div>
 
 <!-- AI INFRASTRUCTURE TAPE -->
-<section class="ai-tape-section" id="ai-infrastructure-card" aria-labelledby="ai-tape-title">
+<section class="ai-tape-section nav-target" id="ai-infrastructure-card" aria-labelledby="ai-tape-title">
   <div class="ai-tape-head">
     <div>
-      <div class="section-kicker">Sector leadership</div>
-      <h2 class="ai-tape-title" id="ai-tape-title">AI Infrastructure</h2>
+      <div class="section-kicker">Market research</div>
+      <h2 class="ai-tape-title" id="ai-tape-title">AI Infrastructure Leadership</h2>
     </div>
     <div class="ai-tape-status">
       <div class="ai-tape-status-line">
@@ -4264,13 +4323,13 @@
 <!-- TRACK RECORD -->
 <section class="account-strip" id="kpis" aria-label="Account and execution summary">
   <div class="account-metric">
-    <div class="card-label">Capital</div>
+    <div class="card-label">Paper Equity</div>
     <div class="account-value" id="portfolio">$--</div>
     <div class="card-sub" id="available">Available: --</div>
   </div>
   <div class="account-metric">
     <div class="card-label-row">
-      <div class="card-label">Realized P&amp;L</div>
+      <div class="card-label">Paper Realized P&amp;L</div>
       <button type="button" class="pnl-explain-button" data-pnl-explain="summary" title="Explain total realized PnL">Why?</button>
     </div>
     <div class="account-value" id="total-pnl">$--</div>
@@ -4289,8 +4348,8 @@
 </section>
 
 <div class="full-width">
-  <details class="workspace-section" id="decision-journal">
-    <summary><span>Decision Journal</span><span class="workspace-meta" id="review-meta">Outcomes, mistakes, and the next improvement</span></summary>
+  <details class="workspace-section nav-target" id="decision-journal">
+    <summary><span>Track Record &amp; Learning</span><span class="workspace-meta" id="review-meta">Outcomes, mistakes, and what the agent changes next</span></summary>
     <div class="decision-journal-stats" id="stats-body">
       <div class="decision-journal-stat"><span class="stat-label">Best trade</span><strong id="stat-best">--</strong></div>
       <div class="decision-journal-stat"><span class="stat-label">Worst trade</span><strong id="stat-worst">--</strong></div>
@@ -5319,8 +5378,13 @@ const REFRESH_MAX_MS = 60000;
 const REFRESH_TIMEOUT_MS = 8000;
 const STATIC_REFRESH_TIMEOUT_MS = 30000;
 const STATIC_GITHUB_PAGES_MODE = /\.github\.io$/i.test(window.location.hostname || '');
+const LOCAL_OPERATOR_MODE = /^(localhost|127\.0\.0\.1|0\.0\.0\.0)$/i.test(window.location.hostname || '');
+const PUBLIC_VISITOR_MODE = !LOCAL_OPERATOR_MODE;
 const STATIC_STATE_FALLBACK_URL = 'https://raw.githubusercontent.com/punkypunk936-coder/crypto-trading-agent/codex/dashboard-state/dashboard/dashboard_snapshot.json';
 
+if (PUBLIC_VISITOR_MODE) {
+  document.body.classList.add('visitor-mode');
+}
 if (STATIC_GITHUB_PAGES_MODE) {
   const shareLink = document.getElementById('share-link');
   if (shareLink) shareLink.href = './share.html';
@@ -7106,9 +7170,39 @@ function openPunkyFullAnalysis() {
   openCommandSearch(commandSearchQuery || (terminalSelectedTicker ? 'Should I take ' + terminalSelectedTicker + '?' : ''));
 }
 
-function scrollTerminalSection(id) {
+function setActiveTerminalNav(id, trigger=null) {
+  document.querySelectorAll('.terminal-nav-tab').forEach((button) => {
+    const active = button === trigger || String(button.dataset.navTarget || '') === String(id || '');
+    button.classList.toggle('active', active);
+    if (active) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
+  });
+}
+
+function scrollTerminalSection(id, trigger=null) {
   const target = document.getElementById(id);
-  if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (!target) return;
+  if (target.tagName === 'DETAILS') target.open = true;
+  setActiveTerminalNav(id, trigger);
+  target.classList.remove('section-flash');
+  void target.offsetWidth;
+  target.classList.add('section-flash');
+  requestAnimationFrame(() => target.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  window.setTimeout(() => target.classList.remove('section-flash'), 1300);
+}
+
+function initTerminalNavTracking() {
+  if (!('IntersectionObserver' in window)) return;
+  const targets = ['terminal-desk', 'open-trades-card', 'ai-infrastructure-card', 'decision-journal']
+    .map((id) => document.getElementById(id))
+    .filter(Boolean);
+  const observer = new IntersectionObserver((entries) => {
+    const visible = entries
+      .filter((entry) => entry.isIntersecting)
+      .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+    if (visible) setActiveTerminalNav(visible.target.id);
+  }, { rootMargin: '-12% 0px -68% 0px', threshold: [0.01, 0.2, 0.5] });
+  targets.forEach((target) => observer.observe(target));
 }
 
 function priorityDirectionChipHtml(item) {
@@ -7953,13 +8047,14 @@ async function refresh() {
       compactUpdateText += ' • STALE';
     }
     if (runtime.hosted_static_fallback) {
-      updateText += ' • HOSTED MIRROR';
+      updateText += ' • PUBLIC VIEW';
+      compactUpdateText += ' • PUBLIC';
     }
     if (runtime.dashboard_state_source) {
       updateText += ' • source ' + String(runtime.dashboard_state_source).replaceAll('_', ' ');
     }
     const power = (s && s.power) || {};
-    if (power.available) {
+    if (power.available && !PUBLIC_VISITOR_MODE) {
       const source = power.source || (power.on_ac_power ? 'AC' : 'Battery');
       const battery = power.battery_pct != null ? ` ${power.battery_pct}%` : '';
       updateText += ` • ${source}${battery}`;
@@ -7972,7 +8067,7 @@ async function refresh() {
     if (s.status === 'offline') {
       badge.className = 'badge badge-offline'; badge.textContent = 'OFFLINE';
     } else if (s.mode === 'dry_run') {
-      badge.className = 'badge badge-dry'; badge.textContent = 'DRY RUN';
+      badge.className = 'badge badge-dry'; badge.textContent = PUBLIC_VISITOR_MODE ? 'PAPER MODE' : 'DRY RUN';
     } else {
       badge.className = 'badge badge-live'; badge.textContent = 'LIVE';
     }
@@ -8214,6 +8309,7 @@ function handleKill() {
   });
 }
 
+initTerminalNavTracking();
 refresh();
 if (!STATIC_GITHUB_PAGES_MODE) {
   setTimeout(() => askPunkySyncForecasts(PunkyConfidence.load()), 1200);
