@@ -3624,7 +3624,8 @@ def test_hosted_dashboard_bundle_matches_local_template() -> None:
 def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> None:
     template = Path("dashboard/templates/dashboard.html").read_text()
     assert "Global trade posture" in template
-    assert "Best Trades" in template
+    assert "Agent Decisions" in template
+    assert "Best Trades" not in template
     assert "Fresh capital decision" in template
     assert "renderDecisionSurface" in template
     assert "renderPrioritySetups" in template
@@ -3645,8 +3646,8 @@ def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> N
     assert "next_setup_reason" in template
     assert "setupStanceChipHtml" in template
     assert "renderCallWatchlist" in template
-    assert "BULLISH CALL" in template
-    assert "BEARISH CALL" in template
+    assert "LONG THESIS" in template
+    assert "SHORT THESIS" in template
     assert "Only the next level is shown" in template
     assert "simpleNextText" in template
     assert "Opened because:" in template
@@ -3671,6 +3672,9 @@ def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> N
     assert "renderTerminalWorkspace" in template
     assert "runPunkyDock" in template
     assert "openPunkyFullAnalysis" in template
+    assert "terminalDeskAction" in template
+    assert "Paper auto-execution active" in template
+    assert "WAIT FOR " in template
     assert "AbortController" in template
     assert "scheduleRefresh(" in template
     assert "setInterval(refresh, 10000);" not in template
@@ -10072,6 +10076,79 @@ def test_dashboard_surfaces_patient_execution_blocker_over_ready_call() -> None:
     assert lead["label"] == "Bullish, entry blocked"
     assert lead["patient_execution_blocked"] is True
     assert "1.25 conflict points" in lead["next_setup_reason"]
+
+
+def test_dashboard_uses_post_gate_wait_as_the_canonical_ticker_action() -> None:
+    snapshot = build_dashboard_snapshot(
+        {
+            "signals": {
+                "MRVL": {
+                    "action": "LONG",
+                    "thesis_candidate_action": "LONG",
+                    "score": 66.3,
+                    "confidence": "HIGH",
+                    "execution_mode": "tradable",
+                    "instrument_type": "equity",
+                    "live_price": 217.28,
+                    "displayed_long_trigger": 218.81,
+                    "analysis_updated_ts": time.time(),
+                    "execution_decision": "WAIT",
+                    "execution_direction": "LONG",
+                    "execution_stage": "mtf_block",
+                    "execution_reason": "The 4H and 12H trends are bearish, so the long stays unfunded.",
+                }
+            },
+            "positions": [],
+            "mode": "dry_run",
+            "config": {
+                "coins": ["MRVL"],
+                "analysis_coins": ["MRVL"],
+                "analysis_signal_max_age_minutes": 20.0,
+            },
+            "cycle_number": 1,
+        },
+        [],
+        market_map={"coins": {"MRVL": {"bias": "NEUTRAL", "supports": [216.98]}}},
+    )
+    lead = snapshot["action_board"]["lead"]
+    assert lead["status"] == "WAIT_EXECUTION"
+    assert lead["desk_action"] == "WAIT"
+    assert lead["desk_state"] == "WAITING"
+    assert lead["thesis_direction"] == "LONG"
+    assert "4H and 12H" in lead["desk_reason"]
+    assert snapshot["action_board"]["execution_loop"]["mode"] == "dry_run"
+
+
+def test_blocked_decision_records_wait_before_optional_dataset_write() -> None:
+    agent = TradingAgent.__new__(TradingAgent)
+    agent.cfg = SimpleNamespace(trading=SimpleNamespace(decision_dataset_enabled=False))
+    agent._last_signals = {
+        "MRVL": {
+            "action": "LONG",
+            "thesis_candidate_action": "LONG",
+            "mtf_reason": "12H and 4H are bearish.",
+        }
+    }
+    signal = SimpleNamespace(
+        action="LONG",
+        reason="Long thesis is forming.",
+        flat_reason="",
+    )
+
+    agent._record_decision_snapshot(
+        "MRVL",
+        portfolio_usd=10_000.0,
+        stage="mtf_block",
+        signal=signal,
+        blocked=True,
+    )
+
+    recorded = agent._last_signals["MRVL"]
+    assert recorded["execution_decision"] == "WAIT"
+    assert recorded["execution_label"] == "WAIT FOR LONG"
+    assert recorded["execution_direction"] == "LONG"
+    assert recorded["execution_reason"] == "12H and 4H are bearish."
+    assert recorded["auto_execution_enabled"] is True
 
 
 def test_first_principles_guard_blocks_marginal_price_only_entry() -> None:

@@ -4149,6 +4149,7 @@ class TradingAgent:
         patient_execution = self._patient_execution_profile(coin, signal)
         self._last_signals.setdefault(coin, {})
         self._last_signals[coin]["patient_execution"] = patient_execution
+        self._last_signals[coin]["patient_execution_summary"] = str(patient_execution.get("summary") or "")
         if not current_pos and not patient_execution.get("permitted", True):
             log.info(
                 f"[{coin}] Patient execution keeps the call unfunded: "
@@ -4253,6 +4254,8 @@ class TradingAgent:
 
         if not order.approved:
             log.info(f"[{coin}] Rejected: {order.rejection_reason}")
+            self._last_signals.setdefault(coin, {})
+            self._last_signals[coin]["risk_rejection_reason"] = str(order.rejection_reason or "")
             self._record_decision_snapshot(
                 coin,
                 portfolio_usd=portfolio_usd,
@@ -4863,6 +4866,85 @@ class TradingAgent:
         blocked: bool = False,
         pending_limit: bool = False,
     ) -> None:
+        live_snapshot = self._last_signals.setdefault(coin, {})
+        signal_action = str(getattr(signal, "action", "") or "").upper()
+        candidate_action = str(
+            live_snapshot.get("thesis_candidate_action")
+            or live_snapshot.get("action")
+            or signal_action
+            or "FLAT"
+        ).upper()
+        execution_direction = next(
+            (
+                direction
+                for direction in (
+                    str(current_position or "").upper(),
+                    signal_action,
+                    candidate_action,
+                )
+                if direction in {"LONG", "SHORT"}
+            ),
+            "",
+        )
+        reason_fields = {
+            "mtf_block": ("mtf_reason",),
+            "data_reliability_block": ("data_reliability_summary",),
+            "patient_execution_block": ("patient_execution_summary",),
+            "micro_desk_block": ("micro_desk_summary",),
+            "execution_coach_skip": ("execution_coach_summary",),
+            "portfolio_correlation_block": ("portfolio_guard_summary",),
+            "risk_rejected": ("risk_rejection_reason",),
+        }
+        reason_candidates = [
+            *(live_snapshot.get(field) for field in reason_fields.get(stage, ())),
+            live_snapshot.get("next_unblock_reason"),
+            live_snapshot.get("patient_execution_blocker"),
+            live_snapshot.get("patient_execution_summary"),
+            live_snapshot.get("micro_desk_summary"),
+            live_snapshot.get("execution_coach_summary"),
+            live_snapshot.get("data_reliability_summary"),
+            live_snapshot.get("best_trade_gate_reason"),
+            live_snapshot.get("risk_rejection_reason"),
+            getattr(signal, "flat_reason", "") if signal is not None else "",
+            getattr(signal, "reason", "") if signal is not None else "",
+            live_snapshot.get("flat_reason"),
+            live_snapshot.get("decision_reason"),
+        ]
+        execution_reason = next(
+            (str(value).strip() for value in reason_candidates if str(value or "").strip()),
+            str(stage or "decision updated").replace("_", " "),
+        )
+        if current_position:
+            execution_action = "HOLD"
+        elif pending_limit:
+            execution_action = "WORKING"
+        elif executed:
+            execution_action = "EXECUTED"
+        elif blocked:
+            execution_action = "WAIT"
+        else:
+            execution_action = "MONITOR"
+        execution_label = execution_action
+        if execution_direction:
+            if execution_action == "WAIT":
+                execution_label = f"WAIT FOR {execution_direction}"
+            elif execution_action == "WORKING":
+                execution_label = f"{execution_direction} ORDER WORKING"
+            else:
+                execution_label = f"{execution_action} {execution_direction}"
+        live_snapshot.update({
+            "execution_decision": execution_action,
+            "execution_label": execution_label,
+            "execution_direction": execution_direction,
+            "execution_reason": execution_reason,
+            "execution_stage": stage,
+            "execution_blocked": bool(blocked),
+            "execution_pending": bool(pending_limit),
+            "execution_executed": bool(executed),
+            "execution_updated_ts": time.time(),
+            "auto_execution_enabled": True,
+        })
+
         if not getattr(self.cfg.trading, "decision_dataset_enabled", True):
             return
 
@@ -8443,6 +8525,8 @@ class TradingAgent:
             admitted, admission_reason = self._best_trade_entry_admission(coin, signal.action)
             if not admitted:
                 log.info(f"[{coin}] Best-trade gate blocked market entry: {admission_reason}")
+                self._last_signals.setdefault(coin, {})
+                self._last_signals[coin]["best_trade_gate_reason"] = str(admission_reason or "")
                 return False
         exchanges = self._eligible_exchanges(coin)
         if not exchanges:
@@ -9177,6 +9261,8 @@ class TradingAgent:
             admitted, admission_reason = self._best_trade_entry_admission(coin, direction)
             if not admitted:
                 log.info(f"[{coin}] Best-trade gate blocked passive entry: {admission_reason}")
+                self._last_signals.setdefault(coin, {})
+                self._last_signals[coin]["best_trade_gate_reason"] = str(admission_reason or "")
                 return {
                     "success": False,
                     "pending": False,
@@ -10212,6 +10298,12 @@ class TradingAgent:
             if coin in self._last_signals:
                 self._last_signals[coin]["mtf_bias"] = mtf.combined_bias or "FLAT"
                 self._last_signals[coin]["mtf_status"] = "ok"
+                self._last_signals[coin]["mtf_reason"] = str(mtf.reason or "")
+                self._last_signals[coin]["mtf_allows_signal"] = bool(
+                    (signal.action == "LONG" and mtf.allow_long)
+                    or (signal.action == "SHORT" and mtf.allow_short)
+                    or signal.action == "FLAT"
+                )
             if signal.action == "LONG" and not mtf.allow_long:
                 log.info(f"[{coin}] 🕐 MTF blocks LONG — {mtf.reason}")
                 return False

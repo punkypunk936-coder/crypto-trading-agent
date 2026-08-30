@@ -3586,7 +3586,7 @@
   }
   .terminal-watch-direction.long { color: var(--green); }
   .terminal-watch-direction.short { color: var(--red); }
-  .terminal-watch-direction.watch { color: var(--muted); }
+  .terminal-watch-direction.wait { color: var(--yellow); }
   .terminal-watch-meta {
     margin-top: 6px;
     color: var(--muted);
@@ -3619,7 +3619,7 @@
   }
   .terminal-focus-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1.25fr 1fr 1fr;
     gap: 18px;
     margin-top: 15px;
   }
@@ -3643,6 +3643,7 @@
     line-height: 1.45;
   }
   .terminal-focus-value.risk { color: var(--red); }
+  .terminal-focus-value.wait { color: var(--yellow); }
   .terminal-analyse-btn,
   .terminal-dock-submit,
   .terminal-dock-full {
@@ -3708,6 +3709,14 @@
   .terminal-dock-decision {
     color: var(--text);
     font-size: 19px;
+    font-weight: 800;
+  }
+  .terminal-dock-decision.wait { color: var(--yellow); }
+  .terminal-dock-alignment {
+    margin-top: 8px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 8px;
     font-weight: 800;
   }
   .terminal-dock-confidence {
@@ -4091,7 +4100,7 @@
       <button class="terminal-nav-tab" type="button" onclick="scrollTerminalSection('decision-journal')">Journal</button>
     </div>
     <button class="terminal-command-trigger" type="button" onclick="focusPunkyDock()">⌕ Ask about a ticker, setup, or risk...</button>
-    <div class="terminal-status"><span class="terminal-status-dot"></span><span>Decision engine live</span></div>
+    <div class="terminal-status"><span class="terminal-status-dot"></span><span id="terminal-execution-status">Paper execution active</span></div>
   </nav>
 
   <div class="terminal-grid">
@@ -4170,7 +4179,7 @@
     <div class="primary-section-head">
       <div>
         <div class="section-kicker">Fresh capital decision</div>
-        <h2>Best Trades</h2>
+        <h2>Agent Decisions</h2>
       </div>
       <div class="primary-section-note" id="priority-setups-meta">The agent compares every mature setup before funding one winner.</div>
     </div>
@@ -4567,13 +4576,13 @@ const reviewBreakdownHtml = (label, values) => {
 };
 const surfaceModeMeta = (value, tradable=false) => {
   const text = String(value || '').trim();
-  if (tradable) return text || 'Executable';
+  if (tradable) return String(((latestState || {}).mode || '')).toLowerCase() === 'live' ? 'Live trading enabled' : 'Paper trading enabled';
   if (!text || text.toLowerCase() === 'support pending') return 'Tracking only';
   return text;
 };
 const surfaceModeBadge = (value, tradable=false) => {
   const text = String(value || '').trim().toUpperCase();
-  if (tradable) return text || 'EXEC';
+  if (tradable) return String(((latestState || {}).mode || '')).toLowerCase() === 'live' ? 'LIVE' : 'PAPER';
   if (!text || text === 'PENDING' || text === 'WATCH') return 'TRACK';
   return text;
 };
@@ -4600,9 +4609,9 @@ const setupStanceTone = (item) => {
 };
 const setupStanceText = (item, mode='chip') => {
   const side = setupCallSide(item);
-  if (side === 'bullish') return mode === 'title' ? 'Bullish call' : 'BULLISH CALL';
-  if (side === 'bearish') return mode === 'title' ? 'Bearish call' : 'BEARISH CALL';
-  return mode === 'title' ? 'Neutral' : 'NEUTRAL';
+  if (side === 'bullish') return mode === 'title' ? 'Long thesis' : 'LONG THESIS';
+  if (side === 'bearish') return mode === 'title' ? 'Short thesis' : 'SHORT THESIS';
+  return mode === 'title' ? 'No directional thesis' : 'NO THESIS';
 };
 const setupStanceChipHtml = (item) => {
   const safe = item || {};
@@ -4685,14 +4694,16 @@ const simpleActionText = (item) => {
   const status = String((item || {}).status || '').toUpperCase();
   if (status === 'OPEN_LONG') return 'Holding long';
   if (status === 'OPEN_SHORT') return 'Holding short';
-  if (status === 'PENDING_ENTRY') return 'Order working';
-  if (status === 'READY_LONG') return 'Ready to buy';
-  if (status === 'READY_SHORT') return 'Ready to short';
-  if (status === 'WATCH_LONG' || status === 'WAIT_RECLAIM') return 'Watching long';
-  if (status === 'WATCH_SHORT' || status === 'WAIT_BREAKDOWN') return 'Watching short';
-  if (['EXECUTION_BLOCKED', 'DATA_QUALITY_HOLD', 'PORTFOLIO_GUARD', 'RISK_BLOCKED'].includes(status)) return 'Blocked';
+  const deskAction = terminalDeskAction(item);
+  const deskState = String((item || {}).desk_state || '').toUpperCase();
+  const thesis = terminalThesisDirection(item);
+  if (status === 'PENDING_ENTRY' || deskState === 'ORDER_WORKING') return thesis ? thesis + ' order working' : 'Order working';
+  if (deskAction === 'LONG') return 'Long active';
+  if (deskAction === 'SHORT') return 'Short active';
+  if (thesis === 'LONG') return 'Wait for long';
+  if (thesis === 'SHORT') return 'Wait for short';
   if (status === 'COOLDOWN') return 'Cooling off';
-  return setupStanceText(item, 'title');
+  return 'Wait';
 };
 const simpleNextText = (item, limit=76) => {
   const safe = item || {};
@@ -6011,7 +6022,17 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
   if (earnings && String(earnings.direction || '').toUpperCase() === 'LONG') score += 0.35;
   if (earnings && String(earnings.direction || '').toUpperCase() === 'SHORT') score -= 0.35;
 
-  const direction = score >= 0 ? 'LONG' : 'SHORT';
+  const chartDirection = score >= 0 ? 'LONG' : 'SHORT';
+  const scheduledStatus = String((item || {}).status || '').toUpperCase();
+  const scheduledAction = String((item || {}).action || '').toUpperCase();
+  const scheduledDirection = terminalThesisDirection(item)
+    || (scheduledStatus.includes('LONG') || scheduledAction === 'LONG'
+      ? 'LONG'
+      : scheduledStatus.includes('SHORT') || scheduledAction === 'SHORT' ? 'SHORT' : '');
+  const scheduledDeskAction = item ? terminalDeskAction(item) : '';
+  const scheduledDeskState = String((item || {}).desk_state || '').toUpperCase();
+  const scheduledDeskReason = String((item || {}).desk_reason || (item || {}).execution_note || '').trim();
+  const direction = scheduledDirection || chartDirection;
   const requestedSide = askPunkyRequestedSide(query);
   const extensionAtr = Math.abs(current - ema20) / Math.max(atr, current * 0.001);
   const eventPhase = String((earnings || {}).phase || '').toUpperCase();
@@ -6054,11 +6075,6 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
     rr,
     assetBucket,
   );
-  const scheduledStatus = String((item || {}).status || '').toUpperCase();
-  const scheduledAction = String((item || {}).action || '').toUpperCase();
-  const scheduledDirection = scheduledStatus.includes('LONG') || scheduledAction === 'LONG'
-    ? 'LONG'
-    : scheduledStatus.includes('SHORT') || scheduledAction === 'SHORT' ? 'SHORT' : '';
   const scheduledProbability = Number(
     (item || {}).probability
     || (Number((item || {}).probability_pct) / 100)
@@ -6089,13 +6105,17 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
   const clearStructure = Math.abs(score) >= 3.15;
   const tooExtended = extensionAtr > 1.75;
   const tradeReady = clearStructure
+    && chartDirection === direction
     && rr >= 1.5
     && !tooExtended
     && !eventGate
     && !limitedHistory
     && candleFresh
     && confidenceModel.decisionSupported;
-  const conflictsWithRequest = tradeReady && requestedSide && requestedSide !== direction;
+  const conflictsWithRequest = Boolean(requestedSide && requestedSide !== direction);
+  const scheduledWait = Boolean(item && scheduledDeskAction === 'WAIT');
+  const scheduledOpen = Boolean(item && scheduledDeskState === 'OPEN');
+  const scheduledWorking = Boolean(item && scheduledDeskState === 'ORDER_WORKING');
 
   let tone = 'wait';
   let decision = 'WAIT';
@@ -6103,7 +6123,20 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
   if (conflictsWithRequest) {
     tone = 'avoid';
     decision = 'AVOID ' + requestedSide;
-    summary = 'No. The live structure currently favors ' + direction.toLowerCase() + ', so the ' + requestedSide.toLowerCase() + ' thesis is fighting price action.';
+    summary = 'No. Punky\'s active thesis is ' + direction.toLowerCase() + ', so the requested ' + requestedSide.toLowerCase() + ' is not part of the current plan.';
+  } else if (scheduledOpen) {
+    tone = 'take';
+    decision = 'HOLD ' + direction;
+    summary = 'The ' + direction.toLowerCase() + ' is already open. Manage the position against the displayed invalidation instead of creating a second opinion.';
+  } else if (scheduledWorking) {
+    decision = direction + ' ORDER WORKING';
+    summary = scheduledDeskReason || 'The paper entry order is already resting. Punky is waiting for a fill, cancel, or reprice.';
+  } else if (scheduledWait) {
+    decision = 'WAIT FOR ' + direction;
+    summary = (scheduledDeskReason || 'The final execution gate has not cleared.')
+      + (chartDirection === direction
+        ? ' The live chart agrees with the thesis, but no order is allowed until the remaining gate clears.'
+        : ' The live chart currently leans ' + chartDirection.toLowerCase() + ', so the ' + direction.toLowerCase() + ' thesis remains unfunded.');
   } else if (tradeReady) {
     tone = 'take';
     decision = 'TAKE ' + direction;
@@ -6155,6 +6188,12 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
     : 'No venue-verified calls exist for this exact ticker/direction yet; confidence is still prior-weighted.';
   const evidence = [
     {
+      label: 'One agent decision',
+      value: item
+        ? ((scheduledDeskAction || 'WAIT') + (scheduledDirection ? ' • ' + scheduledDirection + ' thesis' : '') + (scheduledDeskReason ? ' • ' + shortText(scheduledDeskReason, 150) : ''))
+        : 'No scheduled agent decision exists for this ticker; the result is chart-only and cannot execute.',
+    },
+    {
       label: 'Live chart',
       value: candleResult.venueSymbol + ' • ' + bars.length + ' ' + interval + ' candles • last bar ' + new Date(lastBarTime).toLocaleString()
         + (limitedHistory ? ' • NEW LISTING: ' + Number(candleResult.primaryBarsCount || 0) + ' hourly candles' : ''),
@@ -6186,7 +6225,8 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
   return {
     ticker, query, bars: allBars.slice(-72), venueSymbol: candleResult.venueSymbol,
     interval, limitedHistory, primaryBarsCount: Number(candleResult.primaryBarsCount || bars.length),
-    direction, requestedSide, decision, tone, summary, confidence,
+    direction, chartDirection, requestedSide, decision, tone, summary, confidence,
+    scheduledDeskAction, scheduledDeskState, scheduledDeskReason,
     score, current, entry, target, invalidation, rr, atr, ema20, ema50,
     return6h, return24h, extensionAtr, candleFresh, eventGate,
     probability: confidenceModel.probability,
@@ -6282,7 +6322,7 @@ function askPunkyAnswerHtml(answer) {
         + '</div>'
       + '</div>'
       + '<p class="ask-punky-summary">' + esc(answer.summary) + '</p>'
-      + '<div class="ask-punky-confidence-context">Break-even ' + esc(answer.breakEvenPct) + '% • measured edge ' + (Number(answer.edgePctPoints) >= 0 ? '+' : '') + esc(answer.edgePctPoints) + 'pp • evidence ' + esc(answer.evidenceQuality) + '/100 • calibration ' + esc(answer.calibrationStatus) + '</div>'
+      + '<div class="ask-punky-confidence-context">Thesis ' + esc(answer.direction) + ' • live chart ' + esc(answer.chartDirection || answer.direction) + ' • break-even ' + esc(answer.breakEvenPct) + '% • measured edge ' + (Number(answer.edgePctPoints) >= 0 ? '+' : '') + esc(answer.edgePctPoints) + 'pp • evidence ' + esc(answer.evidenceQuality) + '/100</div>'
     + '</div>'
     + '<div class="ask-punky-plan">'
       + askPunkyPlanItem('Current', askPunkyPrice(answer.current, answer.current))
@@ -6676,7 +6716,7 @@ function renderAiInfrastructure(report) {
     ? '<div class="ai-mover-row"><span class="ai-mover-label">Moves the agent cannot ignore</span><span class="ai-tape-meta">5%+ in one session</span></div>'
       + '<div class="ai-mover-strip">' + movers.slice(0, 10).map((member) => '<div class="ai-mover ' + aiTapeTone(member.move_1d) + '">'
         + '<div class="ai-mover-row"><span class="ai-mover-symbol">' + esc(member.coin || '--') + '</span><span class="ai-mover-change ' + aiTapeTone(member.move_1d) + '">' + esc(aiTapePct(member.move_1d)) + '</span></div>'
-        + '<div class="ai-mover-sector">' + esc(member.sector_label || '') + (member.tradexyz ? ' • EXEC' : ' • REF') + '</div>'
+        + '<div class="ai-mover-sector">' + esc(member.sector_label || '') + (member.tradexyz ? ' • PAPER' : ' • REF') + '</div>'
       + '</div>').join('') + '</div>'
     : '';
 }
@@ -6860,6 +6900,45 @@ function prioritySetupDirection(item) {
   return 'WATCH';
 }
 
+function terminalThesisDirection(item) {
+  const explicit = String((item || {}).thesis_direction || '').toUpperCase();
+  if (explicit === 'LONG' || explicit === 'SHORT') return explicit;
+  const inferred = prioritySetupDirection(item);
+  return inferred === 'LONG' || inferred === 'SHORT' ? inferred : '';
+}
+
+function terminalDeskAction(item) {
+  const explicit = String((item || {}).desk_action || '').toUpperCase();
+  if (explicit === 'LONG' || explicit === 'SHORT' || explicit === 'WAIT') return explicit;
+  const status = String((item || {}).status || '').toUpperCase();
+  if (status === 'OPEN_LONG' || (status === 'PENDING_ENTRY' && terminalThesisDirection(item) === 'LONG')) return 'LONG';
+  if (status === 'OPEN_SHORT' || (status === 'PENDING_ENTRY' && terminalThesisDirection(item) === 'SHORT')) return 'SHORT';
+  return 'WAIT';
+}
+
+function terminalDeskState(item) {
+  const explicit = String((item || {}).desk_state || '').toUpperCase();
+  if (explicit) return explicit.replaceAll('_', ' ');
+  const status = String((item || {}).status || '').toUpperCase();
+  if (status.startsWith('OPEN_')) return 'POSITION OPEN';
+  if (status === 'PENDING_ENTRY') return 'ORDER WORKING';
+  return 'NO ORDER';
+}
+
+function terminalActionClass(action) {
+  if (action === 'LONG') return 'long';
+  if (action === 'SHORT') return 'short';
+  return 'wait';
+}
+
+function renderTerminalExecutionStatus(board) {
+  const node = document.getElementById('terminal-execution-status');
+  if (!node) return;
+  const loop = (board || {}).execution_loop || {};
+  const mode = String(loop.mode || (latestState || {}).mode || 'dry_run').toLowerCase();
+  node.textContent = mode === 'live' ? 'Live auto-execution active' : 'Paper auto-execution active';
+}
+
 function prioritySetupIsCoherent(item) {
   const direction = prioritySetupDirection(item);
   const invalidation = simpleInvalidationText(item, 140).toLowerCase();
@@ -6907,12 +6986,12 @@ function renderTerminalWatchlist(board) {
   }
   body.innerHTML = items.slice(0, 12).map((item) => {
     const ticker = String(item.coin || '').trim().toUpperCase();
-    const direction = prioritySetupDirection(item);
-    const directionClass = direction === 'LONG' ? 'long' : direction === 'SHORT' ? 'short' : 'watch';
-    const odds = compactOddsText(item) || String(item.confidence || 'developing').toLowerCase();
+    const thesisDirection = terminalThesisDirection(item);
+    const action = terminalDeskAction(item);
+    const actionClass = terminalActionClass(action);
     return '<button type="button" class="terminal-watch-row' + (ticker === terminalSelectedTicker ? ' active' : '') + '" data-terminal-ticker="' + esc(ticker) + '" aria-pressed="' + String(ticker === terminalSelectedTicker) + '">'
-      + '<div class="terminal-watch-top"><span class="terminal-watch-symbol">' + esc(ticker) + '</span><span class="terminal-watch-direction ' + directionClass + '">' + esc(direction) + '</span></div>'
-      + '<div class="terminal-watch-meta"><span>' + esc(simpleActionText(item)) + '</span><span>' + esc(odds) + '</span></div>'
+      + '<div class="terminal-watch-top"><span class="terminal-watch-symbol">' + esc(ticker) + '</span><span class="terminal-watch-direction ' + actionClass + '">' + esc(action) + '</span></div>'
+      + '<div class="terminal-watch-meta"><span>' + esc(thesisDirection ? thesisDirection + ' thesis' : 'No directional thesis') + '</span><span>' + esc(terminalDeskState(item)) + '</span></div>'
     + '</button>';
   }).join('');
 }
@@ -6933,22 +7012,25 @@ function renderTerminalFocus(board) {
   const ticker = String(item.coin || '').trim().toUpperCase();
   const dockInput = document.getElementById('punky-dock-input');
   if (dockInput && !String(dockInput.value || '').trim()) dockInput.value = 'Should I take ' + ticker + '?';
-  const direction = prioritySetupDirection(item);
-  const directionBias = direction === 'LONG' ? 'bullish' : direction === 'SHORT' ? 'bearish' : 'neutral';
-  const odds = compactOddsText(item) || String(item.confidence || 'developing').toLowerCase();
+  const thesisDirection = terminalThesisDirection(item);
+  const action = terminalDeskAction(item);
+  const actionBias = action === 'LONG' ? 'bullish' : action === 'SHORT' ? 'bearish' : 'neutral';
+  const deskReason = String(item.desk_reason || item.execution_note || 'No order is allowed yet.');
   const thesis = whyLeadText(item, 260) || simpleThesisText(item, 260);
   body.innerHTML = '<div class="terminal-focus-top">'
       + '<div><div class="section-kicker">Selected opportunity</div><div class="terminal-focus-symbol">' + esc(ticker) + '</div></div>'
-      + '<div class="terminal-focus-actions"><span class="' + biasClass(directionBias) + '">' + esc(direction) + ' • ' + esc(odds) + '</span><button class="terminal-analyse-btn" type="button" data-terminal-analyse="' + esc(ticker) + '">Analyze</button></div>'
+      + '<div class="terminal-focus-actions"><span class="' + biasClass(actionBias) + '">' + esc(action) + (thesisDirection ? ' • ' + esc(thesisDirection) + ' THESIS' : '') + '</span><button class="terminal-analyse-btn" type="button" data-terminal-analyse="' + esc(ticker) + '">Recheck</button></div>'
     + '</div>'
     + '<div class="terminal-focus-thesis">' + esc(thesis || 'The thesis is still forming; no capital should move until the evidence improves.') + '</div>'
     + '<div class="terminal-focus-grid">'
-      + '<div class="terminal-focus-field"><span class="terminal-focus-label">Act when</span><div class="terminal-focus-value">' + esc(simpleNextText(item, 150)) + '</div></div>'
-      + '<div class="terminal-focus-field"><span class="terminal-focus-label">Invalid if</span><div class="terminal-focus-value risk">' + esc(simpleInvalidationText(item, 150)) + '</div></div>'
+      + '<div class="terminal-focus-field"><span class="terminal-focus-label">Agent action</span><div class="terminal-focus-value ' + (action === 'WAIT' ? 'wait' : '') + '">' + esc(action + ' • ' + terminalDeskState(item) + '. ' + deskReason) + '</div></div>'
+      + '<div class="terminal-focus-field"><span class="terminal-focus-label">Trade changes when</span><div class="terminal-focus-value">' + esc(simpleNextText(item, 150)) + '</div></div>'
+      + '<div class="terminal-focus-field"><span class="terminal-focus-label">Thesis invalid if</span><div class="terminal-focus-value risk">' + esc(simpleInvalidationText(item, 150)) + '</div></div>'
     + '</div>';
 }
 
 function renderTerminalWorkspace(board) {
+  renderTerminalExecutionStatus(board);
   renderTerminalFocus(board);
   renderTerminalWatchlist(board);
   renderPunkyDock();
@@ -6974,10 +7056,14 @@ function renderPunkyDock() {
   }
   const answer = commandActiveAnswer;
   const invalidation = (answer.direction === 'LONG' ? 'Below ' : 'Above ') + askPunkyPrice(answer.invalidation, answer.current);
+  const decisionClass = answer.tone === 'take'
+    ? (String(answer.direction || '').toLowerCase() === 'long' ? 'green' : 'red')
+    : answer.tone === 'avoid' ? 'red' : 'wait';
   body.innerHTML = '<div class="terminal-dock-verdict-head">'
-      + '<div><div class="section-kicker">' + esc(answer.ticker) + ' decision</div><div class="terminal-dock-decision ' + esc(String(answer.direction || '').toLowerCase() === 'long' ? 'green' : 'red') + '">' + esc(answer.decision) + '</div></div>'
+      + '<div><div class="section-kicker">' + esc(answer.ticker) + ' decision</div><div class="terminal-dock-decision ' + esc(decisionClass) + '">' + esc(answer.decision) + '</div></div>'
       + '<div class="terminal-dock-confidence">' + esc(answer.confidence) + '%</div>'
     + '</div>'
+    + '<div class="terminal-dock-alignment">THESIS ' + esc(answer.direction) + ' • LIVE CHART ' + esc(answer.chartDirection || answer.direction) + '</div>'
     + '<div class="terminal-dock-summary">' + esc(answer.summary) + '</div>'
     + '<div class="terminal-dock-plan">'
       + '<div><span>Entry</span><strong>' + esc(askPunkyPrice(answer.entry, answer.current)) + '</strong></div>'
@@ -7026,10 +7112,10 @@ function scrollTerminalSection(id) {
 }
 
 function priorityDirectionChipHtml(item) {
-  const direction = prioritySetupDirection(item);
-  if (direction === 'LONG') return '<span class="' + biasClass('bullish') + '">LONG</span>';
-  if (direction === 'SHORT') return '<span class="' + biasClass('bearish') + '">SHORT</span>';
-  return '<span class="' + biasClass('neutral') + '">WATCH</span>';
+  const action = terminalDeskAction(item);
+  if (action === 'LONG') return '<span class="' + biasClass('bullish') + '">LONG</span>';
+  if (action === 'SHORT') return '<span class="' + biasClass('bearish') + '">SHORT</span>';
+  return '<span class="' + biasClass('neutral') + '">WAIT</span>';
 }
 
 function renderPrioritySetups(board) {
@@ -7057,12 +7143,15 @@ function renderPrioritySetups(board) {
   ranked.forEach(addUnique);
   const visible = selected.slice(0, 3);
   const executableCount = coherentItems.filter((item) => {
-    const status = String(item.status || '').toUpperCase();
-    return item.tradable && ['OPEN_LONG', 'OPEN_SHORT', 'PENDING_ENTRY', 'READY_LONG', 'READY_SHORT'].includes(status);
+    const deskState = String(item.desk_state || '').toUpperCase();
+    return item.tradable && ['OPEN', 'ORDER_WORKING', 'EXECUTED'].includes(deskState);
   }).length;
-  meta.textContent = gate.headline || (executableCount
-    ? executableCount + ' executable • only the top-ranked mature setup can receive fresh capital'
-    : 'No forced trade • cash is a valid position');
+  const leadDecision = visible[0] || null;
+  meta.textContent = executableCount
+    ? executableCount + ' active paper decision' + (executableCount === 1 ? '' : 's')
+    : leadDecision
+      ? String(leadDecision.coin || '') + ' ranks first • ' + simpleActionText(leadDecision) + ' • no order'
+      : 'No trade • cash is the position';
   if (!visible.length) {
     body.innerHTML = '<div class="empty-state">No setup is close enough to deserve attention yet.</div>';
     return;
@@ -7073,14 +7162,15 @@ function renderPrioritySetups(board) {
     const candidate = gateByCoin[String(item.coin || '').toUpperCase()] || {};
     const rawProbability = Number(candidate.probability || item.probability || 0);
     const probability = rawProbability > 1 ? rawProbability / 100 : rawProbability;
-    const confidenceText = probability > 0 ? Math.round(probability * 100) + '% modeled' : String(item.confidence || 'developing');
+    const confidenceText = probability > 0 ? Math.round(probability * 100) + '% thesis model' : String(item.confidence || 'developing');
+    const deskReason = String(item.desk_reason || item.execution_note || 'No order is allowed yet.');
     return '<div class="priority-setup">'
       + '<div>'
         + '<div class="priority-setup-title">' + (index === 0 ? '<span class="best-setup-rank">Best setup</span>' : '') + '<span class="priority-setup-symbol">' + esc(item.coin) + '</span><span class="' + modeClass + '">' + esc(surfaceModeBadge(item.mode_badge, item.tradable)) + '</span>' + priorityDirectionChipHtml(item) + '</div>'
-        + '<div class="priority-field-value" style="margin-top:6px;">' + esc(simpleActionText(item)) + (status === 'PENDING_ENTRY' ? ' • order live' : '') + '</div>'
+        + '<div class="priority-field-value" style="margin-top:6px;">' + esc(simpleActionText(item)) + ' • ' + esc(terminalDeskState(item)) + '</div>'
         + '<div class="priority-setup-actions"><span class="muted">' + esc(confidenceText) + '</span><button type="button" class="priority-ask" onclick="askPunkyPrompt(\'Should I take ' + esc(item.coin) + '?\')">ASK PUNKY</button></div>'
       + '</div>'
-      + '<div><span class="priority-field-label">Act when</span><div class="priority-field-value">' + esc(simpleNextText(item, 110)) + '</div></div>'
+      + '<div><span class="priority-field-label">Decision reason</span><div class="priority-field-value">' + esc(shortText(deskReason, 140)) + '</div></div>'
       + '<div><span class="priority-field-label">Invalid if</span><div class="priority-field-value priority-risk">' + esc(simpleInvalidationText(item, 110)) + '</div></div>'
       + '<div><span class="priority-field-label">Why it matters</span><div class="priority-field-value">' + esc(simpleThesisText(item, 150)) + '</div></div>'
     + '</div>';
@@ -7969,7 +8059,7 @@ async function refresh() {
       countBadge.className = 'open-count open-count-flat';
       openCard.className = 'card';
       const leadEmpty = coherentLead
-        ? '<div style="margin-top:8px;"><strong>Best setup:</strong> ' + esc(coherentLead.coin + ' • ' + setupStanceText(coherentLead, 'title')) + ' — ' + esc(leadSummaryText(coherentLead, 170)) + '</div>'
+        ? '<div style="margin-top:8px;"><strong>Top decision:</strong> ' + esc(coherentLead.coin + ' • ' + simpleActionText(coherentLead)) + ' — ' + esc(shortText(coherentLead.desk_reason || leadSummaryText(coherentLead, 170), 170)) + '</div>'
         : '<div style="margin-top:8px;">The agent is flat and waiting for a clean, high-conviction setup.</div>';
       openBody.innerHTML =
         '<div class="empty-state">' +

@@ -551,6 +551,11 @@ def _next_setup_reason(
             f"Not {direction} yet: {context}" if context else f"Not {direction} yet.",
             note or "The setup still needs confirmation before the bot can trade.",
         ], limit=2)
+    if status_upper == "WAIT_EXECUTION":
+        return _compact_sentences([
+            f"Wait for {direction}: {context}" if context else f"Wait for {direction}.",
+            note or "The thesis remains directional, but the final execution gate has not cleared.",
+        ], limit=2)
     if status_upper in {"EXECUTION_BLOCKED", "DATA_QUALITY_HOLD", "PORTFOLIO_GUARD", "RISK_BLOCKED"}:
         return _compact_sentences([
             f"Blocked: {context}" if context else "Blocked.",
@@ -787,6 +792,8 @@ def _execution_state_summary(
 ) -> tuple[str, str]:
     status_upper = str(status or "").upper()
     coach_key = str(coach_verdict or "").strip().upper()
+    recorded_decision = str(sig.get("execution_decision") or "").strip().upper()
+    recorded_reason = str(sig.get("execution_reason") or "").strip()
     quality_score = _safe_float(sig.get("execution_quality_score"))
     summary = str(
         sig.get("execution_coach_summary")
@@ -797,6 +804,8 @@ def _execution_state_summary(
     ).strip()
     if not tradable or asset_state == "EXECUTION_BLOCKED" or coach_key == "BLOCK":
         return "block", _primary_reason(summary or "execution lane is not clear enough yet")
+    if recorded_decision == "WAIT":
+        return "wait", _primary_reason(recorded_reason or summary or "the final execution gate says wait")
     if status_upper.startswith("OPEN_") or status_upper == "PENDING_ENTRY" or coach_key == "GO":
         return "clear", _primary_reason(summary or "execution lane is already active")
     if quality_score >= 75:
@@ -983,6 +992,8 @@ def _remaining_gate_blurb(status: str, sig: dict, direction: str) -> str:
         return "only the breakdown confirmation remains"
     if status_upper in {"WATCH_LONG", "WATCH_SHORT", "WAITING_CONFIRMATION", "ARMED", "PASSIVE_ENTRY", "EXECUTABLE"}:
         return "only the final confirmation remains"
+    if status_upper == "WAIT_EXECUTION":
+        return "the thesis is live, but the final execution gate says wait"
     if status_upper in {"READY_LONG", "READY_SHORT"}:
         return "only sizing and fill checks remain"
     if status_upper == "PENDING_ENTRY":
@@ -1634,6 +1645,7 @@ def action_board(
         "READY_LONG": 1,
         "READY_SHORT": 1,
         "WAITING_CONFIRMATION": 2,
+        "WAIT_EXECUTION": 2,
         "WAIT_RECLAIM": 2,
         "WATCH_LONG": 2,
         "WAIT_BREAKDOWN": 2,
@@ -1995,6 +2007,21 @@ def action_board(
         if coach_summary and status in {"READY_LONG", "READY_SHORT", "PASSIVE_ENTRY", "EXECUTION_BLOCKED"}:
             execution_note = coach_summary
 
+        recorded_execution_decision = str(sig.get("execution_decision") or "").strip().upper()
+        recorded_execution_direction = str(sig.get("execution_direction") or "").strip().upper()
+        recorded_execution_reason = str(sig.get("execution_reason") or "").strip()
+        if (
+            not pos
+            and status != "PENDING_ENTRY"
+            and analysis_fresh
+            and recorded_execution_decision == "WAIT"
+            and recorded_execution_direction in {"LONG", "SHORT"}
+        ):
+            status = "WAIT_EXECUTION"
+            label = f"Wait for {recorded_execution_direction.lower()}"
+            headline = recorded_execution_reason or headline
+            execution_note = recorded_execution_reason or execution_note
+
         probability = _setup_probability(
             sig=sig,
             status=status,
@@ -2076,6 +2103,26 @@ def action_board(
             execution_note=execution_note,
             mode_detail=mode_detail,
         )
+        thesis_direction = recorded_execution_direction
+        if thesis_direction not in {"LONG", "SHORT"}:
+            inferred_direction = _setup_direction(status, action, bias).upper()
+            thesis_direction = inferred_direction if inferred_direction in {"LONG", "SHORT"} else ""
+        if pos:
+            desk_action = str(pos.get("direction") or thesis_direction or "WAIT").upper()
+            desk_state = "OPEN"
+            desk_reason = "Position is open and being managed against its thesis and invalidation."
+        elif status == "PENDING_ENTRY" or recorded_execution_decision == "WORKING":
+            desk_action = thesis_direction or "WAIT"
+            desk_state = "ORDER_WORKING"
+            desk_reason = recorded_execution_reason or execution_note or "The entry order is resting."
+        elif recorded_execution_decision == "EXECUTED" and thesis_direction:
+            desk_action = thesis_direction
+            desk_state = "EXECUTED"
+            desk_reason = recorded_execution_reason or "The paper order was accepted."
+        else:
+            desk_action = "WAIT"
+            desk_state = "WAITING"
+            desk_reason = recorded_execution_reason or execution_note or "No order is allowed yet."
         catalyst_rail = _build_catalyst_rail(sig)
         conviction_entry = dict(sig.get("conviction_entry") or {})
         conviction_entry_active = bool(
@@ -2150,6 +2197,13 @@ def action_board(
                 "patient_execution_blocker": patient_execution_blocker,
                 "status": status,
                 "label": label,
+                "desk_action": desk_action,
+                "desk_state": desk_state,
+                "desk_label": desk_action,
+                "desk_reason": desk_reason,
+                "thesis_direction": thesis_direction,
+                "execution_stage": str(sig.get("execution_stage") or sig.get("decision_stage") or ""),
+                "auto_execution_enabled": bool(sig.get("auto_execution_enabled", True)),
                 "headline": headline,
                 "next_setup_reason": next_setup_reason,
                 "trigger": trigger,
@@ -2231,6 +2285,11 @@ def action_board(
     groups = _group_action_items(items)
     return {
         "updated_at": state.get("last_cycle"),
+        "execution_loop": {
+            "automatic": True,
+            "mode": str(state.get("mode") or "dry_run"),
+            "principle": "LONG or SHORT means an order is working or a position is open. WAIT means no order is sent.",
+        },
         "lead": items[0] if items else None,
         "items": items,
         "tradable_items": tradable_items,
@@ -2241,7 +2300,7 @@ def action_board(
             "observation_count": len(observation_items),
             "active_tradable_count": sum(
                 1 for item in tradable_items
-                if str(item.get("status") or "") in {"OPEN_LONG", "OPEN_SHORT", "READY_LONG", "READY_SHORT"}
+                if str(item.get("desk_state") or "") in {"OPEN", "ORDER_WORKING", "EXECUTED"}
             ),
             "pending_count": pending_count,
             "scout_count": len(dynamic_analysis),
