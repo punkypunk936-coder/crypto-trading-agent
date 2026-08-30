@@ -3623,8 +3623,9 @@ def test_hosted_dashboard_bundle_matches_local_template() -> None:
 
 def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> None:
     template = Path("dashboard/templates/dashboard.html").read_text()
-    assert "Global trade posture" in template
-    assert "Agent Decisions" in template
+    assert "Equity market posture" in template
+    assert "Stock Decisions" in template
+    assert "Crypto Decisions" in template
     assert "Best Trades" not in template
     assert "Fresh paper-capital decision" in template
     assert "renderDecisionSurface" in template
@@ -3648,6 +3649,13 @@ def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> N
     assert "body.visitor-mode .closed-trades-section" in template
     assert "PAPER MODE" in template
     assert "Open Risk" in template
+    assert 'id="terminal-lane-equity"' in template
+    assert 'id="terminal-lane-coin"' in template
+    assert "terminalLaneForItem" in template
+    assert "itemMatchesTerminalLane" in template
+    assert "Crypto Market Structure" in template
+    assert "renderCryptoDecisionSurface" in template
+    assert "renderMarketResearchLane" in template
     assert 'id="share-link"' not in template
     assert 'id="kill-btn" onclick="handleKill()" hidden' in template
     assert 'id="tradexyz-volume-shortcut-btn"' not in template
