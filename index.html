@@ -6,15 +6,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Punky | AI Trading Research Agent</title>
 <meta name="description" content="Punky combines live market data, LLM reasoning and rule-based risk checks to produce explainable trade ideas with direction, confidence, entry, target and invalidation.">
-<link rel="canonical" href="https://punkypunk936-coder.github.io/crypto-trading-agent/">
+<link rel="canonical" href="{{ request.url_root }}">
 <meta property="og:type" content="website">
 <meta property="og:locale" content="en_US">
 <meta property="og:site_name" content="Punky">
 <meta property="og:title" content="Punky | AI Trading Research Agent">
 <meta property="og:description" content="Explainable trade ideas from live market data, LLM reasoning and rule-based risk checks.">
-<meta property="og:url" content="https://punkypunk936-coder.github.io/crypto-trading-agent/">
-<meta property="og:image" content="https://punkypunk936-coder.github.io/crypto-trading-agent/assets/punky-social-preview.jpg">
-<meta property="og:image:secure_url" content="https://punkypunk936-coder.github.io/crypto-trading-agent/assets/punky-social-preview.jpg">
+<meta property="og:url" content="{{ request.url_root }}">
+<meta property="og:image" content="{{ request.url_root }}static/assets/punky-social-preview.jpg">
+<meta property="og:image:secure_url" content="{{ request.url_root }}static/assets/punky-social-preview.jpg">
 <meta property="og:image:type" content="image/jpeg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -23,7 +23,7 @@
 <meta name="twitter:creator" content="@0xgoodie">
 <meta name="twitter:title" content="Punky | AI Trading Research Agent">
 <meta name="twitter:description" content="Explainable trade ideas from live market data, LLM reasoning and rule-based risk checks.">
-<meta name="twitter:image" content="https://punkypunk936-coder.github.io/crypto-trading-agent/assets/punky-social-preview.jpg">
+<meta name="twitter:image" content="{{ request.url_root }}static/assets/punky-social-preview.jpg">
 <meta name="twitter:image:alt" content="Punky AI Trading Research Agent with a market chart and explainable trade intelligence.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -3546,6 +3546,76 @@
     text-align: center;
     text-transform: uppercase;
   }
+  .terminal-lane-bar {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 14px;
+    padding: 11px 14px;
+    border-top: 1px solid rgba(235, 237, 229, 0.08);
+    border-bottom: 1px solid rgba(235, 237, 229, 0.10);
+    background: rgba(7, 9, 8, 0.72);
+  }
+  .terminal-lane-toggle {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(92px, 1fr));
+    gap: 2px;
+    width: 212px;
+    padding: 2px;
+    border: 1px solid rgba(235, 237, 229, 0.10);
+    border-radius: 6px;
+    background: rgba(235, 237, 229, 0.035);
+  }
+  .terminal-lane-btn {
+    min-height: 34px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 800;
+    cursor: pointer;
+    text-transform: uppercase;
+  }
+  .terminal-lane-btn:hover { color: var(--text); background: rgba(255, 255, 255, 0.035); }
+  .terminal-lane-btn.active {
+    color: #fff;
+    background: rgba(91, 140, 255, 0.20);
+    box-shadow: inset 0 0 0 1px rgba(91, 140, 255, 0.42);
+  }
+  .terminal-lane-description {
+    min-width: 0;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .terminal-lane-description strong { color: var(--text); }
+  .crypto-market-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .crypto-major-card {
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid rgba(235, 237, 229, 0.09);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.018);
+  }
+  .crypto-major-top,
+  .crypto-major-returns {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .crypto-major-symbol { color: var(--text); font-family: var(--mono); font-size: 15px; font-weight: 850; }
+  .crypto-major-state { font-family: var(--mono); font-size: 9px; font-weight: 800; text-transform: uppercase; }
+  .crypto-major-price { margin-top: 8px; color: var(--text); font-family: var(--mono); font-size: 19px; font-weight: 800; }
+  .crypto-major-returns { margin-top: 7px; color: var(--muted); font-family: var(--mono); font-size: 9px; }
+  .crypto-major-summary { margin-top: 9px; color: var(--muted); font-size: 10px; line-height: 1.45; }
   .nav-target { scroll-margin-top: 14px; }
   .section-flash { animation: sectionFlash 1.2s ease-out; }
   @keyframes sectionFlash {
@@ -4055,6 +4125,9 @@
     .terminal-nav-tabs { overflow-x: auto; }
     .visitor-context { grid-template-columns: 1fr; gap: 10px; }
     .visitor-flow { grid-template-columns: 1fr 1fr; }
+    .terminal-lane-bar { grid-template-columns: 1fr; gap: 8px; }
+    .terminal-lane-toggle { width: 100%; }
+    .crypto-market-grid { grid-template-columns: 1fr; }
     .terminal-status { display: none; }
     .terminal-grid { display: block; }
     .terminal-watchlist { border-right: 0; border-bottom: 1px solid rgba(235, 237, 229, 0.10); }
@@ -4142,7 +4215,7 @@
     <div class="terminal-nav-tabs">
       <button class="terminal-nav-tab active" data-nav-target="terminal-desk" type="button" onclick="scrollTerminalSection('terminal-desk', this)">Overview</button>
       <button class="terminal-nav-tab" data-nav-target="open-trades-card" type="button" onclick="scrollTerminalSection('open-trades-card', this)">Positions</button>
-      <button class="terminal-nav-tab" data-nav-target="ai-infrastructure-card" type="button" onclick="scrollTerminalSection('ai-infrastructure-card', this)">Market Research</button>
+      <button class="terminal-nav-tab" id="market-research-nav" data-nav-target="ai-infrastructure-card" type="button" onclick="scrollTerminalResearch(this)">Market Research</button>
       <button class="terminal-nav-tab" data-nav-target="decision-journal" type="button" onclick="scrollTerminalSection('decision-journal', this)">Track Record</button>
     </div>
     <button class="terminal-command-trigger" type="button" onclick="focusPunkyDock()">⌕ Ask about a ticker, setup, or risk...</button>
@@ -4162,11 +4235,19 @@
     </div>
   </div>
 
+  <div class="terminal-lane-bar" aria-label="Choose market workspace">
+    <div class="terminal-lane-toggle" role="tablist" aria-label="Trading market">
+      <button class="terminal-lane-btn active" id="terminal-lane-equity" type="button" role="tab" aria-selected="true" aria-controls="terminal-desk" onclick="selectTerminalLane('equity')">Stocks</button>
+      <button class="terminal-lane-btn" id="terminal-lane-coin" type="button" role="tab" aria-selected="false" aria-controls="terminal-desk" onclick="selectTerminalLane('coin')">Crypto</button>
+    </div>
+    <div class="terminal-lane-description" id="terminal-lane-description"><strong>Stocks workspace.</strong> Company catalysts, earnings, sector leadership, and global index context.</div>
+  </div>
+
   <div class="terminal-grid">
     <aside class="terminal-watchlist" aria-label="Opportunity tape">
       <div class="terminal-panel-inner">
         <div class="terminal-panel-head">
-          <span class="terminal-panel-title">Opportunity tape</span>
+          <span class="terminal-panel-title" id="terminal-watchlist-title">Stock opportunities</span>
           <span class="terminal-panel-count" id="terminal-watchlist-count">0 ranked</span>
         </div>
         <div class="terminal-watchlist-body" id="terminal-watchlist-body">
@@ -4186,7 +4267,7 @@
 <section class="decision-cockpit" id="decision-cockpit">
   <div class="decision-cockpit-top">
     <div>
-      <div class="section-kicker">Global trade posture</div>
+      <div class="section-kicker" id="decision-market-kicker">Equity market posture</div>
       <div class="decision-regime-line">
         <span id="decision-regime" class="badge badge-offline">WAITING</span>
         <span id="decision-confidence" class="decision-confidence">Building context...</span>
@@ -4214,9 +4295,9 @@
       </div>
     </div>
   </div>
-  <div class="decision-crossbar" aria-label="Combined US, Korea, and Japan market call">
+  <div class="decision-crossbar" id="decision-crossbar" aria-label="Combined US, Korea, and Japan market call">
     <div>
-      <span class="decision-crossbar-label">Combined call</span>
+      <span class="decision-crossbar-label" id="decision-crossbar-label">Combined call</span>
       <strong class="decision-crossbar-call" id="decision-global-call">WAIT</strong>
     </div>
     <p class="decision-crossbar-reason" id="decision-global-reason">Waiting for the US, Korea, and Japan tapes to resolve.</p>
@@ -4238,7 +4319,7 @@
     <div class="primary-section-head">
       <div>
         <div class="section-kicker">Fresh paper-capital decision</div>
-        <h2>Agent Decisions</h2>
+        <h2 id="priority-setups-title">Stock Decisions</h2>
       </div>
       <div class="primary-section-note" id="priority-setups-meta">The agent compares every mature setup before funding one winner.</div>
     </div>
@@ -4279,7 +4360,7 @@
     <div class="primary-section-head">
       <div>
         <div class="section-kicker">Paper portfolio</div>
-        <h2>Open Positions <span id="open-count" class="open-count" style="display:none;">0</span></h2>
+        <h2><span id="open-positions-title">Stock Positions</span> <span id="open-count" class="open-count" style="display:none;">0</span></h2>
       </div>
       <div class="primary-section-note"><span class="pulse" id="pulse-dot"></span> Thesis, invalidation, objective, and the next decision.</div>
     </div>
@@ -4320,23 +4401,49 @@
   <div class="ai-movers" id="ai-movers" hidden></div>
 </section>
 
+<!-- CRYPTO MARKET TAPE -->
+<section class="ai-tape-section nav-target" id="crypto-market-card" aria-labelledby="crypto-market-title" hidden>
+  <div class="ai-tape-head">
+    <div>
+      <div class="section-kicker">Market research</div>
+      <h2 class="ai-tape-title" id="crypto-market-title">Crypto Market Structure</h2>
+    </div>
+    <div class="ai-tape-status">
+      <div class="ai-tape-status-line">
+        <span id="crypto-market-regime" class="badge badge-offline">SCANNING</span>
+      </div>
+      <div class="ai-tape-meta" id="crypto-market-meta">Reading majors, sentiment, and breadth...</div>
+    </div>
+  </div>
+  <div class="ai-tape-brief">
+    <div class="ai-tape-headline" id="crypto-market-headline">Waiting for the first complete crypto read.</div>
+    <div>
+      <div class="ai-tape-action" id="crypto-market-action">The agent will separate durable structure from short-lived momentum.</div>
+      <div class="ai-tape-avoid" id="crypto-market-risk">No broad crypto bet without confirmation from the majors.</div>
+    </div>
+  </div>
+  <div class="crypto-market-grid" id="crypto-market-majors">
+    <div class="empty-state">Building the major-coin tape...</div>
+  </div>
+</section>
+
 <!-- TRACK RECORD -->
 <section class="account-strip" id="kpis" aria-label="Account and execution summary">
   <div class="account-metric">
-    <div class="card-label">Paper Equity</div>
+    <div class="card-label">All-Market Paper Equity</div>
     <div class="account-value" id="portfolio">$--</div>
     <div class="card-sub" id="available">Available: --</div>
   </div>
   <div class="account-metric">
     <div class="card-label-row">
-      <div class="card-label">Paper Realized P&amp;L</div>
+      <div class="card-label">All-Market Realized P&amp;L</div>
       <button type="button" class="pnl-explain-button" data-pnl-explain="summary" title="Explain total realized PnL">Why?</button>
     </div>
     <div class="account-value" id="total-pnl">$--</div>
     <div class="card-sub" id="win-rate">Across all closed trades</div>
   </div>
   <div class="account-metric">
-    <div class="card-label">Hit Rate</div>
+    <div class="card-label">All-Market Hit Rate</div>
     <div class="account-value" id="trade-count">--</div>
     <div class="card-sub" id="wins-losses">Closed: --</div>
   </div>
@@ -5259,6 +5366,8 @@ let latestEarningsSession = { active: false, rows: [] };
 let latestPnlAttribution = {};
 let selectedAiSector = '';
 let terminalSelectedTicker = '';
+let terminalAssetLane = 'equity';
+let terminalSelectedByLane = { equity: '', coin: '' };
 let commandSearchOpen = false;
 let commandSearchIndex = 0;
 let commandSearchQuery = '';
@@ -5815,6 +5924,27 @@ function actionBoardItems() {
     : [];
 }
 
+function terminalLaneForItem(item) {
+  const safe = item || {};
+  const instrument = String(safe.instrument_type || '').trim().toLowerCase();
+  const bucket = String(safe.asset_bucket || '').trim().toLowerCase();
+  if (instrument === 'crypto' || bucket === 'coin') return 'coin';
+  if (instrument === 'equity') return 'equity';
+  if (!instrument && !bucket && safe.coin) {
+    const linked = dashboardItemForCoin(safe.coin);
+    if (linked && linked !== safe) return terminalLaneForItem(linked);
+  }
+  return 'macro';
+}
+
+function itemMatchesTerminalLane(item, lane=terminalAssetLane) {
+  return terminalLaneForItem(item) === lane;
+}
+
+function terminalLaneLabel(lane=terminalAssetLane) {
+  return lane === 'coin' ? 'Crypto' : 'Stocks';
+}
+
 function commandTickerFromQuery(query) {
   const raw = String(query || '').trim().toUpperCase();
   if (!raw && lastAskedTicker) return lastAskedTicker;
@@ -5842,6 +5972,8 @@ function commandSearchCandidates(query) {
   actionBoardItems().forEach((item) => {
     const ticker = String((item || {}).coin || '').trim().toUpperCase();
     if (!ticker || seen.has(ticker)) return;
+    const exactCrossLaneMatch = Boolean(parsedTicker && ticker === parsedTicker);
+    if (!exactCrossLaneMatch && !itemMatchesTerminalLane(item)) return;
     let matchRank = 4;
     if (!normalized) {
       matchRank = 3;
@@ -6443,6 +6575,15 @@ async function runAskPunky(seed='') {
     return;
   }
   const item = dashboardItemForCoin(ticker) || null;
+  const itemLane = terminalLaneForItem(item || { coin: ticker });
+  if ((itemLane === 'equity' || itemLane === 'coin') && itemLane !== terminalAssetLane) {
+    selectTerminalLane(itemLane);
+  }
+  if (itemLane === terminalAssetLane) {
+    terminalSelectedTicker = ticker;
+    terminalSelectedByLane[terminalAssetLane] = ticker;
+    renderTerminalWorkspace(latestActionBoard);
+  }
   const requestId = ++commandAnalysisRequest;
   commandAnalysisLoading = true;
   commandActiveAnswer = null;
@@ -6785,6 +6926,40 @@ function renderAiInfrastructure(report) {
     : '';
 }
 
+function renderCryptoMarket(sentiment, board) {
+  const safe = sentiment || {};
+  const regimeNode = document.getElementById('crypto-market-regime');
+  const metaNode = document.getElementById('crypto-market-meta');
+  const headlineNode = document.getElementById('crypto-market-headline');
+  const actionNode = document.getElementById('crypto-market-action');
+  const riskNode = document.getElementById('crypto-market-risk');
+  const majorsNode = document.getElementById('crypto-market-majors');
+  if (!regimeNode || !metaNode || !headlineNode || !actionNode || !riskNode || !majorsNode) return;
+  const mode = String(safe.market_mode || 'BALANCED').toUpperCase();
+  const bias = String(safe.directional_bias || 'NEUTRAL').toUpperCase();
+  const structure = Math.round(Number(safe.structural_score || 0));
+  const fearGreed = Math.round(Number(safe.raw_score || 0));
+  const majors = safe.majors || {};
+  const rows = ['BTC', 'ETH', 'SOL'].map((symbol) => ({ symbol, ...(majors[symbol] || {}) }));
+  const lead = coherentActionBoardLead(board, 'coin');
+  regimeNode.className = biasClass(bias === 'LONG' ? 'bullish' : bias === 'SHORT' ? 'bearish' : 'neutral');
+  regimeNode.textContent = mode.replaceAll('_', ' ');
+  metaNode.textContent = (safe.label || 'Sentiment unavailable') + ' • F&G ' + (fearGreed || '--') + ' • structure ' + structure + '/100';
+  headlineNode.textContent = safe.structure_summary || 'The major-coin tape is still resolving.';
+  actionNode.innerHTML = '<strong>Best current decision:</strong> ' + esc(lead ? lead.coin + ' • ' + terminalDeskAction(lead) + ' • ' + shortText(lead.desk_reason || simpleActionText(lead), 190) : 'No crypto setup clears the funding gates yet.');
+  riskNode.innerHTML = '<strong>View changes if:</strong> BTC and ETH break structure together, or breadth turns against the current regime.';
+  majorsNode.innerHTML = rows.map((row) => {
+    const stateLabel = String(row.state || 'MIXED').toUpperCase();
+    const tone = stateLabel === 'STRONG' || stateLabel.includes('RECLAIM') ? 'green' : stateLabel.includes('WEAK') || stateLabel.includes('BREAK') ? 'red' : 'muted';
+    return '<div class="crypto-major-card">'
+      + '<div class="crypto-major-top"><span class="crypto-major-symbol">' + esc(row.symbol) + '</span><span class="crypto-major-state ' + tone + '">' + esc(stateLabel) + '</span></div>'
+      + '<div class="crypto-major-price">$' + esc(fmt(Number(row.close || 0))) + '</div>'
+      + '<div class="crypto-major-returns"><span>24H ' + esc(aiTapePct(row.return_24h_pct)) + '</span><span>7D ' + esc(aiTapePct(row.return_7d_pct)) + '</span></div>'
+      + '<div class="crypto-major-summary">' + esc(shortText(row.summary || 'Structure is still resolving.', 160)) + '</div>'
+    + '</div>';
+  }).join('');
+}
+
 function renderEarningsSession(report) {
   const body = document.getElementById('earnings-session-body');
   if (!body) return;
@@ -6838,10 +7013,19 @@ function renderDailyRadar(report) {
   + '</div>';
 }
 
-function renderDecisionSurface(report, board, state) {
-  const safe = report || {};
-  const actionBoard = board || {};
-  const positions = Array.isArray((state || {}).positions) ? state.positions : [];
+function renderCryptoDecisionSurface(sentiment, board, state) {
+  const safe = sentiment || {};
+  const positions = Array.isArray((state || {}).positions)
+    ? state.positions.filter((position) => itemMatchesTerminalLane(position, 'coin'))
+    : [];
+  const lead = coherentActionBoardLead(board, 'coin');
+  const mode = String(safe.market_mode || 'BALANCED').toUpperCase();
+  const bias = String(safe.directional_bias || 'NEUTRAL').toUpperCase();
+  const structure = Math.round(Number(safe.structural_score || 0));
+  const fearGreed = Math.round(Number(safe.raw_score || 0));
+  const majors = safe.majors || {};
+  const rows = ['BTC', 'ETH', 'SOL'].map((symbol) => ({ symbol, ...(majors[symbol] || {}) }));
+  const leader = rows.slice().sort((a, b) => Number(b.return_7d_pct || 0) - Number(a.return_7d_pct || 0))[0];
   const regimeNode = document.getElementById('decision-regime');
   const confidenceNode = document.getElementById('decision-confidence');
   const headlineNode = document.getElementById('decision-headline');
@@ -6854,7 +7038,81 @@ function renderDecisionSurface(report, board, state) {
   const globalCallNode = document.getElementById('decision-global-call');
   const globalReasonNode = document.getElementById('decision-global-reason');
   const globalSizeNode = document.getElementById('decision-global-size');
+  const kickerNode = document.getElementById('decision-market-kicker');
+  const crossbarLabel = document.getElementById('decision-crossbar-label');
+  const crossbar = document.getElementById('decision-crossbar');
   if (!regimeNode || !confidenceNode || !headlineNode || !commentaryNode || !nowNode || !triggerNode || !invalidationNode || !healthNode || !benchmarksNode || !globalCallNode || !globalReasonNode || !globalSizeNode) return;
+
+  const tone = bias === 'LONG' || mode.includes('RISK_ON')
+    ? 'bullish'
+    : bias === 'SHORT' || mode.includes('RISK_OFF')
+      ? 'bearish'
+      : 'neutral';
+  if (kickerNode) kickerNode.textContent = 'Crypto market posture';
+  if (crossbarLabel) crossbarLabel.textContent = 'Crypto call';
+  if (crossbar) crossbar.setAttribute('aria-label', 'Combined crypto market call');
+  regimeNode.className = biasClass(tone);
+  regimeNode.textContent = mode.replaceAll('_', ' ');
+  confidenceNode.textContent = (safe.label || 'Sentiment unavailable') + ' • structure ' + structure + '/100 • F&G ' + (fearGreed || '--');
+  headlineNode.textContent = 'Crypto is ' + mode.replaceAll('_', ' ').toLowerCase()
+    + (leader && leader.symbol ? ', with ' + leader.symbol + ' leading the major-coin tape.' : '.');
+  commentaryNode.textContent = shortText(safe.summary || safe.structure_summary || 'The agent is joining major-coin structure, sentiment, breadth, and asset-level price action.', 340);
+  if (positions.length) {
+    nowNode.textContent = 'Manage ' + positions.length + ' crypto position' + (positions.length === 1 ? '' : 's') + '. Add only when the major-coin tape confirms.';
+  } else if (lead) {
+    nowNode.textContent = lead.coin + ': ' + terminalDeskAction(lead) + '. ' + shortText(lead.desk_reason || simpleActionText(lead), 145);
+  } else {
+    nowNode.textContent = 'Stay flat until a crypto setup clears both asset and market-regime gates.';
+  }
+  triggerNode.textContent = lead ? lead.coin + ': ' + simpleNextText(lead, 150) : 'BTC, ETH, and breadth confirm the same direction.';
+  invalidationNode.textContent = 'The crypto posture changes when BTC and ETH break structure together or breadth flips against the call.';
+  healthNode.textContent = String(safe.major_breakdown_count || 0) + ' majors breaking • ' + String(safe.major_reclaim_count || 0) + ' reclaiming';
+  globalCallNode.textContent = bias === 'LONG' ? 'LONG BIAS' : bias === 'SHORT' ? 'SHORT BIAS' : 'SELECTIVE / WAIT';
+  globalCallNode.className = 'decision-crossbar-call ' + (bias === 'LONG' ? 'green' : bias === 'SHORT' ? 'red' : 'muted');
+  globalReasonNode.textContent = shortText(safe.structure_summary || safe.summary || 'The major-coin tape has not produced a reliable broad edge.', 270);
+  globalSizeNode.textContent = bias === 'NEUTRAL' ? 'NO BROAD BET' : Math.max(20, Math.min(100, structure)) + '% MAX SIZE';
+  benchmarksNode.innerHTML = rows.map((row) => {
+    const stateLabel = String(row.state || 'MIXED').toUpperCase();
+    const rowTone = stateLabel === 'STRONG' || stateLabel.includes('RECLAIM') ? 'green' : stateLabel.includes('WEAK') || stateLabel.includes('BREAK') ? 'red' : 'muted';
+    return '<div class="decision-benchmark">'
+      + '<div class="decision-benchmark-top"><span><span class="decision-benchmark-name">' + esc(row.symbol) + '</span><span class="decision-benchmark-role">CRYPTO MAJOR</span></span><span class="decision-benchmark-call ' + rowTone + '">' + esc(stateLabel) + '</span></div>'
+      + '<div class="decision-benchmark-price">$' + esc(fmt(Number(row.close || 0))) + '</div>'
+      + '<div class="decision-benchmark-levels"><span>24H ' + esc(aiTapePct(row.return_24h_pct)) + '</span><span>7D ' + esc(aiTapePct(row.return_7d_pct)) + '</span></div>'
+      + '<div class="decision-benchmark-summary">' + esc(shortText(row.summary || 'Structure is still resolving.', 145)) + '</div>'
+    + '</div>';
+  }).join('');
+}
+
+function renderDecisionSurface(report, board, state) {
+  if (terminalAssetLane === 'coin') {
+    renderCryptoDecisionSurface((state || {}).sentiment || {}, board, state);
+    return;
+  }
+  const safe = report || {};
+  const actionBoard = board || {};
+  const positions = Array.isArray((state || {}).positions)
+    ? state.positions.filter((position) => itemMatchesTerminalLane(position, 'equity'))
+    : [];
+  const regimeNode = document.getElementById('decision-regime');
+  const confidenceNode = document.getElementById('decision-confidence');
+  const headlineNode = document.getElementById('decision-headline');
+  const commentaryNode = document.getElementById('decision-commentary');
+  const nowNode = document.getElementById('decision-now');
+  const triggerNode = document.getElementById('decision-trigger');
+  const invalidationNode = document.getElementById('decision-invalidation');
+  const healthNode = document.getElementById('decision-health');
+  const benchmarksNode = document.getElementById('decision-benchmarks');
+  const globalCallNode = document.getElementById('decision-global-call');
+  const globalReasonNode = document.getElementById('decision-global-reason');
+  const globalSizeNode = document.getElementById('decision-global-size');
+  const kickerNode = document.getElementById('decision-market-kicker');
+  const crossbarLabel = document.getElementById('decision-crossbar-label');
+  const crossbar = document.getElementById('decision-crossbar');
+  if (!regimeNode || !confidenceNode || !headlineNode || !commentaryNode || !nowNode || !triggerNode || !invalidationNode || !healthNode || !benchmarksNode || !globalCallNode || !globalReasonNode || !globalSizeNode) return;
+
+  if (kickerNode) kickerNode.textContent = 'Equity market posture';
+  if (crossbarLabel) crossbarLabel.textContent = 'Combined call';
+  if (crossbar) crossbar.setAttribute('aria-label', 'Combined US, Korea, and Japan market call');
 
   const regime = String(safe.regime || 'UNKNOWN');
   const confidence = Math.round(Number(safe.confidence || 0) * 100);
@@ -6865,7 +7123,7 @@ function renderDecisionSurface(report, board, state) {
   const displayBias = String(crossMarket.display_bias || tacticalBias || 'SELECTIVE').toUpperCase();
   const crossState = String(crossMarket.state || 'UNCONFIRMED').toUpperCase();
   const sizeMultiplier = Math.max(0, Math.min(1, Number(crossMarket.size_multiplier == null ? 1 : crossMarket.size_multiplier)));
-  const lead = coherentActionBoardLead(actionBoard);
+  const lead = coherentActionBoardLead(actionBoard, 'equity');
   const regimeClass = tacticalBias === 'LONG'
     ? biasClass('bullish')
     : tacticalBias === 'SHORT'
@@ -7014,25 +7272,79 @@ function prioritySetupIsCoherent(item) {
   return true;
 }
 
-function coherentActionBoardLead(board) {
+function coherentActionBoardLead(board, lane=terminalAssetLane) {
   const safe = board || {};
-  const items = Array.isArray(safe.items) ? safe.items.filter((item) => item && item.coin && prioritySetupIsCoherent(item)) : [];
-  if (safe.lead && prioritySetupIsCoherent(safe.lead)) return safe.lead;
+  const items = Array.isArray(safe.items)
+    ? safe.items.filter((item) => item && item.coin && itemMatchesTerminalLane(item, lane) && prioritySetupIsCoherent(item))
+    : [];
+  if (safe.lead && itemMatchesTerminalLane(safe.lead, lane) && prioritySetupIsCoherent(safe.lead)) return safe.lead;
   const ranked = sortCallItems(items);
   return ranked.find((item) => item.tradable) || ranked[0] || null;
 }
 
-function terminalActionItems(board) {
+function terminalActionItems(board, lane=terminalAssetLane) {
   const safe = board || {};
-  const items = Array.isArray(safe.items) ? safe.items.filter((item) => item && item.coin) : [];
+  const items = Array.isArray(safe.items)
+    ? safe.items.filter((item) => item && item.coin && itemMatchesTerminalLane(item, lane))
+    : [];
   const coherent = items.filter(prioritySetupIsCoherent);
   return sortCallItems(coherent.length ? coherent : items);
+}
+
+function renderTerminalLaneControls() {
+  const stocksButton = document.getElementById('terminal-lane-equity');
+  const cryptoButton = document.getElementById('terminal-lane-coin');
+  const description = document.getElementById('terminal-lane-description');
+  const watchlistTitle = document.getElementById('terminal-watchlist-title');
+  const positionsTitle = document.getElementById('open-positions-title');
+  const priorityTitle = document.getElementById('priority-setups-title');
+  [stocksButton, cryptoButton].forEach((button) => {
+    if (!button) return;
+    const active = button.id === 'terminal-lane-' + terminalAssetLane;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', String(active));
+  });
+  if (description) {
+    description.innerHTML = terminalAssetLane === 'coin'
+      ? '<strong>Crypto workspace.</strong> Major-coin structure, sentiment, liquidity, and crypto-native price action.'
+      : '<strong>Stocks workspace.</strong> Company catalysts, earnings, sector leadership, and global index context.';
+  }
+  if (watchlistTitle) watchlistTitle.textContent = terminalAssetLane === 'coin' ? 'Crypto opportunities' : 'Stock opportunities';
+  if (positionsTitle) positionsTitle.textContent = terminalAssetLane === 'coin' ? 'Crypto Positions' : 'Stock Positions';
+  if (priorityTitle) priorityTitle.textContent = terminalAssetLane === 'coin' ? 'Crypto Decisions' : 'Stock Decisions';
+}
+
+function renderMarketResearchLane() {
+  const equityResearch = document.getElementById('ai-infrastructure-card');
+  const cryptoResearch = document.getElementById('crypto-market-card');
+  const evidence = document.getElementById('market-evidence-panel');
+  const researchNav = document.getElementById('market-research-nav');
+  if (equityResearch) equityResearch.hidden = terminalAssetLane !== 'equity';
+  if (cryptoResearch) cryptoResearch.hidden = terminalAssetLane !== 'coin';
+  if (evidence) evidence.hidden = terminalAssetLane === 'coin';
+  if (researchNav) researchNav.dataset.navTarget = terminalAssetLane === 'coin' ? 'crypto-market-card' : 'ai-infrastructure-card';
+}
+
+function selectTerminalLane(lane) {
+  const next = lane === 'coin' ? 'coin' : 'equity';
+  if (terminalSelectedTicker) terminalSelectedByLane[terminalAssetLane] = terminalSelectedTicker;
+  terminalAssetLane = next;
+  terminalSelectedTicker = terminalSelectedByLane[next] || '';
+  commandActiveAnswer = null;
+  renderTerminalLaneControls();
+  renderDecisionSurface(latestGlobalMarketContext, latestActionBoard, latestState || {});
+  renderPrioritySetups(latestActionBoard);
+  renderTerminalWorkspace(latestActionBoard);
+  renderCryptoMarket((latestState || {}).sentiment || {}, latestActionBoard);
+  renderMarketResearchLane();
+  refresh();
 }
 
 function selectTerminalTicker(ticker) {
   const normalized = String(ticker || '').trim().toUpperCase();
   if (!normalized) return;
   terminalSelectedTicker = normalized;
+  terminalSelectedByLane[terminalAssetLane] = normalized;
   const dockInput = document.getElementById('punky-dock-input');
   if (dockInput) dockInput.value = 'Should I take ' + normalized + '?';
   renderTerminalWorkspace(latestActionBoard);
@@ -7067,6 +7379,7 @@ function renderTerminalFocus(board) {
   const lead = coherentActionBoardLead(board) || items[0] || null;
   if (!terminalSelectedTicker || !items.some((item) => String(item.coin || '').trim().toUpperCase() === terminalSelectedTicker)) {
     terminalSelectedTicker = String((lead || {}).coin || '').trim().toUpperCase();
+    terminalSelectedByLane[terminalAssetLane] = terminalSelectedTicker;
   }
   const item = items.find((entry) => String(entry.coin || '').trim().toUpperCase() === terminalSelectedTicker) || lead;
   if (!item) {
@@ -7082,7 +7395,7 @@ function renderTerminalFocus(board) {
   const deskReason = String(item.desk_reason || item.execution_note || 'No order is allowed yet.');
   const thesis = whyLeadText(item, 260) || simpleThesisText(item, 260);
   body.innerHTML = '<div class="terminal-focus-top">'
-      + '<div><div class="section-kicker">Selected opportunity</div><div class="terminal-focus-symbol">' + esc(ticker) + '</div></div>'
+      + '<div><div class="section-kicker">Selected ' + (terminalAssetLane === 'coin' ? 'coin' : 'stock') + '</div><div class="terminal-focus-symbol">' + esc(ticker) + '</div></div>'
       + '<div class="terminal-focus-actions"><span class="' + biasClass(actionBias) + '">' + esc(action) + (thesisDirection ? ' • ' + esc(thesisDirection) + ' THESIS' : '') + '</span><button class="terminal-analyse-btn" type="button" data-terminal-analyse="' + esc(ticker) + '">Recheck</button></div>'
     + '</div>'
     + '<div class="terminal-focus-thesis">' + esc(thesis || 'The thesis is still forming; no capital should move until the evidence improves.') + '</div>'
@@ -7094,6 +7407,7 @@ function renderTerminalFocus(board) {
 }
 
 function renderTerminalWorkspace(board) {
+  renderTerminalLaneControls();
   renderTerminalExecutionStatus(board);
   renderTerminalFocus(board);
   renderTerminalWatchlist(board);
@@ -7191,9 +7505,14 @@ function scrollTerminalSection(id, trigger=null) {
   window.setTimeout(() => target.classList.remove('section-flash'), 1300);
 }
 
+function scrollTerminalResearch(trigger=null) {
+  const targetId = terminalAssetLane === 'coin' ? 'crypto-market-card' : 'ai-infrastructure-card';
+  scrollTerminalSection(targetId, trigger);
+}
+
 function initTerminalNavTracking() {
   if (!('IntersectionObserver' in window)) return;
-  const targets = ['terminal-desk', 'open-trades-card', 'ai-infrastructure-card', 'decision-journal']
+  const targets = ['terminal-desk', 'open-trades-card', 'ai-infrastructure-card', 'crypto-market-card', 'decision-journal']
     .map((id) => document.getElementById(id))
     .filter(Boolean);
   const observer = new IntersectionObserver((entries) => {
@@ -7217,7 +7536,9 @@ function renderPrioritySetups(board) {
   const meta = document.getElementById('priority-setups-meta');
   if (!body || !meta) return;
   const safe = board || {};
-  const allItems = Array.isArray(safe.items) ? safe.items.filter((item) => item && item.coin) : [];
+  const allItems = Array.isArray(safe.items)
+    ? safe.items.filter((item) => item && item.coin && itemMatchesTerminalLane(item))
+    : [];
   const coherentItems = allItems.filter(prioritySetupIsCoherent);
   const ranked = sortCallItems(coherentItems);
   const gate = ((latestState || {}).best_trade_gate || {});
@@ -7229,10 +7550,10 @@ function renderPrioritySetups(board) {
     if (!item || !item.coin || selected.some((entry) => entry.coin === item.coin)) return;
     selected.push(item);
   };
-  if (gateSelected && gateSelected.coin) {
+  if (gateSelected && gateSelected.coin && itemMatchesTerminalLane(dashboardItemForCoin(gateSelected.coin) || gateSelected)) {
     addUnique(coherentItems.find((item) => String(item.coin || '').toUpperCase() === String(gateSelected.coin || '').toUpperCase()));
   }
-  addUnique(coherentActionBoardLead(safe));
+  addUnique(coherentActionBoardLead(safe, terminalAssetLane));
   ranked.filter((item) => item.tradable).forEach(addUnique);
   ranked.forEach(addUnique);
   const visible = selected.slice(0, 3);
@@ -8033,7 +8354,7 @@ async function refresh() {
     latestPnlAttribution = data.pnl_attribution || {};
     const actionBoard = data.action_board || { items: [], lead: null };
     latestActionBoard = actionBoard;
-    const coherentLead = coherentActionBoardLead(actionBoard);
+    const coherentLead = coherentActionBoardLead(actionBoard, terminalAssetLane);
 
     // Header
     let updateText = 'Updated: ' + data.server_time;
@@ -8114,12 +8435,15 @@ async function refresh() {
         .map((details) => String(details.dataset.positionChart || ''))
         .filter(Boolean)
     );
+    const lanePositions = (Array.isArray(s.positions) ? s.positions : [])
+      .map((position, sourceIndex) => ({ position, sourceIndex }))
+      .filter((entry) => itemMatchesTerminalLane(entry.position));
     countBadge.style.display = 'inline-flex';
-    if (s.positions && s.positions.length) {
-      countBadge.textContent = s.positions.length;
+    if (lanePositions.length) {
+      countBadge.textContent = lanePositions.length;
       countBadge.className = 'open-count';
       openCard.className = 'card card-highlight';
-      openBody.innerHTML = s.positions.map((p, positionIndex) => {
+      openBody.innerHTML = lanePositions.map(({ position: p, sourceIndex }) => {
         const pnlCls = cls(p.unrealised_pnl);
         const dirCls = p.direction === 'LONG' ? 'pos-long' : 'pos-short';
         const leverage = Number(p.leverage || s.leverage || 1);
@@ -8133,7 +8457,7 @@ async function refresh() {
         return '<section class="position-shell">'
           + '<div class="position-focus-head">'
             + '<div class="position-focus-name"><span class="position-focus-symbol">' + esc(p.coin) + '</span><span class="pos-direction ' + dirCls + '">' + arrow + ' ' + esc(p.direction) + '</span></div>'
-            + '<div class="position-focus-pnl"><div class="pos-meta">Unrealised P&amp;L</div><div class="pnl-value-row"><div class="pos-val ' + pnlCls + '">' + fmtD(p.unrealised_pnl) + '<span style="font-size:11px;opacity:0.7;margin-left:4px;">(' + (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%)</span></div><button type="button" class="pnl-explain-button" data-pnl-explain="open" data-pnl-index="' + positionIndex + '" title="' + esc(shortText(pnlExplanation.headline || 'Explain unrealized PnL', 240)) + '">Why?</button></div></div>'
+            + '<div class="position-focus-pnl"><div class="pos-meta">Unrealised P&amp;L</div><div class="pnl-value-row"><div class="pos-val ' + pnlCls + '">' + fmtD(p.unrealised_pnl) + '<span style="font-size:11px;opacity:0.7;margin-left:4px;">(' + (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%)</span></div><button type="button" class="pnl-explain-button" data-pnl-explain="open" data-pnl-index="' + sourceIndex + '" title="' + esc(shortText(pnlExplanation.headline || 'Explain unrealized PnL', 240)) + '">Why?</button></div></div>'
           + '</div>'
           + '<div class="position-decision-grid">'
             + '<div class="position-decision-item"><div class="pos-meta">Price</div><div class="position-decision-value">$' + fmt(p.entry_price) + ' → <span class="' + pnlCls + '">$' + fmt(p.current_price) + '</span></div></div>'
@@ -8167,8 +8491,10 @@ async function refresh() {
     renderDecisionSurface(latestGlobalMarketContext, actionBoard, s);
     renderGlobalMarketContext(latestGlobalMarketContext);
     renderAiInfrastructure(latestAiInfrastructure);
+    renderCryptoMarket((s || {}).sentiment || {}, actionBoard);
     renderPrioritySetups(actionBoard);
     renderTerminalWorkspace(actionBoard);
+    renderMarketResearchLane();
     if (commandSearchOpen) renderCommandSearch();
 
     // Performance Stats
@@ -8309,6 +8635,8 @@ function handleKill() {
   });
 }
 
+renderTerminalLaneControls();
+renderMarketResearchLane();
 initTerminalNavTracking();
 refresh();
 if (!STATIC_GITHUB_PAGES_MODE) {
