@@ -106,6 +106,68 @@ test("an unresolved forecast expires as a miss after its horizon", () => {
   assert.equal(settled[0].outcomeReason, "horizon_expired_before_target");
 });
 
+test("a conditional call cannot lose before its entry is reached", () => {
+  const calls = [{
+    id: "conditional-long",
+    ticker: "TEST",
+    direction: "LONG",
+    analysedAt: "2026-08-01T00:00:00.000Z",
+    horizonHours: 24,
+    current: 100,
+    entry: 105,
+    target: 110,
+    invalidation: 95,
+    probability: 0.6,
+    status: "pending_entry",
+  }];
+  const pending = confidence.settleForecasts(calls, "TEST", [bar("2026-08-01T00:00:00.000Z", 94, 104)]);
+  assert.equal(pending[0].outcome, null);
+  assert.equal(pending[0].status, "pending_entry");
+
+  const active = confidence.settleForecasts(pending, "TEST", [bar("2026-08-01T01:00:00.000Z", 100, 106)]);
+  assert.equal(active[0].outcome, null);
+  assert.equal(active[0].status, "active");
+  assert.ok(active[0].activatedAt);
+
+  const resolved = confidence.settleForecasts(active, "TEST", [bar("2026-08-01T02:00:00.000Z", 103, 111)]);
+  assert.equal(resolved[0].outcome, 1);
+  assert.equal(resolved[0].outcomeReason, "target_first");
+});
+
+test("a setup that never reaches entry expires without a fake loss", () => {
+  const calls = [{
+    id: "never-entered",
+    ticker: "TEST",
+    direction: "LONG",
+    analysedAt: "2026-08-01T00:00:00.000Z",
+    horizonHours: 1,
+    current: 100,
+    entry: 105,
+    target: 110,
+    invalidation: 95,
+    probability: 0.6,
+    status: "pending_entry",
+  }];
+  const settled = confidence.settleForecasts(calls, "TEST", [
+    bar("2026-08-01T00:00:00.000Z", 96, 104),
+    bar("2026-08-01T00:59:00.000Z", 96, 104),
+  ]);
+  assert.equal(settled[0].outcome, null);
+  assert.equal(settled[0].status, "expired_untriggered");
+  assert.equal(settled[0].outcomeReason, "entry_never_reached");
+});
+
+test("performance summary separates exact ticker history from similar setups", () => {
+  const records = [
+    { ticker: "AMZN", direction: "LONG", setupType: "long_above_level", outcome: 1, resolutionSource: "venue_candle_path_v2" },
+    { ticker: "AMZN", direction: "LONG", setupType: "long_above_level", outcome: 0, resolutionSource: "venue_candle_path_v2" },
+    { ticker: "NVDA", direction: "LONG", setupType: "long_above_level", outcome: 1, resolutionSource: "venue_candle_path_v2" },
+  ];
+  const summary = confidence.performanceSummary(records, "AMZN", "LONG", 2, "equity", "long_above_level");
+  assert.deepEqual(summary.ticker, { samples: 2, wins: 1, hitRate: 0.5, hitRatePct: 50 });
+  assert.deepEqual(summary.setup, { samples: 3, wins: 2, hitRate: 2 / 3, hitRatePct: 67 });
+});
+
 test("historical misses pull future confidence down", () => {
   const optimistic = confidence.calibrate({
     rr: 2,

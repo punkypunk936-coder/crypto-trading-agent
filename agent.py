@@ -10893,6 +10893,7 @@ class TradingAgent:
             proactive_trader_report=proactive_trader_data,
             earnings_ledger_path=EARNINGS_SESSION_JSON,
         )
+        snapshot = ask_call_learning.refresh_snapshot_accountability(snapshot, settle=False)
         try:
             DASHBOARD_SNAPSHOT_JSON.write_text(json.dumps(snapshot, indent=2))
         except Exception as e:

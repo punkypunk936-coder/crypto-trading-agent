@@ -468,7 +468,7 @@ def _build_local_snapshot(server_timestamp: str | None = None) -> dict:
         tracked_coins,
         base_map=_load_market_map_local(),
     )
-    return build_dashboard_snapshot(
+    snapshot = build_dashboard_snapshot(
         state,
         _load_trades_local(),
         _load_control_local(),
@@ -487,6 +487,7 @@ def _build_local_snapshot(server_timestamp: str | None = None) -> dict:
         earnings_ledger_path=EARNINGS_SESSION_JSON,
         server_timestamp=server_timestamp,
     )
+    return ask_call_learning.refresh_snapshot_accountability(snapshot, settle=False)
 
 
 def _refresh_local_snapshot_worker(server_timestamp: str | None = None) -> None:

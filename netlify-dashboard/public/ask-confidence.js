@@ -82,7 +82,9 @@
     return normalizeRecords(records).map((source) => {
       const row = { ...source };
       if (row.outcome === 0 || row.outcome === 1) return row;
+      if (row.status === "superseded" || row.status === "expired_untriggered") return row;
       if (String(row.ticker || "").toUpperCase() !== normalizedTicker) return row;
+      row.outcome = null;
 
       const startedAt = Date.parse(String(row.analysedAt || ""));
       const horizonHours = clamp(finite(row.horizonHours, HORIZON_HOURS), 1, 168);
@@ -99,14 +101,33 @@
       if (barTime(relevant[0]) > startedAt + (2 * 60 * 60 * 1000)) return row;
 
       const direction = String(row.direction || "").toUpperCase();
+      const hasExplicitEntry = Number.isFinite(Number(row.entry)) && Number(row.entry) > 0;
+      const hasCurrent = Number.isFinite(Number(row.current)) && Number(row.current) > 0;
+      const entry = finite(row.entry, finite(row.current, NaN));
       const target = finite(row.target, NaN);
       const invalidation = finite(row.invalidation, NaN);
       if (!Number.isFinite(target) || !Number.isFinite(invalidation)) return row;
+      let activatedAt = Date.parse(String(row.activatedAt || ""));
+      const entryWasLiveAtAnalysis = hasCurrent && Number.isFinite(entry)
+        && (direction === "LONG" ? Number(row.current) >= entry : Number(row.current) <= entry);
+      if (!Number.isFinite(activatedAt) && (!hasExplicitEntry || entryWasLiveAtAnalysis)) {
+        activatedAt = startedAt;
+        row.activatedAt = new Date(startedAt).toISOString();
+        row.status = "active";
+      }
 
       for (const bar of relevant) {
         const high = finite(bar.h, NaN);
         const low = finite(bar.l, NaN);
         if (!Number.isFinite(high) || !Number.isFinite(low)) continue;
+        if (!Number.isFinite(activatedAt)) {
+          if (!Number.isFinite(entry)) continue;
+          const entryHit = direction === "LONG" ? high >= entry : low <= entry;
+          if (!entryHit) continue;
+          activatedAt = barCloseTime(bar) || barTime(bar);
+          row.activatedAt = new Date(activatedAt).toISOString();
+          row.status = "active";
+        }
         const targetHit = direction === "LONG" ? high >= target : low <= target;
         const invalidHit = direction === "LONG" ? low <= invalidation : high >= invalidation;
         if (!targetHit && !invalidHit) continue;
@@ -117,13 +138,21 @@
           ? "target_and_invalidation_same_candle"
           : invalidHit ? "invalidation_first" : "target_first";
         row.resolvedAt = new Date(barCloseTime(bar) || barTime(bar)).toISOString();
+        row.status = "resolved";
         return row;
       }
 
       const latestClose = Math.max(...orderedBars.map(barCloseTime));
       if (latestClose >= expiresAt) {
-        row.outcome = 0;
-        row.outcomeReason = "horizon_expired_before_target";
+        if (!Number.isFinite(activatedAt)) {
+          row.outcome = null;
+          row.outcomeReason = "entry_never_reached";
+          row.status = "expired_untriggered";
+        } else {
+          row.outcome = 0;
+          row.outcomeReason = "horizon_expired_before_target";
+          row.status = "resolved";
+        }
         row.resolvedAt = new Date(expiresAt).toISOString();
       }
       return row;
@@ -167,6 +196,52 @@
       brier: brierScore(sample),
       scope,
       totalResolved: resolved.length,
+    };
+  }
+
+  function performanceSummary(records, ticker, direction, rewardRisk, assetBucket, setupType) {
+    const allRows = normalizeRecords(records);
+    const resolved = allRows.filter((row) => row.outcome === 0 || row.outcome === 1);
+    const normalizedTicker = String(ticker || "").trim().toUpperCase();
+    const normalizedDirection = String(direction || "").trim().toUpperCase();
+    const normalizedSetup = String(setupType || (
+      normalizedDirection === "SHORT" ? "short_below_level" : "long_above_level"
+    ));
+    const normalizedAsset = String(assetBucket || "").toLowerCase();
+    const bucket = rrBucket(rewardRisk);
+    const summarize = (sample) => {
+      const wins = sample.reduce((sum, row) => sum + Number(row.outcome === 1), 0);
+      return {
+        samples: sample.length,
+        wins,
+        hitRate: sample.length ? wins / sample.length : null,
+        hitRatePct: sample.length ? Math.round((wins / sample.length) * 100) : null,
+      };
+    };
+    const tickerRows = resolved.filter((row) => (
+      String(row.ticker || "").toUpperCase() === normalizedTicker
+      && String(row.direction || "").toUpperCase() === normalizedDirection
+    ));
+    let setupRows = resolved.filter((row) => String(row.setupType || "") === normalizedSetup);
+    if (!setupRows.length) {
+      setupRows = resolved.filter((row) => (
+        String(row.direction || "").toUpperCase() === normalizedDirection
+        && String(row.rrBucket || rrBucket(row.rr)) === bucket
+        && (!normalizedAsset || String(row.assetBucket || "").toLowerCase() === normalizedAsset)
+      ));
+    }
+    const currentRows = allRows.filter((row) => (
+      String(row.ticker || "").toUpperCase() === normalizedTicker
+      && String(row.direction || "").toUpperCase() === normalizedDirection
+      && row.outcome !== 0 && row.outcome !== 1
+      && !["superseded", "expired_untriggered"].includes(String(row.status || ""))
+    ));
+    return {
+      ticker: summarize(tickerRows),
+      setup: summarize(setupRows),
+      currentStatus: currentRows.length
+        ? String(currentRows[currentRows.length - 1].status || "pending_entry")
+        : "untracked",
     };
   }
 
@@ -265,6 +340,9 @@
     ));
     if (duplicate) return rows;
 
+    const current = finite(forecast.current, 0);
+    const entry = finite(forecast.entry, current);
+    const entryIsLive = direction === "LONG" ? current >= entry : current <= entry;
     rows.push({
       id: ticker + "-" + direction + "-" + String(analysedMs),
       ticker,
@@ -274,18 +352,24 @@
       analysedAt,
       venueSymbol: String(forecast.venueSymbol || ticker),
       horizonHours: clamp(finite(forecast.horizonHours, HORIZON_HOURS), 1, 168),
-      current: finite(forecast.current, 0),
+      current,
+      entry,
+      entryMode: direction === "LONG" ? "above" : "below",
       target: finite(forecast.target, 0),
       invalidation: finite(forecast.invalidation, 0),
       rr: finite(forecast.rr, 0),
       rrBucket: rrBucket(forecast.rr),
       assetBucket: String(forecast.assetBucket || ""),
+      setupType: String(forecast.setupType || (direction === "LONG" ? "long_above_level" : "short_below_level")),
+      source: String(forecast.source || "ask_punky"),
       probability: clamp(finite(forecast.probability, 0.5), 0.01, 0.99),
       evidenceQuality: clamp(finite(forecast.evidenceQuality, 0), 0, 100),
       limitedHistory: Boolean(forecast.limitedHistory),
       outcome: null,
       outcomeReason: "",
       resolvedAt: null,
+      activatedAt: entryIsLive ? analysedAt : null,
+      status: entryIsLive ? "active" : "pending_entry",
     });
     return normalizeRecords(rows);
   }
@@ -299,6 +383,7 @@
     mergeRecords,
     settleForecasts,
     calibrationSummary,
+    performanceSummary,
     calibrate,
     recordForecast,
   };

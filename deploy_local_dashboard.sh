@@ -21,6 +21,8 @@ rsync -a \
   --exclude "state.json" \
   --exclude "trades_log.csv" \
   --exclude "trade_memory.json" \
+  --exclude "ask_forecast_ledger.jsonl" \
+  --exclude "ask_forecast_ledger.jsonl.lock" \
   --exclude "decision_dataset.jsonl" \
   --exclude "feature_store.jsonl" \
   --exclude "trade_dataset.jsonl" \

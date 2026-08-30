@@ -21,6 +21,15 @@ function normalize(source: any) {
     return null;
   }
   const trustedOutcome = [0, 1].includes(source?.outcome) && source?.resolutionSource === RESOLUTION_SOURCE;
+  const current = finite(source?.current);
+  const entry = finite(source?.entry, current);
+  const entryIsLive = direction === "LONG" ? current >= entry : current <= entry;
+  const activatedAt = source?.activatedAt || (entryIsLive ? new Date(analysedMs).toISOString() : null);
+  const status = trustedOutcome
+    ? "resolved"
+    : ["pending_entry", "active", "superseded", "expired_untriggered"].includes(String(source?.status || ""))
+      ? String(source.status)
+      : activatedAt ? "active" : "pending_entry";
   return {
     id: String(source?.id || `${ticker}-${direction}-${analysedMs}`).slice(0, 180),
     ticker,
@@ -31,19 +40,24 @@ function normalize(source: any) {
     analysedAt: new Date(analysedMs).toISOString(),
     horizonHours: Math.max(1, Math.min(168, finite(source?.horizonHours, 24))),
     venueSymbol: String(source?.venueSymbol || `xyz:${ticker}`).trim(),
-    current: finite(source?.current),
+    current,
+    entry,
+    entryMode: String(source?.entryMode || (direction === "LONG" ? "above" : "below")),
     target,
     invalidation,
     rr: finite(source?.rr),
     rrBucket: String(source?.rrBucket || ""),
     assetBucket: String(source?.assetBucket || ""),
+    setupType: String(source?.setupType || (direction === "LONG" ? "long_above_level" : "short_below_level")),
     probability: Math.max(0.01, Math.min(0.99, finite(source?.probability, 0.5))),
     evidenceQuality: Math.max(0, Math.min(100, finite(source?.evidenceQuality))),
     limitedHistory: Boolean(source?.limitedHistory),
     outcome: trustedOutcome ? Number(source.outcome) : null,
-    outcomeReason: trustedOutcome ? String(source?.outcomeReason || "") : "",
-    resolvedAt: trustedOutcome ? source?.resolvedAt || null : null,
+    outcomeReason: trustedOutcome || ["superseded", "expired_untriggered"].includes(status) ? String(source?.outcomeReason || "") : "",
+    resolvedAt: trustedOutcome || ["superseded", "expired_untriggered"].includes(status) ? source?.resolvedAt || null : null,
     resolutionSource: trustedOutcome ? RESOLUTION_SOURCE : "",
+    activatedAt,
+    status,
   };
 }
 
@@ -71,14 +85,21 @@ async function fetchCandles(record: any, nowMs: number) {
 }
 
 function settle(record: any, bars: any[], nowMs: number) {
-  if ([0, 1].includes(record.outcome)) return record;
+  if ([0, 1].includes(record.outcome) || ["superseded", "expired_untriggered"].includes(record.status)) return record;
   const startedMs = Date.parse(record.analysedAt);
   const expiresMs = startedMs + finite(record.horizonHours, 24) * 60 * 60 * 1000;
   const relevant = bars.filter((bar) => finite(bar?.t) >= startedMs && finite(bar?.t) <= expiresMs);
   if (!relevant.length) return record;
+  let activatedAt = Date.parse(String(record.activatedAt || ""));
   for (const bar of relevant) {
     const high = finite(bar?.h);
     const low = finite(bar?.l);
+    if (!Number.isFinite(activatedAt)) {
+      const entryHit = record.direction === "LONG" ? high >= record.entry : low <= record.entry;
+      if (!entryHit) continue;
+      activatedAt = finite(bar?.T || bar?.t);
+      record = { ...record, activatedAt: new Date(activatedAt).toISOString(), status: "active" };
+    }
     const targetHit = record.direction === "LONG" ? high >= record.target : low <= record.target;
     const invalidHit = record.direction === "LONG" ? low <= record.invalidation : high >= record.invalidation;
     if (!targetHit && !invalidHit) continue;
@@ -89,15 +110,27 @@ function settle(record: any, bars: any[], nowMs: number) {
       outcomeReason: ambiguous ? "target_and_invalidation_same_candle" : invalidHit ? "invalidation_first" : "target_first",
       resolvedAt: new Date(finite(bar?.T || bar?.t)).toISOString(),
       resolutionSource: RESOLUTION_SOURCE,
+      status: "resolved",
     };
   }
   if (nowMs >= expiresMs && relevant.length >= 2) {
+    if (!Number.isFinite(activatedAt)) {
+      return {
+        ...record,
+        outcome: null,
+        outcomeReason: "entry_never_reached",
+        resolvedAt: new Date(expiresMs).toISOString(),
+        resolutionSource: "",
+        status: "expired_untriggered",
+      };
+    }
     return {
       ...record,
       outcome: 0,
       outcomeReason: "horizon_expired_before_target",
       resolvedAt: new Date(expiresMs).toISOString(),
       resolutionSource: RESOLUTION_SOURCE,
+      status: "resolved",
     };
   }
   return record;
@@ -129,7 +162,10 @@ async function processRecords(incoming: any[] = []) {
   const nowMs = Date.now();
   const pending = records
     .map((record, index) => ({ record, index }))
-    .filter(({ record }) => ![0, 1].includes(record.outcome))
+    .filter(({ record }) => (
+      ![0, 1].includes(record.outcome)
+      && !["superseded", "expired_untriggered"].includes(record.status)
+    ))
     .slice(0, MAX_SETTLEMENTS);
   const settled = await Promise.all(pending.map(async ({ record, index }) => ({
     index,
@@ -144,13 +180,18 @@ function summary(records: any[]) {
   const resolved = records.filter((record) => [0, 1].includes(record.outcome));
   const wins = resolved.reduce((total, record) => total + Number(record.outcome === 1), 0);
   const families: Record<string, any> = {};
+  const setupFamilies: Record<string, any> = {};
   for (const record of resolved) {
     const key = `${record.ticker}:${record.direction}`;
     families[key] ||= { samples: 0, wins: 0 };
     families[key].samples += 1;
     families[key].wins += Number(record.outcome === 1);
+    const setupKey = String(record.setupType || "unknown");
+    setupFamilies[setupKey] ||= { samples: 0, wins: 0 };
+    setupFamilies[setupKey].samples += 1;
+    setupFamilies[setupKey].wins += Number(record.outcome === 1);
   }
-  for (const value of Object.values(families) as any[]) {
+  for (const value of [...Object.values(families), ...Object.values(setupFamilies)] as any[]) {
     value.hit_rate = Math.round((value.wins / Math.max(1, value.samples)) * 10000) / 10000;
   }
   return {
@@ -159,6 +200,9 @@ function summary(records: any[]) {
     wins,
     hit_rate: resolved.length ? Math.round((wins / resolved.length) * 10000) / 10000 : null,
     families,
+    setup_families: setupFamilies,
+    pending_entry: records.filter((record) => record.status === "pending_entry").length,
+    active: records.filter((record) => record.status === "active" && ![0, 1].includes(record.outcome)).length,
     resolution_source: RESOLUTION_SOURCE,
   };
 }

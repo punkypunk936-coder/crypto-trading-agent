@@ -1678,6 +1678,29 @@
     background: rgba(255,77,106,0.08);
     border-color: rgba(255,77,106,0.24);
   }
+  .record-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 7px;
+    border: 1px solid rgba(91,140,255,0.22);
+    border-radius: 4px;
+    background: rgba(91,140,255,0.07);
+    color: #a9c0ff;
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+  .record-chip-early { color: var(--muted); border-color: rgba(235,237,229,0.12); background: rgba(255,255,255,0.025); }
+  .plan-accountability-line {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(235,237,229,0.08);
+    color: var(--text-secondary);
+    font-family: var(--mono);
+    font-size: 9px;
+    line-height: 1.5;
+  }
   .daily-sheet {
     border: 1px solid var(--border);
     border-radius: 14px;
@@ -3734,7 +3757,7 @@
   }
   .terminal-focus-grid {
     display: grid;
-    grid-template-columns: 1.25fr 1fr 1fr;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 18px;
     margin-top: 15px;
   }
@@ -4348,7 +4371,7 @@
           <button class="terminal-dock-submit" id="punky-dock-submit" type="button" onclick="runPunkyDock()">Analyze trade</button>
         </div>
         <div class="terminal-dock-answer" id="punky-dock-answer">
-          <div class="terminal-dock-empty"><strong>Pick a name from the tape.</strong><br>Punky will return TAKE, WAIT, or AVOID with entry, target, invalidation, and calibrated confidence.</div>
+          <div class="terminal-dock-empty"><strong>Pick a name from the tape.</strong><br>Punky will show the direction, price to enter, first profit level, exit level, confidence, and verified record.</div>
         </div>
       </div>
     </aside>
@@ -5049,7 +5072,7 @@ const actionCompactRowHtml = (item) => {
   const modeClass = item.tradable ? 'signal-mode-tradable' : 'signal-mode-watch';
   return '<div class="decision-compact-row">'
     + '<div class="decision-compact-main">'
-      + '<div class="token-line"><div class="decision-coin">' + esc(item.coin) + '</div><span class="' + modeClass + '">' + esc(surfaceModeBadge(item.mode_badge, item.tradable)) + '</span>' + setupStanceChipHtml(item) + probabilityChipHtml(item) + eventChipHtml(item) + assetCategoryBadgeHtml(item) + (status === 'PENDING_ENTRY' ? '<span class="review-chip">ORDER LIVE</span>' : '') + '</div>'
+      + '<div class="token-line"><div class="decision-coin">' + esc(item.coin) + '</div><span class="' + modeClass + '">' + esc(surfaceModeBadge(item.mode_badge, item.tradable)) + '</span>' + setupStanceChipHtml(item) + probabilityChipHtml(item) + planAccuracyChipHtml(item) + eventChipHtml(item) + assetCategoryBadgeHtml(item) + (status === 'PENDING_ENTRY' ? '<span class="review-chip">ORDER LIVE</span>' : '') + '</div>'
       + '<div class="token-subline token-subline-simple">' + esc(simpleThesisText(item, 84)) + '</div>'
     + '</div>'
     + '<div class="decision-compact-side">'
@@ -5190,6 +5213,99 @@ const probabilityChipHtml = (item) => {
   if (!(pct > 0)) return '';
   const tier = String((item || {}).probability_tier || probabilityTierForPct(pct));
   return '<span class="prob-chip prob-chip-' + esc(tier) + '">' + esc(String(pct) + '% odds') + '</span>';
+};
+const planAccuracyForItem = (item) => {
+  const safe = item || {};
+  const backend = safe.plan_accuracy && typeof safe.plan_accuracy === 'object' ? safe.plan_accuracy : {};
+  const direction = terminalThesisDirection(safe);
+  const plan = plainPlanForItem(safe);
+  const local = typeof PunkyConfidence.performanceSummary === 'function'
+    ? PunkyConfidence.performanceSummary(
+        PunkyConfidence.load(),
+        safe.coin,
+        direction,
+        Number(plan.reward_risk || 0),
+        safe.asset_bucket,
+        backend.setup_type,
+      )
+    : { ticker: {}, setup: {}, currentStatus: 'untracked' };
+  const pickStats = (primary, fallback) => Number((primary || {}).samples || 0) > 0 ? primary : (fallback || {});
+  return {
+    ticker: pickStats(backend.ticker, local.ticker),
+    setup: pickStats(backend.setup, local.setup),
+    currentStatus: String(backend.current_status || local.currentStatus || 'untracked'),
+    setupType: String(backend.setup_type || (direction === 'SHORT' ? 'short_below_level' : 'long_above_level')),
+  };
+};
+const planAccuracyRate = (stats) => {
+  const samples = Number((stats || {}).samples || 0);
+  if (!samples) return null;
+  const direct = Number((stats || {}).hit_rate);
+  if (Number.isFinite(direct)) return Math.round(direct * 100);
+  const camel = Number((stats || {}).hitRatePct);
+  if (Number.isFinite(camel)) return Math.round(camel);
+  return Math.round((Number((stats || {}).wins || 0) / samples) * 100);
+};
+const planAccuracyStatusText = (status) => {
+  const key = String(status || '').toLowerCase();
+  if (key === 'pending_entry') return 'entry not reached yet';
+  if (key === 'active') return 'entry reached, outcome open';
+  if (key === 'resolved') return 'outcome scored';
+  if (key === 'expired_untriggered') return 'entry never reached, not scored';
+  if (key === 'superseded') return 'revised before entry, not scored';
+  return 'new plan being tracked';
+};
+const planAccuracyCompact = (item) => {
+  const record = planAccuracyForItem(item);
+  const stats = record.ticker || {};
+  const samples = Number(stats.samples || 0);
+  const rate = planAccuracyRate(stats);
+  return samples > 0 ? String(rate) + '% hit • ' + String(samples) : '1st plan tracking';
+};
+const planAccuracyChipHtml = (item) => {
+  if (!['LONG', 'SHORT'].includes(terminalThesisDirection(item))) return '';
+  const record = planAccuracyForItem(item);
+  const samples = Number((record.ticker || {}).samples || 0);
+  return '<span class="record-chip' + (samples < 3 ? ' record-chip-early' : '') + '">' + esc(planAccuracyCompact(item)) + '</span>';
+};
+const planAccuracyNarrative = (ticker, direction, record) => {
+  const tickerStats = record.ticker || {};
+  const setupStats = record.setup || {};
+  const tickerSamples = Number(tickerStats.samples || 0);
+  const setupSamples = Number(setupStats.samples || 0);
+  const tickerText = tickerSamples
+    ? String(ticker || '') + ' ' + String(direction || '').toLowerCase() + ': ' + String(tickerStats.wins || 0) + '/' + String(tickerSamples)
+      + ' targets first (' + String(planAccuracyRate(tickerStats)) + '%)'
+    : 'First scored ' + String(ticker || '') + ' ' + String(direction || '').toLowerCase() + ' plan is still building';
+  const setupText = setupSamples
+    ? 'Similar ' + String(direction || '').toLowerCase() + ' plans: ' + String(setupStats.wins || 0) + '/' + String(setupSamples)
+      + ' targets first (' + String(planAccuracyRate(setupStats)) + '%)'
+    : 'Similar-plan history is still building';
+  return tickerText + ' • ' + setupText + ' • Current: ' + planAccuracyStatusText(record.currentStatus);
+};
+const planAccuracyText = (item) => {
+  const safe = item || {};
+  return planAccuracyNarrative(safe.coin, terminalThesisDirection(safe), planAccuracyForItem(safe));
+};
+const planAccuracyForAnswer = (answer, item, records=PunkyConfidence.load()) => {
+  const base = planAccuracyForItem(item || { coin: answer.ticker, thesis_direction: answer.direction, asset_bucket: answer.assetBucket });
+  const local = typeof PunkyConfidence.performanceSummary === 'function'
+    ? PunkyConfidence.performanceSummary(
+        records,
+        answer.ticker,
+        answer.direction,
+        answer.rr,
+        answer.assetBucket,
+        base.setupType,
+      )
+    : { ticker: {}, setup: {}, currentStatus: 'untracked' };
+  const use = (primary, fallback) => Number((primary || {}).samples || 0) > 0 ? primary : (fallback || {});
+  return {
+    ticker: use(base.ticker, local.ticker),
+    setup: use(base.setup, local.setup),
+    currentStatus: local.currentStatus !== 'untracked' ? local.currentStatus : base.currentStatus,
+    setupType: base.setupType,
+  };
 };
 const compactOddsText = (item) => {
   const pct = Number((item || {}).probability_pct || 0);
@@ -5413,6 +5529,7 @@ let latestGlobalMarketContext = { active: false, benchmarks: [], market_views: [
 let latestAiInfrastructure = { active: false, sectors: [], unusual_movers: [] };
 let latestEarningsSession = { active: false, rows: [] };
 let latestPnlAttribution = {};
+let latestPlanAccountability = { records: 0, resolved: 0, families: {}, setup_families: {} };
 let selectedAiSector = '';
 let terminalSelectedTicker = '';
 let terminalAssetLane = 'equity';
@@ -6058,6 +6175,7 @@ function commandResultHtml(item, index, active) {
     + '</div>'
     + '<div class="command-result-note">' + esc(simpleActionText(safe)) + ' • ' + esc(simpleNextText(safe, 64)) + '</div>'
     + '<div class="command-result-note">' + esc(simpleTargetText(safe, 68)) + ' • ' + esc(simpleInvalidationText(safe, 68)) + '</div>'
+    + '<div class="command-result-note">Track record: ' + esc(planAccuracyCompact(safe)) + '</div>'
   + '</button>';
 }
 
@@ -6453,6 +6571,11 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
     ? backendSamples + ' venue-verified ' + (backendFamily || direction) + ' calls • ' + backendHitRate
       + '% hit rate • already reflected in the scheduled probability'
     : 'No venue-verified calls exist for this exact ticker/direction yet; confidence is still prior-weighted.';
+  const accountability = planAccuracyForAnswer(
+    { ticker, direction, rr, assetBucket },
+    item,
+    settledForecasts,
+  );
   const evidence = [
     {
       label: 'One agent decision',
@@ -6507,6 +6630,7 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
     calibrationBrier: confidenceModel.brier,
     horizonHours: confidenceModel.horizonHours,
     assetBucket,
+    accountability,
     why: [structureWhy, momentumWhy, levelWhy, earningsWhy], evidence,
     analysedAt: new Date().toISOString(),
   };
@@ -6590,6 +6714,7 @@ function askPunkyAnswerHtml(answer) {
       + '</div>'
       + '<p class="ask-punky-summary">' + esc(answer.summary) + '</p>'
       + '<div class="ask-punky-confidence-context">Agent view: ' + esc(answer.direction) + ' • live price action: ' + esc(answer.chartDirection || answer.direction) + ' • evidence quality: ' + esc(answer.evidenceQuality) + '/100</div>'
+      + '<div class="plan-accountability-line"><strong>Verified record:</strong> ' + esc(planAccuracyNarrative(answer.ticker, answer.direction, answer.accountability || {})) + '</div>'
     + '</div>'
     + '<div class="ask-punky-plan">'
       + askPunkyPlanItem('Price now', askPunkyPrice(answer.current, answer.current))
@@ -6671,6 +6796,7 @@ async function runAskPunky(seed='') {
       answer,
     );
     PunkyConfidence.save(recordedForecasts);
+    answer.accountability = planAccuracyForAnswer(answer, item, recordedForecasts);
     askPunkySyncForecasts(recordedForecasts);
     commandActiveAnswer = answer;
   } catch (error) {
@@ -7438,7 +7564,7 @@ function renderTerminalWatchlist(board) {
     const actionClass = terminalActionClass(action === 'WAIT' ? thesisDirection : action);
     return '<button type="button" class="terminal-watch-row' + (ticker === terminalSelectedTicker ? ' active' : '') + '" data-terminal-ticker="' + esc(ticker) + '" aria-pressed="' + String(ticker === terminalSelectedTicker) + '">'
       + '<div class="terminal-watch-top"><span class="terminal-watch-symbol">' + esc(ticker) + '</span><span class="terminal-watch-direction ' + actionClass + '">' + esc(simpleActionText(item)) + '</span></div>'
-      + '<div class="terminal-watch-meta"><span>' + esc(simpleTargetText(item, 48)) + '</span><span>' + esc(terminalDeskState(item)) + '</span></div>'
+      + '<div class="terminal-watch-meta"><span>' + esc(simpleTargetText(item, 48)) + '</span><span>' + esc(planAccuracyCompact(item)) + '</span></div>'
     + '</button>';
   }).join('');
 }
@@ -7475,6 +7601,7 @@ function renderTerminalFocus(board) {
       + '<div class="terminal-focus-field"><span class="terminal-focus-label">When to enter</span><div class="terminal-focus-value">' + esc(simpleNextText(item, 150)) + '</div></div>'
       + '<div class="terminal-focus-field"><span class="terminal-focus-label">First profit level</span><div class="terminal-focus-value green">' + esc(simpleTargetText(item, 150)) + '</div></div>'
       + '<div class="terminal-focus-field"><span class="terminal-focus-label">When to leave</span><div class="terminal-focus-value risk">' + esc(simpleInvalidationText(item, 150)) + '</div></div>'
+      + '<div class="terminal-focus-field"><span class="terminal-focus-label">Verified plan record</span><div class="terminal-focus-value">' + esc(planAccuracyText(item)) + '</div></div>'
     + '</div>';
 }
 
@@ -7501,7 +7628,7 @@ function renderPunkyDock() {
   }
   if (!commandActiveAnswer) {
     const selected = terminalSelectedTicker || 'a ticker';
-    body.innerHTML = '<div class="terminal-dock-empty"><strong>' + esc(selected === 'a ticker' ? 'Pick a name from the tape.' : selected + ' is selected.') + '</strong><br>Ask whether to take it. Punky will attach the decision, risk levels, evidence, and confidence.</div>';
+    body.innerHTML = '<div class="terminal-dock-empty"><strong>' + esc(selected === 'a ticker' ? 'Pick a name from the tape.' : selected + ' is selected.') + '</strong><br>Ask whether to take it. Punky will show the direction, exact levels, evidence, confidence, and verified record.</div>';
     return;
   }
   const answer = commandActiveAnswer;
@@ -7515,6 +7642,7 @@ function renderPunkyDock() {
     + '</div>'
     + '<div class="terminal-dock-alignment">THESIS ' + esc(answer.direction) + ' • LIVE CHART ' + esc(answer.chartDirection || answer.direction) + '</div>'
     + '<div class="terminal-dock-summary">' + esc(answer.summary) + '</div>'
+    + '<div class="plan-accountability-line"><strong>Verified record:</strong> ' + esc(planAccuracyNarrative(answer.ticker, answer.direction, answer.accountability || {})) + '</div>'
     + '<div class="terminal-dock-plan">'
       + '<div><span>' + (answer.direction === 'LONG' ? 'Buy only above' : 'Short only below') + '</span><strong>' + esc(askPunkyPrice(answer.entry, answer.current)) + '</strong></div>'
       + '<div><span>First profit level</span><strong class="green">' + esc(askPunkyPrice(answer.target, answer.current)) + '</strong></div>'
@@ -7657,7 +7785,7 @@ function renderPrioritySetups(board) {
     return '<div class="priority-setup">'
       + '<div>'
         + '<div class="priority-setup-title">' + (index === 0 ? '<span class="best-setup-rank">Best setup</span>' : '') + '<span class="priority-setup-symbol">' + esc(item.coin) + '</span><span class="' + modeClass + '">' + esc(surfaceModeBadge(item.mode_badge, item.tradable)) + '</span>' + priorityDirectionChipHtml(item) + '</div>'
-        + '<div class="priority-field-value" style="margin-top:6px;">' + esc(simpleActionText(item)) + ' • ' + esc(terminalDeskState(item)) + '</div>'
+        + '<div class="priority-field-value" style="margin-top:6px;">' + esc(simpleActionText(item)) + ' • ' + esc(planAccuracyCompact(item)) + '</div>'
         + '<div class="priority-setup-actions"><span class="muted">' + esc(confidenceText) + '</span><button type="button" class="priority-ask" onclick="askPunkyPrompt(\'Should I take ' + esc(item.coin) + '?\')">ASK PUNKY</button></div>'
       + '</div>'
       + '<div><span class="priority-field-label">When to enter</span><div class="priority-field-value">' + esc(simpleNextText(item, 140)) + '</div></div>'
@@ -7749,7 +7877,7 @@ function marketMapCompactRowHtml(coin, item) {
   const stanceChip = setupStanceChipHtml(safeItem);
   return '<div class="daily-sheet-row" data-tradable="' + (tradable ? 'true' : 'false') + '">'
     + '<div class="daily-sheet-main">'
-      + '<div class="token-line"><div class="map-coin">' + esc(safeItem.coin || coin) + '</div><span class="' + modeClass + '">' + esc(surfaceModeBadge(safeItem.mode_badge, tradable)) + '</span>' + stanceChip + probabilityChipHtml(safeItem) + eventChipHtml(safeItem) + categoryBadge + '</div>'
+      + '<div class="token-line"><div class="map-coin">' + esc(safeItem.coin || coin) + '</div><span class="' + modeClass + '">' + esc(surfaceModeBadge(safeItem.mode_badge, tradable)) + '</span>' + stanceChip + probabilityChipHtml(safeItem) + planAccuracyChipHtml(safeItem) + eventChipHtml(safeItem) + categoryBadge + '</div>'
       + '<div class="token-subline token-subline-simple">' + esc(simpleThesisText(safeItem, 84)) + '</div>'
     + '</div>'
     + '<div class="daily-sheet-stat"><div class="daily-sheet-label">Now</div><div class="daily-sheet-value">' + esc(simpleActionText(safeItem)) + '</div></div>'
@@ -7774,7 +7902,7 @@ function marketMapDetailCardHtml(coin, entry, signal, item) {
     return '<details class="map-card map-card-empty" data-tradable="' + (isTradable ? 'true' : 'false') + '"' + (shouldOpen ? ' open' : '') + '>'
       + '<summary class="map-card-summary">'
         + '<div class="map-summary-main">'
-          + '<div class="token-line"><div class="map-coin">' + esc(coin) + '</div><span class="' + modeClass + '">' + esc(modeLabel) + '</span>' + probabilityChipHtml(safeItem) + '<span class="review-chip">AUTO PENDING</span></div>'
+          + '<div class="token-line"><div class="map-coin">' + esc(coin) + '</div><span class="' + modeClass + '">' + esc(modeLabel) + '</span>' + probabilityChipHtml(safeItem) + planAccuracyChipHtml(safeItem) + '<span class="review-chip">AUTO PENDING</span></div>'
           + '<div class="token-subline">No structure map is available yet for this asset. Add a manual override if you want custom levels immediately.</div>'
         + '</div>'
         + '<div class="map-summary-side"><div class="token-preview">' + esc(modeNote) + '</div><span class="token-chevron">⌄</span></div>'
@@ -7819,7 +7947,7 @@ function marketMapDetailCardHtml(coin, entry, signal, item) {
   return '<details class="map-card" data-tradable="' + (isTradable ? 'true' : 'false') + '"' + (shouldOpen ? ' open' : '') + '>'
     + '<summary class="map-card-summary">'
       + '<div class="map-summary-main">'
-        + '<div class="token-line"><div class="map-coin">' + esc(coin) + '</div><span class="' + modeClass + '">' + esc(modeLabel) + '</span>' + stanceChip + probabilityChipHtml(safeItem) + '<span class="review-chip">' + esc(source === 'AUTO' ? 'AUTO MAP' : 'MANUAL') + '</span></div>'
+        + '<div class="token-line"><div class="map-coin">' + esc(coin) + '</div><span class="' + modeClass + '">' + esc(modeLabel) + '</span>' + stanceChip + probabilityChipHtml(safeItem) + planAccuracyChipHtml(safeItem) + '<span class="review-chip">' + esc(source === 'AUTO' ? 'AUTO MAP' : 'MANUAL') + '</span></div>'
         + '<div class="token-subline">' + esc(shortText(setupLine, 150)) + '</div>'
       + '</div>'
       + '<div class="map-summary-side"><div class="token-preview">' + esc(preview) + '<br>' + esc(previewRisk) + '</div><span class="token-chevron">⌄</span></div>'
@@ -8154,7 +8282,7 @@ function renderActionBoard(board) {
       return '<details class="' + highlight + ' decision-box"' + (shouldOpen ? ' open' : '') + '>'
         + '<summary class="decision-summary">'
           + '<div class="decision-summary-main">'
-            + '<div class="token-line"><div class="decision-coin">' + esc(item.coin) + '</div><span class="signal-mode-tradable">' + esc(item.mode_badge || 'LIVE') + '</span>' + stanceChip + probabilityChipHtml(item) + eventChipHtml(item) + categoryBadge + (status === 'PENDING_ENTRY' ? '<span class="review-chip">ORDER LIVE</span>' : '') + '</div>'
+            + '<div class="token-line"><div class="decision-coin">' + esc(item.coin) + '</div><span class="signal-mode-tradable">' + esc(item.mode_badge || 'LIVE') + '</span>' + stanceChip + probabilityChipHtml(item) + planAccuracyChipHtml(item) + eventChipHtml(item) + categoryBadge + (status === 'PENDING_ENTRY' ? '<span class="review-chip">ORDER LIVE</span>' : '') + '</div>'
             + '<div class="token-subline token-subline-simple">' + esc(simpleThesisText(item, 88)) + '</div>'
           + '</div>'
           + '<div class="decision-summary-side"><div class="token-preview">' + esc(simpleActionText(item)) + '<br>' + esc(simpleTargetText(item, 68)) + '</div><span class="token-chevron">⌄</span></div>'
@@ -8165,6 +8293,7 @@ function renderActionBoard(board) {
             + '<div class="token-detail"><span class="token-detail-label">When to enter</span><div class="token-detail-value">' + esc(simpleNextText(item, 96)) + '</div></div>'
             + '<div class="token-detail"><span class="token-detail-label">First profit level</span><div class="token-detail-value">' + esc(simpleTargetText(item, 92)) + '</div></div>'
             + '<div class="token-detail"><span class="token-detail-label">When to leave</span><div class="token-detail-value">' + esc(simpleInvalidationText(item, 92)) + '</div></div>'
+            + '<div class="token-detail"><span class="token-detail-label">Verified record</span><div class="token-detail-value">' + esc(planAccuracyText(item)) + '</div></div>'
             + '<div class="token-detail"><span class="token-detail-label">Why</span><div class="token-detail-value">' + esc(simpleThesisText(item, 96)) + '</div></div>'
             + (item.micro_desk_verdict ? '<div class="token-detail"><span class="token-detail-label">Desk</span><div class="token-detail-value">' + esc(String(item.micro_desk_verdict) + ' • ' + shortText(item.micro_desk_summary || '', 110)) + '</div></div>' : '')
           + '</div>'
@@ -8429,6 +8558,7 @@ async function refresh() {
     latestAiInfrastructure = data.ai_infrastructure || ((s || {}).ai_infrastructure) || { active: false, sectors: [], unusual_movers: [] };
     latestEarningsSession = data.earnings_session || { active: false, rows: [] };
     latestPnlAttribution = data.pnl_attribution || {};
+    latestPlanAccountability = data.plan_accountability || { records: 0, resolved: 0, families: {}, setup_families: {} };
     const actionBoard = data.action_board || { items: [], lead: null };
     latestActionBoard = actionBoard;
     const coherentLead = coherentActionBoardLead(actionBoard, terminalAssetLane);
