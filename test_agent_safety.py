@@ -3621,6 +3621,29 @@ def test_hosted_dashboard_bundle_matches_local_template() -> None:
     assert hosted_bundle == local_template, "hosted dashboard should mirror the local dashboard UI exactly"
 
 
+def test_hosted_dashboard_has_static_absolute_social_preview_metadata() -> None:
+    hosted_bundle = Path("netlify-dashboard/public/index.html").read_text()
+    share_bundle = Path("netlify-dashboard/public/share.html").read_text()
+    public_url = "https://punkypunk936-coder.github.io/crypto-trading-agent/"
+    preview_url = f"{public_url}assets/punky-social-preview.jpg?v=20260830"
+    head = hosted_bundle.split("</head>", 1)[0]
+    share_head = share_bundle.split("</head>", 1)[0]
+
+    assert "{{" not in head and "}}" not in head, "static deployment cannot contain server template syntax"
+    assert "{{" not in share_head and "}}" not in share_head
+    assert f'<link rel="canonical" href="{public_url}">' in head
+    assert f'<meta property="og:url" content="{public_url}">' in head
+    assert f'<meta property="og:image" content="{preview_url}">' in head
+    assert f'<meta name="twitter:image" content="{preview_url}">' in head
+    assert '<meta name="twitter:card" content="summary_large_image">' in head
+    assert f'<meta property="og:image" content="{preview_url}">' in share_head
+    assert f'<meta name="twitter:image" content="{preview_url}">' in share_head
+
+    image = Path("netlify-dashboard/public/assets/punky-social-preview.jpg").read_bytes()
+    assert len(image) > 100_000
+    assert image.startswith(b"\xff\xd8") and image.endswith(b"\xff\xd9")
+
+
 def test_dashboard_template_compacts_daily_view_and_hides_support_pending() -> None:
     template = Path("dashboard/templates/dashboard.html").read_text()
     assert "Equity market posture" in template
@@ -11162,6 +11185,8 @@ def run_all() -> None:
     print("PASS dashboard legacy radar snapshot upgrade")
     test_hosted_dashboard_bundle_matches_local_template()
     print("PASS hosted dashboard bundle sync")
+    test_hosted_dashboard_has_static_absolute_social_preview_metadata()
+    print("PASS hosted dashboard social preview metadata")
     test_dashboard_template_compacts_daily_view_and_hides_support_pending()
     print("PASS dashboard compact daily view")
     test_dashboard_open_position_chart_shows_thesis_and_risk_levels()
