@@ -36,6 +36,9 @@ from tradexyz_profile import (
 )
 
 
+DASHBOARD_SCHEMA_VERSION = 4
+
+
 def default_state() -> dict:
     return {
         "status": "offline",
@@ -795,6 +798,210 @@ def _plain_trade_plan(
         "target": round(target, 6),
         "invalidation": round(stop, 6),
         "reward_risk": round(reward_risk, 3),
+    }
+
+
+def _plain_holding_window(
+    *,
+    sig: dict,
+    status: str,
+    direction: str,
+    instrument_type: str,
+    asset_category: str = "",
+) -> dict[str, Any]:
+    """Translate the setup family into a visitor-facing expected holding period."""
+    status_upper = str(status or "").upper()
+    direction_upper = str(direction or "").upper()
+    if direction_upper not in {"LONG", "SHORT"} or status_upper == "STALE_REVIEW":
+        return {
+            "key": "not_set",
+            "label": "Not set yet",
+            "detail": "Punky sets the holding period only after a fresh trade setup exists.",
+            "review": "Run a fresh check before treating any old timeframe as active.",
+        }
+
+    trade_plan = dict(sig.get("trade_plan") or {})
+    conviction_entry = dict(sig.get("conviction_entry") or {})
+    style_text = " ".join(
+        str(value or "").strip().lower()
+        for value in (
+            trade_plan.get("trade_style"),
+            trade_plan.get("setup_type"),
+            sig.get("conviction_entry_style"),
+            conviction_entry.get("style"),
+            sig.get("entry_type"),
+        )
+        if str(value or "").strip()
+    )
+    scalp = bool(sig.get("scalp_trade") or "scalp" in style_text or "intraday" in style_text)
+    event = bool(
+        sig.get("conviction_entry_event")
+        or conviction_entry.get("event_conviction")
+        or any(token in style_text for token in ("event", "pre_event", "earnings", "catalyst"))
+    )
+    strategic_bias = str(
+        sig.get("strategic_bias")
+        or dict(sig.get("core_thesis") or {}).get("strategic_bias")
+        or ""
+    ).upper()
+    durable_long = bool(
+        direction_upper == "LONG"
+        and (
+            strategic_bias in {"LONG", "BULLISH"}
+            or sig.get("core_long_thesis_active")
+            or sig.get("semiconductor_structural_hold_active")
+            or "position" in style_text
+            or "durable" in style_text
+        )
+    )
+
+    if scalp:
+        return {
+            "key": "hours",
+            "label": "A few hours",
+            "detail": "Usually 1-4 hours. This is a fast trade, not a position to carry on hope.",
+            "review": "Recheck continuously and leave sooner if momentum fades or the exit level breaks.",
+        }
+    if event:
+        return {
+            "key": "event_days",
+            "label": "A few days",
+            "detail": "Usually 1-5 trading days, through the catalyst and its first clean price reaction.",
+            "review": "Reassess after the event; the displayed exit level can end the trade sooner.",
+        }
+    if durable_long:
+        return {
+            "key": "weeks",
+            "label": "Several weeks",
+            "detail": "Usually 2-8 weeks while the bigger business and price thesis stays intact.",
+            "review": "Review after major news or earnings and leave sooner only if the thesis or exit level fails.",
+        }
+    if str(instrument_type or "").lower() in {"crypto", "coin"}:
+        return {
+            "key": "crypto_days",
+            "label": "One to three days",
+            "detail": "Usually 1-3 days because crypto price action changes faster than the stock setups.",
+            "review": "Recheck at least daily and leave sooner if the displayed exit level breaks.",
+        }
+    return {
+        "key": "swing_days",
+        "label": "Several days",
+        "detail": "Usually 2-10 trading days while price moves from the entry toward the first profit level.",
+        "review": "Recheck daily and leave sooner if the thesis or displayed exit level fails.",
+    }
+
+
+def _plain_execution_commitment(
+    *,
+    status: str,
+    direction: str,
+    tradable: bool,
+    analysis_fresh: bool,
+    desk_state: str,
+    desk_reason: str,
+    plain_plan: dict,
+    capital_lead: bool,
+) -> dict[str, Any]:
+    """State exactly what must happen before Punky can send an automatic order."""
+    status_upper = str(status or "").upper()
+    direction_upper = str(direction or "").upper()
+    desk_state_upper = str(desk_state or "").upper()
+    raw_blocker = " ".join(str(desk_reason or "").split())
+    blocker_lower = raw_blocker.lower()
+    if direction_upper == "LONG" and (
+        "blocking longs" in blocker_lower
+        or ("12h=bearish" in blocker_lower and "4h=bearish" in blocker_lower)
+    ):
+        blocker = "The broader 4-hour and 12-hour chart still points down, so Punky is waiting before buying."
+    elif direction_upper == "SHORT" and (
+        "blocking shorts" in blocker_lower
+        or ("12h=bullish" in blocker_lower and "4h=bullish" in blocker_lower)
+    ):
+        blocker = "The broader 4-hour and 12-hour chart still points up, so Punky is waiting before shorting."
+    elif "microstructure history is still thin" in blocker_lower:
+        blocker = "There are not enough recent order-book checks yet to trust an entry."
+    elif "venue is not allowing execution" in blocker_lower:
+        blocker = "The active trading venue cannot execute this ticker yet."
+    elif "historical analogs oppose" in blocker_lower:
+        blocker = "Similar past setups performed poorly, so Punky is waiting for stronger proof."
+    elif "expected value" in blocker_lower and "below" in blocker_lower:
+        blocker = "The potential payoff is not strong enough for the risk yet."
+    elif "uncertainty" in blocker_lower and "exceed" in blocker_lower:
+        blocker = "Too much of the setup is still uncertain to risk capital."
+    elif "starter basket owns" in blocker_lower and "event-risk budget" in blocker_lower:
+        blocker = "A small event trade already uses this risk budget, so Punky will not add another position yet."
+    else:
+        blocker = raw_blocker
+
+    if desk_state_upper == "OPEN" or status_upper.startswith("OPEN_"):
+        return {
+            "state": "OPEN",
+            "label": "PAPER POSITION OPEN",
+            "summary": "Punky has already entered this paper trade and is managing it against the thesis, profit level, and exit level.",
+            "will_trade_when": "Already in the trade.",
+            "current_blocker": "",
+            "capital_lead": capital_lead,
+        }
+    if desk_state_upper == "ORDER_WORKING" or status_upper == "PENDING_ENTRY":
+        return {
+            "state": "WORKING",
+            "label": "PAPER ORDER WORKING",
+            "summary": "Punky has already placed the paper order. The next event is a fill, cancel, or expiry.",
+            "will_trade_when": str(plain_plan.get("entry_text") or "The resting order fills."),
+            "current_blocker": "",
+            "capital_lead": capital_lead,
+        }
+    if not analysis_fresh or status_upper == "STALE_REVIEW":
+        return {
+            "state": "REFRESH",
+            "label": "FRESH CHECK REQUIRED",
+            "summary": "No paper order can be sent from old analysis. Punky must complete a fresh market check first.",
+            "will_trade_when": "Fresh prices, levels, and market context produce a new qualified setup.",
+            "current_blocker": blocker or "The current analysis is stale.",
+            "capital_lead": False,
+        }
+    if direction_upper not in {"LONG", "SHORT"}:
+        return {
+            "state": "NO_SETUP",
+            "label": "NO ORDER PLANNED",
+            "summary": "Punky has no clear direction, so it will keep capital in cash.",
+            "will_trade_when": "A clear direction, entry level, positive expected value, and clean risk checks appear together.",
+            "current_blocker": blocker or "No complete setup exists yet.",
+            "capital_lead": False,
+        }
+    if not tradable:
+        return {
+            "state": "UNAVAILABLE",
+            "label": "TRACKING ONLY",
+            "summary": "Punky can analyse this ticker but cannot place an order on the active venue yet.",
+            "will_trade_when": "The market becomes executable and the same thesis still clears every entry and risk check.",
+            "current_blocker": blocker or "Execution support is unavailable.",
+            "capital_lead": False,
+        }
+
+    level = _safe_float(plain_plan.get("entry"))
+    level_text = f"${level:,.2f}" if level > 0 else "the displayed entry level"
+    trigger_text = (
+        f"price reaches and holds above {level_text}"
+        if direction_upper == "LONG"
+        else f"price falls and holds below {level_text}"
+    )
+    rank_text = (
+        "it reconfirms as the top qualified setup"
+        if capital_lead
+        else "it outranks the other qualified setups"
+    )
+    will_trade_when = (
+        f"When {trigger_text}, the live chart agrees, expected value remains positive, "
+        f"risk checks pass, and {rank_text}."
+    )
+    return {
+        "state": "ARMED" if capital_lead else "WATCHING",
+        "label": "FIRST IN LINE" if capital_lead else "AUTOMATIC ENTRY WATCH",
+        "summary": "No paper order now. Punky will enter automatically only after the price, evidence, risk, and capital-ranking gates all agree.",
+        "will_trade_when": will_trade_when,
+        "current_blocker": blocker or "One or more final entry checks have not cleared.",
+        "capital_lead": capital_lead,
     }
 
 
@@ -1774,6 +1981,10 @@ def action_board(
 
     entries = dict((market_map or {}).get("coins") or {})
     probability_calibration = _build_watch_probability_calibration(decision_dataset_records)
+    best_trade_gate = dict((state or {}).get("best_trade_gate") or {})
+    best_trade_selected = dict(best_trade_gate.get("selected") or {})
+    best_trade_coin = str(best_trade_selected.get("coin") or "").upper()
+    best_trade_direction = str(best_trade_selected.get("direction") or "").upper()
     items: list[dict[str, Any]] = []
     order = {
         "OPEN_LONG": 0,
@@ -2287,6 +2498,28 @@ def action_board(
             supports=list(map_entry.get("supports") or []) + ([support] if support else []),
             resistances=list(map_entry.get("resistances") or []) + ([resistance] if resistance else []),
         )
+        capital_lead = bool(
+            coin == best_trade_coin
+            and thesis_direction in {"LONG", "SHORT"}
+            and thesis_direction == best_trade_direction
+        )
+        holding_window = _plain_holding_window(
+            sig=sig,
+            status=status,
+            direction=thesis_direction,
+            instrument_type=instrument_type,
+            asset_category=asset_category,
+        )
+        execution_commitment = _plain_execution_commitment(
+            status=status,
+            direction=thesis_direction,
+            tradable=tradable,
+            analysis_fresh=analysis_fresh,
+            desk_state=desk_state,
+            desk_reason=desk_reason,
+            plain_plan=plain_plan,
+            capital_lead=capital_lead,
+        )
         if plain_plan.get("direction") and status not in {"OPEN_LONG", "OPEN_SHORT", "PENDING_ENTRY"}:
             label = str(plain_plan.get("headline") or label)
             next_setup_reason = str(plain_plan.get("entry_text") or next_setup_reason)
@@ -2382,6 +2615,9 @@ def action_board(
                 "planned_stop_loss": round(stop_for_invalidation, 6) if stop_for_invalidation else 0.0,
                 "planned_take_profit": round(planned_target, 6) if planned_target else 0.0,
                 "plain_plan": plain_plan,
+                "holding_window": holding_window,
+                "execution_commitment": execution_commitment,
+                "capital_lead": capital_lead,
                 "map_summary": map_summary,
                 "friction_stack": friction_stack,
                 "catalyst_rail": catalyst_rail,
@@ -2457,7 +2693,7 @@ def action_board(
         "execution_loop": {
             "automatic": True,
             "mode": str(state.get("mode") or "dry_run"),
-            "principle": "LONG or SHORT means an order is working or a position is open. WAIT means no order is sent.",
+            "principle": "Punky sends an automatic order only when a fresh setup has positive expected value, clears every risk gate, and ranks first for capital.",
         },
         "lead": items[0] if items else None,
         "items": items,
@@ -2811,7 +3047,20 @@ def augment_state(state: Any) -> dict:
     for raw_position in list(merged.get("positions") or []):
         position = dict(raw_position or {})
         coin = str(position.get("coin") or "").upper()
-        position["pnl_explanation"] = explain_open_position(position, signals.get(coin) or {})
+        signal = dict(signals.get(coin) or {})
+        position["pnl_explanation"] = explain_open_position(position, signal)
+        instrument_type = _instrument_type_for_coin(coin, signal, dict(merged.get("config") or {}))
+        position["holding_window"] = _plain_holding_window(
+            sig=signal,
+            status=f"OPEN_{str(position.get('direction') or 'LONG').upper()}",
+            direction=str(position.get("direction") or "").upper(),
+            instrument_type=instrument_type,
+            asset_category=_asset_categories_for_coin(
+                coin,
+                instrument_type,
+                dict(merged.get("config") or {}),
+            )[0],
+        )
         positions.append(position)
     merged["positions"] = positions
     merged["positions_count"] = len(positions)
@@ -2888,7 +3137,7 @@ def build_dashboard_snapshot(
             }
     xyz = build_xyz_section(shaped_state, board)
     return {
-        "schemaVersion": 2,
+        "schemaVersion": DASHBOARD_SCHEMA_VERSION,
         "version": version,
         "updatedAt": updated_at,
         "state": shaped_state,

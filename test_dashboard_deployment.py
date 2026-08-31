@@ -3,6 +3,7 @@ import gzip
 import json
 
 import dashboard.app as dashboard_app
+from dashboard.snapshot import DASHBOARD_SCHEMA_VERSION
 
 
 def _snapshot(version: int, cycle: int, marker: str) -> dict:
@@ -102,3 +103,12 @@ def test_chunked_push_assembles_on_disk_and_public_dashboard_is_read_only(monkey
 
     blocked = client.post("/api/kill", json={"active": True})
     assert blocked.status_code == 403
+
+
+def test_old_local_snapshot_schema_is_rebuilt_after_code_upgrade(monkeypatch, tmp_path) -> None:
+    _configure_test_storage(monkeypatch, tmp_path)
+    old = _snapshot(12, 12, "old-schema")
+    old["schemaVersion"] = DASHBOARD_SCHEMA_VERSION - 1
+    dashboard_app.SNAPSHOT.write_text(json.dumps(old))
+
+    assert dashboard_app._snapshot_needs_refresh(old) is True

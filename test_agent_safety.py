@@ -3324,6 +3324,7 @@ def test_dashboard_state_prefers_canonical_snapshot() -> None:
             dashboard_module.LOG.write_text("coin,exit_price,pnl_usd\nBTC,0,0\n")
 
             snapshot = {
+                "schemaVersion": dashboard_module.DASHBOARD_SCHEMA_VERSION,
                 "state": {
                     "status": "running",
                     "cycle_number": 99,
@@ -3401,6 +3402,7 @@ def test_dashboard_refreshes_snapshot_when_state_changes() -> None:
             }
 
             snapshot = {
+                "schemaVersion": dashboard_module.DASHBOARD_SCHEMA_VERSION,
                 "state": {
                     "status": "running",
                     "cycle_number": 10,
@@ -10171,6 +10173,129 @@ def test_dashboard_uses_post_gate_wait_as_the_canonical_ticker_action() -> None:
     assert lead["plain_plan"]["invalidation"] == 216.98
     assert "Wait for long" not in lead["next_setup_reason"]
     assert snapshot["action_board"]["execution_loop"]["mode"] == "dry_run"
+
+
+def test_dashboard_exposes_plain_holding_window_and_automatic_entry_commitment() -> None:
+    snapshot = build_dashboard_snapshot(
+        {
+            "signals": {
+                "MRVL": {
+                    "action": "LONG",
+                    "score": 78.0,
+                    "confidence": "HIGH",
+                    "execution_mode": "tradable",
+                    "instrument_type": "equity",
+                    "live_price": 217.28,
+                    "displayed_long_trigger": 218.81,
+                    "planned_stop_loss": 216.98,
+                    "planned_take_profit": 225.0,
+                    "analysis_updated_ts": time.time(),
+                    "execution_decision": "WAIT",
+                    "execution_direction": "LONG",
+                    "execution_stage": "mtf_block",
+                    "execution_reason": "12H=BEARISH(75) | 12H macro bearish: penalizing LONGs | 4H=BEARISH(100) | 12H + 4H bearish: blocking LONGs | 1H=NEUTRAL(50)",
+                }
+            },
+            "positions": [],
+            "mode": "dry_run",
+            "best_trade_gate": {
+                "selected": {"coin": "MRVL", "direction": "LONG"},
+            },
+            "config": {
+                "coins": ["MRVL"],
+                "analysis_coins": ["MRVL"],
+                "analysis_signal_max_age_minutes": 20.0,
+            },
+            "cycle_number": 1,
+        },
+        [],
+        market_map={"coins": {"MRVL": {"bias": "NEUTRAL", "supports": [216.98], "resistances": [218.81, 225.0]}}},
+    )
+    lead = snapshot["action_board"]["lead"]
+    assert lead["holding_window"]["label"] == "Several days"
+    assert "2-10 trading days" in lead["holding_window"]["detail"]
+    assert lead["execution_commitment"]["label"] == "FIRST IN LINE"
+    assert lead["execution_commitment"]["capital_lead"] is True
+    assert "price reaches and holds above $218.81" in lead["execution_commitment"]["will_trade_when"]
+    assert lead["execution_commitment"]["current_blocker"] == (
+        "The broader 4-hour and 12-hour chart still points down, so Punky is waiting before buying."
+    )
+
+
+def test_dashboard_event_setup_uses_plain_multi_day_window() -> None:
+    snapshot = build_dashboard_snapshot(
+        {
+            "signals": {
+                "SNDK": {
+                    "action": "LONG",
+                    "score": 82.0,
+                    "confidence": "HIGH",
+                    "execution_mode": "tradable",
+                    "instrument_type": "equity",
+                    "live_price": 1480.0,
+                    "displayed_long_trigger": 1489.60,
+                    "analysis_updated_ts": time.time(),
+                    "conviction_entry_event": True,
+                    "conviction_entry_style": "pre_event_starter",
+                }
+            },
+            "positions": [],
+            "config": {
+                "coins": ["SNDK"],
+                "analysis_coins": ["SNDK"],
+                "analysis_signal_max_age_minutes": 20.0,
+            },
+        },
+        [],
+        market_map={"coins": {"SNDK": {"bias": "BULLISH", "resistances": [1489.60]}}},
+    )
+    lead = snapshot["action_board"]["lead"]
+    assert lead["holding_window"]["label"] == "A few days"
+    assert "catalyst" in lead["holding_window"]["detail"]
+
+
+def test_dashboard_humanizes_event_risk_budget_blocker() -> None:
+    snapshot = build_dashboard_snapshot(
+        {
+            "signals": {
+                "SP500": {
+                    "action": "LONG",
+                    "score": 95.0,
+                    "confidence": "HIGH",
+                    "execution_mode": "tradable",
+                    "instrument_type": "index",
+                    "live_price": 7702.30,
+                    "displayed_long_trigger": 7813.54,
+                    "analysis_updated_ts": time.time(),
+                    "execution_decision": "WAIT",
+                    "execution_direction": "LONG",
+                    "execution_reason": "starter basket owns a small pre-event thesis inside event-risk budget",
+                }
+            },
+            "positions": [],
+            "best_trade_gate": {"selected": {"coin": "SP500", "direction": "LONG"}},
+            "config": {"coins": ["SP500"], "analysis_coins": ["SP500"]},
+        },
+        [],
+        market_map={"coins": {"SP500": {"bias": "BULLISH", "resistances": [7813.54]}}},
+    )
+    lead = snapshot["action_board"]["lead"]
+    assert lead["execution_commitment"]["current_blocker"] == (
+        "A small event trade already uses this risk budget, so Punky will not add another position yet."
+    )
+
+
+def test_dashboard_template_keeps_timing_and_execution_accountability_visible() -> None:
+    template = Path("dashboard/templates/dashboard.html").read_text()
+    assert "holdingWindowForItem" in template
+    assert "executionCommitmentForItem" in template
+    assert "Expected holding time" in template
+    assert "Punky will trade when" in template
+    assert "askPunkyCachedCandles" in template
+    assert "Live venue temporarily unavailable" in template
+    assert "LATEST VERIFIED CHART" in template
+    assert "latest scheduled" in template
+    assert 'class="visitor-context"' not in template
 
 
 def test_dashboard_explains_short_setup_with_entry_profit_and_exit_levels() -> None:

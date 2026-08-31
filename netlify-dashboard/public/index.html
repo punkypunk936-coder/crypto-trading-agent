@@ -1450,7 +1450,7 @@
   }
   .ask-punky-plan {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     border: 1px solid rgba(235, 237, 229, 0.08);
     border-radius: 8px;
     overflow: hidden;
@@ -1700,6 +1700,21 @@
     font-family: var(--mono);
     font-size: 9px;
     line-height: 1.5;
+  }
+  .execution-commitment-line {
+    margin-top: 8px;
+    padding: 9px 10px;
+    border-left: 2px solid var(--yellow);
+    background: rgba(255,184,77,0.055);
+    color: var(--text-secondary);
+    font-size: 10px;
+    line-height: 1.5;
+  }
+  .execution-commitment-line strong { color: var(--text); }
+  .execution-commitment-line.open,
+  .execution-commitment-line.working {
+    border-left-color: var(--green);
+    background: rgba(0,230,138,0.045);
   }
   .daily-sheet {
     border: 1px solid var(--border);
@@ -3533,43 +3548,6 @@
     background: var(--green);
     box-shadow: 0 0 8px rgba(0, 230, 138, 0.42);
   }
-  .visitor-context {
-    display: none;
-    grid-template-columns: minmax(0, 1.3fr) minmax(320px, 1fr);
-    align-items: center;
-    gap: 24px;
-    padding: 13px 16px;
-    border-bottom: 1px solid rgba(235, 237, 229, 0.10);
-    background: rgba(91, 140, 255, 0.045);
-  }
-  body.visitor-mode .visitor-context { display: grid; }
-  .visitor-context strong {
-    display: block;
-    margin-top: 3px;
-    color: var(--text);
-    font-size: 12px;
-    line-height: 1.5;
-  }
-  .visitor-flow {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 1px;
-    overflow: hidden;
-    border: 1px solid rgba(235, 237, 229, 0.09);
-    border-radius: 5px;
-    background: rgba(235, 237, 229, 0.09);
-  }
-  .visitor-flow span {
-    min-width: 0;
-    padding: 8px 7px;
-    background: rgba(10, 12, 11, 0.96);
-    color: var(--muted);
-    font-family: var(--mono);
-    font-size: 8px;
-    font-weight: 800;
-    text-align: center;
-    text-transform: uppercase;
-  }
   .terminal-lane-bar {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
@@ -3757,7 +3735,7 @@
   }
   .terminal-focus-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 18px;
     margin-top: 15px;
   }
@@ -4147,8 +4125,6 @@
       padding: 8px;
     }
     .terminal-nav-tabs { overflow-x: auto; }
-    .visitor-context { grid-template-columns: 1fr; gap: 10px; }
-    .visitor-flow { grid-template-columns: 1fr 1fr; }
     .terminal-lane-bar { grid-template-columns: 1fr; gap: 8px; }
     .terminal-lane-toggle { width: 100%; }
     .crypto-market-grid { grid-template-columns: 1fr; }
@@ -4245,19 +4221,6 @@
     <button class="terminal-command-trigger" type="button" onclick="focusPunkyDock()">⌕ Ask about a ticker, setup, or risk...</button>
     <div class="terminal-status"><span class="terminal-status-dot"></span><span id="terminal-execution-status">Paper execution active</span></div>
   </nav>
-
-  <div class="visitor-context" aria-label="What Punky does">
-    <div>
-      <div class="section-kicker">AI research with paper execution</div>
-      <strong>Punky turns live market evidence into one capital decision: LONG, SHORT, or WAIT. A directional thesis is not a trade until every risk gate clears.</strong>
-    </div>
-    <div class="visitor-flow" aria-label="Agent decision loop">
-      <span>Scan markets</span>
-      <span>Build thesis</span>
-      <span>Paper trade</span>
-      <span>Learn</span>
-    </div>
-  </div>
 
   <div class="terminal-lane-bar" aria-label="Choose market workspace">
     <div class="terminal-lane-toggle" role="tablist" aria-label="Trading market">
@@ -4371,7 +4334,7 @@
           <button class="terminal-dock-submit" id="punky-dock-submit" type="button" onclick="runPunkyDock()">Analyze trade</button>
         </div>
         <div class="terminal-dock-answer" id="punky-dock-answer">
-          <div class="terminal-dock-empty"><strong>Pick a name from the tape.</strong><br>Punky will show the direction, price to enter, first profit level, exit level, confidence, and verified record.</div>
+          <div class="terminal-dock-empty"><strong>Pick a name from the tape.</strong><br>Punky will show the direction, entry, profit and exit levels, expected holding time, confidence, and exactly when it can place a paper trade.</div>
         </div>
       </div>
     </aside>
@@ -4944,6 +4907,72 @@ const plainPlanForItem = (item) => {
       : 'Leave the short idea if price rises above ' + exitDisplay + '.',
   };
 };
+const holdingWindowForItem = (item) => {
+  const safe = item || {};
+  if (safe.label && (safe.detail || safe.key)) return safe;
+  const provided = safe.holding_window && typeof safe.holding_window === 'object'
+    ? safe.holding_window
+    : {};
+  if (provided.label) return provided;
+  const direction = terminalThesisDirection(safe);
+  if (!['LONG', 'SHORT'].includes(direction)) {
+    return {
+      key: 'not_set',
+      label: 'Not set yet',
+      detail: 'Punky sets the holding period only after a fresh trade setup exists.',
+    };
+  }
+  const style = String(
+    safe.conviction_entry_style
+      || ((safe.trade_plan || {}).trade_style)
+      || '',
+  ).toLowerCase();
+  if (safe.scalp_trade || style.includes('scalp') || style.includes('intraday')) {
+    return { key: 'hours', label: 'A few hours', detail: 'Usually 1-4 hours.' };
+  }
+  if (safe.conviction_entry_event || style.includes('event') || style.includes('earnings')) {
+    return { key: 'event_days', label: 'A few days', detail: 'Usually 1-5 trading days.' };
+  }
+  if ((safe.asset_bucket || assetBucketForCoin(safe.coin)) === 'coins') {
+    return { key: 'crypto_days', label: 'One to three days', detail: 'Usually 1-3 days.' };
+  }
+  return { key: 'swing_days', label: 'Several days', detail: 'Usually 2-10 trading days.' };
+};
+const executionCommitmentForItem = (item) => {
+  const safe = item || {};
+  const provided = safe.execution_commitment && typeof safe.execution_commitment === 'object'
+    ? safe.execution_commitment
+    : {};
+  if (provided.label) return provided;
+  const direction = terminalThesisDirection(safe);
+  const plan = plainPlanForItem(safe);
+  if (!['LONG', 'SHORT'].includes(direction)) {
+    return {
+      state: 'NO_SETUP',
+      label: 'NO ORDER PLANNED',
+      summary: 'Punky has no clear direction, so capital stays in cash.',
+      will_trade_when: 'A fresh direction, entry level, positive expected value, and clean risk checks appear together.',
+      current_blocker: String(safe.desk_reason || 'No complete setup exists yet.'),
+    };
+  }
+  const entry = Number(plan.entry || 0);
+  const level = entry > 0 ? '$' + askPunkyPrice(entry, entry) : 'the displayed entry level';
+  const levelRule = direction === 'LONG'
+    ? 'price reaches and holds above ' + level
+    : 'price falls and holds below ' + level;
+  return {
+    state: String(safe.desk_state || '').toUpperCase() === 'OPEN' ? 'OPEN' : 'WATCHING',
+    label: String(safe.desk_state || '').toUpperCase() === 'OPEN' ? 'PAPER POSITION OPEN' : 'AUTOMATIC ENTRY WATCH',
+    summary: 'No paper order now. Punky waits for price, evidence, risk, and capital ranking to agree.',
+    will_trade_when: 'When ' + levelRule + ', the live chart agrees, expected value stays positive, and every risk gate passes.',
+    current_blocker: String(safe.desk_reason || 'One or more final entry checks have not cleared.'),
+  };
+};
+const holdingWindowText = (item, includeDetail=false) => {
+  const window = holdingWindowForItem(item);
+  return includeDetail && window.detail ? window.label + ' • ' + window.detail : window.label;
+};
+const executionCommitmentText = (item) => executionCommitmentForItem(item).will_trade_when;
 const simpleActionText = (item) => {
   return String(plainPlanForItem(item).headline || 'NO TRADE YET');
 };
@@ -5077,6 +5106,7 @@ const actionCompactRowHtml = (item) => {
     + '</div>'
     + '<div class="decision-compact-side">'
       + '<div>' + esc(simpleNextText(item, 78)) + '</div>'
+      + '<div>' + esc(holdingWindowText(item)) + '</div>'
       + '<div>' + esc(simpleInvalidationText(item, 72)) + '</div>'
     + '</div>'
   + '</div>';
@@ -6275,7 +6305,16 @@ async function askPunkyFetchCandles(ticker, item) {
     try {
       const bars = await fetchBars(venueSymbol, '1h', 12 * 24 * 60 * 60 * 1000);
       if (bars.length >= 55) {
-        return { bars, venueSymbol, interval: '1h', limitedHistory: false, primaryBarsCount: bars.length };
+        return {
+          bars,
+          venueSymbol,
+          interval: '1h',
+          limitedHistory: false,
+          primaryBarsCount: bars.length,
+          sourceLabel: 'Hyperliquid',
+          chartLink: 'https://app.hyperliquid.xyz/trade/' + encodeURIComponent(venueSymbol),
+          usedCachedData: false,
+        };
       }
       if (!limitedCandidate || bars.length > limitedCandidate.bars.length) {
         limitedCandidate = { bars, venueSymbol };
@@ -6301,6 +6340,9 @@ async function askPunkyFetchCandles(ticker, item) {
           interval: '15m',
           limitedHistory: true,
           primaryBarsCount: limitedCandidate.bars.length,
+          sourceLabel: 'Hyperliquid',
+          chartLink: 'https://app.hyperliquid.xyz/trade/' + encodeURIComponent(limitedCandidate.venueSymbol),
+          usedCachedData: false,
         };
       }
       lastError = new Error(
@@ -6312,6 +6354,46 @@ async function askPunkyFetchCandles(ticker, item) {
     }
   }
   throw lastError || new Error('No Hyperliquid candles were found for ' + ticker);
+}
+
+function askPunkyCachedCandles(ticker, item, liveError) {
+  const signal = ((((latestState || {}).signals || {})[ticker]) || {});
+  const priceAction = signal.price_action || {};
+  const interval = String(priceAction.interval || signal.analysis_interval || '1h');
+  const intervalMs = askPunkyIntervalMinutes(interval) * 60 * 1000;
+  const bars = (Array.isArray(priceAction.bars) ? priceAction.bars : [])
+    .map((row) => {
+      const start = Number(row.t || Date.parse(row.time || row.timestamp || ''));
+      const open = Number(row.o ?? row.open);
+      const high = Number(row.h ?? row.high);
+      const low = Number(row.l ?? row.low);
+      const close = Number(row.c ?? row.close);
+      const end = Number(row.T) || (Number.isFinite(start) ? start + intervalMs - 1 : NaN);
+      return { t: start, T: end, o: open, h: high, l: low, c: close, v: Number(row.v ?? row.volume ?? 0) };
+    })
+    .filter((row) => [row.t, row.o, row.h, row.l, row.c].every(Number.isFinite))
+    .sort((a, b) => a.t - b.t);
+  if (bars.length < 8) return null;
+  const sourceLabel = String(
+    signal.price_source_label
+    || signal.price_source
+    || (item || {}).price_source_label
+    || (item || {}).price_source
+    || 'Latest agent snapshot',
+  ).trim();
+  return {
+    bars,
+    venueSymbol: String(signal.venue_symbol || (item || {}).venue_symbol || ticker),
+    interval,
+    limitedHistory: Boolean(signal.new_listing_limited_history),
+    primaryBarsCount: Number(signal.primary_history_candles || bars.length),
+    sourceLabel,
+    chartLink: '',
+    usedCachedData: true,
+    fallbackReason: 'Live venue data was temporarily unavailable. Punky used the latest scheduled '
+      + sourceLabel + ' chart instead and kept every normal entry and risk gate in place.',
+    liveError: String((liveError || {}).message || liveError || ''),
+  };
 }
 
 function askPunkyExactEarningsRow(ticker) {
@@ -6576,6 +6658,21 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
     item,
     settledForecasts,
   );
+  const holdingWindow = holdingWindowForItem(item || {
+    coin: ticker,
+    thesis_direction: direction,
+    asset_bucket: assetBucket,
+    conviction_entry_event: eventGate,
+  });
+  const executionCommitment = item
+    ? executionCommitmentForItem(item)
+    : {
+        state: 'CHART_ONLY',
+        label: 'CHART IDEA ONLY',
+        summary: 'This ticker is not in Punky\'s scheduled decision book, so this chart answer cannot place an order.',
+        will_trade_when: 'Add it to the scheduled agent book and let a fresh analysis clear every entry and risk gate.',
+        current_blocker: 'No scheduled agent decision exists for this ticker.',
+      };
   const evidence = [
     {
       label: 'One agent decision',
@@ -6584,8 +6681,8 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
         : 'No scheduled agent decision exists for this ticker; the result is chart-only and cannot execute.',
     },
     {
-      label: 'Live chart',
-      value: candleResult.venueSymbol + ' • ' + bars.length + ' ' + interval + ' candles • last bar ' + new Date(lastBarTime).toLocaleString()
+      label: 'Price chart',
+      value: String(candleResult.sourceLabel || 'Hyperliquid') + ' • ' + candleResult.venueSymbol + ' • ' + bars.length + ' ' + interval + ' candles • last bar ' + new Date(lastBarTime).toLocaleString()
         + (limitedHistory ? ' • NEW LISTING: ' + Number(candleResult.primaryBarsCount || 0) + ' hourly candles' : ''),
     },
     {
@@ -6631,6 +6728,12 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
     horizonHours: confidenceModel.horizonHours,
     assetBucket,
     accountability,
+    holdingWindow,
+    executionCommitment,
+    sourceLabel: String(candleResult.sourceLabel || 'Hyperliquid'),
+    chartLink: String(candleResult.chartLink || ''),
+    usedCachedData: Boolean(candleResult.usedCachedData),
+    fallbackReason: String(candleResult.fallbackReason || ''),
     why: [structureWhy, momentumWhy, levelWhy, earningsWhy], evidence,
     analysedAt: new Date().toISOString(),
   };
@@ -6688,7 +6791,7 @@ function askPunkyChartHtml(answer) {
   }).join('');
   const startLabel = new Date(bars[0].t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   const endLabel = new Date(bars[bars.length - 1].t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  return '<svg class="ask-punky-chart-svg" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="' + esc(answer.ticker) + ' Hyperliquid ' + esc(answer.interval || '1h') + ' candlestick chart">'
+  return '<svg class="ask-punky-chart-svg" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="' + esc(answer.ticker) + ' ' + esc(answer.sourceLabel || 'price') + ' ' + esc(answer.interval || '1h') + ' candlestick chart">'
     + grid + candles + levelLines
     + '<text x="' + pad.left + '" y="' + (height - 5) + '" fill="#777d78" font-size="8" font-family="ui-monospace,monospace">' + esc(startLabel) + '</text>'
     + '<text x="' + (pad.left + chartWidth - 32) + '" y="' + (height - 5) + '" fill="#777d78" font-size="8" font-family="ui-monospace,monospace">' + esc(endLabel) + '</text>'
@@ -6700,8 +6803,16 @@ function askPunkyPlanItem(label, value) {
 }
 
 function askPunkyAnswerHtml(answer) {
-  const link = 'https://app.hyperliquid.xyz/trade/' + encodeURIComponent(answer.venueSymbol);
+  const sourceLabel = String(answer.sourceLabel || 'Hyperliquid');
+  const link = String(answer.chartLink || (!answer.usedCachedData
+    ? 'https://app.hyperliquid.xyz/trade/' + encodeURIComponent(answer.venueSymbol)
+    : ''));
+  const sourceLink = link
+    ? '<a class="ask-punky-source" href="' + esc(link) + '" target="_blank" rel="noopener noreferrer">OPEN CHART ↗</a>'
+    : '';
   const confidenceTitle = 'Estimated chance that the displayed target is reached before thesis invalidation within ' + answer.horizonHours + ' hours. This is a forecast, not a guarantee.';
+  const commitment = answer.executionCommitment || {};
+  const commitmentTone = String(commitment.state || '').toLowerCase();
   return '<div class="ask-punky-answer">'
     + '<div class="ask-punky-verdict ' + esc(answer.tone) + ' ' + esc(String(answer.direction || '').toLowerCase()) + '">'
       + '<div class="ask-punky-verdict-head">'
@@ -6709,11 +6820,13 @@ function askPunkyAnswerHtml(answer) {
         + '<div class="ask-punky-confidence" title="' + esc(confidenceTitle) + '">'
           + '<strong>' + esc(answer.confidence) + '%</strong>'
           + '<span class="ask-punky-confidence-label">' + esc(answer.confidenceLabel) + ' CONFIDENCE</span>'
-          + '<span class="ask-punky-confidence-term">TARGET FIRST • ' + esc(answer.horizonHours) + 'H</span>'
+          + '<span class="ask-punky-confidence-term">FORECAST CHECK • ' + esc(answer.horizonHours) + ' HOURS</span>'
         + '</div>'
       + '</div>'
       + '<p class="ask-punky-summary">' + esc(answer.summary) + '</p>'
+      + (answer.usedCachedData ? '<div class="price-integrity-warning"><strong>Live venue temporarily unavailable:</strong> ' + esc(answer.fallbackReason || 'Using the latest verified agent snapshot.') + '</div>' : '')
       + '<div class="ask-punky-confidence-context">Agent view: ' + esc(answer.direction) + ' • live price action: ' + esc(answer.chartDirection || answer.direction) + ' • evidence quality: ' + esc(answer.evidenceQuality) + '/100</div>'
+      + '<div class="execution-commitment-line ' + esc(commitmentTone) + '"><strong>' + esc(commitment.label || 'PUNKY EXECUTION') + ':</strong> ' + esc(commitment.will_trade_when || commitment.summary || 'Waiting for a complete setup.') + (commitment.current_blocker ? '<br><strong>Why not now:</strong> ' + esc(commitment.current_blocker) : '') + '</div>'
       + '<div class="plan-accountability-line"><strong>Verified record:</strong> ' + esc(planAccuracyNarrative(answer.ticker, answer.direction, answer.accountability || {})) + '</div>'
     + '</div>'
     + '<div class="ask-punky-plan">'
@@ -6722,10 +6835,11 @@ function askPunkyAnswerHtml(answer) {
       + askPunkyPlanItem('First profit level', askPunkyPrice(answer.target, answer.current))
       + askPunkyPlanItem('Leave the idea if', (answer.direction === 'LONG' ? 'Below ' : 'Above ') + askPunkyPrice(answer.invalidation, answer.current))
       + askPunkyPlanItem('Potential gain vs loss', Number(answer.rr).toFixed(2) + 'x')
+      + askPunkyPlanItem('Expected holding time', holdingWindowText(answer.holdingWindow || answer, true))
     + '</div>'
     + '<div><div class="ask-punky-section-title">Why</div><ol class="ask-punky-why">' + answer.why.map((line) => '<li>' + esc(line) + '</li>').join('') + '</ol></div>'
     + '<div class="ask-punky-chart">'
-      + '<div class="ask-punky-chart-head"><div><div class="ask-punky-section-title">Hyperliquid price action</div><div class="ask-punky-chart-meta">' + esc(answer.venueSymbol) + ' • ' + esc(answer.interval || '1h') + (answer.limitedHistory ? ' • limited listing history' : '') + ' • updated ' + esc(new Date(answer.analysedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })) + '</div></div><a class="ask-punky-source" href="' + esc(link) + '" target="_blank" rel="noopener noreferrer">OPEN CHART ↗</a></div>'
+      + '<div class="ask-punky-chart-head"><div><div class="ask-punky-section-title">' + esc(sourceLabel) + ' price action</div><div class="ask-punky-chart-meta">' + esc(answer.venueSymbol) + ' • ' + esc(answer.interval || '1h') + (answer.limitedHistory ? ' • limited listing history' : '') + ' • updated ' + esc(new Date(answer.analysedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })) + '</div></div>' + sourceLink + '</div>'
       + askPunkyChartHtml(answer)
     + '</div>'
     + '<div><div class="ask-punky-section-title">Evidence quality</div><div class="ask-punky-evidence">'
@@ -6801,7 +6915,17 @@ async function runAskPunky(seed='') {
     commandActiveAnswer = answer;
   } catch (error) {
     if (requestId !== commandAnalysisRequest) return;
-    commandActiveAnswer = { error: String((error || {}).message || error || 'Live analysis failed.'), ticker };
+    const cachedCandles = askPunkyCachedCandles(ticker, item, error);
+    if (cachedCandles) {
+      const answer = askPunkyAnalyse(ticker, query, item, cachedCandles);
+      answer.accountability = planAccuracyForAnswer(answer, item, PunkyConfidence.load());
+      commandActiveAnswer = answer;
+    } else {
+      commandActiveAnswer = {
+        error: 'Live price data is temporarily unavailable, and Punky has no verified cached chart for this ticker yet. Try again after the next agent cycle.',
+        ticker,
+      };
+    }
   } finally {
     if (requestId === commandAnalysisRequest) {
       commandAnalysisLoading = false;
@@ -7564,7 +7688,7 @@ function renderTerminalWatchlist(board) {
     const actionClass = terminalActionClass(action === 'WAIT' ? thesisDirection : action);
     return '<button type="button" class="terminal-watch-row' + (ticker === terminalSelectedTicker ? ' active' : '') + '" data-terminal-ticker="' + esc(ticker) + '" aria-pressed="' + String(ticker === terminalSelectedTicker) + '">'
       + '<div class="terminal-watch-top"><span class="terminal-watch-symbol">' + esc(ticker) + '</span><span class="terminal-watch-direction ' + actionClass + '">' + esc(simpleActionText(item)) + '</span></div>'
-      + '<div class="terminal-watch-meta"><span>' + esc(simpleTargetText(item, 48)) + '</span><span>' + esc(planAccuracyCompact(item)) + '</span></div>'
+      + '<div class="terminal-watch-meta"><span>' + esc(holdingWindowText(item)) + '</span><span>' + esc(planAccuracyCompact(item)) + '</span></div>'
     + '</button>';
   }).join('');
 }
@@ -7590,7 +7714,7 @@ function renderTerminalFocus(board) {
   const action = terminalDeskAction(item);
   const visibleDirection = action === 'WAIT' ? thesisDirection : action;
   const actionBias = visibleDirection === 'LONG' ? 'bullish' : visibleDirection === 'SHORT' ? 'bearish' : 'neutral';
-  const deskReason = String(item.desk_reason || item.execution_note || 'No order is allowed yet.');
+  const commitment = executionCommitmentForItem(item);
   const thesis = whyLeadText(item, 260) || simpleThesisText(item, 260);
   body.innerHTML = '<div class="terminal-focus-top">'
       + '<div><div class="section-kicker">Selected ' + (terminalAssetLane === 'coin' ? 'coin' : 'stock') + '</div><div class="terminal-focus-symbol">' + esc(ticker) + '</div></div>'
@@ -7601,6 +7725,8 @@ function renderTerminalFocus(board) {
       + '<div class="terminal-focus-field"><span class="terminal-focus-label">When to enter</span><div class="terminal-focus-value">' + esc(simpleNextText(item, 150)) + '</div></div>'
       + '<div class="terminal-focus-field"><span class="terminal-focus-label">First profit level</span><div class="terminal-focus-value green">' + esc(simpleTargetText(item, 150)) + '</div></div>'
       + '<div class="terminal-focus-field"><span class="terminal-focus-label">When to leave</span><div class="terminal-focus-value risk">' + esc(simpleInvalidationText(item, 150)) + '</div></div>'
+      + '<div class="terminal-focus-field"><span class="terminal-focus-label">Expected holding time</span><div class="terminal-focus-value">' + esc(holdingWindowText(item, true)) + '</div></div>'
+      + '<div class="terminal-focus-field"><span class="terminal-focus-label">Punky will trade when</span><div class="terminal-focus-value wait">' + esc(commitment.will_trade_when) + '</div></div>'
       + '<div class="terminal-focus-field"><span class="terminal-focus-label">Verified plan record</span><div class="terminal-focus-value">' + esc(planAccuracyText(item)) + '</div></div>'
     + '</div>';
 }
@@ -7628,11 +7754,14 @@ function renderPunkyDock() {
   }
   if (!commandActiveAnswer) {
     const selected = terminalSelectedTicker || 'a ticker';
-    body.innerHTML = '<div class="terminal-dock-empty"><strong>' + esc(selected === 'a ticker' ? 'Pick a name from the tape.' : selected + ' is selected.') + '</strong><br>Ask whether to take it. Punky will show the direction, exact levels, evidence, confidence, and verified record.</div>';
+    body.innerHTML = '<div class="terminal-dock-empty"><strong>' + esc(selected === 'a ticker' ? 'Pick a name from the tape.' : selected + ' is selected.') + '</strong><br>Ask whether to take it. Punky will show the direction, exact levels, expected holding time, evidence, and when it can place the paper trade.</div>';
     return;
   }
   const answer = commandActiveAnswer;
   const invalidation = (answer.direction === 'LONG' ? 'Below ' : 'Above ') + askPunkyPrice(answer.invalidation, answer.current);
+  const commitment = answer.executionCommitment || {};
+  const holdingWindow = answer.holdingWindow || {};
+  const chartReadLabel = answer.usedCachedData ? 'LATEST VERIFIED CHART' : 'LIVE CHART';
   const decisionClass = answer.tone === 'take'
     ? (String(answer.direction || '').toLowerCase() === 'long' ? 'green' : 'red')
     : answer.tone === 'avoid' ? 'red' : 'wait';
@@ -7640,14 +7769,17 @@ function renderPunkyDock() {
       + '<div><div class="section-kicker">' + esc(answer.ticker) + ' decision</div><div class="terminal-dock-decision ' + esc(decisionClass) + '">' + esc(answer.decision) + '</div></div>'
       + '<div class="terminal-dock-confidence">' + esc(answer.confidence) + '%</div>'
     + '</div>'
-    + '<div class="terminal-dock-alignment">THESIS ' + esc(answer.direction) + ' • LIVE CHART ' + esc(answer.chartDirection || answer.direction) + '</div>'
+    + '<div class="terminal-dock-alignment">THESIS ' + esc(answer.direction) + ' • ' + esc(chartReadLabel) + ' ' + esc(answer.chartDirection || answer.direction) + '</div>'
     + '<div class="terminal-dock-summary">' + esc(answer.summary) + '</div>'
+    + (answer.usedCachedData ? '<div class="price-integrity-warning"><strong>Live venue temporarily unavailable:</strong> ' + esc(answer.fallbackReason || 'Using the latest verified agent snapshot.') + '</div>' : '')
+    + '<div class="execution-commitment-line ' + esc(String(commitment.state || '').toLowerCase()) + '"><strong>' + esc(commitment.label || 'PUNKY EXECUTION') + ':</strong> ' + esc(commitment.will_trade_when || commitment.summary || 'Waiting for a complete setup.') + (commitment.currentBlocker || commitment.current_blocker ? '<br><strong>Why not now:</strong> ' + esc(commitment.currentBlocker || commitment.current_blocker) : '') + '</div>'
     + '<div class="plan-accountability-line"><strong>Verified record:</strong> ' + esc(planAccuracyNarrative(answer.ticker, answer.direction, answer.accountability || {})) + '</div>'
     + '<div class="terminal-dock-plan">'
       + '<div><span>' + (answer.direction === 'LONG' ? 'Buy only above' : 'Short only below') + '</span><strong>' + esc(askPunkyPrice(answer.entry, answer.current)) + '</strong></div>'
       + '<div><span>First profit level</span><strong class="green">' + esc(askPunkyPrice(answer.target, answer.current)) + '</strong></div>'
       + '<div><span>Leave the idea if</span><strong class="risk">' + esc(invalidation) + '</strong></div>'
       + '<div><span>Potential gain vs loss</span><strong>' + esc(Number(answer.rr).toFixed(2)) + 'x</strong></div>'
+      + '<div><span>Expected holding time</span><strong>' + esc(holdingWindowText(holdingWindow, true)) + '</strong></div>'
     + '</div>'
     + '<button class="terminal-dock-full" type="button" onclick="openPunkyFullAnalysis()">Open chart &amp; evidence</button>';
 }
@@ -7765,10 +7897,11 @@ function renderPrioritySetups(board) {
     return item.tradable && ['OPEN', 'ORDER_WORKING', 'EXECUTED'].includes(deskState);
   }).length;
   const leadDecision = visible[0] || null;
+  const leadCommitment = leadDecision ? executionCommitmentForItem(leadDecision) : null;
   meta.textContent = executableCount
     ? executableCount + ' active paper decision' + (executableCount === 1 ? '' : 's')
     : leadDecision
-      ? String(leadDecision.coin || '') + ' ranks first • ' + simpleActionText(leadDecision) + ' • no order'
+      ? String(leadDecision.coin || '') + ' ranks first • ' + simpleActionText(leadDecision) + ' • ' + String((leadCommitment || {}).label || 'waiting')
       : 'No trade • cash is the position';
   if (!visible.length) {
     body.innerHTML = '<div class="empty-state">No setup is close enough to deserve attention yet.</div>';
@@ -7781,17 +7914,16 @@ function renderPrioritySetups(board) {
     const rawProbability = Number(candidate.probability || item.probability || 0);
     const probability = rawProbability > 1 ? rawProbability / 100 : rawProbability;
     const confidenceText = probability > 0 ? Math.round(probability * 100) + '% thesis model' : String(item.confidence || 'developing');
-    const deskReason = String(item.desk_reason || item.execution_note || 'No order is allowed yet.');
+    const commitment = executionCommitmentForItem(item);
     return '<div class="priority-setup">'
       + '<div>'
         + '<div class="priority-setup-title">' + (index === 0 ? '<span class="best-setup-rank">Best setup</span>' : '') + '<span class="priority-setup-symbol">' + esc(item.coin) + '</span><span class="' + modeClass + '">' + esc(surfaceModeBadge(item.mode_badge, item.tradable)) + '</span>' + priorityDirectionChipHtml(item) + '</div>'
         + '<div class="priority-field-value" style="margin-top:6px;">' + esc(simpleActionText(item)) + ' • ' + esc(planAccuracyCompact(item)) + '</div>'
         + '<div class="priority-setup-actions"><span class="muted">' + esc(confidenceText) + '</span><button type="button" class="priority-ask" onclick="askPunkyPrompt(\'Should I take ' + esc(item.coin) + '?\')">ASK PUNKY</button></div>'
       + '</div>'
-      + '<div><span class="priority-field-label">When to enter</span><div class="priority-field-value">' + esc(simpleNextText(item, 140)) + '</div></div>'
-      + '<div><span class="priority-field-label">First profit level</span><div class="priority-field-value">' + esc(simpleTargetText(item, 110)) + '</div></div>'
-      + '<div><span class="priority-field-label">When to leave</span><div class="priority-field-value priority-risk">' + esc(simpleInvalidationText(item, 110)) + '</div></div>'
-      + '<div><span class="priority-field-label">Why it matters</span><div class="priority-field-value">' + esc(simpleThesisText(item, 150)) + '</div></div>'
+      + '<div><span class="priority-field-label">Punky will trade when</span><div class="priority-field-value">' + esc(commitment.will_trade_when) + '</div></div>'
+      + '<div><span class="priority-field-label">Expected holding time</span><div class="priority-field-value">' + esc(holdingWindowText(item, true)) + '</div></div>'
+      + '<div><span class="priority-field-label">Profit / exit</span><div class="priority-field-value">' + esc(simpleTargetText(item, 100)) + '</div><div class="priority-field-value priority-risk" style="margin-top:5px;">' + esc(simpleInvalidationText(item, 100)) + '</div></div>'
     + '</div>';
   }).join('') + '</div>';
 }
@@ -7880,7 +8012,7 @@ function marketMapCompactRowHtml(coin, item) {
       + '<div class="token-line"><div class="map-coin">' + esc(safeItem.coin || coin) + '</div><span class="' + modeClass + '">' + esc(surfaceModeBadge(safeItem.mode_badge, tradable)) + '</span>' + stanceChip + probabilityChipHtml(safeItem) + planAccuracyChipHtml(safeItem) + eventChipHtml(safeItem) + categoryBadge + '</div>'
       + '<div class="token-subline token-subline-simple">' + esc(simpleThesisText(safeItem, 84)) + '</div>'
     + '</div>'
-    + '<div class="daily-sheet-stat"><div class="daily-sheet-label">Now</div><div class="daily-sheet-value">' + esc(simpleActionText(safeItem)) + '</div></div>'
+    + '<div class="daily-sheet-stat"><div class="daily-sheet-label">Now / expected hold</div><div class="daily-sheet-value">' + esc(simpleActionText(safeItem) + ' • ' + holdingWindowText(safeItem)) + '</div></div>'
     + '<div class="daily-sheet-stat"><div class="daily-sheet-label">Next</div><div class="daily-sheet-value">' + esc(simpleNextText(safeItem, 88)) + '</div></div>'
     + '<div class="daily-sheet-stat"><div class="daily-sheet-label">Inval</div><div class="daily-sheet-value">' + esc(simpleInvalidationText(safeItem, 88)) + '</div></div>'
   + '</div>';
@@ -8260,7 +8392,7 @@ function renderActionBoard(board) {
     : '';
   html += '<div class="asset-bucket-note">' + esc('Calls are grouped by direction. Top executable setups are below.' + categoryNote) + '</div>';
   if (visibleLead) {
-    html += '<div class="lead-callout"><strong>Lead:</strong> ' + esc(visibleLead.coin + ' - ' + simpleActionText(visibleLead)) + '<br><strong>Entry:</strong> ' + esc(simpleNextText(visibleLead, 92)) + '<br><strong>Profit:</strong> ' + esc(simpleTargetText(visibleLead, 92)) + '<br><strong>Leave:</strong> ' + esc(simpleInvalidationText(visibleLead, 92)) + '</div>';
+    html += '<div class="lead-callout"><strong>Lead:</strong> ' + esc(visibleLead.coin + ' - ' + simpleActionText(visibleLead)) + '<br><strong>Punky will trade when:</strong> ' + esc(executionCommitmentText(visibleLead)) + '<br><strong>Expected hold:</strong> ' + esc(holdingWindowText(visibleLead, true)) + '<br><strong>Profit:</strong> ' + esc(simpleTargetText(visibleLead, 92)) + '<br><strong>Leave:</strong> ' + esc(simpleInvalidationText(visibleLead, 92)) + '</div>';
   }
   html += '<div class="decision-board asset-section-stack">';
   if (visibleTradableItems.length) {
@@ -8291,6 +8423,8 @@ function renderActionBoard(board) {
           + '<div class="token-detail-grid">'
             + '<div class="token-detail"><span class="token-detail-label">Direction</span><div class="token-detail-value">' + esc(simpleActionText(item)) + '</div></div>'
             + '<div class="token-detail"><span class="token-detail-label">When to enter</span><div class="token-detail-value">' + esc(simpleNextText(item, 96)) + '</div></div>'
+            + '<div class="token-detail"><span class="token-detail-label">Expected holding time</span><div class="token-detail-value">' + esc(holdingWindowText(item, true)) + '</div></div>'
+            + '<div class="token-detail"><span class="token-detail-label">Punky will trade when</span><div class="token-detail-value">' + esc(executionCommitmentText(item)) + '</div></div>'
             + '<div class="token-detail"><span class="token-detail-label">First profit level</span><div class="token-detail-value">' + esc(simpleTargetText(item, 92)) + '</div></div>'
             + '<div class="token-detail"><span class="token-detail-label">When to leave</span><div class="token-detail-value">' + esc(simpleInvalidationText(item, 92)) + '</div></div>'
             + '<div class="token-detail"><span class="token-detail-label">Verified record</span><div class="token-detail-value">' + esc(planAccuracyText(item)) + '</div></div>'
@@ -8669,7 +8803,7 @@ async function refresh() {
           + '<div class="position-decision-grid">'
             + '<div class="position-decision-item"><div class="pos-meta">Price</div><div class="position-decision-value">$' + fmt(p.entry_price) + ' → <span class="' + pnlCls + '">$' + fmt(p.current_price) + '</span></div></div>'
             + '<div class="position-decision-item"><div class="pos-meta">Invalid if</div><div class="position-decision-value red">' + esc(simpleInvalidationText(p, 92)) + '</div></div>'
-            + '<div class="position-decision-item"><div class="pos-meta">Objective</div><div class="position-decision-value green">$' + fmt(p.take_profit) + '</div></div>'
+            + '<div class="position-decision-item"><div class="pos-meta">Objective / expected hold</div><div class="position-decision-value green">$' + fmt(p.take_profit) + ' • ' + esc(holdingWindowText(p)) + '</div></div>'
             + '<div class="position-decision-item"><div class="pos-meta">Exposure</div><div class="position-decision-value">$' + fmt(notional, 0) + ' • ' + leverage.toFixed(1) + 'x • $' + fmt(margin, 0) + ' margin</div></div>'
           + '</div>'
           + '<div class="position-logic-grid">'

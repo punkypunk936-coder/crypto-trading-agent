@@ -55,6 +55,7 @@ from paths import (
     TRADES_CSV,
 )
 from dashboard.snapshot import (
+    DASHBOARD_SCHEMA_VERSION,
     augment_state,
     build_dashboard_snapshot,
     default_control,
@@ -433,6 +434,13 @@ def _snapshot_revision(snapshot: dict | None) -> tuple[int, int, str]:
 
 
 def _snapshot_needs_refresh(snapshot: dict | None = None) -> bool:
+    if isinstance(snapshot, dict):
+        try:
+            snapshot_schema = int(snapshot.get("schemaVersion") or 0)
+        except (TypeError, ValueError):
+            snapshot_schema = 0
+        if snapshot_schema < DASHBOARD_SCHEMA_VERSION:
+            return True
     if not SNAPSHOT.exists():
         return True
     try:
