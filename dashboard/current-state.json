@@ -1,14 +1,10 @@
 {
   "status": "running",
-  "mode": "dry_run",
-  "leverage": 2,
-  "adaptive_leverage_enabled": true,
   "last_cycle": "2026-08-31 13:50:41",
   "cycle_number": 17453,
   "portfolio_usd": 7463.42,
   "available_usd": 4851.22,
   "positions": [],
-  "pending_orders": [],
   "signals": {
     "SP500": {
       "analysis_updated_ts": 1788164441.610807,
@@ -8353,6 +8349,72 @@
       "leverage_note": "3x patient-execution cap; 4x: high conviction, A+ forecast, event-risk cap"
     }
   },
+  "pending_orders": [],
+  "sentiment": {
+    "raw_score": 62,
+    "label": "Greed",
+    "signal_score": 37.917500000000004,
+    "fng_contrarian_score": 38.0,
+    "structural_score": 37.89,
+    "market_mode": "DRAWDOWN",
+    "directional_bias": "BEARISH",
+    "risk_off": true,
+    "major_breakdown_count": 2,
+    "major_reclaim_count": 0,
+    "majors": {
+      "BTC": {
+        "coin": "BTC",
+        "valid": true,
+        "score": 47.13,
+        "state": "MIXED",
+        "close": 78195.0,
+        "return_24h_pct": 0.14,
+        "return_72h_pct": -1.816,
+        "return_7d_pct": 1.077,
+        "below_sma20": true,
+        "below_sma72": false,
+        "breaking": false,
+        "reclaiming": false,
+        "summary": "BTC mixed (+0.1% 24h, +1.1% 7d)"
+      },
+      "ETH": {
+        "coin": "ETH",
+        "valid": true,
+        "score": 32.57,
+        "state": "WEAK",
+        "close": 2440.8,
+        "return_24h_pct": -0.578,
+        "return_72h_pct": -2.223,
+        "return_7d_pct": -0.607,
+        "below_sma20": true,
+        "below_sma72": true,
+        "breaking": false,
+        "reclaiming": false,
+        "summary": "ETH weak (-0.6% 24h, -0.6% 7d)"
+      },
+      "SOL": {
+        "coin": "SOL",
+        "valid": true,
+        "score": 33.96,
+        "state": "WEAK",
+        "close": 102.99,
+        "return_24h_pct": -1.727,
+        "return_72h_pct": -3.141,
+        "return_7d_pct": 9.417,
+        "below_sma20": true,
+        "below_sma72": true,
+        "breaking": false,
+        "reclaiming": false,
+        "summary": "SOL weak (-1.7% 24h, +9.4% 7d)"
+      }
+    },
+    "structure_summary": "Crypto majors drawdown: 2 breaking, 0 reclaiming, structure 38/100.",
+    "is_extreme": false,
+    "summary": "Sentiment: Greed (F&G=62) + crypto mode DRAWDOWN \u2192 BEARISH RISK-OFF signal (38/100) | Crypto majors drawdown: 2 breaking, 0 reclaiming, structure 38/100."
+  },
+  "mode": "dry_run",
+  "leverage": 2,
+  "adaptive_leverage_enabled": true,
   "us_market_context": {
     "enabled": true,
     "active": true,
@@ -13248,68 +13310,6 @@
     },
     "headline": "SP500 LONG leads; it still must reconfirm before entry.",
     "principle": "Compare the whole mature book, fund one winner, and let no-trade remain a valid decision."
-  },
-  "sentiment": {
-    "raw_score": 62,
-    "label": "Greed",
-    "signal_score": 37.917500000000004,
-    "fng_contrarian_score": 38.0,
-    "structural_score": 37.89,
-    "market_mode": "DRAWDOWN",
-    "directional_bias": "BEARISH",
-    "risk_off": true,
-    "major_breakdown_count": 2,
-    "major_reclaim_count": 0,
-    "majors": {
-      "BTC": {
-        "coin": "BTC",
-        "valid": true,
-        "score": 47.13,
-        "state": "MIXED",
-        "close": 78195.0,
-        "return_24h_pct": 0.14,
-        "return_72h_pct": -1.816,
-        "return_7d_pct": 1.077,
-        "below_sma20": true,
-        "below_sma72": false,
-        "breaking": false,
-        "reclaiming": false,
-        "summary": "BTC mixed (+0.1% 24h, +1.1% 7d)"
-      },
-      "ETH": {
-        "coin": "ETH",
-        "valid": true,
-        "score": 32.57,
-        "state": "WEAK",
-        "close": 2440.8,
-        "return_24h_pct": -0.578,
-        "return_72h_pct": -2.223,
-        "return_7d_pct": -0.607,
-        "below_sma20": true,
-        "below_sma72": true,
-        "breaking": false,
-        "reclaiming": false,
-        "summary": "ETH weak (-0.6% 24h, -0.6% 7d)"
-      },
-      "SOL": {
-        "coin": "SOL",
-        "valid": true,
-        "score": 33.96,
-        "state": "WEAK",
-        "close": 102.99,
-        "return_24h_pct": -1.727,
-        "return_72h_pct": -3.141,
-        "return_7d_pct": 9.417,
-        "below_sma20": true,
-        "below_sma72": true,
-        "breaking": false,
-        "reclaiming": false,
-        "summary": "SOL weak (-1.7% 24h, +9.4% 7d)"
-      }
-    },
-    "structure_summary": "Crypto majors drawdown: 2 breaking, 0 reclaiming, structure 38/100.",
-    "is_extreme": false,
-    "summary": "Sentiment: Greed (F&G=62) + crypto mode DRAWDOWN \u2192 BEARISH RISK-OFF signal (38/100) | Crypto majors drawdown: 2 breaking, 0 reclaiming, structure 38/100."
   },
   "daily_pnl_usd": 6.33,
   "daily_trades": 1,
@@ -22884,40 +22884,6 @@
     "raw": "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=23527523)\t8%; discharging; 0:10 remaining present: true\n\tBattery Warning: Early"
   },
   "config": {
-    "long_threshold": 65.0,
-    "short_threshold": 35.0,
-    "min_hold_minutes": 240.0,
-    "index_min_hold_minutes": 360.0,
-    "reversal_boost": 8.0,
-    "core_long_thesis_enabled": true,
-    "core_long_thesis_coins": [
-      "AAPL",
-      "AMD",
-      "AMZN",
-      "ASML",
-      "AVGO",
-      "COST",
-      "GOOGL",
-      "META",
-      "MSFT",
-      "NVDA",
-      "ORCL",
-      "TSM"
-    ],
-    "core_long_break_confirmation_cycles": 3,
-    "semiconductor_structural_hold_enabled": true,
-    "semiconductor_break_confirmation_cycles": 4,
-    "check_interval_seconds": 120,
-    "analysis_signal_max_age_minutes": 20.0,
-    "best_trade_gate_enabled": true,
-    "best_trade_gate_max_new_entries_per_cycle": 1,
-    "adaptive_leverage_enabled": true,
-    "min_leverage": 1,
-    "base_leverage": 2,
-    "max_leverage": 8,
-    "max_trade_usd": 1000.0,
-    "max_trade_notional_usd": 4000.0,
-    "use_daily_market_map": true,
     "coins": [
       "BTC",
       "ETH",
@@ -22932,6 +22898,7 @@
       "AMD",
       "AMZN",
       "BABA",
+      "BIRD",
       "BRENTOIL",
       "BX",
       "CBRS",
@@ -22952,6 +22919,7 @@
       "GME",
       "GOLD",
       "GOOGL",
+      "H100",
       "HIMS",
       "HOOD",
       "HYUNDAI",
@@ -22965,6 +22933,7 @@
       "MRVL",
       "MRNA",
       "MSFT",
+      "MSTR",
       "MU",
       "NATGAS",
       "NFLX",
@@ -22994,16 +22963,17 @@
       "XLE",
       "XYZ100",
       "ZM",
-      "GEV",
-      "QCOM",
-      "IBM",
-      "ARM",
-      "NBIS",
+      "BE",
       "ASML",
-      "AVGO",
-      "DELL",
-      "AMAT",
       "WDC",
+      "QCOM",
+      "DELL",
+      "GEV",
+      "AVGO",
+      "ARM",
+      "AMAT",
+      "IBM",
+      "NBIS",
       "AAOI",
       "BB",
       "CRWD",
@@ -23069,6 +23039,7 @@
       "AMD",
       "AMZN",
       "BABA",
+      "BIRD",
       "BRENTOIL",
       "BX",
       "CBRS",
@@ -23089,6 +23060,7 @@
       "GME",
       "GOLD",
       "GOOGL",
+      "H100",
       "HIMS",
       "HOOD",
       "HYUNDAI",
@@ -23102,6 +23074,7 @@
       "MRVL",
       "MRNA",
       "MSFT",
+      "MSTR",
       "MU",
       "NATGAS",
       "NFLX",
@@ -23131,16 +23104,17 @@
       "XLE",
       "XYZ100",
       "ZM",
-      "GEV",
-      "QCOM",
-      "IBM",
-      "ARM",
-      "NBIS",
+      "BE",
       "ASML",
-      "AVGO",
-      "DELL",
-      "AMAT",
       "WDC",
+      "QCOM",
+      "DELL",
+      "GEV",
+      "AVGO",
+      "ARM",
+      "AMAT",
+      "IBM",
+      "NBIS",
       "LRCX",
       "KLAC",
       "IREN",
@@ -23205,13 +23179,10 @@
       "WLD",
       "ETC",
       "POL",
-      "BE",
-      "BIRD",
       "BOT",
       "EWT",
       "GBP",
       "GIGADEV",
-      "H100",
       "IBIDEN",
       "IBOV",
       "KORU",
@@ -23219,7 +23190,6 @@
       "LYTE",
       "MAGS",
       "MINIMAX",
-      "MSTR",
       "NCLD",
       "SHEIN",
       "SMH",
@@ -23353,7 +23323,23 @@
       "XBI",
       "ZHIPU"
     ],
-    "dynamic_market_cap_min_usd": 1000000000.0,
+    "core_long_thesis_enabled": true,
+    "core_long_thesis_coins": [
+      "AAPL",
+      "AMD",
+      "AMZN",
+      "ASML",
+      "AVGO",
+      "COST",
+      "GOOGL",
+      "META",
+      "MSFT",
+      "NVDA",
+      "ORCL",
+      "TSM"
+    ],
+    "semiconductor_structural_hold_enabled": true,
+    "semiconductor_break_confirmation_cycles": 4,
     "instrument_types": {
       "BTC": "crypto",
       "ETH": "crypto",
@@ -23441,17 +23427,17 @@
       "XLE": "index",
       "XYZ100": "index",
       "ZM": "equity",
-      "GEV": "equity",
-      "QCOM": "equity",
-      "IBM": "equity",
-      "ARM": "equity",
-      "NBIS": "equity",
-      "ASML": "equity",
-      "AVGO": "equity",
-      "DELL": "equity",
-      "AMAT": "equity",
-      "WDC": "equity",
       "BE": "equity",
+      "ASML": "equity",
+      "WDC": "equity",
+      "QCOM": "equity",
+      "DELL": "equity",
+      "GEV": "equity",
+      "AVGO": "equity",
+      "ARM": "equity",
+      "AMAT": "equity",
+      "IBM": "equity",
+      "NBIS": "equity",
       "LRCX": "equity",
       "KLAC": "equity",
       "IREN": "equity",
@@ -23815,39 +23801,11 @@
         "software",
         "growth"
       ],
-      "GEV": [
+      "BE": [
         "power_cooling",
         "ai_infra"
       ],
-      "QCOM": [
-        "ai_chips",
-        "ai_infra"
-      ],
-      "IBM": [
-        "hyperscalers",
-        "ai_infra"
-      ],
-      "ARM": [
-        "ai_chips",
-        "ai_infra"
-      ],
-      "NBIS": [
-        "neoclouds",
-        "ai_infra"
-      ],
       "ASML": [
-        "foundries_fab",
-        "ai_infra"
-      ],
-      "AVGO": [
-        "ai_chips",
-        "ai_infra"
-      ],
-      "DELL": [
-        "servers_racks",
-        "ai_infra"
-      ],
-      "AMAT": [
         "foundries_fab",
         "ai_infra"
       ],
@@ -23855,8 +23813,36 @@
         "memory_storage",
         "ai_infra"
       ],
-      "BE": [
+      "QCOM": [
+        "ai_chips",
+        "ai_infra"
+      ],
+      "DELL": [
+        "servers_racks",
+        "ai_infra"
+      ],
+      "GEV": [
         "power_cooling",
+        "ai_infra"
+      ],
+      "AVGO": [
+        "ai_chips",
+        "ai_infra"
+      ],
+      "ARM": [
+        "ai_chips",
+        "ai_infra"
+      ],
+      "AMAT": [
+        "foundries_fab",
+        "ai_infra"
+      ],
+      "IBM": [
+        "hyperscalers",
+        "ai_infra"
+      ],
+      "NBIS": [
+        "neoclouds",
         "ai_infra"
       ],
       "LRCX": [
@@ -23868,6 +23854,8 @@
         "ai_infra"
       ],
       "IREN": [
+        "neoclouds",
+        "ai_infra",
         "other_stocks"
       ],
       "APLD": [
@@ -24158,6 +24146,9 @@
       "software": "Software",
       "other_stocks": "Other Stocks"
     },
+    "check_interval_seconds": 120,
+    "dynamic_market_cap_min_usd": 1000000000.0,
+    "use_daily_market_map": true,
     "asset_category_descriptions": {
       "indices_macro": "Macro-linked index and ETF proxies with slower, cleaner tape.",
       "mag7": "The big US platform leaders where catalyst reactions matter most.",
@@ -24189,6 +24180,835 @@
       "software": "Software longs need durable growth, margin leverage, and AI monetization proof.",
       "other_stocks": "Everything executable that does not fit the main desks yet."
     },
+    "tradexyz_assets": {
+      "AAPL": {
+        "display_name": "Apple",
+        "instrument_type": "equity",
+        "categories": [
+          "mag7"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:AAPL"
+      },
+      "ALUMINIUM": {
+        "display_name": "Aluminium",
+        "instrument_type": "index",
+        "categories": [
+          "commodities_metals"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:ALUMINIUM"
+      },
+      "AMD": {
+        "display_name": "AMD",
+        "instrument_type": "equity",
+        "categories": [
+          "semis_memory"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:AMD"
+      },
+      "AMZN": {
+        "display_name": "Amazon",
+        "instrument_type": "equity",
+        "categories": [
+          "mag7"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:AMZN"
+      },
+      "BABA": {
+        "display_name": "Alibaba",
+        "instrument_type": "equity",
+        "categories": [
+          "asia_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:BABA"
+      },
+      "BIRD": {
+        "display_name": "Allbirds",
+        "instrument_type": "equity",
+        "categories": [
+          "growth"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:BIRD"
+      },
+      "BRENTOIL": {
+        "display_name": "Brent Oil",
+        "instrument_type": "index",
+        "categories": [
+          "energy"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:BRENTOIL"
+      },
+      "BX": {
+        "display_name": "Blackstone",
+        "instrument_type": "equity",
+        "categories": [
+          "financials"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:BX"
+      },
+      "CBRS": {
+        "display_name": "Cerebras Systems",
+        "instrument_type": "equity",
+        "categories": [
+          "pre_ipo",
+          "semis_memory",
+          "ai_infra"
+        ],
+        "pre_ipo": true,
+        "venue_symbol": "xyz:CBRS"
+      },
+      "CL": {
+        "display_name": "Crude Oil",
+        "instrument_type": "index",
+        "categories": [
+          "energy"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:CL"
+      },
+      "COIN": {
+        "display_name": "Coinbase",
+        "instrument_type": "equity",
+        "categories": [
+          "crypto_equities"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:COIN"
+      },
+      "COPPER": {
+        "display_name": "Copper",
+        "instrument_type": "index",
+        "categories": [
+          "commodities_metals"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:COPPER"
+      },
+      "CORN": {
+        "display_name": "Corn",
+        "instrument_type": "index",
+        "categories": [
+          "agriculture"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:CORN"
+      },
+      "COST": {
+        "display_name": "Costco",
+        "instrument_type": "equity",
+        "categories": [
+          "consumer"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:COST"
+      },
+      "CRCL": {
+        "display_name": "Circle",
+        "instrument_type": "equity",
+        "categories": [
+          "crypto_equities"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:CRCL"
+      },
+      "CRWV": {
+        "display_name": "CoreWeave",
+        "instrument_type": "equity",
+        "categories": [
+          "neoclouds"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:CRWV"
+      },
+      "CXMT": {
+        "display_name": "ChangXin Memory Technologies",
+        "instrument_type": "equity",
+        "categories": [
+          "semis_memory",
+          "asia_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:CXMT"
+      },
+      "DKNG": {
+        "display_name": "DraftKings",
+        "instrument_type": "equity",
+        "categories": [
+          "consumer",
+          "growth"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:DKNG"
+      },
+      "DRAM": {
+        "display_name": "DRAM",
+        "instrument_type": "index",
+        "categories": [
+          "semis_memory"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:DRAM"
+      },
+      "DXY": {
+        "display_name": "US Dollar Index",
+        "instrument_type": "index",
+        "categories": [
+          "fx_rates",
+          "indices_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:DXY"
+      },
+      "EBAY": {
+        "display_name": "eBay",
+        "instrument_type": "equity",
+        "categories": [
+          "consumer"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:EBAY"
+      },
+      "EUR": {
+        "display_name": "Euro",
+        "instrument_type": "index",
+        "categories": [
+          "fx_rates"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:EUR"
+      },
+      "EWJ": {
+        "display_name": "Japan ETF",
+        "instrument_type": "index",
+        "categories": [
+          "asia_macro",
+          "indices_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:EWJ"
+      },
+      "EWZ": {
+        "display_name": "Brazil ETF",
+        "instrument_type": "index",
+        "categories": [
+          "latam_macro",
+          "indices_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:EWZ"
+      },
+      "EWY": {
+        "display_name": "South Korea ETF",
+        "instrument_type": "index",
+        "categories": [
+          "asia_macro",
+          "indices_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:EWY"
+      },
+      "GME": {
+        "display_name": "GameStop",
+        "instrument_type": "equity",
+        "categories": [
+          "meme_momentum"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:GME"
+      },
+      "GOLD": {
+        "display_name": "Gold",
+        "instrument_type": "index",
+        "categories": [
+          "commodities_metals"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:GOLD"
+      },
+      "GOOGL": {
+        "display_name": "Alphabet",
+        "instrument_type": "equity",
+        "categories": [
+          "mag7"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:GOOGL"
+      },
+      "H100": {
+        "display_name": "H100 Group",
+        "instrument_type": "equity",
+        "categories": [
+          "crypto_equities",
+          "microcap"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:H100"
+      },
+      "HIMS": {
+        "display_name": "Hims & Hers",
+        "instrument_type": "equity",
+        "categories": [
+          "biotech_glp1",
+          "growth"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:HIMS"
+      },
+      "HOOD": {
+        "display_name": "Robinhood",
+        "instrument_type": "equity",
+        "categories": [
+          "crypto_equities"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:HOOD"
+      },
+      "HYUNDAI": {
+        "display_name": "Hyundai",
+        "instrument_type": "equity",
+        "categories": [
+          "asia_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:HYUNDAI"
+      },
+      "INTC": {
+        "display_name": "Intel",
+        "instrument_type": "equity",
+        "categories": [
+          "semis_memory"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:INTC"
+      },
+      "JP225": {
+        "display_name": "Nikkei 225",
+        "instrument_type": "index",
+        "categories": [
+          "asia_macro",
+          "indices_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:JP225"
+      },
+      "JPY": {
+        "display_name": "Japanese Yen",
+        "instrument_type": "index",
+        "categories": [
+          "fx_rates",
+          "asia_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:JPY"
+      },
+      "KIOXIA": {
+        "display_name": "Kioxia",
+        "instrument_type": "equity",
+        "categories": [
+          "semis_memory",
+          "asia_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:KIOXIA"
+      },
+      "KRW": {
+        "display_name": "Korean Won",
+        "instrument_type": "index",
+        "categories": [
+          "fx_rates",
+          "asia_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:KRW"
+      },
+      "KR200": {
+        "display_name": "KOSPI 200",
+        "instrument_type": "index",
+        "categories": [
+          "asia_macro",
+          "indices_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:KR200"
+      },
+      "LITE": {
+        "display_name": "LITE",
+        "instrument_type": "equity",
+        "categories": [
+          "growth"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:LITE"
+      },
+      "LLY": {
+        "display_name": "Eli Lilly",
+        "instrument_type": "equity",
+        "categories": [
+          "biotech_glp1"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:LLY"
+      },
+      "META": {
+        "display_name": "Meta",
+        "instrument_type": "equity",
+        "categories": [
+          "mag7"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:META"
+      },
+      "MRVL": {
+        "display_name": "Marvell",
+        "instrument_type": "equity",
+        "categories": [
+          "semis_memory"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:MRVL"
+      },
+      "MRNA": {
+        "display_name": "Moderna",
+        "instrument_type": "equity",
+        "categories": [
+          "biotech_glp1"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:MRNA"
+      },
+      "MSFT": {
+        "display_name": "Microsoft",
+        "instrument_type": "equity",
+        "categories": [
+          "mag7"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:MSFT"
+      },
+      "MSTR": {
+        "display_name": "MicroStrategy",
+        "instrument_type": "equity",
+        "categories": [
+          "crypto_equities"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:MSTR"
+      },
+      "MU": {
+        "display_name": "Micron",
+        "instrument_type": "equity",
+        "categories": [
+          "semis_memory"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:MU"
+      },
+      "NATGAS": {
+        "display_name": "Natural Gas",
+        "instrument_type": "index",
+        "categories": [
+          "energy"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:NATGAS"
+      },
+      "NFLX": {
+        "display_name": "Netflix",
+        "instrument_type": "equity",
+        "categories": [
+          "consumer",
+          "growth"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:NFLX"
+      },
+      "NIFTY": {
+        "display_name": "Nifty 50",
+        "instrument_type": "index",
+        "categories": [
+          "asia_macro",
+          "indices_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:NIFTY"
+      },
+      "NVDA": {
+        "display_name": "NVIDIA",
+        "instrument_type": "equity",
+        "categories": [
+          "mag7",
+          "semis_memory"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:NVDA"
+      },
+      "ORCL": {
+        "display_name": "Oracle",
+        "instrument_type": "equity",
+        "categories": [
+          "ai_infra"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:ORCL"
+      },
+      "PALLADIUM": {
+        "display_name": "Palladium",
+        "instrument_type": "index",
+        "categories": [
+          "commodities_metals"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:PALLADIUM"
+      },
+      "PLATINUM": {
+        "display_name": "Platinum",
+        "instrument_type": "index",
+        "categories": [
+          "commodities_metals"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:PLATINUM"
+      },
+      "PLTR": {
+        "display_name": "Palantir",
+        "instrument_type": "equity",
+        "categories": [
+          "ai_infra",
+          "growth"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:PLTR"
+      },
+      "PURRDAT": {
+        "display_name": "PurrDat",
+        "instrument_type": "index",
+        "categories": [
+          "indices_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:PURRDAT"
+      },
+      "RIVN": {
+        "display_name": "Rivian",
+        "instrument_type": "equity",
+        "categories": [
+          "growth"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:RIVN"
+      },
+      "RKLB": {
+        "display_name": "Rocket Lab",
+        "instrument_type": "equity",
+        "categories": [
+          "growth"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:RKLB"
+      },
+      "SILVER": {
+        "display_name": "Silver",
+        "instrument_type": "index",
+        "categories": [
+          "commodities_metals"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:SILVER"
+      },
+      "SKHX": {
+        "display_name": "SK Hynix",
+        "instrument_type": "equity",
+        "categories": [
+          "semis_memory",
+          "asia_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:SKHX"
+      },
+      "SMSN": {
+        "display_name": "Samsung",
+        "instrument_type": "equity",
+        "categories": [
+          "semis_memory",
+          "asia_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:SMSN"
+      },
+      "SNDK": {
+        "display_name": "SanDisk",
+        "instrument_type": "equity",
+        "categories": [
+          "semis_memory"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:SNDK"
+      },
+      "SOFTBANK": {
+        "display_name": "SoftBank",
+        "instrument_type": "equity",
+        "categories": [
+          "asia_macro",
+          "ai_infra"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:SOFTBANK"
+      },
+      "SP500": {
+        "display_name": "S&P 500",
+        "instrument_type": "index",
+        "categories": [
+          "indices_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:SP500"
+      },
+      "TSLA": {
+        "display_name": "Tesla",
+        "instrument_type": "equity",
+        "categories": [
+          "mag7"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:TSLA"
+      },
+      "TSM": {
+        "display_name": "TSMC",
+        "instrument_type": "equity",
+        "categories": [
+          "semis_memory",
+          "asia_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:TSM"
+      },
+      "TTF": {
+        "display_name": "Dutch TTF Gas",
+        "instrument_type": "index",
+        "categories": [
+          "energy"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:TTF"
+      },
+      "URANIUM": {
+        "display_name": "Uranium",
+        "instrument_type": "index",
+        "categories": [
+          "uranium"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:URANIUM"
+      },
+      "URNM": {
+        "display_name": "Uranium Miners ETF",
+        "instrument_type": "index",
+        "categories": [
+          "uranium"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:URNM"
+      },
+      "USAR": {
+        "display_name": "USA Rare Earth",
+        "instrument_type": "equity",
+        "categories": [
+          "uranium",
+          "commodities_metals"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:USAR"
+      },
+      "VIX": {
+        "display_name": "VIX",
+        "instrument_type": "index",
+        "categories": [
+          "volatility",
+          "indices_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:VIX"
+      },
+      "VOL": {
+        "display_name": "Volatility",
+        "instrument_type": "index",
+        "categories": [
+          "volatility"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:VOL"
+      },
+      "WHEAT": {
+        "display_name": "Wheat",
+        "instrument_type": "index",
+        "categories": [
+          "agriculture"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:WHEAT"
+      },
+      "XLE": {
+        "display_name": "Energy Select Sector SPDR",
+        "instrument_type": "index",
+        "categories": [
+          "energy",
+          "indices_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:XLE"
+      },
+      "XYZ100": {
+        "display_name": "XYZ 100",
+        "instrument_type": "index",
+        "categories": [
+          "indices_macro"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:XYZ100"
+      },
+      "ZM": {
+        "display_name": "Zoom Communications",
+        "instrument_type": "equity",
+        "categories": [
+          "software",
+          "growth"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:ZM"
+      },
+      "BE": {
+        "display_name": "BE",
+        "instrument_type": "equity",
+        "categories": [
+          "power_cooling",
+          "ai_infra"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:BE"
+      },
+      "ASML": {
+        "display_name": "ASML",
+        "instrument_type": "equity",
+        "categories": [
+          "foundries_fab",
+          "ai_infra"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:ASML"
+      },
+      "WDC": {
+        "display_name": "WDC",
+        "instrument_type": "equity",
+        "categories": [
+          "memory_storage",
+          "ai_infra"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:WDC"
+      },
+      "QCOM": {
+        "display_name": "QCOM",
+        "instrument_type": "equity",
+        "categories": [
+          "ai_chips",
+          "ai_infra"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:QCOM"
+      },
+      "DELL": {
+        "display_name": "DELL",
+        "instrument_type": "equity",
+        "categories": [
+          "servers_racks",
+          "ai_infra"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:DELL"
+      },
+      "GEV": {
+        "display_name": "GEV",
+        "instrument_type": "equity",
+        "categories": [
+          "power_cooling",
+          "ai_infra"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:GEV"
+      },
+      "AVGO": {
+        "display_name": "AVGO",
+        "instrument_type": "equity",
+        "categories": [
+          "ai_chips",
+          "ai_infra"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:AVGO"
+      },
+      "ARM": {
+        "display_name": "ARM",
+        "instrument_type": "equity",
+        "categories": [
+          "ai_chips",
+          "ai_infra"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:ARM"
+      },
+      "AMAT": {
+        "display_name": "AMAT",
+        "instrument_type": "equity",
+        "categories": [
+          "foundries_fab",
+          "ai_infra"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:AMAT"
+      },
+      "IBM": {
+        "display_name": "IBM",
+        "instrument_type": "equity",
+        "categories": [
+          "hyperscalers",
+          "ai_infra"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:IBM"
+      },
+      "NBIS": {
+        "display_name": "NBIS",
+        "instrument_type": "equity",
+        "categories": [
+          "neoclouds",
+          "ai_infra"
+        ],
+        "pre_ipo": false,
+        "venue_symbol": "xyz:NBIS"
+      }
+    },
+    "long_threshold": 65.0,
+    "short_threshold": 35.0,
+    "min_hold_minutes": 240.0,
+    "index_min_hold_minutes": 360.0,
+    "reversal_boost": 8.0,
+    "core_long_break_confirmation_cycles": 3,
+    "analysis_signal_max_age_minutes": 20.0,
+    "best_trade_gate_enabled": true,
+    "best_trade_gate_max_new_entries_per_cycle": 1,
+    "adaptive_leverage_enabled": true,
+    "min_leverage": 1,
+    "base_leverage": 2,
+    "max_leverage": 8,
+    "max_trade_usd": 1000.0,
+    "max_trade_notional_usd": 4000.0,
     "portfolio_theme_map": {
       "BTC": "CRYPTO_CORE",
       "ETH": "CRYPTO_CORE",
@@ -25383,6 +26203,22 @@
       "win_rate": 0.0,
       "wins": 0,
       "worst_families": []
+    }
+  },
+  "positions_count": 0,
+  "decision_summary": {
+    "long_count": 1,
+    "short_count": 0,
+    "flat_count": 7,
+    "tradable_count": 4,
+    "tradable_active_count": 1,
+    "lead": {
+      "coin": "SP500",
+      "action": "LONG",
+      "score": 100.0,
+      "confidence": "HIGH",
+      "execution_mode": "tradable",
+      "reason": "Long wait: chart is moving, but the driver is not strong yet."
     }
   }
 }
