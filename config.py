@@ -819,6 +819,7 @@ class TradingConfig:
     data_reliability_min_news_articles: int = 1
     data_reliability_min_orderbook_snapshots: int = 3
     data_reliability_max_reference_deviation_pct: float = 2.0
+    data_reliability_max_quote_age_seconds: float = 20.0
 
     # ── Portfolio correlation guard ─────────────────────────────────────────
     portfolio_correlation_guard_enabled: bool = True

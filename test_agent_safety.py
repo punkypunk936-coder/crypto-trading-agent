@@ -2449,6 +2449,7 @@ def test_agent_uses_completed_candles_for_conviction_but_live_price_for_executio
     cfg.trading.use_orderbook_levels = False
 
     original_fetch = agent_module.fetch_candles
+    original_live_quote = agent_module.get_live_quote
     original_compute_signals = agent_module.compute_signals
     original_compute_advanced = agent_module.compute_advanced_signals
     original_compute_regimes = agent_module.compute_regimes
@@ -2516,6 +2517,19 @@ def test_agent_uses_completed_candles_for_conviction_but_live_price_for_executio
 
     try:
         agent_module.fetch_candles = fake_fetch_candles
+        agent_module.get_live_quote = lambda *args, **kwargs: {
+            "price": 109.0,
+            "fresh": True,
+            "status": "LIVE",
+            "source": "Hyperliquid allMids",
+            "source_label": "Hyperliquid BTC",
+            "venue": "Hyperliquid",
+            "venue_symbol": "BTC",
+            "age_seconds": 0.0,
+            "updated_at": "2026-04-05T04:00:00Z",
+            "request_ok": True,
+            "cache_hit": False,
+        }
         agent_module.compute_signals = fake_compute_signals
         agent_module.compute_advanced_signals = fake_compute_advanced
         agent_module.compute_regimes = fake_compute_regimes
@@ -2560,6 +2574,7 @@ def test_agent_uses_completed_candles_for_conviction_but_live_price_for_executio
         )
     finally:
         agent_module.fetch_candles = original_fetch
+        agent_module.get_live_quote = original_live_quote
         agent_module.compute_signals = original_compute_signals
         agent_module.compute_advanced_signals = original_compute_advanced
         agent_module.compute_regimes = original_compute_regimes
@@ -3621,6 +3636,18 @@ def test_hosted_dashboard_bundle_matches_local_template() -> None:
     local_template = Path("dashboard/templates/dashboard.html").read_text()
     hosted_bundle = Path("netlify-dashboard/public/index.html").read_text()
     assert hosted_bundle == local_template, "hosted dashboard should mirror the local dashboard UI exactly"
+
+
+def test_ask_punky_uses_live_hyperliquid_quote_before_actionable_call() -> None:
+    template = Path("dashboard/templates/dashboard.html").read_text()
+    assert "async function askPunkyFetchQuote" in template
+    assert "type: 'l2Book'" in template
+    assert "type: 'allMids'" in template
+    assert "&& quoteFresh" in template
+    assert "&& entryReady" in template
+    assert "FRESH PRICE NEEDED" in template
+    assert "Live price now" in template
+    assert "Trade.xyz live order book" in template
 
 
 def test_hosted_dashboard_has_static_absolute_social_preview_metadata() -> None:
@@ -10729,6 +10756,108 @@ def test_hyperliquid_all_mids_is_shared_across_symbols() -> None:
         market_data_module._all_mids_cache.update(original_mids)
         market_data_module._all_mids_backoff_until.clear()
         market_data_module._all_mids_backoff_until.update(original_backoff)
+
+
+def test_hyperliquid_live_quote_exposes_freshness_and_venue_time() -> None:
+    original_post = market_data_module.requests.post
+    original_supported = market_data_module.is_hyperliquid_supported
+    original_resolve = market_data_module.resolve_hyperliquid_symbol
+    original_dex = market_data_module.get_hyperliquid_market_dex
+    original_mids = dict(market_data_module._all_mids_cache)
+    original_backoff = dict(market_data_module._all_mids_backoff_until)
+
+    class _Resp:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"xyz:MRNA": "140.41"}
+
+    try:
+        market_data_module._all_mids_cache.clear()
+        market_data_module._all_mids_backoff_until.clear()
+        market_data_module.is_hyperliquid_supported = lambda _coin: True
+        market_data_module.resolve_hyperliquid_symbol = lambda _coin: "xyz:MRNA"
+        market_data_module.get_hyperliquid_market_dex = lambda _coin: "xyz"
+        market_data_module.requests.post = lambda *args, **kwargs: _Resp()
+
+        quote = market_data_module.get_live_quote("MRNA")
+
+        assert quote["price"] == 140.41
+        assert quote["fresh"] is True
+        assert quote["status"] == "LIVE"
+        assert quote["venue_symbol"] == "xyz:MRNA"
+        assert quote["source_label"] == "Trade.xyz xyz:MRNA"
+        assert quote["age_seconds"] <= 1.0
+        assert quote["updated_at"].endswith("Z")
+    finally:
+        market_data_module.requests.post = original_post
+        market_data_module.is_hyperliquid_supported = original_supported
+        market_data_module.resolve_hyperliquid_symbol = original_resolve
+        market_data_module.get_hyperliquid_market_dex = original_dex
+        market_data_module._all_mids_cache.clear()
+        market_data_module._all_mids_cache.update(original_mids)
+        market_data_module._all_mids_backoff_until.clear()
+        market_data_module._all_mids_backoff_until.update(original_backoff)
+
+
+def test_stale_hyperliquid_mid_cannot_trigger_a_current_price() -> None:
+    original_supported = market_data_module.is_hyperliquid_supported
+    original_resolve = market_data_module.resolve_hyperliquid_symbol
+    original_dex = market_data_module.get_hyperliquid_market_dex
+    original_mids = dict(market_data_module._all_mids_cache)
+    original_backoff = dict(market_data_module._all_mids_backoff_until)
+    original_reference = market_data_module.get_reference_price_yahoo
+
+    try:
+        market_data_module._all_mids_cache.clear()
+        market_data_module._all_mids_backoff_until.clear()
+        market_data_module._all_mids_cache["xyz"] = (time.time() - 90, {"xyz:AMZN": "260.0"})
+        market_data_module._all_mids_backoff_until["xyz"] = time.time() + 60
+        market_data_module.is_hyperliquid_supported = lambda _coin: True
+        market_data_module.resolve_hyperliquid_symbol = lambda _coin: "xyz:AMZN"
+        market_data_module.get_hyperliquid_market_dex = lambda _coin: "xyz"
+        market_data_module.get_reference_price_yahoo = lambda _coin: None
+
+        quote = market_data_module.get_live_quote("AMZN", max_age_seconds=20)
+        diagnostics = market_data_module.get_price_diagnostics("AMZN", quote=quote)
+
+        assert quote["fresh"] is False
+        assert quote["status"] == "STALE"
+        assert market_data_module.get_current_price("AMZN") is None
+        assert market_data_module.get_current_price("AMZN", allow_stale=True) == 260.0
+        assert diagnostics["price_status"] == "STALE"
+        assert diagnostics["quote_fresh"] is False
+    finally:
+        market_data_module.is_hyperliquid_supported = original_supported
+        market_data_module.resolve_hyperliquid_symbol = original_resolve
+        market_data_module.get_hyperliquid_market_dex = original_dex
+        market_data_module.get_reference_price_yahoo = original_reference
+        market_data_module._all_mids_cache.clear()
+        market_data_module._all_mids_cache.update(original_mids)
+        market_data_module._all_mids_backoff_until.clear()
+        market_data_module._all_mids_backoff_until.update(original_backoff)
+
+
+def test_data_reliability_blocks_new_trade_without_fresh_live_quote() -> None:
+    cfg = build_config().trading
+    cfg.use_daily_market_map = False
+    cfg.use_news = False
+    cfg.use_orderbook_levels = False
+    reliability = data_reliability_module.assess_reliability(cfg, {
+        "execution_mode": "tradable",
+        "instrument_type": "equity",
+        "action": "LONG",
+        "using_closed_candles": True,
+        "analysis_price": 140.0,
+        "live_price": 140.0,
+        "quote_fresh": False,
+        "quote_status": "STALE",
+        "quote_age_seconds": 90.0,
+    })
+
+    assert reliability["permitted"] is False
+    assert "live venue price is stale" in reliability["blockers"]
 
 
 def test_analysis_budget_prioritizes_core_and_rotates_the_rest() -> None:

@@ -71,7 +71,13 @@ import first_principles
 import global_market_context
 import llm_referee
 from logger import get_logger
-from data.market_data import completed_candle_frame, fetch_candles, get_current_price, get_price_diagnostics
+from data.market_data import (
+    completed_candle_frame,
+    fetch_candles,
+    get_current_price,
+    get_live_quote,
+    get_price_diagnostics,
+)
 import hosted_state_sync
 import market_map
 import micro_desk
@@ -2937,7 +2943,17 @@ class TradingAgent:
             )
             return
 
-        live_price = float(df["close"].iloc[-1]) if len(df) else 0.0
+        candle_live_price = float(df["close"].iloc[-1]) if len(df) else 0.0
+        live_quote = get_live_quote(
+            coin,
+            max_age_seconds=getattr(
+                self.cfg.trading,
+                "data_reliability_max_quote_age_seconds",
+                20.0,
+            ),
+        )
+        venue_live_price = float(live_quote.get("price") or 0.0)
+        live_price = venue_live_price if live_quote.get("fresh") and venue_live_price > 0 else candle_live_price
         analysis_price = float(analysis_df["close"].iloc[-1]) if len(analysis_df) else live_price
         momentum_context = self._recent_momentum_context(df, live_price)
         if getattr(self.cfg.trading, "use_closed_candles_for_conviction", True):
@@ -3136,6 +3152,7 @@ class TradingAgent:
         price_diagnostics = get_price_diagnostics(
             coin,
             venue_price=live_price,
+            quote=live_quote,
             max_deviation_pct=getattr(self.cfg.trading, "data_reliability_max_reference_deviation_pct", 2.0),
         )
         market_map_long_triggers = [
@@ -3175,6 +3192,12 @@ class TradingAgent:
             "price_deviation_pct": price_diagnostics.get("price_deviation_pct"),
             "price_status":    price_diagnostics.get("price_status", "UNKNOWN"),
             "price_warning":   price_diagnostics.get("price_warning", ""),
+            "quote_fresh":     price_diagnostics.get("quote_fresh", False),
+            "quote_status":    price_diagnostics.get("quote_status", "UNKNOWN"),
+            "quote_age_seconds": price_diagnostics.get("quote_age_seconds"),
+            "quote_updated_at": price_diagnostics.get("quote_updated_at", ""),
+            "quote_request_ok": price_diagnostics.get("quote_request_ok", False),
+            "quote_cache_hit": price_diagnostics.get("quote_cache_hit", False),
             "recent_move_pct": momentum_context.get("recent_move_pct", 0.0),
             "move_pct_24h": momentum_context.get("move_pct_24h", 0.0),
             "move_pct_6h": momentum_context.get("move_pct_6h", 0.0),

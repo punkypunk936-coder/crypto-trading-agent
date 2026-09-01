@@ -6276,6 +6276,59 @@ function askPunkyVenueCandidates(ticker, item) {
   return [...new Set([preferred, 'xyz:' + ticker, ticker].filter(Boolean))];
 }
 
+async function askPunkyFetchQuote(ticker, venueSymbol) {
+  const symbol = String(venueSymbol || ticker || '').trim();
+  const dex = symbol.includes(':') ? symbol.split(':', 1)[0].toLowerCase() : '';
+  const receivedAt = Date.now();
+  try {
+    const response = await fetch('https://api.hyperliquid.xyz/info', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'l2Book', coin: symbol }),
+    });
+    if (!response.ok) throw new Error('Hyperliquid order book returned HTTP ' + response.status);
+    const payload = await response.json();
+    const levels = Array.isArray(payload.levels) ? payload.levels : [];
+    const bid = Number((((levels[0] || [])[0] || {}).px));
+    const ask = Number((((levels[1] || [])[0] || {}).px));
+    const serverTime = Number(payload.time || receivedAt);
+    const ageSeconds = Math.max(0, (Date.now() - serverTime) / 1000);
+    if (Number.isFinite(bid) && bid > 0 && Number.isFinite(ask) && ask > 0 && ask >= bid) {
+      const price = (bid + ask) / 2;
+      return {
+        price, bid, ask,
+        spreadBps: ((ask - bid) / Math.max(price, 1e-9)) * 10000,
+        fresh: ageSeconds <= 20,
+        ageSeconds,
+        updatedAt: new Date(serverTime).toISOString(),
+        sourceLabel: dex === 'xyz' ? 'Trade.xyz live order book' : 'Hyperliquid live order book',
+        venueSymbol: symbol,
+        fallback: false,
+      };
+    }
+    throw new Error('Hyperliquid order book has no two-sided quote');
+  } catch (bookError) {
+    const response = await fetch('https://api.hyperliquid.xyz/info', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'allMids', ...(dex ? { dex } : {}) }),
+    });
+    if (!response.ok) throw bookError;
+    const payload = await response.json();
+    const price = Number((payload || {})[symbol] ?? (payload || {})[ticker]);
+    if (!Number.isFinite(price) || price <= 0) throw bookError;
+    return {
+      price, bid: 0, ask: 0, spreadBps: null,
+      fresh: true,
+      ageSeconds: 0,
+      updatedAt: new Date().toISOString(),
+      sourceLabel: dex === 'xyz' ? 'Trade.xyz live mid' : 'Hyperliquid live mid',
+      venueSymbol: symbol,
+      fallback: true,
+    };
+  }
+}
+
 async function askPunkyFetchCandles(ticker, item) {
   const endTime = Date.now();
   let lastError = null;
@@ -6305,6 +6358,8 @@ async function askPunkyFetchCandles(ticker, item) {
     try {
       const bars = await fetchBars(venueSymbol, '1h', 12 * 24 * 60 * 60 * 1000);
       if (bars.length >= 55) {
+        let quote = null;
+        try { quote = await askPunkyFetchQuote(ticker, venueSymbol); } catch (_) {}
         return {
           bars,
           venueSymbol,
@@ -6314,6 +6369,7 @@ async function askPunkyFetchCandles(ticker, item) {
           sourceLabel: 'Hyperliquid',
           chartLink: 'https://app.hyperliquid.xyz/trade/' + encodeURIComponent(venueSymbol),
           usedCachedData: false,
+          quote,
         };
       }
       if (!limitedCandidate || bars.length > limitedCandidate.bars.length) {
@@ -6334,6 +6390,8 @@ async function askPunkyFetchCandles(ticker, item) {
         4 * 24 * 60 * 60 * 1000,
       );
       if (intradayBars.length >= 40) {
+        let quote = null;
+        try { quote = await askPunkyFetchQuote(ticker, limitedCandidate.venueSymbol); } catch (_) {}
         return {
           bars: intradayBars,
           venueSymbol: limitedCandidate.venueSymbol,
@@ -6343,6 +6401,7 @@ async function askPunkyFetchCandles(ticker, item) {
           sourceLabel: 'Hyperliquid',
           chartLink: 'https://app.hyperliquid.xyz/trade/' + encodeURIComponent(limitedCandidate.venueSymbol),
           usedCachedData: false,
+          quote,
         };
       }
       lastError = new Error(
@@ -6393,6 +6452,7 @@ function askPunkyCachedCandles(ticker, item, liveError) {
     fallbackReason: 'Live venue data was temporarily unavailable. Punky used the latest scheduled '
       + sourceLabel + ' chart instead and kept every normal entry and risk gate in place.',
     liveError: String((liveError || {}).message || liveError || ''),
+    quote: null,
   };
 }
 
@@ -6438,7 +6498,11 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
   const closes = bars.map((bar) => bar.c);
   const ema20Series = askPunkyEma(closes, 20);
   const ema50Series = askPunkyEma(closes, 50);
-  const current = closes[closes.length - 1];
+  const chartCurrent = closes[closes.length - 1];
+  const quote = candleResult.quote && typeof candleResult.quote === 'object' ? candleResult.quote : {};
+  const quotePrice = Number(quote.price || 0);
+  const quoteFresh = Boolean(quote.fresh && Number.isFinite(quotePrice) && quotePrice > 0);
+  const current = Number.isFinite(quotePrice) && quotePrice > 0 ? quotePrice : chartCurrent;
   const ema20 = ema20Series[ema20Series.length - 1];
   const ema50 = ema50Series[ema50Series.length - 1];
   const ema20Prior = ema20Series[Math.max(0, ema20Series.length - 7)];
@@ -6548,7 +6612,7 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
     rr,
     extensionAtr,
     barsCount: bars.length,
-    candleFresh,
+    candleFresh: candleFresh && quoteFresh,
     marketFresh: market.fresh,
     scheduledFresh,
     scheduledDirection,
@@ -6561,6 +6625,10 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
   const confidence = confidenceModel.probabilityPct;
   const clearStructure = Math.abs(score) >= 3.15;
   const tooExtended = extensionAtr > 1.75;
+  const entryTolerance = Math.max(0.35 * atr, current * 0.0035);
+  const entryReady = direction === 'LONG'
+    ? current >= entry && current <= entry + entryTolerance
+    : current <= entry && current >= entry - entryTolerance;
   const tradeReady = clearStructure
     && chartDirection === direction
     && rr >= 1.5
@@ -6568,6 +6636,8 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
     && !eventGate
     && !limitedHistory
     && candleFresh
+    && quoteFresh
+    && entryReady
     && confidenceModel.decisionSupported;
   const conflictsWithRequest = Boolean(requestedSide && requestedSide !== direction);
   const scheduledWait = Boolean(item && scheduledDeskAction === 'WAIT');
@@ -6587,6 +6657,9 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
     tone = 'avoid';
     decision = 'AVOID ' + requestedSide;
     summary = 'No. Punky\'s active thesis is ' + direction.toLowerCase() + ', so the requested ' + requestedSide.toLowerCase() + ' is not part of the current plan.';
+  } else if (!quoteFresh) {
+    decision = 'FRESH PRICE NEEDED';
+    summary = 'No trade. Punky could not verify a current Hyperliquid price, so old chart levels are not being presented as actionable.';
   } else if (scheduledOpen) {
     tone = 'take';
     decision = 'HOLD ' + direction;
@@ -6615,6 +6688,14 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
     decision = 'MORE PRICE HISTORY NEEDED';
     summary = 'New listing read: the live structure currently leans ' + direction.toLowerCase()
       + ', but only ' + Number(candleResult.primaryBarsCount || 0) + ' hourly candles exist. Punky will analyse it now and wait for mature history before risking money.';
+  } else if (!entryReady) {
+    summary = direction === 'LONG'
+      ? (current < entry
+        ? 'Not yet. Consider the long only if the live price reaches ' + entryLabel + '; the current price is ' + askPunkyPrice(current, current) + '.'
+        : 'Do not chase. The live price is already too far above ' + entryLabel + '; wait for a calmer entry near that level.')
+      : (current > entry
+        ? 'Not yet. Consider the short only if the live price falls to ' + entryLabel + '; the current price is ' + askPunkyPrice(current, current) + '.'
+        : 'Do not chase. The live price is already too far below ' + entryLabel + '; wait for a calmer entry near that level.');
   } else if (tooExtended) {
     summary = 'Do not chase the current price. The direction still points ' + direction.toLowerCase() + ', but price has moved too far too quickly. The next level worth considering is ' + entryLabel + '.';
   } else if (!confidenceModel.decisionSupported) {
@@ -6675,6 +6756,17 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
       };
   const evidence = [
     {
+      label: 'Live venue price',
+      value: quoteFresh
+        ? (String(quote.sourceLabel || 'Hyperliquid live quote') + ' • ' + askPunkyPrice(current, current)
+          + (Number(quote.bid) > 0 && Number(quote.ask) > 0
+            ? ' • bid ' + askPunkyPrice(quote.bid, current) + ' / ask ' + askPunkyPrice(quote.ask, current)
+              + ' • spread ' + Number(quote.spreadBps || 0).toFixed(1) + ' bps'
+            : '')
+          + ' • ' + Number(quote.ageSeconds || 0).toFixed(1) + 's old')
+        : 'Unavailable or stale. Punky blocked any take-it-now decision.',
+    },
+    {
       label: 'One agent decision',
       value: item
         ? ((scheduledDeskAction || 'WAIT') + (scheduledDirection ? ' • ' + scheduledDirection + ' thesis' : '') + (scheduledDeskReason ? ' • ' + shortText(scheduledDeskReason, 150) : ''))
@@ -6715,7 +6807,8 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
     direction, chartDirection, requestedSide, decision, tone, summary, confidence,
     scheduledDeskAction, scheduledDeskState, scheduledDeskReason,
     score, current, entry, target, invalidation, rr, atr, ema20, ema50,
-    return6h, return24h, extensionAtr, candleFresh, eventGate,
+    return6h, return24h, extensionAtr, candleFresh, quoteFresh, entryReady, eventGate,
+    quote,
     probability: confidenceModel.probability,
     breakEvenPct: confidenceModel.breakEvenPct,
     edgePctPoints: confidenceModel.edgePctPoints,
@@ -6732,8 +6825,8 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
     executionCommitment,
     sourceLabel: String(candleResult.sourceLabel || 'Hyperliquid'),
     chartLink: String(candleResult.chartLink || ''),
-    usedCachedData: Boolean(candleResult.usedCachedData),
-    fallbackReason: String(candleResult.fallbackReason || ''),
+    usedCachedData: Boolean(candleResult.usedCachedData || !quoteFresh),
+    fallbackReason: String(candleResult.fallbackReason || (!quoteFresh ? 'A current Hyperliquid quote could not be verified, so Punky blocked execution.' : '')),
     why: [structureWhy, momentumWhy, levelWhy, earningsWhy], evidence,
     analysedAt: new Date().toISOString(),
   };
@@ -6830,7 +6923,7 @@ function askPunkyAnswerHtml(answer) {
       + '<div class="plan-accountability-line"><strong>Verified record:</strong> ' + esc(planAccuracyNarrative(answer.ticker, answer.direction, answer.accountability || {})) + '</div>'
     + '</div>'
     + '<div class="ask-punky-plan">'
-      + askPunkyPlanItem('Price now', askPunkyPrice(answer.current, answer.current))
+      + askPunkyPlanItem('Live price now', askPunkyPrice(answer.current, answer.current) + (answer.quoteFresh ? ' • LIVE' : ' • UNVERIFIED'))
       + askPunkyPlanItem(answer.direction === 'LONG' ? 'Buy only above' : 'Short only below', askPunkyPrice(answer.entry, answer.current))
       + askPunkyPlanItem('First profit level', askPunkyPrice(answer.target, answer.current))
       + askPunkyPlanItem('Leave the idea if', (answer.direction === 'LONG' ? 'Below ' : 'Above ') + askPunkyPrice(answer.invalidation, answer.current))
@@ -6849,7 +6942,7 @@ function askPunkyAnswerHtml(answer) {
 }
 
 function askPunkyLoadingHtml(ticker) {
-  return '<div class="ask-punky-loading"><div><strong>Reading ' + esc(ticker) + ' now...</strong><br><br>Fetching Hyperliquid candles and checking structure, levels, market tape, and earnings.</div></div>';
+  return '<div class="ask-punky-loading"><div><strong>Reading ' + esc(ticker) + ' now...</strong><br><br>Fetching the live Hyperliquid bid/ask, then checking structure, levels, market tape, and earnings.</div></div>';
 }
 
 async function askPunkySyncForecasts(records) {
@@ -7775,6 +7868,7 @@ function renderPunkyDock() {
     + '<div class="execution-commitment-line ' + esc(String(commitment.state || '').toLowerCase()) + '"><strong>' + esc(commitment.label || 'PUNKY EXECUTION') + ':</strong> ' + esc(commitment.will_trade_when || commitment.summary || 'Waiting for a complete setup.') + (commitment.currentBlocker || commitment.current_blocker ? '<br><strong>Why not now:</strong> ' + esc(commitment.currentBlocker || commitment.current_blocker) : '') + '</div>'
     + '<div class="plan-accountability-line"><strong>Verified record:</strong> ' + esc(planAccuracyNarrative(answer.ticker, answer.direction, answer.accountability || {})) + '</div>'
     + '<div class="terminal-dock-plan">'
+      + '<div><span>Live price now</span><strong>' + esc(askPunkyPrice(answer.current, answer.current)) + (answer.quoteFresh ? ' • LIVE' : ' • UNVERIFIED') + '</strong></div>'
       + '<div><span>' + (answer.direction === 'LONG' ? 'Buy only above' : 'Short only below') + '</span><strong>' + esc(askPunkyPrice(answer.entry, answer.current)) + '</strong></div>'
       + '<div><span>First profit level</span><strong class="green">' + esc(askPunkyPrice(answer.target, answer.current)) + '</strong></div>'
       + '<div><span>Leave the idea if</span><strong class="risk">' + esc(invalidation) + '</strong></div>'

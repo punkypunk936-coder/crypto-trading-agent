@@ -48,6 +48,7 @@ REFERENCE_PRICE_TTL_SECONDS = 60
 DEFAULT_REFERENCE_MAX_DEVIATION_PCT = 2.0
 ALL_MIDS_CACHE_TTL_SECONDS = 5
 HYPERLIQUID_RATE_LIMIT_BACKOFF_SECONDS = 30
+DEFAULT_LIVE_QUOTE_MAX_AGE_SECONDS = 20.0
 
 
 def _hyperliquid_max_candle_staleness_seconds(coin: str, interval: str) -> int:
@@ -130,15 +131,33 @@ def _http_status(exc: Exception) -> int:
         return 0
 
 
-def _all_mids_for_dex(dex: str) -> dict:
-    """Fetch one allMids payload per DEX and share it across every symbol."""
+def _all_mids_snapshot_for_dex(dex: str, *, force_refresh: bool = False) -> dict:
+    """Fetch one timestamped allMids payload per DEX for every symbol."""
     key = str(dex or "default").lower()
     now = time.time()
     cached = _all_mids_cache.get(key)
-    if cached and now - float(cached[0] or 0.0) < ALL_MIDS_CACHE_TTL_SECONDS:
-        return dict(cached[1] or {})
+    if (
+        not force_refresh
+        and cached
+        and now - float(cached[0] or 0.0) < ALL_MIDS_CACHE_TTL_SECONDS
+    ):
+        fetched_at = float(cached[0] or 0.0)
+        return {
+            "mids": dict(cached[1] or {}),
+            "fetched_at": fetched_at,
+            "age_seconds": max(0.0, now - fetched_at),
+            "request_ok": True,
+            "cache_hit": True,
+        }
     if now < float(_all_mids_backoff_until.get(key, 0.0) or 0.0):
-        return dict(cached[1] or {}) if cached else {}
+        fetched_at = float(cached[0] or 0.0) if cached else 0.0
+        return {
+            "mids": dict(cached[1] or {}) if cached else {},
+            "fetched_at": fetched_at,
+            "age_seconds": max(0.0, now - fetched_at) if fetched_at else None,
+            "request_ok": False,
+            "cache_hit": bool(cached),
+        }
 
     payload = {"type": "allMids"}
     if dex:
@@ -147,9 +166,16 @@ def _all_mids_for_dex(dex: str) -> dict:
         resp = requests.post(HL_INFO_URL, json=payload, timeout=5)
         resp.raise_for_status()
         mids = dict(resp.json() or {})
-        _all_mids_cache[key] = (now, mids)
+        fetched_at = time.time()
+        _all_mids_cache[key] = (fetched_at, mids)
         _all_mids_backoff_until.pop(key, None)
-        return mids
+        return {
+            "mids": mids,
+            "fetched_at": fetched_at,
+            "age_seconds": 0.0,
+            "request_ok": True,
+            "cache_hit": False,
+        }
     except Exception as exc:
         if _http_status(exc) == 429:
             _all_mids_backoff_until[key] = now + HYPERLIQUID_RATE_LIMIT_BACKOFF_SECONDS
@@ -160,7 +186,19 @@ def _all_mids_for_dex(dex: str) -> dict:
             )
         else:
             log.error(f"Failed to get Hyperliquid allMids for {key}: {exc}")
-        return dict(cached[1] or {}) if cached else {}
+        fetched_at = float(cached[0] or 0.0) if cached else 0.0
+        return {
+            "mids": dict(cached[1] or {}) if cached else {},
+            "fetched_at": fetched_at,
+            "age_seconds": max(0.0, now - fetched_at) if fetched_at else None,
+            "request_ok": False,
+            "cache_hit": bool(cached),
+        }
+
+
+def _all_mids_for_dex(dex: str) -> dict:
+    """Backward-compatible price map for callers that do not need freshness."""
+    return dict(_all_mids_snapshot_for_dex(dex).get("mids") or {})
 
 
 def _cache_frame(cache_key: str, df: Optional[pd.DataFrame], *, coin: str = "") -> None:
@@ -627,7 +665,90 @@ def _fetch_candles_yahoo(
     return df
 
 
-def get_current_price(coin: str) -> Optional[float]:
+def get_live_quote(
+    coin: str,
+    *,
+    max_age_seconds: float = DEFAULT_LIVE_QUOTE_MAX_AGE_SECONDS,
+    force_refresh: bool = False,
+) -> dict:
+    """Return a timestamped venue quote without hiding stale fallbacks."""
+    coin_upper = str(coin or "").upper().strip()
+    supported = is_hyperliquid_supported(coin_upper)
+    if not supported:
+        price = (
+            _get_index_price_yahoo(coin_upper)
+            if coin_upper in INDEX_YAHOO_MAP or coin_upper in EQUITY_YAHOO_MAP
+            else None
+        )
+        fetched_at = time.time() if price else 0.0
+        return {
+            "coin": coin_upper,
+            "price": float(price or 0.0),
+            "fresh": bool(price),
+            "status": "LIVE" if price else "UNAVAILABLE",
+            "source": "Yahoo Finance",
+            "source_label": "Yahoo Finance",
+            "venue": "Yahoo Finance",
+            "venue_symbol": coin_upper,
+            "dex": "",
+            "fetched_at": fetched_at,
+            "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(fetched_at)) if fetched_at else "",
+            "age_seconds": 0.0 if price else None,
+            "request_ok": bool(price),
+            "cache_hit": False,
+        }
+
+    hl_coin = resolve_hyperliquid_symbol(coin_upper)
+    dex = get_hyperliquid_market_dex(coin_upper)
+    venue_name = "Trade.xyz" if str(dex or "").lower() == "xyz" else "Hyperliquid"
+    snapshot = _all_mids_snapshot_for_dex(dex, force_refresh=force_refresh)
+    mids = dict(snapshot.get("mids") or {})
+    try:
+        price = float(mids.get(hl_coin, 0.0) or 0.0)
+    except Exception:
+        price = 0.0
+    fetched_at = float(snapshot.get("fetched_at") or 0.0)
+    age_seconds = snapshot.get("age_seconds")
+    try:
+        age_seconds = float(age_seconds) if age_seconds is not None else None
+    except Exception:
+        age_seconds = None
+    fresh = bool(
+        price > 0
+        and age_seconds is not None
+        and age_seconds <= max(1.0, float(max_age_seconds or DEFAULT_LIVE_QUOTE_MAX_AGE_SECONDS))
+    )
+    request_ok = bool(snapshot.get("request_ok"))
+    status = (
+        "LIVE"
+        if fresh and request_ok
+        else "RECENT_CACHE"
+        if fresh
+        else "STALE"
+        if price > 0
+        else "UNAVAILABLE"
+    )
+    if price > 0:
+        _cache_price(coin_upper, price)
+    return {
+        "coin": coin_upper,
+        "price": price,
+        "fresh": fresh,
+        "status": status,
+        "source": f"{venue_name} allMids",
+        "source_label": f"{venue_name} {hl_coin}".strip(),
+        "venue": venue_name,
+        "venue_symbol": hl_coin,
+        "dex": dex,
+        "fetched_at": fetched_at,
+        "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(fetched_at)) if fetched_at else "",
+        "age_seconds": round(age_seconds, 3) if age_seconds is not None else None,
+        "request_ok": request_ok,
+        "cache_hit": bool(snapshot.get("cache_hit")),
+    }
+
+
+def get_current_price(coin: str, *, allow_stale: bool = False) -> Optional[float]:
     """
     Get the latest price for a coin.
     Supported venue markets use Hyperliquid allMids.
@@ -636,22 +757,19 @@ def get_current_price(coin: str) -> Optional[float]:
     coin_upper = coin.upper()
 
     if is_hyperliquid_supported(coin_upper):
-        hl_coin = resolve_hyperliquid_symbol(coin_upper)
-        dex = get_hyperliquid_market_dex(coin_upper)
-        try:
-            mids = _all_mids_for_dex(dex)
-            price = float(mids.get(hl_coin, 0) or 0.0)
-            if price > 0:
-                _cache_price(coin_upper, price)
-                return price
-            log.warning(f"Price for {coin_upper}/{hl_coin} came back 0 — venue returned no mid")
-        except Exception as e:
-            log.error(f"Failed to get Hyperliquid price for {coin_upper}/{hl_coin}: {e}")
-
-        cached = _get_cached_price(coin_upper)
-        if cached is not None:
-            log.info(f"[{coin_upper}] Reusing cached Hyperliquid price while primary feed recovers")
-            return cached
+        quote = get_live_quote(coin_upper)
+        if quote.get("fresh") and float(quote.get("price") or 0.0) > 0:
+            return float(quote["price"])
+        if allow_stale:
+            quote_price = float(quote.get("price") or 0.0)
+            if quote_price > 0:
+                return quote_price
+            return _get_cached_price(coin_upper)
+        log.warning(
+            "[%s] Hyperliquid quote is %s; refusing to present it as a live price",
+            coin_upper,
+            str(quote.get("status") or "unavailable").lower(),
+        )
         return None
 
     # ── Macro fallback: Yahoo Finance latest close ─────────────────────────
@@ -707,6 +825,7 @@ def get_price_diagnostics(
     coin: str,
     *,
     venue_price: Optional[float] = None,
+    quote: Optional[dict] = None,
     max_deviation_pct: float = DEFAULT_REFERENCE_MAX_DEVIATION_PCT,
 ) -> dict:
     """Return source, venue symbol, and reference-price health for UI/state."""
@@ -726,27 +845,40 @@ def get_price_diagnostics(
     source = f"{venue_name} allMids" if supported else "Yahoo Finance"
     source_label = f"{venue_name} {hl_coin}".strip() if supported else "Yahoo Finance"
 
+    quote_data = dict(quote or {})
     price = None
     try:
-        price = float(venue_price or 0.0)
+        price = float(quote_data.get("price") or venue_price or 0.0)
     except Exception:
         price = 0.0
     if price <= 0:
         price = get_current_price(coin_upper) if supported or coin_upper in INDEX_YAHOO_MAP else None
 
+    quote_fresh = bool(quote_data.get("fresh")) if quote is not None else bool(price)
+    quote_status = str(quote_data.get("status") or ("LIVE" if quote_fresh else "UNKNOWN")).upper()
+    quote_age_seconds = quote_data.get("age_seconds")
+    quote_updated_at = str(quote_data.get("updated_at") or "")
     reference_price = get_reference_price_yahoo(coin_upper)
     deviation_pct = None
     status = "OK"
     warning = ""
+    if supported and not quote_fresh:
+        status = "STALE" if price else "UNAVAILABLE"
+        warning = (
+            f"{coin_upper} live Hyperliquid quote is stale; analysis may continue, "
+            "but no new trade can use this price."
+            if price
+            else f"{coin_upper} live Hyperliquid quote is unavailable; no new trade can be taken."
+        )
     if price and reference_price:
         deviation_pct = (float(price) - float(reference_price)) / float(reference_price) * 100.0
-        if abs(deviation_pct) > float(max_deviation_pct or DEFAULT_REFERENCE_MAX_DEVIATION_PCT):
+        if quote_fresh and abs(deviation_pct) > float(max_deviation_pct or DEFAULT_REFERENCE_MAX_DEVIATION_PCT):
             status = "CHECK"
             warning = (
                 f"{coin_upper} venue price is {deviation_pct:+.2f}% away from "
                 f"Yahoo reference."
             )
-    elif supported and coin_upper in EQUITY_YAHOO_MAP:
+    elif quote_fresh and supported and coin_upper in EQUITY_YAHOO_MAP:
         status = "REFERENCE_MISSING"
         warning = "Yahoo reference quote unavailable; showing executable venue price only."
 
@@ -761,6 +893,12 @@ def get_price_diagnostics(
         "reference_source": "Yahoo Finance" if reference_price else "",
         "price_deviation_pct": round(float(deviation_pct), 4) if deviation_pct is not None else None,
         "price_warning": warning,
+        "quote_fresh": quote_fresh,
+        "quote_status": quote_status,
+        "quote_age_seconds": round(float(quote_age_seconds), 3) if quote_age_seconds is not None else None,
+        "quote_updated_at": quote_updated_at,
+        "quote_request_ok": bool(quote_data.get("request_ok")) if quote is not None else True,
+        "quote_cache_hit": bool(quote_data.get("cache_hit")) if quote is not None else False,
     }
 
 

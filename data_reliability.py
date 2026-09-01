@@ -45,6 +45,26 @@ def assess_reliability(trading_cfg, signal_snapshot: Mapping[str, Any] | None) -
 
     analysis_price = _safe_float(snap.get("analysis_price"))
     live_price = _safe_float(snap.get("live_price") or snap.get("price"))
+    quote_contract_present = any(
+        key in snap for key in ("quote_fresh", "quote_status", "quote_age_seconds")
+    )
+    quote_fresh = bool(snap.get("quote_fresh"))
+    quote_status = _safe_str(snap.get("quote_status"), "UNKNOWN").upper()
+    quote_age_seconds = _safe_float(snap.get("quote_age_seconds"), -1.0)
+    max_quote_age_seconds = float(
+        getattr(trading_cfg, "data_reliability_max_quote_age_seconds", 20.0) or 20.0
+    )
+    if quote_contract_present and tradable and not quote_fresh:
+        score -= 45.0
+        blockers.append(
+            "live venue price is unavailable"
+            if quote_status in {"UNKNOWN", "UNAVAILABLE"}
+            else "live venue price is stale"
+        )
+    elif quote_contract_present and quote_age_seconds > max_quote_age_seconds:
+        score -= 30.0
+        blockers.append(f"live venue price is stale ({quote_age_seconds:.0f}s old)")
+
     price_gap_pct = 0.0
     if analysis_price > 0 and live_price > 0:
         price_gap_pct = abs(live_price - analysis_price) / analysis_price * 100.0
@@ -126,4 +146,7 @@ def assess_reliability(trading_cfg, signal_snapshot: Mapping[str, Any] | None) -
         "blockers": blockers[:4],
         "price_gap_pct": round(price_gap_pct, 4),
         "reference_deviation_pct": round(reference_deviation_pct, 4),
+        "quote_fresh": quote_fresh,
+        "quote_status": quote_status,
+        "quote_age_seconds": round(quote_age_seconds, 3) if quote_age_seconds >= 0 else None,
     }
