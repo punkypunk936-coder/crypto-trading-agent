@@ -16,6 +16,7 @@ import ai_infrastructure
 import global_market_context
 import earnings_session
 import us_market_context
+import weekly_outlook
 from pnl_explanation import (
     build_pnl_attribution_summary,
     explain_closed_trade,
@@ -36,7 +37,7 @@ from tradexyz_profile import (
 )
 
 
-DASHBOARD_SCHEMA_VERSION = 4
+DASHBOARD_SCHEMA_VERSION = 6
 
 
 def default_state() -> dict:
@@ -3135,6 +3136,11 @@ def build_dashboard_snapshot(
                 "headline": "AI infrastructure breadth scan is temporarily unavailable.",
                 "errors": [type(exc).__name__],
             }
+    weekly_outlook_context = weekly_outlook.build_weekly_outlook(
+        shaped_state,
+        global_context=global_context,
+        ai_infrastructure=ai_infrastructure_context,
+    )
     xyz = build_xyz_section(shaped_state, board)
     return {
         "schemaVersion": DASHBOARD_SCHEMA_VERSION,
@@ -3148,6 +3154,7 @@ def build_dashboard_snapshot(
         "daily_radar": radar,
         "us_market_context": us_context,
         "global_market_context": global_context,
+        "weekly_outlook": weekly_outlook_context,
         "asia_session": asia_context,
         "earnings_session": earnings_context,
         "ai_infrastructure": ai_infrastructure_context,
