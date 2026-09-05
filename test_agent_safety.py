@@ -3638,6 +3638,21 @@ def test_hosted_dashboard_bundle_matches_local_template() -> None:
     assert hosted_bundle == local_template, "hosted dashboard should mirror the local dashboard UI exactly"
 
 
+def test_dashboard_keeps_a_consistent_accessible_design_contract() -> None:
+    template = Path("dashboard/templates/dashboard.html").read_text()
+    assert "--control-height: 36px" in template
+    assert "button:focus-visible" in template
+    assert "@media (prefers-reduced-motion: reduce)" in template
+    assert 'id="terminal-focus-body" role="status" aria-live="polite"' in template
+    assert 'id="punky-dock-answer" role="status" aria-live="polite"' in template
+    assert "body.setAttribute('aria-busy', String(commandAnalysisLoading))" in template
+    assert ".terminal-center .priority-setup" in template
+    assert ".priority-setup > *" in template
+    assert "grid-column: 1 !important" in template
+    assert "letter-spacing: -0.5px" not in template
+    assert "transition: all" not in template
+
+
 def test_ask_punky_uses_live_hyperliquid_quote_before_actionable_call() -> None:
     template = Path("dashboard/templates/dashboard.html").read_text()
     assert "async function askPunkyFetchQuote" in template
