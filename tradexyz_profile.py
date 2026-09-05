@@ -512,6 +512,7 @@ def build_xyz_section(state: dict, board: dict | None = None) -> dict:
             "segment": segment,
             "segment_key": key,
             "segment_thesis": SEGMENT_THESES.get(segment) or SEGMENT_THESES["Other Stocks"],
+            "structural_thesis": NAME_THESES.get(coin) or SEGMENT_THESES.get(segment) or SEGMENT_THESES["Other Stocks"],
             "name_thesis": name_thesis,
             "htf_label": htf_label,
             "htf_reason": htf_reason,

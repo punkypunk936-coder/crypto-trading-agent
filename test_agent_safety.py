@@ -3665,6 +3665,42 @@ def test_ask_punky_uses_live_hyperliquid_quote_before_actionable_call() -> None:
     assert "Trade.xyz live order book" in template
 
 
+def test_ask_punky_separates_tactical_trade_from_months_long_investment_view() -> None:
+    template = Path("dashboard/templates/dashboard.html").read_text()
+    assert "function askPunkyStrategicProfile" in template
+    assert "function askPunkyLongHorizon" in template
+    assert "fetchBars(venueSymbol, '1d'" in template
+    assert "latestStrategicAssets = data.xyz" in template
+    assert "structural_thesis" in template
+    assert "Months-long view" in template
+    assert "WORTH HOLDING FOR MONTHS" in template
+    assert "NOT ENOUGH FUNDAMENTAL EVIDENCE" in template
+    assert "Do not turn a chart trade into an investment" in template
+    assert "What must remain true" in template
+    assert "Reassess if" in template
+    assert "Not verified in the current data feed" in template
+    assert "longHorizon" in template
+
+
+def test_xyz_profile_preserves_a_durable_thesis_for_long_horizon_analysis() -> None:
+    snapshot = build_dashboard_snapshot(
+        {
+            "signals": {
+                "NVDA": {
+                    "action": "LONG",
+                    "instrument_type": "equity",
+                    "fundamental_driver": "Temporary event-feed sentence that should not replace the durable thesis.",
+                }
+            },
+            "positions": [],
+            "config": {"coins": ["NVDA"], "analysis_coins": ["NVDA"]},
+        },
+        [],
+    )
+    nvda = next(row for row in snapshot["xyz"]["items"] if row["coin"] == "NVDA")
+    assert "AI accelerator benchmark" in nvda["structural_thesis"]
+
+
 def test_hosted_dashboard_has_static_absolute_social_preview_metadata() -> None:
     hosted_bundle = Path("netlify-dashboard/public/index.html").read_text()
     share_bundle = Path("netlify-dashboard/public/share.html").read_text()

@@ -348,7 +348,12 @@ def _load_snapshot_local() -> dict | None:
         return None
     if _snapshot_is_prebuilt(payload) and "daily_radar" in payload:
         shaped_state = augment_state(payload.get("state") or {})
-        if "xyz" not in payload:
+        xyz_rows = list((payload.get("xyz") or {}).get("items") or [])
+        xyz_needs_upgrade = "xyz" not in payload or any(
+            isinstance(row, dict) and not str(row.get("structural_thesis") or "").strip()
+            for row in xyz_rows
+        )
+        if xyz_needs_upgrade:
             try:
                 payload["xyz"] = build_xyz_section(shaped_state, payload.get("action_board") or {})
             except Exception:
@@ -381,6 +386,12 @@ def _load_snapshot_local() -> dict | None:
                 payload.get("daily_radar") or {},
                 ledger_path=EARNINGS_SESSION_JSON,
             )
+        if xyz_needs_upgrade:
+            try:
+                _save_snapshot_local(payload)
+                return payload
+            except Exception:
+                pass
         return _cache_local_snapshot(payload, mtime_ns=mtime_ns)
     hydrated = _hydrate_snapshot_payload({"snapshot": payload}, server_timestamp=payload.get("server_time"))
     return _cache_local_snapshot(hydrated, mtime_ns=mtime_ns)
