@@ -56,6 +56,8 @@
     --mono: 'JetBrains Mono', 'SF Mono', monospace;
     --radius: 8px;
     --radius-sm: 6px;
+    --control-height: 36px;
+    --focus-ring: 0 0 0 3px rgba(91, 140, 255, 0.24);
     --glow-green: 0 0 0 1px rgba(0, 230, 138, 0.10);
     --glow-red: 0 0 0 1px rgba(255, 77, 106, 0.12);
   }
@@ -67,8 +69,45 @@
     color: var(--text);
     font-family: var(--font);
     font-size: 14px;
+    line-height: 1.45;
     min-height: 100vh;
     overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  button,
+  input,
+  textarea,
+  summary {
+    -webkit-tap-highlight-color: transparent;
+  }
+  button,
+  input,
+  textarea { font: inherit; }
+  button:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  summary:focus-visible,
+  a:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 2px;
+    box-shadow: var(--focus-ring);
+  }
+  button:disabled {
+    cursor: wait;
+    opacity: 0.48;
+  }
+  .card-value,
+  .account-value,
+  .pos-val,
+  .decision-journal-stat strong,
+  .terminal-watch-meta,
+  .weekly-note-confidence,
+  .weekly-note-probability-labels,
+  .ai-sector-stat strong,
+  .ai-member-row {
+    font-variant-numeric: tabular-nums;
   }
 
   body::before {
@@ -135,7 +174,7 @@
     border: 1px solid rgba(255, 77, 106, 0.4);
     background: rgba(255, 77, 106, 0.1);
     color: var(--red);
-    transition: all 0.3s ease;
+    transition: background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 120ms ease;
   }
   .kill-btn:hover {
     background: rgba(255, 77, 106, 0.25);
@@ -159,7 +198,7 @@
     border: 1px solid rgba(91, 140, 255, 0.28);
     background: rgba(91, 140, 255, 0.10);
     color: var(--blue);
-    transition: all 0.25s ease;
+    transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
   }
   .tool-btn:hover {
     background: rgba(91, 140, 255, 0.18);
@@ -176,7 +215,7 @@
     border: 1px solid rgba(235, 237, 229, 0.14);
     background: rgba(255,255,255,0.045);
     color: var(--text);
-    transition: all 0.2s ease;
+    transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
   }
   .command-search-btn:hover {
     border-color: rgba(91, 140, 255, 0.34);
@@ -191,7 +230,7 @@
     letter-spacing: 1px;
     font-family: var(--mono);
     backdrop-filter: blur(10px);
-    transition: all 0.3s ease;
+    transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease, box-shadow 180ms ease;
   }
   .badge-live {
     background: var(--red-dim);
@@ -312,7 +351,7 @@
     font-family: var(--mono);
     letter-spacing: 0.45px;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
   }
   .asset-tab:hover {
     border-color: rgba(255,255,255,0.14);
@@ -1979,7 +2018,7 @@
     font-size: 28px;
     font-weight: 800;
     font-family: var(--mono);
-    letter-spacing: -0.5px;
+    letter-spacing: 0;
   }
   .status-detail {
     margin-top: 8px;
@@ -2046,7 +2085,7 @@
     padding: 16px;
     margin-bottom: 10px;
     border: 1px solid rgba(255,255,255,0.03);
-    transition: all 0.3s ease;
+    transition: background-color 180ms ease, border-color 180ms ease;
     animation: slideIn 0.4s ease;
   }
   .pos-grid:hover {
@@ -2937,7 +2976,7 @@
     margin-top: 2px;
     color: var(--muted);
     font-family: var(--mono);
-    font-size: 8px;
+    font-size: 9px;
     font-weight: 700;
     text-transform: uppercase;
   }
@@ -3072,7 +3111,7 @@
     margin-top: 5px;
     color: var(--muted);
     font-family: var(--mono);
-    font-size: 8px;
+    font-size: 9px;
   }
   .weekly-note-evidence {
     display: grid;
@@ -3086,7 +3125,7 @@
   .weekly-note-proof-label {
     color: var(--muted);
     font-family: var(--mono);
-    font-size: 8px;
+    font-size: 9px;
     font-weight: 700;
     text-transform: uppercase;
   }
@@ -3258,7 +3297,7 @@
     display: block;
     color: var(--muted);
     font-family: var(--mono);
-    font-size: 8px;
+    font-size: 9px;
     font-weight: 700;
     text-transform: uppercase;
   }
@@ -3289,12 +3328,14 @@
   .ai-member-mode {
     justify-self: end;
     color: var(--muted);
-    font-size: 8px;
+    font-size: 9px;
     font-weight: 700;
   }
   .ai-member-ask {
     appearance: none;
     justify-self: end;
+    min-width: 40px;
+    min-height: 28px;
     padding: 4px 7px;
     color: var(--blue);
     background: var(--blue-dim);
@@ -3302,7 +3343,7 @@
     border-radius: 4px;
     cursor: pointer;
     font-family: var(--mono);
-    font-size: 8px;
+    font-size: 9px;
     font-weight: 800;
   }
   .ai-member-ask:hover { border-color: rgba(91, 140, 255, 0.55); }
@@ -3334,7 +3375,7 @@
   .ai-mover.green { border-left-color: var(--green); }
   .ai-mover.red { border-left-color: var(--red); }
   .ai-mover-symbol { color: var(--text); font-family: var(--mono); font-size: 11px; font-weight: 800; }
-  .ai-mover-sector { margin-top: 3px; color: var(--muted); font-size: 8px; text-transform: uppercase; }
+  .ai-mover-sector { margin-top: 3px; color: var(--muted); font-size: 9px; text-transform: uppercase; }
   .ai-mover-change { font-family: var(--mono); font-size: 12px; font-weight: 800; }
 
   .account-strip {
@@ -3415,7 +3456,7 @@
     border-radius: 5px;
     color: var(--blue);
     font-family: var(--mono);
-    font-size: 8px;
+    font-size: 9px;
     font-weight: 800;
     text-transform: uppercase;
   }
@@ -3424,6 +3465,7 @@
     align-items: center;
     gap: 7px;
     margin-top: 9px;
+    min-width: 0;
   }
   .priority-ask {
     border: 1px solid rgba(235, 237, 229, 0.16);
@@ -3441,6 +3483,7 @@
   .priority-setup-title {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 7px;
     min-width: 0;
   }
@@ -3811,6 +3854,7 @@
     color: var(--text);
     cursor: pointer;
     text-align: left;
+    transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
   }
   .terminal-watch-row:hover { background: rgba(255, 255, 255, 0.025); }
   .terminal-watch-row.active {
@@ -3843,7 +3887,7 @@
     margin-top: 6px;
     color: var(--muted);
     font-family: var(--mono);
-    font-size: 8px;
+    font-size: 9px;
   }
   .terminal-center { min-width: 0; }
   .terminal-focus {
@@ -3885,7 +3929,7 @@
     margin-bottom: 4px;
     color: var(--muted);
     font-family: var(--mono);
-    font-size: 8px;
+    font-size: 9px;
     font-weight: 800;
     text-transform: uppercase;
   }
@@ -3899,7 +3943,7 @@
   .terminal-analyse-btn,
   .terminal-dock-submit,
   .terminal-dock-full {
-    min-height: 32px;
+    min-height: var(--control-height);
     padding: 0 10px;
     border: 1px solid rgba(91, 140, 255, 0.48);
     border-radius: 5px;
@@ -3910,6 +3954,7 @@
     font-size: 9px;
     font-weight: 800;
     text-transform: uppercase;
+    transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
   }
   .terminal-analyse-btn:hover,
   .terminal-dock-submit:hover,
@@ -3937,6 +3982,7 @@
     font-family: var(--font);
     font-size: 12px;
     line-height: 1.45;
+    transition: border-color 160ms ease, box-shadow 160ms ease;
   }
   .terminal-dock-input:focus { border-color: rgba(91, 140, 255, 0.52); }
   .terminal-dock-submit {
@@ -3968,7 +4014,7 @@
     margin-top: 8px;
     color: var(--muted);
     font-family: var(--mono);
-    font-size: 8px;
+    font-size: 9px;
     font-weight: 800;
   }
   .terminal-dock-confidence {
@@ -3999,7 +4045,7 @@
     display: block;
     color: var(--muted);
     font-family: var(--mono);
-    font-size: 8px;
+    font-size: 9px;
     text-transform: uppercase;
   }
   .terminal-dock-plan strong {
@@ -4237,11 +4283,25 @@
     .account-value { font-size: 17px; }
     .account-lead-value { font-size: 13px; }
     .priority-section { padding: 20px 4px 22px; }
-    .priority-setup {
-      grid-template-columns: 1fr 1fr;
-      gap: 12px 16px;
+    .terminal-center .priority-setup {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0;
+      padding: 16px 0;
     }
-    .priority-setup > :last-child { grid-column: 1 / -1; }
+    .priority-setup > * {
+      grid-column: 1 !important;
+      min-width: 0;
+    }
+    .priority-setup > div + div {
+      margin-top: 11px;
+      padding-top: 11px;
+      border-top: 1px solid rgba(235, 237, 229, 0.06);
+    }
+    .priority-setup-actions { justify-content: space-between; }
+    .priority-ask {
+      min-height: 40px;
+      padding: 0 12px;
+    }
     .priority-setup:first-child { margin-right: -4px; margin-left: -4px; padding-right: 8px; padding-left: 8px; }
     .decision-journal-stats { grid-template-columns: 1fr 1fr; }
     .decision-journal-stat:nth-child(2n) { border-right: 0; }
@@ -4276,6 +4336,12 @@
       padding: 8px;
     }
     .terminal-nav-tabs { overflow-x: auto; }
+    .terminal-nav-tab,
+    .terminal-lane-btn,
+    .terminal-analyse-btn,
+    .terminal-dock-submit,
+    .terminal-dock-full { min-height: 40px; }
+    .ai-member-ask { min-height: 36px; }
     .terminal-lane-bar { grid-template-columns: 1fr; gap: 8px; }
     .terminal-lane-toggle { width: 100%; }
     .crypto-market-grid { grid-template-columns: 1fr; }
@@ -4309,6 +4375,16 @@
     .ai-member-head,
     .ai-member-row { grid-template-columns: minmax(72px, 1fr) 54px 54px 68px; gap: 6px; }
   }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      scroll-behavior: auto !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
 </style>
 </head>
 <body>
@@ -4322,7 +4398,7 @@
   </div>
   <div class="header-right">
     <button class="kill-btn" id="kill-btn" onclick="handleKill()" hidden>KILL SWITCH</button>
-    <span id="mode-badge" class="badge badge-offline">OFFLINE</span>
+    <span id="mode-badge" class="badge badge-offline" role="status" aria-live="polite">OFFLINE</span>
     <span id="last-update"></span>
   </div>
 </header>
@@ -4342,6 +4418,7 @@
           id="command-search-input"
           class="command-input"
           type="text"
+          aria-label="Ask Punky about a ticker or trade"
           autocomplete="off"
           placeholder="Should I take CBRS?"
           oninput="handleCommandSearch(this.value)"
@@ -4364,12 +4441,12 @@
 <section class="terminal-shell nav-target" id="terminal-desk" aria-label="Punky trading desk">
   <nav class="terminal-nav" aria-label="Trading desk navigation">
     <div class="terminal-nav-tabs">
-      <button class="terminal-nav-tab active" data-nav-target="terminal-desk" type="button" onclick="scrollTerminalSection('terminal-desk', this)">Overview</button>
+      <button class="terminal-nav-tab active" data-nav-target="terminal-desk" type="button" aria-current="page" onclick="scrollTerminalSection('terminal-desk', this)">Overview</button>
       <button class="terminal-nav-tab" data-nav-target="open-trades-card" type="button" onclick="scrollTerminalSection('open-trades-card', this)">Positions</button>
       <button class="terminal-nav-tab" id="market-research-nav" data-nav-target="ai-infrastructure-card" type="button" onclick="scrollTerminalResearch(this)">Market Research</button>
       <button class="terminal-nav-tab" data-nav-target="decision-journal" type="button" onclick="scrollTerminalSection('decision-journal', this)">Track Record</button>
     </div>
-    <button class="terminal-command-trigger" type="button" onclick="focusPunkyDock()">⌕ Ask about a ticker, setup, or risk...</button>
+    <button class="terminal-command-trigger" type="button" aria-label="Ask Punky about a ticker, setup, or risk" onclick="focusPunkyDock()">⌕ Ask about a ticker, setup, or risk...</button>
     <div class="terminal-status"><span class="terminal-status-dot"></span><span id="terminal-execution-status">Paper execution active</span></div>
   </nav>
 
@@ -4386,9 +4463,9 @@
       <div class="terminal-panel-inner">
         <div class="terminal-panel-head">
           <span class="terminal-panel-title" id="terminal-watchlist-title">Stock opportunities</span>
-          <span class="terminal-panel-count" id="terminal-watchlist-count">0 ranked</span>
+          <span class="terminal-panel-count" id="terminal-watchlist-count" aria-live="polite">0 ranked</span>
         </div>
-        <div class="terminal-watchlist-body" id="terminal-watchlist-body">
+        <div class="terminal-watchlist-body" id="terminal-watchlist-body" aria-busy="true">
           <div class="empty-state">Ranking the live tape...</div>
         </div>
       </div>
@@ -4396,7 +4473,7 @@
 
     <main class="terminal-center">
       <section class="terminal-focus" id="terminal-focus" aria-label="Selected trade brief">
-        <div id="terminal-focus-body">
+        <div id="terminal-focus-body" role="status" aria-live="polite" aria-atomic="true" aria-busy="true">
           <div class="empty-state">Waiting for the first ranked setup...</div>
         </div>
       </section>
@@ -4460,7 +4537,7 @@
     </div>
     <div class="weekly-note-meta" id="weekly-note-meta">Waiting for fresh market evidence...</div>
   </div>
-  <div id="weekly-note-body">
+  <div id="weekly-note-body" aria-live="polite" aria-busy="true">
     <div class="empty-state">Building the next-week and next-month view...</div>
   </div>
 </section>
@@ -4475,7 +4552,7 @@
       </div>
       <div class="primary-section-note" id="priority-setups-meta">The agent compares every mature setup before funding one winner.</div>
     </div>
-    <div id="priority-setups-body">
+    <div id="priority-setups-body" aria-live="polite" aria-busy="true">
       <div class="empty-state">Waiting for the first clean setup...</div>
     </div>
   </section>
@@ -4493,12 +4570,13 @@
           <textarea
             class="terminal-dock-input"
             id="punky-dock-input"
+            aria-label="Ask Punky for a trade decision"
             placeholder="Should I take CBRS?"
             onkeydown="handlePunkyDockKey(event)"
           ></textarea>
           <button class="terminal-dock-submit" id="punky-dock-submit" type="button" onclick="runPunkyDock()">Analyze trade</button>
         </div>
-        <div class="terminal-dock-answer" id="punky-dock-answer">
+        <div class="terminal-dock-answer" id="punky-dock-answer" role="status" aria-live="polite" aria-atomic="true">
           <div class="terminal-dock-empty"><strong>Pick a name from the tape.</strong><br>Punky will show the direction, entry, profit and exit levels, expected holding time, confidence, and exactly when it can place a paper trade.</div>
         </div>
       </div>
@@ -7423,6 +7501,7 @@ function renderWeeklyOutlook(report) {
   const meta = document.getElementById('weekly-note-meta');
   const body = document.getElementById('weekly-note-body');
   if (!title || !meta || !body) return;
+  body.setAttribute('aria-busy', 'false');
   const safe = report || {};
   const key = terminalAssetLane === 'coin' ? 'crypto' : 'stocks';
   const market = ((safe.markets || {})[key]) || {};
@@ -7999,6 +8078,7 @@ function renderTerminalWatchlist(board) {
   const body = document.getElementById('terminal-watchlist-body');
   const count = document.getElementById('terminal-watchlist-count');
   if (!body || !count) return;
+  body.setAttribute('aria-busy', 'false');
   const items = terminalActionItems(board);
   count.textContent = String(Math.min(12, items.length)) + ' of ' + String(items.length);
   if (!items.length) {
@@ -8020,6 +8100,7 @@ function renderTerminalWatchlist(board) {
 function renderTerminalFocus(board) {
   const body = document.getElementById('terminal-focus-body');
   if (!body) return;
+  body.setAttribute('aria-busy', 'false');
   const items = terminalActionItems(board);
   const lead = coherentActionBoardLead(board) || items[0] || null;
   if (!terminalSelectedTicker || !items.some((item) => String(item.coin || '').trim().toUpperCase() === terminalSelectedTicker)) {
@@ -8067,6 +8148,7 @@ function renderPunkyDock() {
   const body = document.getElementById('punky-dock-answer');
   const submit = document.getElementById('punky-dock-submit');
   if (!body) return;
+  body.setAttribute('aria-busy', String(commandAnalysisLoading));
   if (submit) submit.disabled = commandAnalysisLoading;
   if (commandAnalysisLoading) {
     body.innerHTML = '<div class="terminal-dock-loading"><strong>Reading ' + esc(lastAskedTicker || terminalSelectedTicker || 'the tape') + '...</strong><br>Checking live price action, market context, earnings, levels, and prior calibration.</div>';
@@ -8195,6 +8277,7 @@ function renderPrioritySetups(board) {
   const body = document.getElementById('priority-setups-body');
   const meta = document.getElementById('priority-setups-meta');
   if (!body || !meta) return;
+  body.setAttribute('aria-busy', 'false');
   const safe = board || {};
   const allItems = Array.isArray(safe.items)
     ? safe.items.filter((item) => item && item.coin && itemMatchesTerminalLane(item))
