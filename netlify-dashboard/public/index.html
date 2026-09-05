@@ -7022,7 +7022,7 @@ function askPunkyLongHorizon(ticker, item, candleResult, tacticalDirection) {
   confidence = Math.round(Math.max(25, Math.min(confidenceCap, confidence)));
   const evidenceQuality = !hasFundamentalEvidence || !hasLongHistory
     ? 'LOW'
-    : closes.length >= 200 && dynamicEvidence
+    : closes.length >= 200 && dynamicEvidence && explicitValuation
       ? 'HIGH'
       : 'MEDIUM';
 
