@@ -3682,6 +3682,23 @@ def test_ask_punky_separates_tactical_trade_from_months_long_investment_view() -
     assert "longHorizon" in template
 
 
+def test_ask_punky_adds_source_honest_360_degree_ticker_context() -> None:
+    template = Path("dashboard/templates/dashboard.html").read_text()
+    assert "function askPunkyTickerContext" in template
+    assert "function askPunkyTickerContextHtml" in template
+    assert "Starter context before risking money" in template
+    assert "What is ' + ticker + '\\'s all-time high?" in template
+    assert "underlying asset\\'s lifetime ATH" in template
+    assert "Where is it inside its yearly range?" in template
+    assert "Is the longer trend healthy?" in template
+    assert "How much does it normally move?" in template
+    assert "What could move it next?" in template
+    assert "What would prove Punky wrong?" in template
+    assert "Typical daily swing" in template
+    assert "20 * 365 * 24 * 60 * 60 * 1000" in template
+    assert "askPunkyTickerContextHtml(answer.tickerContext)" in template
+
+
 def test_xyz_profile_preserves_a_durable_thesis_for_long_horizon_analysis() -> None:
     snapshot = build_dashboard_snapshot(
         {

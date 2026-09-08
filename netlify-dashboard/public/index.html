@@ -1621,6 +1621,99 @@
     line-height: 1.45;
   }
   .ask-punky-evidence-item strong { display: block; margin-bottom: 3px; color: var(--text); }
+  .ask-punky-context {
+    border-top: 1px solid rgba(235, 237, 229, 0.08);
+    padding-top: 13px;
+  }
+  .ask-punky-context-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 9px;
+  }
+  .ask-punky-context-note {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 9px;
+    text-align: right;
+  }
+  .ask-punky-context-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    border: 1px solid rgba(235, 237, 229, 0.08);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .ask-punky-context-stat {
+    min-width: 0;
+    padding: 10px;
+    border-right: 1px solid rgba(235, 237, 229, 0.07);
+  }
+  .ask-punky-context-stat:last-child { border-right: 0; }
+  .ask-punky-context-stat span {
+    display: block;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+  .ask-punky-context-stat strong {
+    display: block;
+    margin-top: 5px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+  .ask-punky-starters {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+    margin-top: 8px;
+  }
+  .ask-punky-starter {
+    border: 1px solid rgba(235, 237, 229, 0.08);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.018);
+  }
+  .ask-punky-starter summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px;
+    color: var(--text);
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 750;
+    list-style: none;
+  }
+  .ask-punky-starter summary::-webkit-details-marker { display: none; }
+  .ask-punky-starter summary::after {
+    content: '+';
+    color: var(--blue);
+    font-family: var(--mono);
+  }
+  .ask-punky-starter[open] summary::after { content: '-'; }
+  .ask-punky-starter p {
+    margin: 0;
+    padding: 0 10px 10px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  .terminal-dock-answer .ask-punky-context { margin-top: 12px; }
+  .terminal-dock-answer .ask-punky-context-head {
+    align-items: flex-start;
+    display: grid;
+  }
+  .terminal-dock-answer .ask-punky-context-note { text-align: left; }
+  .terminal-dock-answer .ask-punky-context-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .terminal-dock-answer .ask-punky-context-stat { border-bottom: 1px solid rgba(235, 237, 229, 0.07); }
+  .terminal-dock-answer .ask-punky-starters { grid-template-columns: 1fr; }
   .ask-punky-loading {
     display: grid;
     place-items: center;
@@ -4300,6 +4393,9 @@
     .command-palette { max-height: calc(100vh - 64px); }
     .ask-punky-plan { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .ask-punky-plan-item { border-bottom: 1px solid rgba(235, 237, 229, 0.07); }
+    .ask-punky-context-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .ask-punky-context-stat { border-bottom: 1px solid rgba(235, 237, 229, 0.07); }
+    .ask-punky-starters { grid-template-columns: 1fr; }
     .ask-punky-long-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .ask-punky-evidence { grid-template-columns: 1fr; }
     .daily-sheet-header {
@@ -4535,9 +4631,9 @@
         <button class="ask-punky-submit" id="ask-punky-submit" type="button" onclick="runAskPunky()">ASK</button>
       </div>
       <div class="ask-punky-prompts">
-        <button class="ask-punky-prompt" type="button" onclick="askPunkyPrompt('Should I take CBRS?')">CBRS</button>
-        <button class="ask-punky-prompt" type="button" onclick="askPunkyPrompt('Should I take DELL?')">DELL</button>
-        <button class="ask-punky-prompt" type="button" onclick="askPunkyPrompt('Should I long HYPE?')">HYPE</button>
+        <button class="ask-punky-prompt" type="button" onclick="askPunkyPrompt('Should I take NVDA?')">Should I take NVDA?</button>
+        <button class="ask-punky-prompt" type="button" onclick="askPunkyPrompt('What is AMZN\'s all-time high?')">What is AMZN's high?</button>
+        <button class="ask-punky-prompt" type="button" onclick="askPunkyPrompt('How risky is HYPE?')">How risky is HYPE?</button>
       </div>
     </div>
     <div class="command-body">
@@ -4686,7 +4782,7 @@
           <button class="terminal-dock-submit" id="punky-dock-submit" type="button" onclick="runPunkyDock()">Analyze trade</button>
         </div>
         <div class="terminal-dock-answer" id="punky-dock-answer" role="status" aria-live="polite" aria-atomic="true">
-          <div class="terminal-dock-empty"><strong>Pick a name from the tape.</strong><br>Punky will show the next 10-20 day trade and a separate months-long investment view.</div>
+          <div class="terminal-dock-empty"><strong>Pick a name from the tape.</strong><br>Punky will show the trade decision, key price history, risk, and a separate months-long view.</div>
         </div>
       </div>
     </aside>
@@ -6700,7 +6796,7 @@ function askPunkyStoreLongBarsCache(venueSymbol, bars) {
   try {
     localStorage.setItem(
       'punky-long-bars:' + String(venueSymbol || '').toUpperCase(),
-      JSON.stringify({ savedAt: Date.now(), bars: bars.slice(-420) }),
+      JSON.stringify({ savedAt: Date.now(), bars: bars.slice(-5000) }),
     );
   } catch (_) {}
   return bars;
@@ -6739,7 +6835,7 @@ async function askPunkyFetchCandles(ticker, item) {
         const fallbackLongBars = askPunkyReadLongBarsCache(venueSymbol, 7 * 24 * 60 * 60 * 1000);
         const longBarsRequest = freshLongBars.length
           ? Promise.resolve(freshLongBars)
-          : fetchBars(venueSymbol, '1d', 420 * 24 * 60 * 60 * 1000)
+          : fetchBars(venueSymbol, '1d', 20 * 365 * 24 * 60 * 60 * 1000)
               .then((rows) => askPunkyStoreLongBarsCache(venueSymbol, rows))
               .catch(() => fallbackLongBars);
         const [quoteResult, longBarsResult] = await Promise.allSettled([
@@ -6785,7 +6881,7 @@ async function askPunkyFetchCandles(ticker, item) {
         const fallbackLongBars = askPunkyReadLongBarsCache(venueSymbol, 7 * 24 * 60 * 60 * 1000);
         const longBarsRequest = freshLongBars.length
           ? Promise.resolve(freshLongBars)
-          : fetchBars(venueSymbol, '1d', 420 * 24 * 60 * 60 * 1000)
+          : fetchBars(venueSymbol, '1d', 20 * 365 * 24 * 60 * 60 * 1000)
               .then((rows) => askPunkyStoreLongBarsCache(venueSymbol, rows))
               .catch(() => fallbackLongBars);
         const [quoteResult, longBarsResult] = await Promise.allSettled([
@@ -7070,6 +7166,126 @@ function askPunkyLongHorizon(ticker, item, candleResult, tacticalDirection) {
     strategicReason: htfReason,
     dailyBars: closes.length,
     score: Number(score.toFixed(2)),
+  };
+}
+
+function askPunkyContextDate(value) {
+  const date = new Date(Number(value));
+  if (!Number.isFinite(date.getTime())) return 'unknown date';
+  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function askPunkyTickerContext(ticker, current, candleResult, longHorizon, earnings, direction, invalidation) {
+  const rawDailyBars = Array.isArray((candleResult || {}).longBars) ? candleResult.longBars : [];
+  const dailyBars = rawDailyBars
+    .filter((bar) => (
+      (!bar.T || Number(bar.T) <= Date.now())
+      && [bar.t, bar.h, bar.l, bar.c].every((value) => Number.isFinite(Number(value)))
+      && Number(bar.h) > 0
+      && Number(bar.l) > 0
+      && Number(bar.c) > 0
+    ))
+    .sort((left, right) => Number(left.t) - Number(right.t))
+    .slice(-5000);
+  const livePrice = Number(current);
+  const venueSymbol = String((candleResult || {}).venueSymbol || ticker || '');
+  const sourceLabel = venueSymbol.toLowerCase().startsWith('xyz:')
+    ? 'Trade.xyz'
+    : String((candleResult || {}).sourceLabel || 'venue');
+  const historyStart = dailyBars.length ? Number(dailyBars[0].t) : null;
+  const hasFullYear = Number.isFinite(historyStart)
+    && historyStart <= Date.now() - (360 * 24 * 60 * 60 * 1000);
+  const yearCutoff = Date.now() - (366 * 24 * 60 * 60 * 1000);
+  const yearBars = dailyBars.filter((bar) => Number(bar.t) >= yearCutoff);
+  const comparisonBars = yearBars.length ? yearBars : dailyBars;
+
+  const highestBar = dailyBars.reduce((best, bar) => (
+    !best || Number(bar.h) > Number(best.h) ? bar : best
+  ), null);
+  const rangeHighBar = comparisonBars.reduce((best, bar) => (
+    !best || Number(bar.h) > Number(best.h) ? bar : best
+  ), null);
+  const rangeLowBar = comparisonBars.reduce((best, bar) => (
+    !best || Number(bar.l) < Number(best.l) ? bar : best
+  ), null);
+  const historicalHigh = Number((highestBar || {}).h);
+  const periodHigh = Number((rangeHighBar || {}).h);
+  const periodLow = Number((rangeLowBar || {}).l);
+  const availableHigh = Number.isFinite(livePrice) && livePrice > historicalHigh ? livePrice : historicalHigh;
+  const availableHighDate = Number.isFinite(livePrice) && livePrice > historicalHigh ? Date.now() : Number((highestBar || {}).t);
+  const yearHigh = Number.isFinite(livePrice) && livePrice > periodHigh ? livePrice : periodHigh;
+  const yearHighDate = Number.isFinite(livePrice) && livePrice > periodHigh ? Date.now() : Number((rangeHighBar || {}).t);
+  const yearLow = Number.isFinite(livePrice) && livePrice < periodLow ? livePrice : periodLow;
+  const yearLowDate = Number.isFinite(livePrice) && livePrice < periodLow ? Date.now() : Number((rangeLowBar || {}).t);
+  const rangeWidth = yearHigh - yearLow;
+  const rangePosition = Number.isFinite(livePrice) && rangeWidth > 0
+    ? Math.max(0, Math.min(100, ((livePrice - yearLow) / rangeWidth) * 100))
+    : null;
+  const belowHigh = Number.isFinite(livePrice) && yearHigh > 0 ? ((livePrice / yearHigh) - 1) * 100 : null;
+  const aboveLow = Number.isFinite(livePrice) && yearLow > 0 ? ((livePrice / yearLow) - 1) * 100 : null;
+  const periodStart = comparisonBars.length ? Number(comparisonBars[0].c) : null;
+  const periodReturn = Number.isFinite(livePrice) && Number.isFinite(periodStart) && periodStart > 0
+    ? ((livePrice / periodStart) - 1) * 100
+    : null;
+  const dailyMoves = dailyBars.slice(-21).slice(1).map((bar, index) => {
+    const priorClose = Number(dailyBars.slice(-21)[index].c);
+    return priorClose > 0 ? ((Number(bar.h) - Number(bar.l)) / priorClose) * 100 : null;
+  }).filter(Number.isFinite);
+  const typicalDailyMove = dailyMoves.length
+    ? dailyMoves.reduce((sum, value) => sum + value, 0) / dailyMoves.length
+    : null;
+  const rangeName = hasFullYear ? '52-week range' : 'Available range';
+  const returnName = hasFullYear ? 'One-year move' : 'Since history begins';
+  const coverageNote = dailyBars.length
+    ? dailyBars.length + ' daily candles from ' + askPunkyContextDate(historyStart)
+    : 'No verified daily history';
+  const highAnswer = Number.isFinite(availableHigh)
+    ? 'The highest price in Punky\'s available ' + sourceLabel + ' history is ' + askPunkyPrice(availableHigh, livePrice)
+      + ' on ' + askPunkyContextDate(availableHighDate) + '. That history begins ' + askPunkyContextDate(historyStart)
+      + ', so Punky will not mislabel it as the underlying asset\'s lifetime ATH unless the venue history covers the full listing.'
+    : 'Punky cannot verify an all-time high because this venue has not returned enough daily history.';
+  const rangeAnswer = Number.isFinite(yearHigh) && Number.isFinite(yearLow)
+    ? rangeName + ': ' + askPunkyPrice(yearLow, livePrice) + ' to ' + askPunkyPrice(yearHigh, livePrice)
+      + '. The low was recorded on ' + askPunkyContextDate(yearLowDate) + ' and the high on ' + askPunkyContextDate(yearHighDate) + '. Current price is '
+      + (Number.isFinite(rangePosition) ? rangePosition.toFixed(0) + '% of the way up that range, ' : '')
+      + (Number.isFinite(belowHigh) ? Math.abs(belowHigh).toFixed(1) + '% below the high and ' : '')
+      + (Number.isFinite(aboveLow) ? aboveLow.toFixed(1) + '% above the low.' : '')
+    : 'There is not enough verified daily history to calculate a meaningful yearly range.';
+  const trendAnswer = (longHorizon || {}).trend
+    ? String(longHorizon.trend) + ((longHorizon || {}).momentum ? '. ' + String(longHorizon.momentum) + '.' : '')
+    : 'The daily trend cannot be verified yet. Punky is keeping the read tactical until more history exists.';
+  const volatilityAnswer = Number.isFinite(typicalDailyMove)
+    ? 'Over the latest ' + dailyMoves.length + ' completed sessions, the average high-to-low swing was about '
+      + typicalDailyMove.toFixed(1) + '%. Use that as normal movement, not as a promise about tomorrow.'
+    : 'There is not enough completed daily history to estimate a normal daily swing.';
+  const metrics = earnings && Array.isArray(earnings.metrics)
+    ? earnings.metrics.map((metric) => String(metric || '').trim()).filter(Boolean).slice(0, 4)
+    : [];
+  const catalystAnswer = earnings
+    ? 'Punky has an earnings event mapped as ' + String(earnings.phase || 'tracked').replaceAll('_', ' ').toLowerCase()
+      + '. ' + String(earnings.decision || earnings.post_report_check || 'Wait for the event evidence before changing the thesis.')
+      + (metrics.length ? ' The key figures are ' + metrics.join(', ') + '.' : '')
+    : 'No ticker-matched earnings event is currently mapped. The next decision should be driven by fresh company news, revisions and the displayed price levels, not an invented catalyst.';
+  const invalidationAnswer = 'For this trade, the current ' + String(direction || '').toLowerCase() + ' setup is wrong '
+    + (String(direction || '').toUpperCase() === 'LONG' ? 'below ' : 'above ') + askPunkyPrice(invalidation, livePrice) + '. '
+    + ((longHorizon || {}).reassessIf ? 'For the months-long view: ' + String(longHorizon.reassessIf) : 'The long-term thesis is not rated yet.');
+
+  return {
+    coverageNote,
+    stats: [
+      { label: 'Highest available', value: Number.isFinite(availableHigh) ? askPunkyPrice(availableHigh, livePrice) : '--' },
+      { label: rangeName, value: Number.isFinite(yearHigh) && Number.isFinite(yearLow) ? askPunkyPrice(yearLow, livePrice) + ' - ' + askPunkyPrice(yearHigh, livePrice) : '--' },
+      { label: returnName, value: Number.isFinite(periodReturn) ? askPunkyPct(periodReturn) : '--' },
+      { label: 'Typical daily swing', value: Number.isFinite(typicalDailyMove) ? '~' + typicalDailyMove.toFixed(1) + '%' : '--' },
+    ],
+    questions: [
+      { question: 'What is ' + ticker + '\'s all-time high?', answer: highAnswer },
+      { question: 'Where is it inside its yearly range?', answer: rangeAnswer },
+      { question: 'Is the longer trend healthy?', answer: trendAnswer },
+      { question: 'How much does it normally move?', answer: volatilityAnswer },
+      { question: 'What could move it next?', answer: catalystAnswer },
+      { question: 'What would prove Punky wrong?', answer: invalidationAnswer },
+    ],
   };
 }
 
@@ -7393,6 +7609,15 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
     },
   ];
   const longHorizon = askPunkyLongHorizon(ticker, item, candleResult, direction);
+  const tickerContext = askPunkyTickerContext(
+    ticker,
+    current,
+    candleResult,
+    longHorizon,
+    earnings,
+    direction,
+    invalidation,
+  );
 
   return {
     ticker, query, bars: allBars.slice(-72), venueSymbol: candleResult.venueSymbol,
@@ -7416,6 +7641,7 @@ function askPunkyAnalyse(ticker, query, item, candleResult) {
     accountability,
     holdingWindow,
     longHorizon,
+    tickerContext,
     executionCommitment,
     sourceLabel: String(candleResult.sourceLabel || 'Hyperliquid'),
     chartLink: String(candleResult.chartLink || ''),
@@ -7507,6 +7733,21 @@ function askPunkyLongViewHtml(longView) {
   + '</section>';
 }
 
+function askPunkyTickerContextHtml(context) {
+  if (!context || typeof context !== 'object') return '';
+  const stats = Array.isArray(context.stats) ? context.stats : [];
+  const questions = Array.isArray(context.questions) ? context.questions : [];
+  return '<section class="ask-punky-context" aria-label="Know this ticker">'
+    + '<div class="ask-punky-context-head"><div><div class="ask-punky-section-title">Know this ticker</div><div class="ask-punky-title">Starter context before risking money</div></div><div class="ask-punky-context-note">' + esc(context.coverageNote || '') + '</div></div>'
+    + '<div class="ask-punky-context-grid">'
+      + stats.map((stat) => '<div class="ask-punky-context-stat"><span>' + esc(stat.label || '') + '</span><strong>' + esc(stat.value || '--') + '</strong></div>').join('')
+    + '</div>'
+    + '<div class="ask-punky-starters">'
+      + questions.map((item) => '<details class="ask-punky-starter"><summary>' + esc(item.question || '') + '</summary><p>' + esc(item.answer || '') + '</p></details>').join('')
+    + '</div>'
+  + '</section>';
+}
+
 function askPunkyAnswerHtml(answer) {
   const sourceLabel = String(answer.sourceLabel || 'Hyperliquid');
   const link = String(answer.chartLink || (!answer.usedCachedData
@@ -7542,6 +7783,7 @@ function askPunkyAnswerHtml(answer) {
       + askPunkyPlanItem('Potential gain vs loss', Number(answer.rr).toFixed(2) + 'x')
       + askPunkyPlanItem('Expected holding time', holdingWindowText(answer.holdingWindow || answer, true))
     + '</div>'
+    + askPunkyTickerContextHtml(answer.tickerContext)
     + askPunkyLongViewHtml(answer.longHorizon)
     + '<div><div class="ask-punky-section-title">Why</div><ol class="ask-punky-why">' + answer.why.map((line) => '<li>' + esc(line) + '</li>').join('') + '</ol></div>'
     + '<div class="ask-punky-chart">'
@@ -7555,7 +7797,7 @@ function askPunkyAnswerHtml(answer) {
 }
 
 function askPunkyLoadingHtml(ticker) {
-  return '<div class="ask-punky-loading"><div><strong>Reading ' + esc(ticker) + ' now...</strong><br><br>Building the 10-20 day trade and a separate months-long view from live price, daily structure, fundamentals, revisions, and earnings.</div></div>';
+  return '<div class="ask-punky-loading"><div><strong>Reading ' + esc(ticker) + ' now...</strong><br><br>Building the trade decision, price history, yearly range, risk context, and a separate months-long view.</div></div>';
 }
 
 async function askPunkySyncForecasts(records) {
@@ -8523,7 +8765,7 @@ function renderPunkyDock() {
   body.setAttribute('aria-busy', String(commandAnalysisLoading));
   if (submit) submit.disabled = commandAnalysisLoading;
   if (commandAnalysisLoading) {
-    body.innerHTML = '<div class="terminal-dock-loading"><strong>Reading ' + esc(lastAskedTicker || terminalSelectedTicker || 'the tape') + '...</strong><br>Building the 10-20 day trade and a separate months-long investment view.</div>';
+    body.innerHTML = '<div class="terminal-dock-loading"><strong>Reading ' + esc(lastAskedTicker || terminalSelectedTicker || 'the tape') + '...</strong><br>Building the trade, price history, yearly range, risk, and months-long view.</div>';
     return;
   }
   if (commandActiveAnswer && commandActiveAnswer.error) {
@@ -8532,7 +8774,7 @@ function renderPunkyDock() {
   }
   if (!commandActiveAnswer) {
     const selected = terminalSelectedTicker || 'a ticker';
-    body.innerHTML = '<div class="terminal-dock-empty"><strong>' + esc(selected === 'a ticker' ? 'Pick a name from the tape.' : selected + ' is selected.') + '</strong><br>Ask once for the 10-20 day trade, exact levels, and whether it is worth holding for months.</div>';
+    body.innerHTML = '<div class="terminal-dock-empty"><strong>' + esc(selected === 'a ticker' ? 'Pick a name from the tape.' : selected + ' is selected.') + '</strong><br>Ask once for the decision, exact levels, yearly context, normal volatility, and whether it is worth holding for months.</div>';
     return;
   }
   const answer = commandActiveAnswer;
@@ -8558,6 +8800,7 @@ function renderPunkyDock() {
     + '<div class="terminal-dock-alignment">THESIS ' + esc(answer.direction) + ' • ' + esc(chartReadLabel) + ' ' + esc(answer.chartDirection || answer.direction) + '</div>'
     + '<div class="terminal-dock-summary">' + esc(answer.summary) + '</div>'
     + (answer.usedCachedData ? '<div class="price-integrity-warning"><strong>Live venue temporarily unavailable:</strong> ' + esc(answer.fallbackReason || 'Using the latest verified agent snapshot.') + '</div>' : '')
+    + askPunkyTickerContextHtml(answer.tickerContext)
     + '<div class="execution-commitment-line ' + esc(String(commitment.state || '').toLowerCase()) + '"><strong>' + esc(commitment.label || 'PUNKY EXECUTION') + ':</strong> ' + esc(commitment.will_trade_when || commitment.summary || 'Waiting for a complete setup.') + (commitment.currentBlocker || commitment.current_blocker ? '<br><strong>Why not now:</strong> ' + esc(commitment.currentBlocker || commitment.current_blocker) : '') + '</div>'
     + '<div class="plan-accountability-line"><strong>Verified record:</strong> ' + esc(planAccuracyNarrative(answer.ticker, answer.direction, answer.accountability || {})) + '</div>'
     + '<div class="terminal-dock-plan">'
