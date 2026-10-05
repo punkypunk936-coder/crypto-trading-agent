@@ -1,60 +1,47 @@
 {
   "classifications": {
-    "CORRECT_PASS": 2,
     "MISSED_WIN": 11
   },
   "data_dir": "/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime",
-  "decision_rows": 3191,
-  "episodes": 2760,
-  "generated_at": 1791164584,
+  "decision_rows": 3893,
+  "episodes": 3427,
+  "generated_at": 1791185219,
   "horizon_minutes": 720,
   "interval": "5m",
-  "labeled_episodes": 13,
+  "labeled_episodes": 11,
   "missed_families": [
     {
       "family": "MON:LONG",
-      "misses": 5
+      "misses": 7
     },
     {
-      "family": "SP500:LONG",
-      "misses": 2
-    },
-    {
-      "family": "TAO:LONG",
-      "misses": 2
+      "family": "AMAT:LONG",
+      "misses": 1
     },
     {
       "family": "HPE:LONG",
       "misses": 1
     },
     {
-      "family": "LITE:LONG",
+      "family": "HYPE:LONG",
+      "misses": 1
+    },
+    {
+      "family": "TAO:LONG",
       "misses": 1
     }
   ],
   "stage_scorecards": [
     {
-      "correct_passes": 1,
-      "executed_samples": 0,
-      "execution_win_rate": 0.0,
-      "false_negative_rate": 0.8,
-      "missed_wins": 4,
-      "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 5,
-      "recommendation": "COLLECT_MORE",
-      "samples": 5,
-      "stage": "win_rate_context_guard_block"
-    },
-    {
       "correct_passes": 0,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
       "false_negative_rate": 1.0,
-      "missed_wins": 2,
+      "missed_wins": 5,
       "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 2,
+      "pass_samples": 5,
       "recommendation": "COLLECT_MORE",
-      "samples": 2,
+      "samples": 5,
       "stage": "data_reliability_block"
     },
     {
@@ -62,23 +49,23 @@
       "executed_samples": 0,
       "execution_win_rate": 0.0,
       "false_negative_rate": 1.0,
-      "missed_wins": 2,
+      "missed_wins": 3,
       "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 2,
+      "pass_samples": 3,
       "recommendation": "COLLECT_MORE",
-      "samples": 2,
-      "stage": "flat_no_trade"
+      "samples": 3,
+      "stage": "win_rate_context_guard_block"
     },
     {
-      "correct_passes": 1,
+      "correct_passes": 0,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.5,
+      "false_negative_rate": 1.0,
       "missed_wins": 1,
       "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 2,
+      "pass_samples": 1,
       "recommendation": "COLLECT_MORE",
-      "samples": 2,
+      "samples": 1,
       "stage": "guardrails_flat"
     },
     {
