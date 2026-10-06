@@ -1,30 +1,34 @@
 {
   "classifications": {
-    "CORRECT_PASS": 9,
-    "MISSED_WIN": 27
+    "CORRECT_PASS": 3,
+    "MISSED_WIN": 29
   },
   "data_dir": "/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime",
-  "decision_rows": 6944,
-  "episodes": 6320,
-  "generated_at": 1791297036,
+  "decision_rows": 7825,
+  "episodes": 7174,
+  "generated_at": 1791318751,
   "horizon_minutes": 720,
   "interval": "5m",
-  "labeled_episodes": 36,
+  "labeled_episodes": 32,
   "missed_families": [
     {
       "family": "SP500:LONG",
-      "misses": 9
-    },
-    {
-      "family": "MON:LONG",
-      "misses": 7
-    },
-    {
-      "family": "SOL:LONG",
-      "misses": 5
+      "misses": 11
     },
     {
       "family": "INTC:LONG",
+      "misses": 5
+    },
+    {
+      "family": "HPE:LONG",
+      "misses": 3
+    },
+    {
+      "family": "MON:LONG",
+      "misses": 3
+    },
+    {
+      "family": "AMAT:LONG",
       "misses": 2
     },
     {
@@ -32,45 +36,45 @@
       "misses": 2
     },
     {
-      "family": "HPE:LONG",
+      "family": "ALAB:LONG",
       "misses": 1
     },
     {
-      "family": "LITE:LONG",
+      "family": "HYPE:LONG",
       "misses": 1
     }
   ],
   "stage_scorecards": [
     {
-      "correct_passes": 1,
+      "correct_passes": 0,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.9091,
-      "missed_wins": 10,
+      "false_negative_rate": 1.0,
+      "missed_wins": 9,
       "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 11,
+      "pass_samples": 9,
       "recommendation": "COLLECT_MORE",
-      "samples": 11,
+      "samples": 9,
       "stage": "flat_no_trade"
     },
     {
-      "correct_passes": 2,
+      "correct_passes": 1,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.8,
-      "missed_wins": 8,
+      "false_negative_rate": 0.8571,
+      "missed_wins": 6,
       "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 10,
+      "pass_samples": 7,
       "recommendation": "COLLECT_MORE",
-      "samples": 10,
+      "samples": 7,
       "stage": "win_rate_context_guard_block"
     },
     {
-      "correct_passes": 4,
+      "correct_passes": 1,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.3333,
-      "missed_wins": 2,
+      "false_negative_rate": 0.8333,
+      "missed_wins": 5,
       "note": "Not enough decisive counterfactual evidence yet.",
       "pass_samples": 6,
       "recommendation": "COLLECT_MORE",
@@ -87,18 +91,30 @@
       "pass_samples": 4,
       "recommendation": "COLLECT_MORE",
       "samples": 4,
-      "stage": "data_reliability_block"
+      "stage": "observation_only"
     },
     {
-      "correct_passes": 2,
+      "correct_passes": 0,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.3333,
-      "missed_wins": 1,
+      "false_negative_rate": 1.0,
+      "missed_wins": 3,
       "note": "Not enough decisive counterfactual evidence yet.",
       "pass_samples": 3,
       "recommendation": "COLLECT_MORE",
       "samples": 3,
+      "stage": "major_catalyst_watch"
+    },
+    {
+      "correct_passes": 1,
+      "executed_samples": 0,
+      "execution_win_rate": 0.0,
+      "false_negative_rate": 0.5,
+      "missed_wins": 1,
+      "note": "Not enough decisive counterfactual evidence yet.",
+      "pass_samples": 2,
+      "recommendation": "COLLECT_MORE",
+      "samples": 2,
       "stage": "guardrails_flat"
     },
     {
@@ -111,19 +127,7 @@
       "pass_samples": 1,
       "recommendation": "COLLECT_MORE",
       "samples": 1,
-      "stage": "major_catalyst_watch"
-    },
-    {
-      "correct_passes": 0,
-      "executed_samples": 0,
-      "execution_win_rate": 0.0,
-      "false_negative_rate": 1.0,
-      "missed_wins": 1,
-      "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 1,
-      "recommendation": "COLLECT_MORE",
-      "samples": 1,
-      "stage": "observation_only"
+      "stage": "data_reliability_block"
     }
   ],
   "target_r": 0.25
