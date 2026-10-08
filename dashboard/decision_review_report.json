@@ -1,19 +1,19 @@
 {
   "classifications": {
     "CORRECT_PASS": 1,
-    "MISSED_WIN": 4
+    "MISSED_WIN": 6
   },
   "data_dir": "/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime",
-  "decision_rows": 2412,
-  "episodes": 2257,
-  "generated_at": 1791423874,
+  "decision_rows": 3102,
+  "episodes": 2917,
+  "generated_at": 1791445596,
   "horizon_minutes": 720,
   "interval": "5m",
-  "labeled_episodes": 5,
+  "labeled_episodes": 7,
   "missed_families": [
     {
       "family": "SP500:LONG",
-      "misses": 2
+      "misses": 4
     },
     {
       "family": "ALAB:LONG",
@@ -26,15 +26,15 @@
   ],
   "stage_scorecards": [
     {
-      "correct_passes": 1,
+      "correct_passes": 0,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.6667,
-      "missed_wins": 2,
+      "false_negative_rate": 1.0,
+      "missed_wins": 4,
       "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 3,
+      "pass_samples": 4,
       "recommendation": "COLLECT_MORE",
-      "samples": 3,
+      "samples": 4,
       "stage": "flat_no_trade"
     },
     {
@@ -48,6 +48,18 @@
       "recommendation": "COLLECT_MORE",
       "samples": 2,
       "stage": "observation_only"
+    },
+    {
+      "correct_passes": 1,
+      "executed_samples": 0,
+      "execution_win_rate": 0.0,
+      "false_negative_rate": 0.0,
+      "missed_wins": 0,
+      "note": "Not enough decisive counterfactual evidence yet.",
+      "pass_samples": 1,
+      "recommendation": "COLLECT_MORE",
+      "samples": 1,
+      "stage": "patient_execution_block"
     }
   ],
   "target_r": 0.25
