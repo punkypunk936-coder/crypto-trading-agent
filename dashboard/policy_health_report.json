@@ -17,7 +17,7 @@
     },
     {
       "area": "Guard Stack",
-      "evidence": "Recent sample has 534 directional ideas; 100% blocked and 0.0% executed.",
+      "evidence": "Recent sample has 743 directional ideas; 100% blocked and 0.0% executed.",
       "fix": "Add per-guard counterfactual attribution: which blocks saved losses, which blocks missed winners, and which should be relaxed.",
       "priority": "P1",
       "title": "The guard stack blocks most directional ideas without ranking missed winners"
@@ -38,7 +38,7 @@
     },
     {
       "area": "Signal Quality",
-      "evidence": "46% of sampled directional ideas were price-heavy without enough fundamental/attention score.",
+      "evidence": "43% of sampled directional ideas were price-heavy without enough fundamental/attention score.",
       "fix": "Keep the first-principles guard on, but measure the blocked cohort so we know if it improves precision.",
       "priority": "P2",
       "title": "Price-action-only ideas still appear in the directional stream"
@@ -51,129 +51,129 @@
       "title": "Capital is not yet aggressively avoiding the worst families"
     }
   ],
-  "generated_at": 1791742494,
+  "generated_at": 1791767795,
   "recent_decisions": {
-    "blocked_directional": 534,
+    "blocked_directional": 743,
     "blocked_directional_rate": 1.0,
     "candidate_actions": {
-      "FLAT": 285,
-      "LONG": 458,
-      "SHORT": 76
+      "FLAT": 398,
+      "LONG": 630,
+      "SHORT": 113
     },
-    "decision_file_size_mb": 24.63,
-    "directional_decisions": 534,
+    "decision_file_size_mb": 34.3,
+    "directional_decisions": 743,
     "directional_stage_counts": [
       {
-        "count": 139,
-        "rate": 0.2603,
-        "stage": "flat_no_trade"
-      },
-      {
-        "count": 128,
-        "rate": 0.2397,
+        "count": 195,
+        "rate": 0.2624,
         "stage": "win_rate_context_guard_block"
       },
       {
-        "count": 93,
-        "rate": 0.1742,
+        "count": 190,
+        "rate": 0.2557,
+        "stage": "flat_no_trade"
+      },
+      {
+        "count": 115,
+        "rate": 0.1548,
         "stage": "patient_execution_block"
       },
       {
-        "count": 57,
-        "rate": 0.1067,
+        "count": 83,
+        "rate": 0.1117,
         "stage": "win_rate_guard_block"
       },
       {
-        "count": 44,
-        "rate": 0.0824,
+        "count": 60,
+        "rate": 0.0808,
         "stage": "major_catalyst_watch"
       },
       {
-        "count": 30,
-        "rate": 0.0562,
+        "count": 47,
+        "rate": 0.0633,
         "stage": "guardrails_flat"
       },
       {
-        "count": 22,
-        "rate": 0.0412,
+        "count": 26,
+        "rate": 0.035,
         "stage": "first_principles_guard_block"
       },
       {
         "count": 9,
-        "rate": 0.0169,
+        "rate": 0.0121,
         "stage": "mtf_block"
       },
       {
-        "count": 7,
-        "rate": 0.0131,
+        "count": 9,
+        "rate": 0.0121,
         "stage": "data_reliability_block"
       },
       {
-        "count": 5,
-        "rate": 0.0094,
+        "count": 9,
+        "rate": 0.0121,
         "stage": "micro_desk_block"
       }
     ],
     "executed_directional": 0,
     "executed_directional_rate": 0.0,
     "final_actions": {
-      "FLAT": 717,
-      "LONG": 102
+      "FLAT": 1017,
+      "LONG": 124
     },
-    "low_context_directional_rate": 0.6629,
-    "missing_news_context_rate": 0.6629,
+    "low_context_directional_rate": 0.6608,
+    "missing_news_context_rate": 0.6608,
     "missing_social_coverage_rate": 1.0,
-    "price_only_directional_rate": 0.4607,
-    "sampled_decisions": 819,
+    "price_only_directional_rate": 0.4334,
+    "sampled_decisions": 1141,
     "stage_counts": [
       {
-        "count": 424,
-        "rate": 0.5177,
+        "count": 588,
+        "rate": 0.5153,
         "stage": "flat_no_trade"
       },
       {
-        "count": 128,
-        "rate": 0.1563,
+        "count": 195,
+        "rate": 0.1709,
         "stage": "win_rate_context_guard_block"
       },
       {
-        "count": 93,
-        "rate": 0.1136,
+        "count": 115,
+        "rate": 0.1008,
         "stage": "patient_execution_block"
       },
       {
-        "count": 57,
-        "rate": 0.0696,
+        "count": 83,
+        "rate": 0.0727,
         "stage": "win_rate_guard_block"
       },
       {
-        "count": 44,
-        "rate": 0.0537,
+        "count": 60,
+        "rate": 0.0526,
         "stage": "major_catalyst_watch"
       },
       {
-        "count": 30,
-        "rate": 0.0366,
+        "count": 47,
+        "rate": 0.0412,
         "stage": "guardrails_flat"
       },
       {
-        "count": 22,
-        "rate": 0.0269,
+        "count": 26,
+        "rate": 0.0228,
         "stage": "first_principles_guard_block"
       },
       {
         "count": 9,
-        "rate": 0.011,
+        "rate": 0.0079,
         "stage": "mtf_block"
       },
       {
-        "count": 7,
-        "rate": 0.0085,
+        "count": 9,
+        "rate": 0.0079,
         "stage": "data_reliability_block"
       },
       {
-        "count": 5,
-        "rate": 0.0061,
+        "count": 9,
+        "rate": 0.0079,
         "stage": "micro_desk_block"
       }
     ]
@@ -209,10 +209,10 @@
   "summary": {
     "blocked_directional_rate": 1.0,
     "closed_trades": 1449,
-    "directional_sample": 534,
+    "directional_sample": 743,
     "finding_count": 7,
     "headline": "Win-rate target is not being controlled by a promotion gate",
-    "low_context_directional_rate": 0.6629,
+    "low_context_directional_rate": 0.6608,
     "median_hold_minutes": 104.0,
     "pnl_usd": -192.22,
     "win_rate": 0.4396
