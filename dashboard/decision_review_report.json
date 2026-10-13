@@ -1,93 +1,113 @@
 {
   "classifications": {
     "CORRECT_PASS": 17,
-    "MISSED_WIN": 37
+    "MISSED_WIN": 63
   },
   "data_dir": "/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime",
-  "decision_rows": 3862,
-  "episodes": 3594,
-  "generated_at": 1791902720,
+  "decision_rows": 4410,
+  "episodes": 4106,
+  "generated_at": 1791926499,
   "horizon_minutes": 720,
   "interval": "5m",
-  "labeled_episodes": 54,
+  "labeled_episodes": 80,
   "missed_families": [
     {
       "family": "WDC:SHORT",
-      "misses": 25
+      "misses": 51
     },
     {
       "family": "GEV:LONG",
-      "misses": 7
-    },
-    {
-      "family": "SP500:LONG",
       "misses": 4
     },
     {
+      "family": "CBRS:LONG",
+      "misses": 3
+    },
+    {
       "family": "CRDO:SHORT",
+      "misses": 2
+    },
+    {
+      "family": "SP500:LONG",
+      "misses": 2
+    },
+    {
+      "family": "CIFR:SHORT",
       "misses": 1
     }
   ],
   "stage_scorecards": [
     {
-      "correct_passes": 5,
+      "correct_passes": 7,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.8148,
-      "missed_wins": 22,
+      "false_negative_rate": 0.8444,
+      "missed_wins": 38,
       "note": "This stage blocked more later winners than losers; do not let it remain an unmeasured hard veto.",
-      "pass_samples": 27,
+      "pass_samples": 45,
       "recommendation": "DEMOTE_TO_SHADOW",
-      "samples": 27,
+      "samples": 45,
       "stage": "win_rate_context_guard_block"
     },
     {
-      "correct_passes": 9,
+      "correct_passes": 5,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.5263,
-      "missed_wins": 10,
+      "false_negative_rate": 0.75,
+      "missed_wins": 15,
       "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 19,
+      "pass_samples": 20,
       "recommendation": "COLLECT_MORE",
-      "samples": 19,
+      "samples": 20,
       "stage": "first_principles_guard_block"
-    },
-    {
-      "correct_passes": 2,
-      "executed_samples": 0,
-      "execution_win_rate": 0.0,
-      "false_negative_rate": 0.6,
-      "missed_wins": 3,
-      "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 5,
-      "recommendation": "COLLECT_MORE",
-      "samples": 5,
-      "stage": "flat_no_trade"
     },
     {
       "correct_passes": 1,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.5,
-      "missed_wins": 1,
+      "false_negative_rate": 0.75,
+      "missed_wins": 3,
       "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 2,
+      "pass_samples": 4,
       "recommendation": "COLLECT_MORE",
-      "samples": 2,
+      "samples": 4,
       "stage": "observation_only"
+    },
+    {
+      "correct_passes": 2,
+      "executed_samples": 0,
+      "execution_win_rate": 0.0,
+      "false_negative_rate": 0.5,
+      "missed_wins": 2,
+      "note": "Not enough decisive counterfactual evidence yet.",
+      "pass_samples": 4,
+      "recommendation": "COLLECT_MORE",
+      "samples": 4,
+      "stage": "data_reliability_block"
+    },
+    {
+      "correct_passes": 2,
+      "executed_samples": 0,
+      "execution_win_rate": 0.0,
+      "false_negative_rate": 0.5,
+      "missed_wins": 2,
+      "note": "Not enough decisive counterfactual evidence yet.",
+      "pass_samples": 4,
+      "recommendation": "COLLECT_MORE",
+      "samples": 4,
+      "stage": "flat_no_trade"
     },
     {
       "correct_passes": 0,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
       "false_negative_rate": 1.0,
-      "missed_wins": 1,
+      "missed_wins": 3,
       "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 1,
+      "pass_samples": 3,
       "recommendation": "COLLECT_MORE",
-      "samples": 1,
-      "stage": "data_reliability_block"
+      "samples": 3,
+      "stage": "mtf_block"
     }
   ],
   "target_r": 0.25
