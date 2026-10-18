@@ -1,126 +1,269 @@
 {
-  "classifications": {},
+  "classifications": {
+    "MISSED_WIN": 1
+  },
   "daily_top_mover_replay": {
     "lessons": [
-      "CBRS moved +0.14% after a blocked LONG candidate; event starter was active, so replay should inspect sizing/execution."
+      "ETH moved -1.49% after a blocked SHORT candidate; consider whether an event starter should have been opened before confirmation."
     ],
     "lookback_hours": 24,
     "missed_top_movers": [
       {
-        "blocked_at": "2026-10-18 14:09:51",
-        "blocked_stage": "data_reliability_block",
-        "coin": "CBRS",
-        "conviction_entry_event": true,
-        "direction": "LONG",
+        "blocked_at": "2026-10-18 18:56:35",
+        "blocked_stage": "guardrails_flat",
+        "coin": "ETH",
+        "conviction_entry_event": false,
+        "direction": "SHORT",
         "event_budget_summary": "",
-        "move_pct": 0.144,
-        "news_catalyst_score": 4.5,
-        "news_event_score": 4.5,
-        "probability": 0.7821,
-        "score": 97.91,
-        "summary": "no valid orderbook snapshot is available"
+        "move_pct": -1.493,
+        "news_catalyst_score": 0.0,
+        "news_event_score": 0.0,
+        "probability": 0.7221,
+        "score": 72.7,
+        "summary": "RL tightened SHORT threshold to \u226431 (ranging trap)"
       },
       {
-        "blocked_at": "2026-10-18 14:02:36",
+        "blocked_at": "2026-10-18 20:09:59",
+        "blocked_stage": "patient_execution_block",
+        "coin": "SKHX",
+        "conviction_entry_event": false,
+        "direction": "SHORT",
+        "event_budget_summary": "",
+        "move_pct": -1.04,
+        "news_catalyst_score": 4.0,
+        "news_event_score": 0.0,
+        "probability": 0.8011,
+        "score": 89.02,
+        "summary": "Thesis medium: Scalp short: breakdown/breakout is confirmed, recent candles confirm, book pressure is short."
+      },
+      {
+        "blocked_at": "2026-10-18 18:56:33",
         "blocked_stage": "win_rate_context_guard_block",
         "coin": "BTC",
         "conviction_entry_event": false,
         "direction": "SHORT",
         "event_budget_summary": "",
-        "move_pct": -0.059,
+        "move_pct": -0.72,
         "news_catalyst_score": 0.0,
         "news_event_score": 0.0,
-        "probability": 0.9173,
-        "score": 98.17,
+        "probability": 0.8832,
+        "score": 98.2,
         "summary": "win-rate recovery blocks SHORT: needs fundamentals, attention, and flow to line up"
+      },
+      {
+        "blocked_at": "2026-10-18 18:37:58",
+        "blocked_stage": "mtf_block",
+        "coin": "SOL",
+        "conviction_entry_event": false,
+        "direction": "LONG",
+        "event_budget_summary": "",
+        "move_pct": 0.659,
+        "news_catalyst_score": 0.0,
+        "news_event_score": 0.0,
+        "probability": 0.6362,
+        "score": 75.86,
+        "summary": "Thesis medium: Scalp long: breakdown/breakout is confirmed, recent candles confirm, book pressure is long."
+      },
+      {
+        "blocked_at": "2026-10-18 17:02:55",
+        "blocked_stage": "patient_execution_block",
+        "coin": "CBRS",
+        "conviction_entry_event": false,
+        "direction": "SHORT",
+        "event_budget_summary": "",
+        "move_pct": -0.471,
+        "news_catalyst_score": 3.75,
+        "news_event_score": 3.75,
+        "probability": 0.772,
+        "score": 98.05,
+        "summary": "Thesis medium: Scalp short: breakdown/breakout is confirmed, book pressure is short, daily map permits the short."
+      },
+      {
+        "blocked_at": "2026-10-18 20:10:11",
+        "blocked_stage": "core_long_short_suppressed",
+        "coin": "ASML",
+        "conviction_entry_event": false,
+        "direction": "SHORT",
+        "event_budget_summary": "",
+        "move_pct": -0.356,
+        "news_catalyst_score": 0.0,
+        "news_event_score": 0.0,
+        "probability": 0.8791,
+        "score": 96.93,
+        "summary": "Temporary bearish tape inside the core long thesis; hold or wait, do not flip short."
+      },
+      {
+        "blocked_at": "2026-10-18 20:10:06",
+        "blocked_stage": "major_catalyst_watch",
+        "coin": "MSFT",
+        "conviction_entry_event": false,
+        "direction": "LONG",
+        "event_budget_summary": "",
+        "move_pct": 0.149,
+        "news_catalyst_score": 4.69,
+        "news_event_score": 4.69,
+        "probability": 0.9186,
+        "score": 97.91,
+        "summary": "embargoed after 5 LONG trades with 0% win rate"
+      },
+      {
+        "blocked_at": "2026-10-18 20:10:02",
+        "blocked_stage": "patient_execution_block",
+        "coin": "CRWV",
+        "conviction_entry_event": false,
+        "direction": "SHORT",
+        "event_budget_summary": "",
+        "move_pct": -0.117,
+        "news_catalyst_score": 4.55,
+        "news_event_score": 4.55,
+        "probability": 0.8818,
+        "score": 100.0,
+        "summary": "Thesis medium: Scalp short: breakdown/breakout is confirmed, recent candles confirm, book pressure is short."
       }
     ],
     "top_movers": [
       {
+        "coin": "ETH",
+        "direction": "SHORT",
+        "end_at": "2026-10-18 20:10:23",
+        "end_price": 2375.45,
+        "end_ts": 1792334423.531021,
+        "move_pct": -1.493,
+        "start_at": "2026-10-18 12:34:05",
+        "start_price": 2411.45,
+        "start_ts": 1792307045.230222
+      },
+      {
         "coin": "SKHX",
-        "direction": "LONG",
-        "end_at": "2026-10-18 14:05:48",
-        "end_price": 907.12,
-        "end_ts": 1792312548.924644,
-        "move_pct": 0.306,
+        "direction": "SHORT",
+        "end_at": "2026-10-18 20:09:59",
+        "end_price": 894.945,
+        "end_ts": 1792334399.146394,
+        "move_pct": -1.04,
         "start_at": "2026-10-18 12:37:15",
         "start_price": 904.35,
         "start_ts": 1792307235.939977
       },
       {
-        "coin": "CRWV",
-        "direction": "LONG",
-        "end_at": "2026-10-18 14:09:58",
-        "end_price": 60.5875,
-        "end_ts": 1792312798.7439418,
-        "move_pct": 0.305,
-        "start_at": "2026-10-18 12:37:17",
-        "start_price": 60.4035,
-        "start_ts": 1792307237.976612
-      },
-      {
-        "coin": "CBRS",
-        "direction": "LONG",
-        "end_at": "2026-10-18 14:09:51",
-        "end_price": 125.355,
-        "end_ts": 1792312791.565793,
-        "move_pct": 0.144,
-        "start_at": "2026-10-18 12:37:14",
-        "start_price": 125.175,
-        "start_ts": 1792307234.080054
-      },
-      {
-        "coin": "GEV",
-        "direction": "LONG",
-        "end_at": "2026-10-18 14:10:04",
-        "end_price": 918.47,
-        "end_ts": 1792312804.977813,
-        "move_pct": 0.062,
-        "start_at": "2026-10-18 12:33:59",
-        "start_price": 917.905,
-        "start_ts": 1792307039.076084
-      },
-      {
         "coin": "BTC",
         "direction": "SHORT",
-        "end_at": "2026-10-18 14:02:36",
-        "end_price": 81660.5,
-        "end_ts": 1792312356.854849,
-        "move_pct": -0.059,
+        "end_at": "2026-10-18 20:10:20",
+        "end_price": 81120.5,
+        "end_ts": 1792334420.144786,
+        "move_pct": -0.72,
         "start_at": "2026-10-18 12:34:02",
         "start_price": 81708.5,
         "start_ts": 1792307042.991874
       },
       {
-        "coin": "ASML",
+        "coin": "SOL",
         "direction": "LONG",
-        "end_at": "2026-10-18 14:10:03",
-        "end_price": 1642.2,
-        "end_ts": 1792312803.067585,
-        "move_pct": 0.055,
+        "end_at": "2026-10-18 18:37:58",
+        "end_price": 103.875,
+        "end_ts": 1792328878.263934,
+        "move_pct": 0.659,
+        "start_at": "2026-10-18 13:43:53",
+        "start_price": 103.195,
+        "start_ts": 1792311233.917599
+      },
+      {
+        "coin": "CBRS",
+        "direction": "SHORT",
+        "end_at": "2026-10-18 20:09:55",
+        "end_price": 124.585,
+        "end_ts": 1792334395.3443341,
+        "move_pct": -0.471,
+        "start_at": "2026-10-18 12:37:14",
+        "start_price": 125.175,
+        "start_ts": 1792307234.080054
+      },
+      {
+        "coin": "ASML",
+        "direction": "SHORT",
+        "end_at": "2026-10-18 20:10:11",
+        "end_price": 1635.45,
+        "end_ts": 1792334411.7396858,
+        "move_pct": -0.356,
         "start_at": "2026-10-18 12:37:34",
         "start_price": 1641.3,
         "start_ts": 1792307254.415943
+      },
+      {
+        "coin": "MSFT",
+        "direction": "LONG",
+        "end_at": "2026-10-18 20:10:06",
+        "end_price": 526.455,
+        "end_ts": 1792334406.826884,
+        "move_pct": 0.149,
+        "start_at": "2026-10-18 12:37:23",
+        "start_price": 525.67,
+        "start_ts": 1792307243.8801558
+      },
+      {
+        "coin": "CRWV",
+        "direction": "SHORT",
+        "end_at": "2026-10-18 20:10:02",
+        "end_price": 60.333,
+        "end_ts": 1792334402.594167,
+        "move_pct": -0.117,
+        "start_at": "2026-10-18 12:37:17",
+        "start_price": 60.4035,
+        "start_ts": 1792307237.976612
       }
     ]
   },
   "data_dir": "/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime",
-  "decision_rows": 258,
-  "episodes": 225,
-  "generated_at": 1792312823,
+  "decision_rows": 748,
+  "episodes": 663,
+  "generated_at": 1792334454,
   "horizon_minutes": 720,
   "interval": "5m",
-  "labeled_episodes": 0,
-  "recent_missed_moves": [],
+  "labeled_episodes": 1,
+  "recent_missed_moves": [
+    {
+      "action": "LONG",
+      "breakout": "confirmed_bullish_breakout",
+      "coin": "SOL",
+      "interaction": "at_support",
+      "probability": 0.7727,
+      "recorded_at": "2026-10-18 13:43:53",
+      "regime": "mixed",
+      "risk_reward_ratio": 4.26,
+      "score": 98.11,
+      "stage": "mtf_block",
+      "summary": "Thesis medium: Scalp long: breakdown/breakout is confirmed, book pressure is long.",
+      "ts": 1792311233.917599
+    }
+  ],
   "summary": {
     "bad_trade_count": 0,
     "correct_pass_count": 0,
     "good_trade_count": 0,
-    "missed_win_count": 0
+    "missed_win_count": 1
   },
   "target_r": 0.25,
-  "top_blockers": [],
-  "top_missed_assets": [],
-  "top_missed_families": [],
-  "top_missed_stages": []
+  "top_blockers": [
+    {
+      "blocker": "Thesis medium: Scalp long: breakdown/breakout is confirmed, book pressure is long.",
+      "misses": 1
+    }
+  ],
+  "top_missed_assets": [
+    {
+      "coin": "SOL",
+      "misses": 1
+    }
+  ],
+  "top_missed_families": [
+    {
+      "family": "SOL:LONG",
+      "misses": 1
+    }
+  ],
+  "top_missed_stages": [
+    {
+      "misses": 1,
+      "stage": "mtf_block"
+    }
+  ]
 }
