@@ -1,26 +1,30 @@
 {
   "classifications": {
-    "CORRECT_PASS": 4,
-    "MISSED_WIN": 8
+    "CORRECT_PASS": 13,
+    "MISSED_WIN": 12
   },
   "data_dir": "/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime",
-  "decision_rows": 1904,
-  "episodes": 1726,
-  "generated_at": 1792377856,
+  "decision_rows": 2823,
+  "episodes": 2559,
+  "generated_at": 1792399464,
   "horizon_minutes": 720,
   "interval": "5m",
-  "labeled_episodes": 12,
+  "labeled_episodes": 25,
   "missed_families": [
     {
       "family": "SOL:LONG",
-      "misses": 4
-    },
-    {
-      "family": "MON:SHORT",
-      "misses": 1
+      "misses": 5
     },
     {
       "family": "MSFT:LONG",
+      "misses": 2
+    },
+    {
+      "family": "SP500:LONG",
+      "misses": 2
+    },
+    {
+      "family": "MON:SHORT",
       "misses": 1
     },
     {
@@ -37,25 +41,49 @@
       "correct_passes": 2,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.6667,
-      "missed_wins": 4,
+      "false_negative_rate": 0.7143,
+      "missed_wins": 5,
+      "note": "Not enough decisive counterfactual evidence yet.",
+      "pass_samples": 7,
+      "recommendation": "COLLECT_MORE",
+      "samples": 7,
+      "stage": "mtf_block"
+    },
+    {
+      "correct_passes": 4,
+      "executed_samples": 0,
+      "execution_win_rate": 0.0,
+      "false_negative_rate": 0.3333,
+      "missed_wins": 2,
       "note": "Not enough decisive counterfactual evidence yet.",
       "pass_samples": 6,
       "recommendation": "COLLECT_MORE",
       "samples": 6,
-      "stage": "mtf_block"
+      "stage": "flat_no_trade"
     },
     {
-      "correct_passes": 1,
+      "correct_passes": 4,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.5,
+      "false_negative_rate": 0.3333,
+      "missed_wins": 2,
+      "note": "Not enough decisive counterfactual evidence yet.",
+      "pass_samples": 6,
+      "recommendation": "COLLECT_MORE",
+      "samples": 6,
+      "stage": "major_catalyst_watch"
+    },
+    {
+      "correct_passes": 2,
+      "executed_samples": 0,
+      "execution_win_rate": 0.0,
+      "false_negative_rate": 0.3333,
       "missed_wins": 1,
       "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 2,
+      "pass_samples": 3,
       "recommendation": "COLLECT_MORE",
-      "samples": 2,
-      "stage": "major_catalyst_watch"
+      "samples": 3,
+      "stage": "first_principles_guard_block"
     },
     {
       "correct_passes": 1,
@@ -80,18 +108,6 @@
       "recommendation": "COLLECT_MORE",
       "samples": 1,
       "stage": "data_reliability_block"
-    },
-    {
-      "correct_passes": 0,
-      "executed_samples": 0,
-      "execution_win_rate": 0.0,
-      "false_negative_rate": 1.0,
-      "missed_wins": 1,
-      "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 1,
-      "recommendation": "COLLECT_MORE",
-      "samples": 1,
-      "stage": "first_principles_guard_block"
     }
   ],
   "target_r": 0.25
