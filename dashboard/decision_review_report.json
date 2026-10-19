@@ -1,38 +1,46 @@
 {
   "classifications": {
-    "CORRECT_PASS": 13,
-    "MISSED_WIN": 12
+    "CORRECT_PASS": 12,
+    "MISSED_WIN": 26
   },
   "data_dir": "/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime",
-  "decision_rows": 2823,
-  "episodes": 2559,
-  "generated_at": 1792399464,
+  "decision_rows": 3727,
+  "episodes": 3381,
+  "generated_at": 1792421265,
   "horizon_minutes": 720,
   "interval": "5m",
-  "labeled_episodes": 25,
+  "labeled_episodes": 38,
   "missed_families": [
     {
-      "family": "SOL:LONG",
-      "misses": 5
-    },
-    {
       "family": "MSFT:LONG",
-      "misses": 2
-    },
-    {
-      "family": "SP500:LONG",
-      "misses": 2
+      "misses": 14
     },
     {
       "family": "MON:SHORT",
+      "misses": 2
+    },
+    {
+      "family": "SOL:LONG",
+      "misses": 2
+    },
+    {
+      "family": "SOL:SHORT",
+      "misses": 2
+    },
+    {
+      "family": "CXMT:SHORT",
+      "misses": 1
+    },
+    {
+      "family": "MU:LONG",
+      "misses": 1
+    },
+    {
+      "family": "SP500:LONG",
       "misses": 1
     },
     {
       "family": "TAO:LONG",
-      "misses": 1
-    },
-    {
-      "family": "TAO:SHORT",
       "misses": 1
     }
   ],
@@ -41,20 +49,32 @@
       "correct_passes": 2,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.7143,
-      "missed_wins": 5,
+      "false_negative_rate": 0.8667,
+      "missed_wins": 13,
       "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 7,
+      "pass_samples": 15,
       "recommendation": "COLLECT_MORE",
-      "samples": 7,
-      "stage": "mtf_block"
+      "samples": 15,
+      "stage": "major_catalyst_watch"
     },
     {
-      "correct_passes": 4,
+      "correct_passes": 3,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.3333,
-      "missed_wins": 2,
+      "false_negative_rate": 0.625,
+      "missed_wins": 5,
+      "note": "Not enough decisive counterfactual evidence yet.",
+      "pass_samples": 8,
+      "recommendation": "COLLECT_MORE",
+      "samples": 8,
+      "stage": "first_principles_guard_block"
+    },
+    {
+      "correct_passes": 5,
+      "executed_samples": 0,
+      "execution_win_rate": 0.0,
+      "false_negative_rate": 0.1667,
+      "missed_wins": 1,
       "note": "Not enough decisive counterfactual evidence yet.",
       "pass_samples": 6,
       "recommendation": "COLLECT_MORE",
@@ -62,28 +82,28 @@
       "stage": "flat_no_trade"
     },
     {
-      "correct_passes": 4,
+      "correct_passes": 1,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.3333,
-      "missed_wins": 2,
+      "false_negative_rate": 0.75,
+      "missed_wins": 3,
       "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 6,
+      "pass_samples": 4,
       "recommendation": "COLLECT_MORE",
-      "samples": 6,
-      "stage": "major_catalyst_watch"
+      "samples": 4,
+      "stage": "mtf_block"
     },
     {
-      "correct_passes": 2,
+      "correct_passes": 0,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.3333,
-      "missed_wins": 1,
+      "false_negative_rate": 1.0,
+      "missed_wins": 2,
       "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 3,
+      "pass_samples": 2,
       "recommendation": "COLLECT_MORE",
-      "samples": 3,
-      "stage": "first_principles_guard_block"
+      "samples": 2,
+      "stage": "missing_news_confirmation"
     },
     {
       "correct_passes": 1,
@@ -95,7 +115,7 @@
       "pass_samples": 2,
       "recommendation": "COLLECT_MORE",
       "samples": 2,
-      "stage": "missing_news_confirmation"
+      "stage": "data_reliability_block"
     },
     {
       "correct_passes": 0,
@@ -107,7 +127,7 @@
       "pass_samples": 1,
       "recommendation": "COLLECT_MORE",
       "samples": 1,
-      "stage": "data_reliability_block"
+      "stage": "patient_execution_block"
     }
   ],
   "target_r": 0.25
