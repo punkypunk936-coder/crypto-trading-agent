@@ -1,13 +1,34 @@
 {
-  "classifications": {},
+  "classifications": {
+    "CORRECT_PASS": 1,
+    "MISSED_WIN": 2
+  },
   "data_dir": "/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime",
-  "decision_rows": 202,
-  "episodes": 196,
-  "generated_at": 1793150405,
+  "decision_rows": 677,
+  "episodes": 641,
+  "generated_at": 1793172103,
   "horizon_minutes": 720,
   "interval": "5m",
-  "labeled_episodes": 0,
-  "missed_families": [],
-  "stage_scorecards": [],
+  "labeled_episodes": 3,
+  "missed_families": [
+    {
+      "family": "NBIS:SHORT",
+      "misses": 2
+    }
+  ],
+  "stage_scorecards": [
+    {
+      "correct_passes": 1,
+      "executed_samples": 0,
+      "execution_win_rate": 0.0,
+      "false_negative_rate": 0.6667,
+      "missed_wins": 2,
+      "note": "Not enough decisive counterfactual evidence yet.",
+      "pass_samples": 3,
+      "recommendation": "COLLECT_MORE",
+      "samples": 3,
+      "stage": "first_principles_guard_block"
+    }
+  ],
   "target_r": 0.25
 }
