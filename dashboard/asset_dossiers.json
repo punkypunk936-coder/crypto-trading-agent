@@ -1,6 +1,6 @@
 {
-  "updated_at": 1793639519,
-  "last_cycle": "2026-11-02 22:41:56",
+  "updated_at": 1793639796,
+  "last_cycle": "2026-11-02 22:46:31",
   "count": 202,
   "tradable_count": 94,
   "summary": {
@@ -11,13 +11,13 @@
       "ARM",
       "MSTR",
       "BX",
-      "BTC",
-      "MRVL"
+      "MRVL",
+      "HOOD"
     ],
     "coin_count": 39,
     "equity_count": 163,
     "llm_enabled": true,
-    "missed_win_count": 781
+    "missed_win_count": 866
   },
   "assets": {
     "AAOI": {
@@ -357,20 +357,7 @@
       "missed_move_context": {
         "miss_count": 0,
         "latest": {},
-        "daily_top_mover_replay": {
-          "blocked_at": "2026-11-02 06:45:50",
-          "blocked_stage": "patient_execution_block",
-          "coin": "AMD",
-          "conviction_entry_event": true,
-          "direction": "LONG",
-          "event_budget_summary": "event budget has room for a starter",
-          "move_pct": 1.146,
-          "news_catalyst_score": 5.0,
-          "news_event_score": 5.0,
-          "probability": 0.7505,
-          "score": 100.0,
-          "summary": "Long thesis: earnings event + pre-event setup + options implied move + analyst revision"
-        }
+        "daily_top_mover_replay": {}
       },
       "playbook_distiller": {},
       "llm_referee": {}
@@ -761,14 +748,14 @@
       "asset_bucket": "equity",
       "tradable": true,
       "execution_mode": "tradable",
-      "asset_state": "ARMED",
+      "asset_state": "DATA_QUALITY_HOLD",
       "bias": "BEARISH",
       "action": "FLAT",
-      "confidence": "MEDIUM",
-      "score": 34.2,
-      "expectancy_probability": 0.7611,
-      "expectancy_expected_r": 1.759,
-      "live_price": 330.69,
+      "confidence": "LOW",
+      "score": 43.3,
+      "expectancy_probability": 0.5,
+      "expectancy_expected_r": 0.0,
+      "live_price": 331.51,
       "levels": {
         "support": 324.46,
         "resistance": 335.420807,
@@ -776,12 +763,12 @@
         "short_trigger": 324.46
       },
       "dossier": {
-        "current_read": "Temporary bearish tape inside the core long thesis; hold or wait, do not flip short.",
-        "next_unblock": "historical analogs oppose this setup (5 close matches)",
+        "current_read": "Thesis low: Raw score remained inside the no-trade zone",
+        "next_unblock": "live venue price is stale",
         "invalidation": "Reclaim 335.42",
         "playbook": "Sell rallies into supply/resistance; press harder after breakdown closes confirm.",
         "narrative": "Narrative flow is neutral",
-        "analog": "5 analogs \u2022 win 0% \u2022 avg pnl -0.43% \u2022 avg R -0.87 \u2022 reliability 0.82",
+        "analog": "no directional analog lookup for flat setup",
         "recent_lesson": "No symbol-specific lesson recorded yet.",
         "recent_trade_logic": ""
       },
@@ -939,7 +926,20 @@
       },
       "missed_move_context": {
         "miss_count": 0,
-        "latest": {},
+        "latest": {
+          "action": "SHORT",
+          "breakout": "confirmed_bearish_breakdown",
+          "coin": "BE",
+          "interaction": "at_support",
+          "probability": 0.8779,
+          "recorded_at": "2026-11-02 17:46:01",
+          "regime": "trend",
+          "risk_reward_ratio": 2.02,
+          "score": 98.33,
+          "stage": "win_rate_context_guard_block",
+          "summary": "win-rate recovery blocks SHORT: needs fundamentals, attention, and flow to line up",
+          "ts": 1793621761.424716
+        },
         "daily_top_mover_replay": {}
       },
       "playbook_distiller": {},
@@ -1141,14 +1141,14 @@
       "asset_bucket": "coin",
       "tradable": true,
       "execution_mode": "tradable",
-      "asset_state": "EARLY_CONVICTION",
+      "asset_state": "DATA_QUALITY_HOLD",
       "bias": "NEUTRAL",
-      "action": "LONG",
-      "confidence": "MEDIUM",
-      "score": 34.7,
-      "expectancy_probability": 0.7091,
-      "expectancy_expected_r": 1.34,
-      "live_price": 77422.5,
+      "action": "FLAT",
+      "confidence": "LOW",
+      "score": 34.1,
+      "expectancy_probability": 0.6882,
+      "expectancy_expected_r": 2.028,
+      "live_price": 77419.0,
       "levels": {
         "support": 77000.0,
         "resistance": 78000.0,
@@ -1156,31 +1156,18 @@
         "short_trigger": 77000.0
       },
       "dossier": {
-        "current_read": "Thesis medium: Scalp long: breakdown/breakout is confirmed, book pressure is long, daily map permits the long.",
-        "next_unblock": "Scalp long: breakdown/breakout is confirmed, book pressure is long, daily map permits the long.",
+        "current_read": "Thesis low: higher structure is still ranging",
+        "next_unblock": "live venue price is stale",
         "invalidation": "lose 71,500",
         "playbook": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
         "narrative": "Narrative flow is neutral",
-        "analog": "5 analogs \u2022 win 59% \u2022 avg pnl -0.21% \u2022 avg R -0.29 \u2022 reliability 0.77",
+        "analog": "5 analogs \u2022 win 0% \u2022 avg pnl -0.15% \u2022 avg R +0.00 \u2022 reliability 0.89",
         "recent_lesson": "Only re-take this pattern when the market map, structure, and order-flow line up more cleanly.",
         "recent_trade_logic": "Long wait: chart is moving, but the driver is not strong yet. \u2022 auto neutral map; price is sitting in mapped demand; price is sitting in mapped supply; price is pressing mapped resistance \u2022 levels: at support"
       },
       "missed_move_context": {
-        "miss_count": 0,
-        "latest": {
-          "action": "LONG",
-          "breakout": "confirmed_bullish_breakout",
-          "coin": "BTC",
-          "interaction": "at_support",
-          "probability": 0.6779,
-          "recorded_at": "2026-11-02 13:34:00",
-          "regime": "breakout",
-          "risk_reward_ratio": 1.51,
-          "score": 70.66,
-          "stage": "data_reliability_block",
-          "summary": "live venue price is stale",
-          "ts": 1793606640.776854
-        },
+        "miss_count": 49,
+        "latest": {},
         "daily_top_mover_replay": {}
       },
       "playbook_distiller": {},
@@ -1324,14 +1311,14 @@
       "asset_bucket": "equity",
       "tradable": true,
       "execution_mode": "tradable",
-      "asset_state": "MAJOR_CATALYST_WATCH",
+      "asset_state": "DATA_QUALITY_HOLD",
       "bias": "BEARISH",
       "action": "FLAT",
       "confidence": "LOW",
-      "score": 53.7,
-      "expectancy_probability": 0.6839,
-      "expectancy_expected_r": 0.738,
-      "live_price": 99.033,
+      "score": 56.6,
+      "expectancy_probability": 0.8528,
+      "expectancy_expected_r": 1.121,
+      "live_price": 99.119,
       "levels": {
         "support": 98.0,
         "resistance": 100.0,
@@ -1339,12 +1326,12 @@
         "short_trigger": 98.0
       },
       "dossier": {
-        "current_read": "Thesis low: planned R:R 1.54 is below 1.75",
-        "next_unblock": "Major catalyst watch: hold back above 100.00 and keep the reclaim to unlock the long.",
+        "current_read": "live venue price is stale",
+        "next_unblock": "live venue price is stale",
         "invalidation": "Reclaim 100.00",
         "playbook": "Sell rallies into supply/resistance; press harder after breakdown closes confirm.",
         "narrative": "headline flow is leaning bullish; catalyst checklist aligned: platform anchor + partner attached + strategic deal + capacity lock-in + options implied move + analyst revision",
-        "analog": "5 analogs \u2022 win 39% \u2022 avg pnl -0.46% \u2022 avg R -0.08 \u2022 reliability 0.73",
+        "analog": "5 analogs \u2022 win 80% \u2022 avg pnl +1.07% \u2022 avg R +0.54 \u2022 reliability 0.82",
         "recent_lesson": "This setup paid. Keep favoring trades where structure, levels, and invalidation stay this coherent.",
         "recent_trade_logic": "Thesis medium: Pre-event starter long allowed: catalyst 6.10, news 61, p 95%, score 48.2 vs 65 trigger. Begin 44% size before full confirmation. Thesis: platform anchor + capacity lock-in + pre-IPO listing + IPO event + SEC filing flow + options implied move. | Expectancy: Pre-event starter long allowed: catalyst 6.10, news 61, p 95%, score 48.2 vs 65 trigger. Begin 44% size before full confirmation. Thesis: platform anchor + capacity lock-in + pre-IPO listing + IPO event + SEC filing flow + options implied move. | Structure: RANGING | Regime: TREND | Fib: Near swing high (fib 78.6\u2013100%) | RSI 64 | MACD bearish | F&G: Extreme Fear (25) | High vol (x2.5) | ATR extreme | News: 61/100 (EXTREME) | Catalyst: platform anchor + capacity lock-in + pre-IPO listing + IPO event + SEC filing flow + options implied move | Candles: Morning Star | Levels: At Resistance | Breakout: Persistent Bullish Breakout | Book imbalance -0.50 | Map: auto bullish map; daily breakdown was confirmed, but live price bounced back above breakdown; price is sitting in mapped demand; price is sitting in mapped supply | Narrative: headline flow is leaning bullish; catalyst checklist aligned: platform anchor + capacity lock-in + pre-IPO listing + IPO event + SEC filing flow + options implied move \u2022 Pre-event starter long allowed: catalyst 6.10, news 61, p 95%, score 48.2 vs 65 trigger. Begin 44% size before full confirmation. Thesis: platform anchor + capacity lock-in + pre-IPO listing + IPO event + SEC filing flow + options implied move. \u2022 auto bullish map; daily breakdown was confirmed, but live price bounced back above breakdown; price is sitting in mapped demand; price is sitting in mapped supply"
       },
@@ -1352,18 +1339,18 @@
         "miss_count": 0,
         "latest": {},
         "daily_top_mover_replay": {
-          "blocked_at": "2026-11-02 15:52:15",
-          "blocked_stage": "data_reliability_block",
+          "blocked_at": "2026-11-02 18:42:46",
+          "blocked_stage": "patient_execution_block",
           "coin": "CBRS",
-          "conviction_entry_event": true,
-          "direction": "LONG",
+          "conviction_entry_event": false,
+          "direction": "SHORT",
           "event_budget_summary": "",
-          "move_pct": 0.765,
+          "move_pct": -6.357,
           "news_catalyst_score": 5.75,
           "news_event_score": 5.75,
-          "probability": 0.9209,
-          "score": 98.06,
-          "summary": "live venue price is stale"
+          "probability": 0.8243,
+          "score": 100.0,
+          "summary": "Thesis medium: Scalp short: breakdown/breakout is confirmed, recent candles confirm, book pressure is short."
         }
       },
       "playbook_distiller": {},
@@ -1416,11 +1403,11 @@
       "asset_state": "OBSERVATION_ONLY",
       "bias": "NEUTRAL",
       "action": "FLAT",
-      "confidence": "LOW",
-      "score": 41.4,
+      "confidence": "MEDIUM",
+      "score": 39.4,
       "expectancy_probability": 0.5,
       "expectancy_expected_r": 0.0,
-      "live_price": 263.575012,
+      "live_price": 263.845001,
       "levels": {
         "support": 260.337494,
         "resistance": 266.684622,
@@ -1439,7 +1426,20 @@
       },
       "missed_move_context": {
         "miss_count": 0,
-        "latest": {},
+        "latest": {
+          "action": "SHORT",
+          "breakout": "none",
+          "coin": "CEG",
+          "interaction": "between_levels",
+          "probability": 0.5957,
+          "recorded_at": "2026-11-02 20:03:20",
+          "regime": "absorption",
+          "risk_reward_ratio": 4.13,
+          "score": 82.2,
+          "stage": "observation_only",
+          "summary": "Thesis medium: Scalp short: countertrend scalp only, newsflow backs the scalp, daily map permits the short.",
+          "ts": 1793630000.2508101
+        },
         "daily_top_mover_replay": {}
       },
       "playbook_distiller": {},
@@ -1458,7 +1458,7 @@
       "score": 48.2,
       "expectancy_probability": 0.5,
       "expectancy_expected_r": 0.0,
-      "live_price": 6.98,
+      "live_price": 6.985,
       "levels": {
         "support": 6.93,
         "resistance": 7.25,
@@ -1477,7 +1477,20 @@
       },
       "missed_move_context": {
         "miss_count": 0,
-        "latest": {},
+        "latest": {
+          "action": "SHORT",
+          "breakout": "none",
+          "coin": "CIFR",
+          "interaction": "between_levels",
+          "probability": 0.6766,
+          "recorded_at": "2026-11-02 20:03:07",
+          "regime": "breakout",
+          "risk_reward_ratio": 1.57,
+          "score": 72.79,
+          "stage": "observation_only",
+          "summary": "Thesis medium: Scalp short: recent candles confirm, daily map permits the short, score is close enough for a tactical short.",
+          "ts": 1793629987.623195
+        },
         "daily_top_mover_replay": {}
       },
       "playbook_distiller": {},
@@ -1831,14 +1844,14 @@
       "asset_bucket": "equity",
       "tradable": true,
       "execution_mode": "tradable",
-      "asset_state": "OBSERVING",
+      "asset_state": "DATA_QUALITY_HOLD",
       "bias": "BEARISH",
       "action": "FLAT",
-      "confidence": "HIGH",
+      "confidence": "LOW",
       "score": 21.2,
-      "expectancy_probability": 0.5,
-      "expectancy_expected_r": 0.0,
-      "live_price": 52.68,
+      "expectancy_probability": 0.4046,
+      "expectancy_expected_r": 0.618,
+      "live_price": 52.639,
       "levels": {
         "support": 52.0,
         "resistance": 54.0,
@@ -1846,31 +1859,31 @@
         "short_trigger": 52.0
       },
       "dossier": {
-        "current_read": "Thesis low: Raw score remained inside the no-trade zone",
-        "next_unblock": "Wait for structure and execution quality to align.",
+        "current_read": "Thesis low: higher structure is still an uptrend",
+        "next_unblock": "live venue price is stale",
         "invalidation": "Reclaim 54.00",
         "playbook": "Sell rallies into supply/resistance; press harder after breakdown closes confirm.",
         "narrative": "headline flow is leaning bullish; catalyst checklist aligned: platform anchor + demand commitment + capacity lock-in + options implied move + analyst revision + analyst conviction",
-        "analog": "no directional analog lookup for flat setup",
+        "analog": "5 analogs \u2022 win 41% \u2022 avg pnl -0.05% \u2022 avg R +0.08 \u2022 reliability 0.80",
         "recent_lesson": "Only re-take this pattern when the market map, structure, and order-flow line up more cleanly.",
         "recent_trade_logic": "Thesis medium: Scalp short: breakdown/breakout is confirmed, structure flipped down, countertrend scalp only. | Expectancy: estimated win probability 75%; expected value +1.30R; uncertainty 31% | Bearish CHoCH: uptrend broken, HL violated at 73.99 | Regime: BREAKOUT | Fib: Bearish fib zone (61.8\u201378.6%) \u2190 at 78.6% (golden ratio resistance) | RSI 40 | MACD bearish | F&G: Fear (28) | Crypto mode: RISK_ON / BULLISH | High vol (x2.5) | News: 61/100 (EXTREME) | Catalyst: platform anchor + partner attached + capacity lock-in + options implied move + analyst revision + analyst conviction | Candles: Evening Star | Levels: At Support | Breakout: Persistent Bearish Breakdown | Book imbalance +0.38 | Map: auto bearish map; daily reclaim was confirmed, but live price slipped back below reclaim; price is sitting in mapped demand; price is sitting in mapped supply | Narrative: headline flow is leaning bullish; catalyst checklist aligned: platform anchor + partner attached + capacity lock-in + options implied move + analyst revision + analyst conviction \u2022 Scalp short: breakdown/breakout is confirmed, structure flipped down, countertrend scalp only. \u2022 auto bearish map; daily reclaim was confirmed, but live price slipped back below reclaim; price is sitting in mapped demand; price is sitting in mapped supply"
       },
       "missed_move_context": {
-        "miss_count": 53,
+        "miss_count": 49,
         "latest": {},
         "daily_top_mover_replay": {
-          "blocked_at": "2026-11-02 16:38:14",
-          "blocked_stage": "major_catalyst_watch",
+          "blocked_at": "2026-11-02 20:03:12",
+          "blocked_stage": "data_reliability_block",
           "coin": "CRWV",
           "conviction_entry_event": true,
           "direction": "LONG",
           "event_budget_summary": "",
-          "move_pct": 3.01,
+          "move_pct": 1.721,
           "news_catalyst_score": 5.2,
           "news_event_score": 5.2,
-          "probability": 0.8104,
-          "score": 96.0,
-          "summary": "embargoed after 6 LONG trades with 17% win rate"
+          "probability": 0.9656,
+          "score": 100.0,
+          "summary": "live venue price is stale"
         }
       },
       "playbook_distiller": {},
@@ -1985,7 +1998,20 @@
       "missed_move_context": {
         "miss_count": 0,
         "latest": {},
-        "daily_top_mover_replay": {}
+        "daily_top_mover_replay": {
+          "blocked_at": "2026-11-02 22:37:20",
+          "blocked_stage": "first_principles_guard_block",
+          "coin": "DELL",
+          "conviction_entry_event": false,
+          "direction": "SHORT",
+          "event_budget_summary": "",
+          "move_pct": -2.859,
+          "news_catalyst_score": 0.0,
+          "news_event_score": 0.0,
+          "probability": 0.7523,
+          "score": 96.0,
+          "summary": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid SHORT: 45% WR, $-72.20."
+        }
       },
       "playbook_distiller": {},
       "llm_referee": {}
@@ -2376,14 +2402,14 @@
       "asset_bucket": "coin",
       "tradable": true,
       "execution_mode": "tradable",
-      "asset_state": "ARMED",
+      "asset_state": "DATA_QUALITY_HOLD",
       "bias": "BEARISH",
       "action": "FLAT",
-      "confidence": "MEDIUM",
-      "score": 64.2,
-      "expectancy_probability": 0.6963,
-      "expectancy_expected_r": 2.294,
-      "live_price": 2266.95,
+      "confidence": "LOW",
+      "score": 60.0,
+      "expectancy_probability": 0.5,
+      "expectancy_expected_r": 0.0,
+      "live_price": 2266.8,
       "levels": {
         "support": 2250.0,
         "resistance": 2300.0,
@@ -2391,12 +2417,12 @@
         "short_trigger": 2250.0
       },
       "dossier": {
-        "current_read": "win-rate recovery blocks LONG: needs fundamentals, attention, and flow to line up",
-        "next_unblock": "historical analogs oppose this setup (5 close matches)",
+        "current_read": "Thesis low: Raw score remained inside the no-trade zone",
+        "next_unblock": "live venue price is stale",
         "invalidation": "Reclaim 2,300.00",
         "playbook": "Sell rallies into supply/resistance; press harder after breakdown closes confirm.",
         "narrative": "Narrative flow is neutral",
-        "analog": "5 analogs \u2022 win 80% \u2022 avg pnl -0.07% \u2022 avg R -0.06 \u2022 reliability 0.78",
+        "analog": "no directional analog lookup for flat setup",
         "recent_lesson": "This setup paid. Keep favoring trades where structure, levels, and invalidation stay this coherent.",
         "recent_trade_logic": "Bullish trigger hit: live $1,947.85 crossed $1,946.50. \u2022 Bullish trigger hit: live $1,947.85 vs trigger $1,946.50. \u2022 auto bullish map; daily reclaim is holding; price is sitting in mapped demand; price is sitting in mapped supply"
       },
@@ -2407,29 +2433,16 @@
           "breakout": "confirmed_bearish_breakdown",
           "coin": "ETH",
           "interaction": "at_support",
-          "probability": 0.9625,
-          "recorded_at": "2026-11-02 14:28:15",
+          "probability": 0.9172,
+          "recorded_at": "2026-11-02 15:36:39",
           "regime": "breakout",
-          "risk_reward_ratio": 1.61,
+          "risk_reward_ratio": 3.0,
           "score": 100.0,
           "stage": "win_rate_context_guard_block",
           "summary": "win-rate recovery blocks SHORT: needs fundamentals, attention, and flow to line up",
-          "ts": 1793609895.2199948
+          "ts": 1793613999.3906329
         },
-        "daily_top_mover_replay": {
-          "blocked_at": "2026-11-01 23:55:36",
-          "blocked_stage": "win_rate_context_guard_block",
-          "coin": "ETH",
-          "conviction_entry_event": false,
-          "direction": "LONG",
-          "event_budget_summary": "",
-          "move_pct": 1.043,
-          "news_catalyst_score": 0.0,
-          "news_event_score": 0.0,
-          "probability": 0.8757,
-          "score": 92.72,
-          "summary": "win-rate recovery blocks LONG: needs fundamentals, attention, and flow to line up"
-        }
+        "daily_top_mover_replay": {}
       },
       "playbook_distiller": {},
       "llm_referee": {}
@@ -2800,7 +2813,7 @@
         "current_read": "No clean edge right now.",
         "next_unblock": "Wait for structure and execution quality to align.",
         "invalidation": "No clear invalidation level recorded yet.",
-        "playbook": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
+        "playbook": "Wait for cleaner session structure, catalyst alignment, and cleaner fills.",
         "narrative": "No special narrative risk flagged.",
         "analog": "No strong analog edge recorded yet.",
         "recent_lesson": "No symbol-specific lesson recorded yet.",
@@ -2845,7 +2858,7 @@
         "recent_trade_logic": "Thesis medium: Scalp short: breakdown/breakout is confirmed, recent candles confirm, book pressure is short. | Expectancy: Scalp short: breakdown/breakout is confirmed, recent candles confirm, book pressure is short. | Structure: DOWNTREND | Regime: ABSORPTION | Fib: Near swing low (fib 0\u201323.6%) | RSI oversold (29) | MACD bearish | F&G: Fear (27) | Crypto mode: DRAWDOWN / BEARISH | High vol (x1.5) | News: 51/100 (EXTREME) | Catalyst: strategic deal + SEC filing flow + options implied move | Candles: Spinning Top+Bearish Engulfing | Levels: At Resistance | Breakout: Persistent Bearish Breakdown | Book imbalance +0.34 | Map: auto bearish map; price is sitting in mapped demand; price is testing mapped support | Narrative: Narrative flow is neutral \u2022 Scalp short: breakdown/breakout is confirmed, recent candles confirm, book pressure is short. \u2022 auto bearish map; price is sitting in mapped demand; price is testing mapped support"
       },
       "missed_move_context": {
-        "miss_count": 51,
+        "miss_count": 56,
         "latest": {},
         "daily_top_mover_replay": {}
       },
@@ -3314,24 +3327,24 @@
       "asset_bucket": "equity",
       "tradable": true,
       "execution_mode": "tradable",
-      "asset_state": "OBSERVING",
+      "asset_state": "DATA_QUALITY_HOLD",
       "bias": "BULLISH",
       "action": "FLAT",
       "confidence": "LOW",
-      "score": 42.3,
+      "score": 41.7,
       "expectancy_probability": 0.5,
       "expectancy_expected_r": 0.0,
-      "live_price": 259.285,
+      "live_price": 259.22,
       "levels": {
-        "support": 255.0,
+        "support": 256.516094,
         "resistance": 260.51,
         "long_trigger": 260.51,
-        "short_trigger": 255.0
+        "short_trigger": 256.516094
       },
       "dossier": {
         "current_read": "Thesis low: Raw score remained inside the no-trade zone",
-        "next_unblock": "Wait for structure and execution quality to align.",
-        "invalidation": "Lose 255.00",
+        "next_unblock": "live venue price is stale",
+        "invalidation": "Lose 256.52",
         "playbook": "Buy pullbacks into support/demand; press harder after reclaim closes confirm.",
         "narrative": "Narrative flow is neutral",
         "analog": "no directional analog lookup for flat setup",
@@ -3339,7 +3352,7 @@
         "recent_trade_logic": ""
       },
       "missed_move_context": {
-        "miss_count": 0,
+        "miss_count": 60,
         "latest": {},
         "daily_top_mover_replay": {}
       },
@@ -3408,7 +3421,7 @@
         "current_read": "No clean edge right now.",
         "next_unblock": "Wait for structure and execution quality to align.",
         "invalidation": "No clear invalidation level recorded yet.",
-        "playbook": "Wait for cleaner session structure, catalyst alignment, and cleaner fills.",
+        "playbook": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
         "narrative": "No special narrative risk flagged.",
         "analog": "No strong analog edge recorded yet.",
         "recent_lesson": "No symbol-specific lesson recorded yet.",
@@ -3504,14 +3517,14 @@
       "asset_bucket": "equity",
       "tradable": true,
       "execution_mode": "tradable",
-      "asset_state": "MAJOR_CATALYST_WATCH",
+      "asset_state": "DATA_QUALITY_HOLD",
       "bias": "BEARISH",
       "action": "FLAT",
       "confidence": "LOW",
-      "score": 13.8,
-      "expectancy_probability": 0.723,
-      "expectancy_expected_r": 2.357,
-      "live_price": 62.8695,
+      "score": 13.3,
+      "expectancy_probability": 0.7591,
+      "expectancy_expected_r": 3.963,
+      "live_price": 62.872,
       "levels": {
         "support": 62.0,
         "resistance": 64.0,
@@ -3519,32 +3532,19 @@
         "short_trigger": 62.0
       },
       "dossier": {
-        "current_read": "Thesis low: demand/support is still defending below price",
-        "next_unblock": "Major catalyst watch: break below 62.00 on a clean hold before shorting.",
+        "current_read": "Thesis low: daily market map still warns against shorts here",
+        "next_unblock": "live venue price is stale",
         "invalidation": "Reclaim 64.00",
         "playbook": "Sell rallies into supply/resistance; press harder after breakdown closes confirm.",
         "narrative": "headline flow is leaning bullish; catalyst checklist aligned: platform anchor + demand commitment + capacity lock-in + memory cycle + SEC filing flow + options implied move",
-        "analog": "5 analogs \u2022 win 38% \u2022 avg pnl -0.53% \u2022 avg R -0.21 \u2022 reliability 0.77",
+        "analog": "5 analogs \u2022 win 19% \u2022 avg pnl -1.24% \u2022 avg R -0.52 \u2022 reliability 0.81",
         "recent_lesson": "Avoid shorting straight into defended support and demand.",
         "recent_trade_logic": "Thesis medium: Scalp short: breakdown/breakout is confirmed, book pressure is short, daily map permits the short. | Expectancy: Scalp short: breakdown/breakout is confirmed, book pressure is short, daily map permits the short. | Structure: RANGING | Regime: BREAKOUT | Fib: Near swing high (fib 78.6\u2013100%) \u2190 at 78.6% (golden ratio resistance) | RSI 63 | MACD bullish | F&G: Fear (29) | Crypto mode: DRAWDOWN / BEARISH | News: 61/100 (EXTREME) | Catalyst: platform anchor + capacity lock-in + earnings event + pre-event setup + options implied move + analyst revision | Candles: Morning Star | Levels: At Support | Breakout: Confirmed Bearish Breakdown | Book imbalance -0.24 | Map: auto bearish map; daily breakdown was confirmed, but live price bounced back above breakdown; price is sitting in mapped demand; price is sitting in mapped supply | Narrative: headline flow is leaning bullish; catalyst checklist aligned: platform anchor + capacity lock-in + earnings event + pre-event setup + options implied move + analyst revision \u2022 Scalp short: breakdown/breakout is confirmed, book pressure is short, daily map permits the short. \u2022 auto bearish map; daily breakdown was confirmed, but live price bounced back above breakdown; price is sitting in mapped demand; price is sitting in mapped supply"
       },
       "missed_move_context": {
-        "miss_count": 71,
+        "miss_count": 98,
         "latest": {},
-        "daily_top_mover_replay": {
-          "blocked_at": "2026-11-02 15:36:21",
-          "blocked_stage": "patient_execution_block",
-          "coin": "INTC",
-          "conviction_entry_event": false,
-          "direction": "SHORT",
-          "event_budget_summary": "",
-          "move_pct": -1.115,
-          "news_catalyst_score": 9.18,
-          "news_event_score": 9.18,
-          "probability": 0.711,
-          "score": 80.86,
-          "summary": "Thesis medium: Scalp short: breakdown/breakout is confirmed, recent candles confirm, book pressure is short."
-        }
+        "daily_top_mover_replay": {}
       },
       "playbook_distiller": {},
       "llm_referee": {}
@@ -3745,14 +3745,14 @@
       "asset_bucket": "equity",
       "tradable": true,
       "execution_mode": "tradable",
-      "asset_state": "OBSERVING",
+      "asset_state": "DATA_QUALITY_HOLD",
       "bias": "BEARISH",
       "action": "FLAT",
       "confidence": "LOW",
-      "score": 45.7,
+      "score": 47.0,
       "expectancy_probability": 0.5,
       "expectancy_expected_r": 0.0,
-      "live_price": 69.595,
+      "live_price": 69.593,
       "levels": {
         "support": 69.0,
         "resistance": 71.0,
@@ -3761,7 +3761,7 @@
       },
       "dossier": {
         "current_read": "Thesis low: Raw score remained inside the no-trade zone",
-        "next_unblock": "Wait for structure and execution quality to align.",
+        "next_unblock": "live venue price is stale",
         "invalidation": "Reclaim 71.00",
         "playbook": "Sell rallies into supply/resistance; press harder after breakdown closes confirm.",
         "narrative": "Narrative flow is neutral",
@@ -4087,7 +4087,7 @@
         "recent_trade_logic": "Thesis medium: Scalp short: breakdown/breakout is confirmed, book pressure is short, daily map permits the short. | Expectancy: Scalp short: breakdown/breakout is confirmed, book pressure is short, daily map permits the short. | Structure: RANGING | Regime: ABSORPTION | Fib: Fib 50\u201361.8% (mild bearish) \u2190 touching 61.8% (golden ratio support) | RSI 60 | MACD bullish | F&G: Extreme Fear (25) | Crypto mode: BALANCED / NEUTRAL | News: 51/100 (EXTREME) | Catalyst: capital commitment + capacity lock-in + options implied move + analyst revision | Candles: Bullish Marubozu | Levels: At Support | Breakout: Confirmed Bearish Breakdown | Book imbalance +0.26 | Map: auto neutral map; price is sitting in mapped supply; price is pressing mapped resistance | Narrative: Narrative flow is neutral \u2022 Scalp short: breakdown/breakout is confirmed, book pressure is short, daily map permits the short. \u2022 auto neutral map; price is sitting in mapped supply; price is pressing mapped resistance"
       },
       "missed_move_context": {
-        "miss_count": 81,
+        "miss_count": 86,
         "latest": {},
         "daily_top_mover_replay": {}
       },
@@ -4430,7 +4430,20 @@
       },
       "missed_move_context": {
         "miss_count": 0,
-        "latest": {},
+        "latest": {
+          "action": "SHORT",
+          "breakout": "persistent_bearish_breakdown",
+          "coin": "MON",
+          "interaction": "below_breakdown",
+          "probability": 0.9067,
+          "recorded_at": "2026-11-02 22:23:20",
+          "regime": "absorption",
+          "risk_reward_ratio": 1.65,
+          "score": 100.0,
+          "stage": "first_principles_guard_block",
+          "summary": "first-principles guard: marginal SHORT needs stronger fundamentals/attention; Avoid crypto SHORT: 45% WR, $-72.20.",
+          "ts": 1793638400.0471911
+        },
         "daily_top_mover_replay": {}
       },
       "playbook_distiller": {},
@@ -4480,14 +4493,14 @@
       "asset_bucket": "equity",
       "tradable": true,
       "execution_mode": "tradable",
-      "asset_state": "OBSERVING",
+      "asset_state": "DATA_QUALITY_HOLD",
       "bias": "BULLISH",
       "action": "FLAT",
       "confidence": "MEDIUM",
-      "score": 64.2,
+      "score": 61.4,
       "expectancy_probability": 0.5,
       "expectancy_expected_r": 0.0,
-      "live_price": 226.245,
+      "live_price": 226.18,
       "levels": {
         "support": 220.0,
         "resistance": 227.35,
@@ -4496,7 +4509,7 @@
       },
       "dossier": {
         "current_read": "Thesis low: Raw score remained inside the no-trade zone",
-        "next_unblock": "Wait for structure and execution quality to align.",
+        "next_unblock": "live venue price is stale",
         "invalidation": "Lose 220.00",
         "playbook": "Buy pullbacks into support/demand; press harder after reclaim closes confirm.",
         "narrative": "Narrative flow is neutral",
@@ -4507,7 +4520,20 @@
       "missed_move_context": {
         "miss_count": 0,
         "latest": {},
-        "daily_top_mover_replay": {}
+        "daily_top_mover_replay": {
+          "blocked_at": "2026-11-02 20:03:31",
+          "blocked_stage": "data_reliability_block",
+          "coin": "MRNA",
+          "conviction_entry_event": false,
+          "direction": "LONG",
+          "event_budget_summary": "",
+          "move_pct": 2.81,
+          "news_catalyst_score": 0.0,
+          "news_event_score": 0.0,
+          "probability": 0.741,
+          "score": 96.0,
+          "summary": "price moved too far since the conviction snapshot"
+        }
       },
       "playbook_distiller": {},
       "llm_referee": {}
@@ -4619,7 +4645,7 @@
         "recent_trade_logic": "Thesis high: strong support defense is holding beneath price; pre-event catalyst flow supports taking starter risk before full price confirmation; demand/supply catalyst is directly tied to the equity theme | Expectancy: estimated win probability 95%; expected value +4.26R; uncertainty 7% | Structure: RANGING | Regime: TREND | Fib: Fib 50\u201361.8% (mild bearish) \u2190 touching 61.8% (golden ratio support) | RSI 47 | MACD bearish | F&G: Fear (33) | Crypto mode: RISK_ON / BULLISH | News: 61/100 (EXTREME) | Catalyst: demand commitment + SEC filing flow + options implied move + analyst revision + analyst conviction | Levels: At Support | Breakout: Confirmed Bullish Breakout | Book imbalance -0.04 | Map: auto neutral map; daily reclaim was confirmed, but live price slipped back below reclaim | Narrative: headline flow is leaning bullish; catalyst checklist aligned: demand commitment + SEC filing flow + options implied move + analyst revision + analyst conviction \u2022 strong support defense is holding beneath price; pre-event catalyst flow supports taking starter risk before full price confirmation; demand/supply catalyst is directly tied to the equity theme \u2022 auto neutral map; daily reclaim was confirmed, but live price slipped back below reclaim"
       },
       "missed_move_context": {
-        "miss_count": 47,
+        "miss_count": 0,
         "latest": {},
         "daily_top_mover_replay": {}
       },
@@ -4771,7 +4797,7 @@
         "recent_trade_logic": ""
       },
       "missed_move_context": {
-        "miss_count": 45,
+        "miss_count": 0,
         "latest": {},
         "daily_top_mover_replay": {}
       },
@@ -4916,7 +4942,7 @@
         "current_read": "No clean edge right now.",
         "next_unblock": "Wait for structure and execution quality to align.",
         "invalidation": "No clear invalidation level recorded yet.",
-        "playbook": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
+        "playbook": "Wait for cleaner session structure, catalyst alignment, and cleaner fills.",
         "narrative": "No special narrative risk flagged.",
         "analog": "No strong analog edge recorded yet.",
         "recent_lesson": "No symbol-specific lesson recorded yet.",
@@ -5144,7 +5170,7 @@
         "current_read": "No clean edge right now.",
         "next_unblock": "Wait for structure and execution quality to align.",
         "invalidation": "No clear invalidation level recorded yet.",
-        "playbook": "Wait for cleaner session structure, catalyst alignment, and cleaner fills.",
+        "playbook": "Range the edges only; wait for reclaim/breakdown confirmation before pressing.",
         "narrative": "No special narrative risk flagged.",
         "analog": "No strong analog edge recorded yet.",
         "recent_lesson": "No symbol-specific lesson recorded yet.",
@@ -6292,8 +6318,34 @@
       },
       "missed_move_context": {
         "miss_count": 0,
-        "latest": {},
-        "daily_top_mover_replay": {}
+        "latest": {
+          "action": "LONG",
+          "breakout": "confirmed_bullish_breakout",
+          "coin": "SOL",
+          "interaction": "at_support",
+          "probability": 0.6582,
+          "recorded_at": "2026-11-02 19:59:38",
+          "regime": "absorption",
+          "risk_reward_ratio": 1.87,
+          "score": 75.49,
+          "stage": "mtf_block",
+          "summary": "Thesis medium: Scalp long: breakdown/breakout is confirmed, recent candles confirm, book pressure is long.",
+          "ts": 1793629778.695641
+        },
+        "daily_top_mover_replay": {
+          "blocked_at": "2026-11-02 21:40:48",
+          "blocked_stage": "data_reliability_block",
+          "coin": "SOL",
+          "conviction_entry_event": false,
+          "direction": "SHORT",
+          "event_budget_summary": "",
+          "move_pct": -1.579,
+          "news_catalyst_score": 0.0,
+          "news_event_score": 0.0,
+          "probability": 0.6767,
+          "score": 87.39,
+          "summary": "live venue price is stale"
+        }
       },
       "playbook_distiller": {},
       "llm_referee": {}
@@ -6342,14 +6394,14 @@
       "asset_bucket": "equity",
       "tradable": true,
       "execution_mode": "tradable",
-      "asset_state": "OBSERVING",
+      "asset_state": "DATA_QUALITY_HOLD",
       "bias": "BEARISH",
       "action": "FLAT",
       "confidence": "LOW",
-      "score": 46.2,
+      "score": 52.1,
       "expectancy_probability": 0.5,
       "expectancy_expected_r": 0.0,
-      "live_price": 7616.25,
+      "live_price": 7616.2,
       "levels": {
         "support": 7610.35,
         "resistance": 7686.621441,
@@ -6358,7 +6410,7 @@
       },
       "dossier": {
         "current_read": "Thesis low: Raw score remained inside the no-trade zone",
-        "next_unblock": "Wait for structure and execution quality to align.",
+        "next_unblock": "live venue price is stale",
         "invalidation": "Reclaim 7,686.62",
         "playbook": "Sell rallies into supply/resistance; press harder after breakdown closes confirm.",
         "narrative": "Narrative flow is neutral",
@@ -6633,7 +6685,7 @@
         "recent_trade_logic": "Thesis medium: Scalp short: breakdown/breakout is confirmed, recent candles confirm, book pressure is short. | Expectancy: estimated win probability 88%; expected value +1.65R; uncertainty 26% | Structure: RANGING | Regime: BREAKOUT | Fib: Near swing low (fib 0\u201323.6%) | RSI oversold (34) | MACD bearish | F&G: Fear (29) | Crypto mode: BALANCED / NEUTRAL | High vol (x2.5) | News: 61/100 (EXTREME) | Catalyst: platform anchor + capital commitment + demand commitment + earnings event + SEC filing flow + options implied move | Candles: Evening Star | Levels: At Support | Breakout: Persistent Bearish Breakdown | Book imbalance -0.18 | Map: auto bearish map; daily reclaim was confirmed, but live price slipped back below reclaim | Narrative: headline flow is leaning bullish; catalyst checklist aligned: platform anchor + capital commitment + demand commitment + earnings event + SEC filing flow + options implied move \u2022 Scalp short: breakdown/breakout is confirmed, recent candles confirm, book pressure is short. \u2022 auto bearish map; daily reclaim was confirmed, but live price slipped back below reclaim"
       },
       "missed_move_context": {
-        "miss_count": 101,
+        "miss_count": 104,
         "latest": {},
         "daily_top_mover_replay": {}
       },
@@ -6646,14 +6698,14 @@
       "asset_bucket": "equity",
       "tradable": true,
       "execution_mode": "tradable",
-      "asset_state": "MAJOR_CATALYST_WATCH",
+      "asset_state": "DATA_QUALITY_HOLD",
       "bias": "BEARISH",
       "action": "FLAT",
       "confidence": "LOW",
-      "score": 15.9,
-      "expectancy_probability": 0.3818,
-      "expectancy_expected_r": 0.608,
-      "live_price": 406.56,
+      "score": 16.4,
+      "expectancy_probability": 0.3969,
+      "expectancy_expected_r": 0.454,
+      "live_price": 406.55,
       "levels": {
         "support": 400.561875,
         "resistance": 410.0,
@@ -6662,31 +6714,18 @@
       },
       "dossier": {
         "current_read": "Thesis low: higher structure is still an uptrend",
-        "next_unblock": "Major catalyst watch: break below 400.56 on a clean hold before shorting.",
+        "next_unblock": "live venue price is stale",
         "invalidation": "Reclaim 410.00",
         "playbook": "Sell rallies into supply/resistance; press harder after breakdown closes confirm.",
         "narrative": "headline flow is leaning bullish; catalyst checklist aligned: earnings event + pre-event setup + SEC filing flow + options implied move + analyst revision + analyst conviction",
-        "analog": "5 analogs \u2022 win 60% \u2022 avg pnl -0.07% \u2022 avg R -0.03 \u2022 reliability 0.72",
+        "analog": "5 analogs \u2022 win 60% \u2022 avg pnl -0.07% \u2022 avg R -0.03 \u2022 reliability 0.77",
         "recent_lesson": "The invalidation was hit quickly. Demand cleaner alignment before taking this setup again.",
         "recent_trade_logic": "Thesis medium: pre-event catalyst flow supports taking starter risk before full price confirmation; demand/supply catalyst is directly tied to the equity theme; daily breakout is already confirmed | Expectancy: estimated win probability 95%; expected value +1.73R; uncertainty 19% | Structure: RANGING | Regime: BREAKOUT | Fib: Near swing low (fib 0\u201323.6%) | RSI 40 | MACD bearish | F&G: Fear (31) | Crypto mode: DRAWDOWN / BEARISH | News: 61/100 (EXTREME) | Catalyst: demand commitment + capacity lock-in + SEC filing flow + options implied move + analyst revision + analyst conviction | Levels: At Support | Breakout: Confirmed Bullish Breakout | Book imbalance -0.21 | Map: auto neutral map; daily reclaim was confirmed, but live price slipped back below reclaim; price is sitting in mapped demand; price is testing mapped support | Narrative: headline flow is leaning bullish; catalyst checklist aligned: demand commitment + capacity lock-in + SEC filing flow + options implied move + analyst revision + analyst conviction \u2022 pre-event catalyst flow supports taking starter risk before full price confirmation; demand/supply catalyst is directly tied to the equity theme; daily breakout is already confirmed \u2022 auto neutral map; daily reclaim was confirmed, but live price slipped back below reclaim; price is sitting in mapped demand; price is testing mapped support"
       },
       "missed_move_context": {
-        "miss_count": 54,
+        "miss_count": 51,
         "latest": {},
-        "daily_top_mover_replay": {
-          "blocked_at": "2026-11-02 16:38:33",
-          "blocked_stage": "patient_execution_block",
-          "coin": "TSM",
-          "conviction_entry_event": true,
-          "direction": "LONG",
-          "event_budget_summary": "",
-          "move_pct": 1.281,
-          "news_catalyst_score": 5.85,
-          "news_event_score": 5.85,
-          "probability": 0.8726,
-          "score": 100.0,
-          "summary": "Thesis medium: Pre-event starter long allowed: catalyst 5.85, news 61, p 81%, score 44.8 vs 65 trigger. Begin 41% size before full confirmation. Thesis: demand commitment + SEC filing flow + options implied move + analyst revision + analyst conviction."
-        }
+        "daily_top_mover_replay": {}
       },
       "playbook_distiller": {},
       "llm_referee": {}
@@ -7229,14 +7268,14 @@
       "asset_bucket": "equity",
       "tradable": true,
       "execution_mode": "tradable",
-      "asset_state": "OBSERVING",
+      "asset_state": "DATA_QUALITY_HOLD",
       "bias": "BEARISH",
       "action": "FLAT",
       "confidence": "MEDIUM",
-      "score": 38.9,
+      "score": 38.8,
       "expectancy_probability": 0.5,
       "expectancy_expected_r": 0.0,
-      "live_price": 349.055,
+      "live_price": 349.46,
       "levels": {
         "support": 345.0,
         "resistance": 355.0,
@@ -7245,7 +7284,7 @@
       },
       "dossier": {
         "current_read": "Thesis low: Raw score remained inside the no-trade zone",
-        "next_unblock": "Wait for structure and execution quality to align.",
+        "next_unblock": "live venue price is stale",
         "invalidation": "Reclaim 355.00",
         "playbook": "Sell rallies into supply/resistance; press harder after breakdown closes confirm.",
         "narrative": "Narrative flow is neutral",
@@ -7255,7 +7294,20 @@
       },
       "missed_move_context": {
         "miss_count": 0,
-        "latest": {},
+        "latest": {
+          "action": "SHORT",
+          "breakout": "probing_bearish_breakdown",
+          "coin": "WDC",
+          "interaction": "range_compression",
+          "probability": 0.6556,
+          "recorded_at": "2026-11-02 21:05:25",
+          "regime": "absorption",
+          "risk_reward_ratio": 3.59,
+          "score": 88.3,
+          "stage": "data_reliability_block",
+          "summary": "price moved too far since the conviction snapshot",
+          "ts": 1793633725.372372
+        },
         "daily_top_mover_replay": {}
       },
       "playbook_distiller": {},
