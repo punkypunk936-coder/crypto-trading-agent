@@ -1,109 +1,121 @@
 {
   "classifications": {
-    "CORRECT_PASS": 70,
-    "MISSED_WIN": 290
+    "CORRECT_PASS": 89,
+    "MISSED_WIN": 407
   },
   "data_dir": "/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime",
-  "decision_rows": 2330,
-  "episodes": 2323,
-  "generated_at": 1793962671,
+  "decision_rows": 3181,
+  "episodes": 3174,
+  "generated_at": 1793984277,
   "horizon_minutes": 720,
   "interval": "5m",
-  "labeled_episodes": 360,
+  "labeled_episodes": 496,
   "missed_families": [
     {
       "family": "QCOM:SHORT",
-      "misses": 94
-    },
-    {
-      "family": "CXMT:SHORT",
-      "misses": 74
-    },
-    {
-      "family": "ASML:SHORT",
-      "misses": 42
+      "misses": 95
     },
     {
       "family": "GEV:SHORT",
-      "misses": 28
+      "misses": 72
+    },
+    {
+      "family": "LITE:SHORT",
+      "misses": 61
+    },
+    {
+      "family": "ASML:SHORT",
+      "misses": 57
+    },
+    {
+      "family": "CXMT:SHORT",
+      "misses": 55
     },
     {
       "family": "KIOXIA:SHORT",
       "misses": 27
     },
     {
-      "family": "LITE:SHORT",
-      "misses": 16
+      "family": "SOL:LONG",
+      "misses": 12
     },
     {
       "family": "HYPE:LONG",
-      "misses": 5
-    },
-    {
-      "family": "SNDK:SHORT",
-      "misses": 2
+      "misses": 8
     }
   ],
   "stage_scorecards": [
     {
-      "correct_passes": 21,
+      "correct_passes": 28,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.8489,
-      "missed_wins": 118,
+      "false_negative_rate": 0.8511,
+      "missed_wins": 160,
       "note": "This stage blocked more later winners than losers; do not let it remain an unmeasured hard veto.",
-      "pass_samples": 139,
+      "pass_samples": 188,
       "recommendation": "DEMOTE_TO_SHADOW",
-      "samples": 139,
-      "stage": "first_principles_guard_block"
-    },
-    {
-      "correct_passes": 20,
-      "executed_samples": 0,
-      "execution_win_rate": 0.0,
-      "false_negative_rate": 0.8305,
-      "missed_wins": 98,
-      "note": "This stage blocked more later winners than losers; do not let it remain an unmeasured hard veto.",
-      "pass_samples": 118,
-      "recommendation": "DEMOTE_TO_SHADOW",
-      "samples": 118,
+      "samples": 188,
       "stage": "data_reliability_block"
     },
     {
-      "correct_passes": 13,
+      "correct_passes": 22,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.6905,
+      "false_negative_rate": 0.8523,
+      "missed_wins": 127,
+      "note": "This stage blocked more later winners than losers; do not let it remain an unmeasured hard veto.",
+      "pass_samples": 149,
+      "recommendation": "DEMOTE_TO_SHADOW",
+      "samples": 149,
+      "stage": "first_principles_guard_block"
+    },
+    {
+      "correct_passes": 15,
+      "executed_samples": 0,
+      "execution_win_rate": 0.0,
+      "false_negative_rate": 0.6875,
+      "missed_wins": 33,
+      "note": "This stage blocked more later winners than losers; do not let it remain an unmeasured hard veto.",
+      "pass_samples": 48,
+      "recommendation": "DEMOTE_TO_SHADOW",
+      "samples": 48,
+      "stage": "core_long_short_suppressed"
+    },
+    {
+      "correct_passes": 18,
+      "executed_samples": 0,
+      "execution_win_rate": 0.0,
+      "false_negative_rate": 0.617,
       "missed_wins": 29,
       "note": "This stage blocked more later winners than losers; do not let it remain an unmeasured hard veto.",
-      "pass_samples": 42,
+      "pass_samples": 47,
       "recommendation": "DEMOTE_TO_SHADOW",
-      "samples": 42,
-      "stage": "core_long_short_suppressed"
+      "samples": 47,
+      "stage": "patient_execution_block"
     },
     {
       "correct_passes": 4,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.8462,
-      "missed_wins": 22,
+      "false_negative_rate": 0.9,
+      "missed_wins": 36,
       "note": "This stage blocked more later winners than losers; do not let it remain an unmeasured hard veto.",
-      "pass_samples": 26,
+      "pass_samples": 40,
       "recommendation": "DEMOTE_TO_SHADOW",
-      "samples": 26,
+      "samples": 40,
       "stage": "win_rate_context_guard_block"
     },
     {
-      "correct_passes": 12,
+      "correct_passes": 0,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.52,
-      "missed_wins": 13,
+      "false_negative_rate": 1.0,
+      "missed_wins": 6,
       "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 25,
+      "pass_samples": 6,
       "recommendation": "COLLECT_MORE",
-      "samples": 25,
-      "stage": "patient_execution_block"
+      "samples": 6,
+      "stage": "major_catalyst_watch"
     },
     {
       "correct_passes": 0,
@@ -118,6 +130,30 @@
       "stage": "flat_no_trade"
     },
     {
+      "correct_passes": 1,
+      "executed_samples": 0,
+      "execution_win_rate": 0.0,
+      "false_negative_rate": 0.8,
+      "missed_wins": 4,
+      "note": "Not enough decisive counterfactual evidence yet.",
+      "pass_samples": 5,
+      "recommendation": "COLLECT_MORE",
+      "samples": 5,
+      "stage": "guardrails_flat"
+    },
+    {
+      "correct_passes": 1,
+      "executed_samples": 0,
+      "execution_win_rate": 0.0,
+      "false_negative_rate": 0.8,
+      "missed_wins": 4,
+      "note": "Not enough decisive counterfactual evidence yet.",
+      "pass_samples": 5,
+      "recommendation": "COLLECT_MORE",
+      "samples": 5,
+      "stage": "observation_only"
+    },
+    {
       "correct_passes": 0,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
@@ -127,31 +163,7 @@
       "pass_samples": 3,
       "recommendation": "COLLECT_MORE",
       "samples": 3,
-      "stage": "guardrails_flat"
-    },
-    {
-      "correct_passes": 0,
-      "executed_samples": 0,
-      "execution_win_rate": 0.0,
-      "false_negative_rate": 1.0,
-      "missed_wins": 1,
-      "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 1,
-      "recommendation": "COLLECT_MORE",
-      "samples": 1,
       "stage": "mtf_block"
-    },
-    {
-      "correct_passes": 0,
-      "executed_samples": 0,
-      "execution_win_rate": 0.0,
-      "false_negative_rate": 1.0,
-      "missed_wins": 1,
-      "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 1,
-      "recommendation": "COLLECT_MORE",
-      "samples": 1,
-      "stage": "observation_only"
     }
   ],
   "target_r": 0.25
