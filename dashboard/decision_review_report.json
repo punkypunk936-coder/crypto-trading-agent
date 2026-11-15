@@ -1,31 +1,31 @@
 {
   "classifications": {
-    "CORRECT_PASS": 571,
-    "MISSED_WIN": 1695
+    "CORRECT_PASS": 611,
+    "MISSED_WIN": 1837
   },
   "data_dir": "/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime",
-  "decision_rows": 5650,
-  "episodes": 5460,
-  "generated_at": 1794724585,
+  "decision_rows": 6328,
+  "episodes": 6102,
+  "generated_at": 1794746225,
   "horizon_minutes": 720,
   "interval": "5m",
-  "labeled_episodes": 2266,
+  "labeled_episodes": 2448,
   "missed_families": [
     {
       "family": "AMZN:LONG",
-      "misses": 424
+      "misses": 425
     },
     {
       "family": "AAPL:LONG",
-      "misses": 350
+      "misses": 368
     },
     {
       "family": "COST:LONG",
-      "misses": 233
+      "misses": 271
     },
     {
       "family": "NBIS:SHORT",
-      "misses": 141
+      "misses": 161
     },
     {
       "family": "GME:LONG",
@@ -36,98 +36,110 @@
       "misses": 94
     },
     {
-      "family": "AVGO:LONG",
-      "misses": 77
+      "family": "SMSN:SHORT",
+      "misses": 88
     },
     {
-      "family": "SMSN:SHORT",
-      "misses": 68
+      "family": "AVGO:LONG",
+      "misses": 77
     }
   ],
   "stage_scorecards": [
     {
-      "correct_passes": 258,
+      "correct_passes": 293,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.6583,
-      "missed_wins": 497,
+      "false_negative_rate": 0.6414,
+      "missed_wins": 524,
       "note": "This stage blocked more later winners than losers; do not let it remain an unmeasured hard veto.",
-      "pass_samples": 755,
+      "pass_samples": 817,
       "recommendation": "DEMOTE_TO_SHADOW",
-      "samples": 755,
+      "samples": 817,
       "stage": "patient_execution_block"
     },
     {
-      "correct_passes": 176,
+      "correct_passes": 152,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.7434,
-      "missed_wins": 510,
+      "false_negative_rate": 0.7807,
+      "missed_wins": 541,
       "note": "This stage blocked more later winners than losers; do not let it remain an unmeasured hard veto.",
-      "pass_samples": 686,
+      "pass_samples": 693,
       "recommendation": "DEMOTE_TO_SHADOW",
-      "samples": 686,
+      "samples": 693,
       "stage": "win_rate_context_guard_block"
     },
     {
-      "correct_passes": 79,
+      "correct_passes": 93,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.8171,
-      "missed_wins": 353,
+      "false_negative_rate": 0.7965,
+      "missed_wins": 364,
       "note": "This stage blocked more later winners than losers; do not let it remain an unmeasured hard veto.",
-      "pass_samples": 432,
+      "pass_samples": 457,
       "recommendation": "DEMOTE_TO_SHADOW",
-      "samples": 432,
+      "samples": 457,
       "stage": "win_rate_guard_block"
     },
     {
-      "correct_passes": 42,
+      "correct_passes": 52,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.7325,
-      "missed_wins": 115,
+      "false_negative_rate": 0.7219,
+      "missed_wins": 135,
       "note": "This stage blocked more later winners than losers; do not let it remain an unmeasured hard veto.",
-      "pass_samples": 157,
+      "pass_samples": 187,
       "recommendation": "DEMOTE_TO_SHADOW",
-      "samples": 157,
+      "samples": 187,
       "stage": "data_reliability_block"
+    },
+    {
+      "correct_passes": 8,
+      "executed_samples": 0,
+      "execution_win_rate": 0.0,
+      "false_negative_rate": 0.9424,
+      "missed_wins": 131,
+      "note": "This stage blocked more later winners than losers; do not let it remain an unmeasured hard veto.",
+      "pass_samples": 139,
+      "recommendation": "DEMOTE_TO_SHADOW",
+      "samples": 139,
+      "stage": "first_principles_guard_block"
+    },
+    {
+      "correct_passes": 7,
+      "executed_samples": 0,
+      "execution_win_rate": 0.0,
+      "false_negative_rate": 0.9041,
+      "missed_wins": 66,
+      "note": "This stage blocked more later winners than losers; do not let it remain an unmeasured hard veto.",
+      "pass_samples": 73,
+      "recommendation": "DEMOTE_TO_SHADOW",
+      "samples": 73,
+      "stage": "major_catalyst_watch"
     },
     {
       "correct_passes": 5,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.9561,
-      "missed_wins": 109,
-      "note": "This stage blocked more later winners than losers; do not let it remain an unmeasured hard veto.",
-      "pass_samples": 114,
-      "recommendation": "DEMOTE_TO_SHADOW",
-      "samples": 114,
-      "stage": "first_principles_guard_block"
-    },
-    {
-      "correct_passes": 6,
-      "executed_samples": 0,
-      "execution_win_rate": 0.0,
-      "false_negative_rate": 0.8947,
-      "missed_wins": 51,
-      "note": "This stage blocked more later winners than losers; do not let it remain an unmeasured hard veto.",
-      "pass_samples": 57,
-      "recommendation": "DEMOTE_TO_SHADOW",
-      "samples": 57,
-      "stage": "major_catalyst_watch"
-    },
-    {
-      "correct_passes": 4,
-      "executed_samples": 0,
-      "execution_win_rate": 0.0,
-      "false_negative_rate": 0.9245,
-      "missed_wins": 49,
+      "false_negative_rate": 0.9057,
+      "missed_wins": 48,
       "note": "This stage blocked more later winners than losers; do not let it remain an unmeasured hard veto.",
       "pass_samples": 53,
       "recommendation": "DEMOTE_TO_SHADOW",
       "samples": 53,
       "stage": "mtf_block"
+    },
+    {
+      "correct_passes": 0,
+      "executed_samples": 0,
+      "execution_win_rate": 0.0,
+      "false_negative_rate": 1.0,
+      "missed_wins": 12,
+      "note": "Not enough decisive counterfactual evidence yet.",
+      "pass_samples": 12,
+      "recommendation": "COLLECT_MORE",
+      "samples": 12,
+      "stage": "guardrails_flat"
     },
     {
       "correct_passes": 0,
@@ -146,36 +158,24 @@
       "executed_samples": 0,
       "execution_win_rate": 0.0,
       "false_negative_rate": 1.0,
-      "missed_wins": 2,
+      "missed_wins": 6,
       "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 2,
+      "pass_samples": 6,
       "recommendation": "COLLECT_MORE",
-      "samples": 2,
+      "samples": 6,
       "stage": "missing_news_confirmation"
     },
     {
       "correct_passes": 1,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.5,
-      "missed_wins": 1,
+      "false_negative_rate": 0.75,
+      "missed_wins": 3,
       "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 2,
+      "pass_samples": 4,
       "recommendation": "COLLECT_MORE",
-      "samples": 2,
+      "samples": 4,
       "stage": "core_long_short_suppressed"
-    },
-    {
-      "correct_passes": 0,
-      "executed_samples": 0,
-      "execution_win_rate": 0.0,
-      "false_negative_rate": 1.0,
-      "missed_wins": 1,
-      "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 1,
-      "recommendation": "COLLECT_MORE",
-      "samples": 1,
-      "stage": "guardrails_flat"
     }
   ],
   "target_r": 0.25
