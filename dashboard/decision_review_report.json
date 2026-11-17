@@ -1,18 +1,22 @@
 {
   "classifications": {
-    "MISSED_WIN": 9
+    "MISSED_WIN": 24
   },
   "data_dir": "/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime",
-  "decision_rows": 321,
-  "episodes": 294,
-  "generated_at": 1794861936,
+  "decision_rows": 1051,
+  "episodes": 956,
+  "generated_at": 1794883679,
   "horizon_minutes": 720,
   "interval": "5m",
-  "labeled_episodes": 9,
+  "labeled_episodes": 24,
   "missed_families": [
     {
       "family": "EQIX:SHORT",
-      "misses": 9
+      "misses": 20
+    },
+    {
+      "family": "SOL:SHORT",
+      "misses": 4
     }
   ],
   "stage_scorecards": [
@@ -21,11 +25,11 @@
       "executed_samples": 0,
       "execution_win_rate": 0.0,
       "false_negative_rate": 1.0,
-      "missed_wins": 5,
+      "missed_wins": 10,
       "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 5,
+      "pass_samples": 10,
       "recommendation": "COLLECT_MORE",
-      "samples": 5,
+      "samples": 10,
       "stage": "mtf_block"
     },
     {
@@ -33,12 +37,36 @@
       "executed_samples": 0,
       "execution_win_rate": 0.0,
       "false_negative_rate": 1.0,
-      "missed_wins": 4,
+      "missed_wins": 10,
       "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 4,
+      "pass_samples": 10,
       "recommendation": "COLLECT_MORE",
-      "samples": 4,
+      "samples": 10,
       "stage": "observation_only"
+    },
+    {
+      "correct_passes": 0,
+      "executed_samples": 0,
+      "execution_win_rate": 0.0,
+      "false_negative_rate": 1.0,
+      "missed_wins": 3,
+      "note": "Not enough decisive counterfactual evidence yet.",
+      "pass_samples": 3,
+      "recommendation": "COLLECT_MORE",
+      "samples": 3,
+      "stage": "first_principles_guard_block"
+    },
+    {
+      "correct_passes": 0,
+      "executed_samples": 0,
+      "execution_win_rate": 0.0,
+      "false_negative_rate": 1.0,
+      "missed_wins": 1,
+      "note": "Not enough decisive counterfactual evidence yet.",
+      "pass_samples": 1,
+      "recommendation": "COLLECT_MORE",
+      "samples": 1,
+      "stage": "data_reliability_block"
     }
   ],
   "target_r": 0.25
