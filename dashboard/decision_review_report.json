@@ -1,73 +1,73 @@
 {
   "classifications": {
-    "CORRECT_PASS": 12,
-    "MISSED_WIN": 120
+    "CORRECT_PASS": 33,
+    "MISSED_WIN": 165
   },
   "data_dir": "/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime",
-  "decision_rows": 5344,
-  "episodes": 4963,
-  "generated_at": 1794992257,
+  "decision_rows": 6114,
+  "episodes": 5712,
+  "generated_at": 1795013965,
   "horizon_minutes": 720,
   "interval": "5m",
-  "labeled_episodes": 132,
+  "labeled_episodes": 198,
   "missed_families": [
     {
-      "family": "AVGO:SHORT",
-      "misses": 41
+      "family": "SOL:SHORT",
+      "misses": 53
     },
     {
-      "family": "SOL:SHORT",
-      "misses": 33
+      "family": "AVGO:SHORT",
+      "misses": 51
     },
     {
       "family": "EQIX:SHORT",
-      "misses": 25
+      "misses": 29
     },
     {
       "family": "SMSN:SHORT",
-      "misses": 8
+      "misses": 13
     },
     {
       "family": "HYPE:SHORT",
-      "misses": 4
+      "misses": 6
     },
     {
       "family": "SKHX:SHORT",
       "misses": 4
     },
     {
-      "family": "ANET:SHORT",
-      "misses": 1
+      "family": "NBIS:SHORT",
+      "misses": 3
     },
     {
-      "family": "CEG:SHORT",
-      "misses": 1
+      "family": "DELL:SHORT",
+      "misses": 2
     }
   ],
   "stage_scorecards": [
     {
-      "correct_passes": 3,
+      "correct_passes": 7,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.9231,
-      "missed_wins": 36,
+      "false_negative_rate": 0.9,
+      "missed_wins": 63,
       "note": "This stage blocked more later winners than losers; do not let it remain an unmeasured hard veto.",
-      "pass_samples": 39,
+      "pass_samples": 70,
       "recommendation": "DEMOTE_TO_SHADOW",
-      "samples": 39,
-      "stage": "core_long_short_suppressed"
+      "samples": 70,
+      "stage": "first_principles_guard_block"
     },
     {
-      "correct_passes": 4,
+      "correct_passes": 16,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.8571,
-      "missed_wins": 24,
+      "false_negative_rate": 0.7377,
+      "missed_wins": 45,
       "note": "This stage blocked more later winners than losers; do not let it remain an unmeasured hard veto.",
-      "pass_samples": 28,
+      "pass_samples": 61,
       "recommendation": "DEMOTE_TO_SHADOW",
-      "samples": 28,
-      "stage": "first_principles_guard_block"
+      "samples": 61,
+      "stage": "core_long_short_suppressed"
     },
     {
       "correct_passes": 2,
@@ -79,42 +79,42 @@
       "pass_samples": 22,
       "recommendation": "COLLECT_MORE",
       "samples": 22,
-      "stage": "data_reliability_block"
+      "stage": "observation_only"
     },
     {
-      "correct_passes": 0,
+      "correct_passes": 6,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 1.0,
-      "missed_wins": 17,
+      "false_negative_rate": 0.6471,
+      "missed_wins": 11,
       "note": "Not enough decisive counterfactual evidence yet.",
       "pass_samples": 17,
       "recommendation": "COLLECT_MORE",
       "samples": 17,
-      "stage": "observation_only"
+      "stage": "data_reliability_block"
     },
     {
-      "correct_passes": 2,
+      "correct_passes": 1,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.8333,
-      "missed_wins": 10,
+      "false_negative_rate": 0.9231,
+      "missed_wins": 12,
       "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 12,
+      "pass_samples": 13,
       "recommendation": "COLLECT_MORE",
-      "samples": 12,
+      "samples": 13,
       "stage": "win_rate_context_guard_block"
     },
     {
       "correct_passes": 1,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.9091,
-      "missed_wins": 10,
+      "false_negative_rate": 0.9167,
+      "missed_wins": 11,
       "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 11,
+      "pass_samples": 12,
       "recommendation": "COLLECT_MORE",
-      "samples": 11,
+      "samples": 12,
       "stage": "mtf_block"
     },
     {
