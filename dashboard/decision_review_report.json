@@ -1,44 +1,157 @@
 {
   "classifications": {
-    "MISSED_WIN": 2
+    "CORRECT_PASS": 694,
+    "MISSED_WIN": 244
   },
   "data_dir": "/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime",
-  "decision_rows": 3575,
-  "episodes": 3551,
-  "generated_at": 1795275354,
+  "decision_rows": 3665,
+  "episodes": 3641,
+  "generated_at": 1795304512,
   "horizon_minutes": 720,
   "interval": "5m",
-  "labeled_episodes": 2,
+  "labeled_episodes": 938,
   "missed_families": [
     {
-      "family": "HYPE:SHORT",
-      "misses": 2
+      "family": "MRVL:LONG",
+      "misses": 49
+    },
+    {
+      "family": "KIOXIA:SHORT",
+      "misses": 45
+    },
+    {
+      "family": "SNDK:SHORT",
+      "misses": 34
+    },
+    {
+      "family": "AVGO:SHORT",
+      "misses": 22
+    },
+    {
+      "family": "AMZN:SHORT",
+      "misses": 20
+    },
+    {
+      "family": "NBIS:SHORT",
+      "misses": 19
+    },
+    {
+      "family": "SOL:SHORT",
+      "misses": 18
+    },
+    {
+      "family": "BTC:SHORT",
+      "misses": 14
     }
   ],
   "stage_scorecards": [
     {
-      "correct_passes": 0,
+      "correct_passes": 215,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 1.0,
-      "missed_wins": 1,
+      "false_negative_rate": 0.3042,
+      "missed_wins": 94,
       "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 1,
+      "pass_samples": 309,
       "recommendation": "COLLECT_MORE",
-      "samples": 1,
+      "samples": 309,
+      "stage": "patient_execution_block"
+    },
+    {
+      "correct_passes": 152,
+      "executed_samples": 0,
+      "execution_win_rate": 0.0,
+      "false_negative_rate": 0.1872,
+      "missed_wins": 35,
+      "note": "This stage is rejecting mostly losing opportunities.",
+      "pass_samples": 187,
+      "recommendation": "KEEP",
+      "samples": 187,
+      "stage": "core_long_short_suppressed"
+    },
+    {
+      "correct_passes": 96,
+      "executed_samples": 0,
+      "execution_win_rate": 0.0,
+      "false_negative_rate": 0.2,
+      "missed_wins": 24,
+      "note": "This stage is rejecting mostly losing opportunities.",
+      "pass_samples": 120,
+      "recommendation": "KEEP",
+      "samples": 120,
+      "stage": "first_principles_guard_block"
+    },
+    {
+      "correct_passes": 89,
+      "executed_samples": 0,
+      "execution_win_rate": 0.0,
+      "false_negative_rate": 0.2193,
+      "missed_wins": 25,
+      "note": "This stage is rejecting mostly losing opportunities.",
+      "pass_samples": 114,
+      "recommendation": "KEEP",
+      "samples": 114,
       "stage": "data_reliability_block"
     },
     {
-      "correct_passes": 0,
+      "correct_passes": 56,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 1.0,
-      "missed_wins": 1,
-      "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 1,
-      "recommendation": "COLLECT_MORE",
-      "samples": 1,
+      "false_negative_rate": 0.2727,
+      "missed_wins": 21,
+      "note": "This stage is rejecting mostly losing opportunities.",
+      "pass_samples": 77,
+      "recommendation": "KEEP",
+      "samples": 77,
       "stage": "win_rate_context_guard_block"
+    },
+    {
+      "correct_passes": 58,
+      "executed_samples": 0,
+      "execution_win_rate": 0.0,
+      "false_negative_rate": 0.0333,
+      "missed_wins": 2,
+      "note": "This stage is rejecting mostly losing opportunities.",
+      "pass_samples": 60,
+      "recommendation": "KEEP",
+      "samples": 60,
+      "stage": "guardrails_flat"
+    },
+    {
+      "correct_passes": 2,
+      "executed_samples": 0,
+      "execution_win_rate": 0.0,
+      "false_negative_rate": 0.9545,
+      "missed_wins": 42,
+      "note": "This stage blocked more later winners than losers; do not let it remain an unmeasured hard veto.",
+      "pass_samples": 44,
+      "recommendation": "DEMOTE_TO_SHADOW",
+      "samples": 44,
+      "stage": "mtf_block"
+    },
+    {
+      "correct_passes": 24,
+      "executed_samples": 0,
+      "execution_win_rate": 0.0,
+      "false_negative_rate": 0.04,
+      "missed_wins": 1,
+      "note": "This stage is rejecting mostly losing opportunities.",
+      "pass_samples": 25,
+      "recommendation": "KEEP",
+      "samples": 25,
+      "stage": "major_catalyst_watch"
+    },
+    {
+      "correct_passes": 2,
+      "executed_samples": 0,
+      "execution_win_rate": 0.0,
+      "false_negative_rate": 0.0,
+      "missed_wins": 0,
+      "note": "Not enough decisive counterfactual evidence yet.",
+      "pass_samples": 2,
+      "recommendation": "COLLECT_MORE",
+      "samples": 2,
+      "stage": "proactive_starter_micro_desk_block"
     }
   ],
   "target_r": 0.25
