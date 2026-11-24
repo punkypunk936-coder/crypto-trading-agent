@@ -1,22 +1,22 @@
 {
   "classifications": {
-    "CORRECT_PASS": 45,
-    "MISSED_WIN": 147
+    "CORRECT_PASS": 24,
+    "MISSED_WIN": 229
   },
   "data_dir": "/Users/manvinderarora/Library/Application Support/crypto_trading_agent_runtime",
-  "decision_rows": 2151,
-  "episodes": 2087,
-  "generated_at": 1795524971,
+  "decision_rows": 2483,
+  "episodes": 2419,
+  "generated_at": 1795547377,
   "horizon_minutes": 720,
   "interval": "5m",
-  "labeled_episodes": 192,
+  "labeled_episodes": 253,
   "missed_families": [
     {
       "family": "AMAT:SHORT",
-      "misses": 131
+      "misses": 212
     },
     {
-      "family": "AMZN:LONG",
+      "family": "INTC:SHORT",
       "misses": 6
     },
     {
@@ -24,49 +24,53 @@
       "misses": 5
     },
     {
-      "family": "INTC:SHORT",
-      "misses": 3
+      "family": "EQIX:SHORT",
+      "misses": 4
     },
     {
       "family": "INTC:LONG",
-      "misses": 2
+      "misses": 1
+    },
+    {
+      "family": "KLAC:SHORT",
+      "misses": 1
     }
   ],
   "stage_scorecards": [
     {
-      "correct_passes": 27,
+      "correct_passes": 9,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.7188,
-      "missed_wins": 69,
+      "false_negative_rate": 0.9308,
+      "missed_wins": 121,
       "note": "This stage blocked more later winners than losers; do not let it remain an unmeasured hard veto.",
-      "pass_samples": 96,
+      "pass_samples": 130,
       "recommendation": "DEMOTE_TO_SHADOW",
-      "samples": 96,
+      "samples": 130,
       "stage": "first_principles_guard_block"
     },
     {
-      "correct_passes": 12,
+      "correct_passes": 10,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.7857,
-      "missed_wins": 44,
+      "false_negative_rate": 0.8529,
+      "missed_wins": 58,
       "note": "This stage blocked more later winners than losers; do not let it remain an unmeasured hard veto.",
-      "pass_samples": 56,
+      "pass_samples": 68,
       "recommendation": "DEMOTE_TO_SHADOW",
-      "samples": 56,
+      "samples": 68,
       "stage": "patient_execution_block"
     },
     {
-      "correct_passes": 5,
+      "correct_passes": 4,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.7222,
-      "missed_wins": 13,
-      "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 18,
-      "recommendation": "COLLECT_MORE",
-      "samples": 18,
+      "false_negative_rate": 0.8621,
+      "missed_wins": 25,
+      "note": "This stage blocked more later winners than losers; do not let it remain an unmeasured hard veto.",
+      "pass_samples": 29,
+      "recommendation": "DEMOTE_TO_SHADOW",
+      "samples": 29,
       "stage": "data_reliability_block"
     },
     {
@@ -74,23 +78,35 @@
       "executed_samples": 0,
       "execution_win_rate": 0.0,
       "false_negative_rate": 1.0,
-      "missed_wins": 15,
+      "missed_wins": 16,
       "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 15,
+      "pass_samples": 16,
       "recommendation": "COLLECT_MORE",
-      "samples": 15,
+      "samples": 16,
       "stage": "win_rate_context_guard_block"
+    },
+    {
+      "correct_passes": 0,
+      "executed_samples": 0,
+      "execution_win_rate": 0.0,
+      "false_negative_rate": 1.0,
+      "missed_wins": 5,
+      "note": "Not enough decisive counterfactual evidence yet.",
+      "pass_samples": 5,
+      "recommendation": "COLLECT_MORE",
+      "samples": 5,
+      "stage": "observation_only"
     },
     {
       "correct_passes": 1,
       "executed_samples": 0,
       "execution_win_rate": 0.0,
-      "false_negative_rate": 0.8571,
-      "missed_wins": 6,
+      "false_negative_rate": 0.8,
+      "missed_wins": 4,
       "note": "Not enough decisive counterfactual evidence yet.",
-      "pass_samples": 7,
+      "pass_samples": 5,
       "recommendation": "COLLECT_MORE",
-      "samples": 7,
+      "samples": 5,
       "stage": "major_catalyst_watch"
     }
   ],
